@@ -32,3 +32,17 @@ keyed by the new version, and bump `DB_VERSION`.
 ```sh
 TZ=UTC node tests/fixtures/generate-cycles.mjs
 ```
+
+## Importing from the current portal
+
+1. In the current portal: **Team → Settings → Export all data** (JSON file).
+2. In WordPress: **GridRankers → Import**, choose the file and keep **Dry run** ticked. Check the counts.
+3. Run it again with Dry run unticked. Importing is idempotent (rows are matched by their original ids).
+4. Link the old Super Admin to a WordPress administrator (the import lists any it found).
+
+Old sign-in codes keep working: they are checked against the legacy `sha256(salt:code)` hash and
+re-hashed with `password_hash()` on first sign-in. Old Super Admin codes are not used; Super Admins
+sign in with WordPress. The old `admin` and `gdrive` settings documents and `visitors` are not imported.
+
+**GridRankers → Export** (or `GET /wp-json/gr-portal/v1/export`) downloads the same format, which can be
+imported again.

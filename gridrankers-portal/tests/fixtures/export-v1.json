@@ -1,0 +1,523 @@
+{
+  "format": "gridrankers-portal-export",
+  "version": 1,
+  "exportedAt": "2026-09-30T12:00:00.000Z",
+  "exportedBy": "Grid Owner",
+  "notes": "Codes are stored as sha256(salt + ':' + code) in team[].codeSalt / codeHash. Dates are ISO strings or epoch ms (createdAt/updatedAt).",
+  "data": {
+    "team": [
+      {
+        "id": "tm_admin",
+        "name": "Grid Owner",
+        "role": "admin",
+        "color": "#2563eb",
+        "codeSalt": "a1b2",
+        "codeHash": "7360f12d65c19dd5f8564a0040c6a93d2289192cb43fbcfbb52c20229c24ba32",
+        "createdAt": 1735689600000,
+        "accountId": "acct_1"
+      },
+      {
+        "id": "tm_lee",
+        "name": "Lee Lead",
+        "role": "lead",
+        "color": "#16a34a",
+        "title": "Team Leader",
+        "email": "lee@example.com",
+        "phone": "+1 555 0100",
+        "codeSalt": "s9x8",
+        "codeHash": "cf3e81d0ae2dd80ca82c3a514874e45c5344b7d0910312cf1be706978de0d267",
+        "codeSetAt": "2026-01-10T09:00:00.000Z",
+        "createdAt": 1736000000000,
+        "accountId": "acct_2",
+        "schedule": {
+          "start": "09:00",
+          "end": "17:00"
+        }
+      },
+      {
+        "id": "tm_max",
+        "name": "Max Member",
+        "role": "member",
+        "color": "#db2777",
+        "photo": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==",
+        "driveUrl": "https://drive.google.com/drive/folders/abc",
+        "address": "1 Main St",
+        "notes": "Prefers mornings",
+        "codeSalt": "q7w6",
+        "codeHash": "87d2db9ed3f76a86db191c46a0d8782336b07620a1453e51312ae475bf2bed9b",
+        "createdAt": "2026-02-01T10:00:00.000Z"
+      },
+      {
+        "id": "tm_nia",
+        "name": "Nia New",
+        "role": "member",
+        "color": "#ea580c",
+        "createdAt": 1767225600000
+      }
+    ],
+    "clients": [
+      {
+        "id": "c_acme",
+        "name": "Acme Plumbing",
+        "cycleDay": 5,
+        "cycleSet": true,
+        "pstate": "active",
+        "active": true,
+        "stdCycle": "2026-09",
+        "cycleLog": [
+          {
+            "from": null,
+            "to": 5,
+            "at": "2026-01-02T10:00:00.000Z",
+            "by": "initial"
+          }
+        ],
+        "createdAt": 1735776000000
+      },
+      {
+        "id": "c_bright",
+        "name": "Bright Dental",
+        "active": false,
+        "createdAt": 1736000000000
+      },
+      {
+        "id": "c_coast",
+        "name": "Coastal Roofing",
+        "cycleDay": 20,
+        "cycleSet": true,
+        "pstate": "paused",
+        "cycleChanges": [
+          {
+            "from": "2026-03-10",
+            "day": 20,
+            "prevDay": 1,
+            "mode": "merge",
+            "reason": "Billing date moved",
+            "by": "tm_admin",
+            "at": "2026-03-01T12:00:00.000Z"
+          }
+        ],
+        "cycleLog": [
+          {
+            "from": null,
+            "to": 1,
+            "at": "2026-01-05T10:00:00.000Z",
+            "by": "initial"
+          },
+          {
+            "from": 1,
+            "to": 20,
+            "at": "2026-03-01T12:00:00.000Z",
+            "by": "admin",
+            "reason": "Billing date moved"
+          }
+        ],
+        "createdAt": "2026-01-05T10:00:00.000Z"
+      }
+    ],
+    "items": [
+      {
+        "id": "i_h1",
+        "clientId": "c_acme",
+        "title": "Fix the H1 on /plumbers",
+        "notes": "Add the city",
+        "url": "https://acme.example/plumbers",
+        "priority": "urgent",
+        "status": "done",
+        "whoId": "tm_max",
+        "who": "Max Member",
+        "meeting": "2026-09-03",
+        "dueType": "date",
+        "dueDate": "2026-09-10",
+        "doneAt": "2026-09-08T15:30:00.000Z",
+        "review": {
+          "state": "pending",
+          "submittedBy": "tm_max",
+          "submittedName": "Max Member",
+          "submittedAt": "2026-09-08T15:30:00.000Z"
+        },
+        "completion": {
+          "note": "Updated H1 and meta",
+          "link": "https://acme.example/plumbers",
+          "by": "tm_max",
+          "byName": "Max Member",
+          "at": "2026-09-08T15:30:00.000Z"
+        },
+        "createdAt": 1756900000000,
+        "updatedAt": 1757345400000
+      },
+      {
+        "id": "i_cite",
+        "clientId": "c_acme",
+        "title": "Build 3 citations",
+        "priority": "high",
+        "status": "doing",
+        "target": 3,
+        "assignees": [
+          {
+            "id": "tm_max",
+            "n": 2
+          },
+          {
+            "id": "tm_nia",
+            "n": 1
+          }
+        ],
+        "whoId": "tm_max",
+        "by": {
+          "tm_max": 2
+        },
+        "count": 2,
+        "dueType": "weekly",
+        "dueWeeks": [
+          "2026-09-21",
+          "2026-09-14"
+        ],
+        "createdAt": 1757000000000
+      },
+      {
+        "id": "i_unas",
+        "clientId": "c_coast",
+        "title": "Check roof gallery",
+        "priority": "normal",
+        "status": "todo",
+        "target": 2,
+        "by": {
+          "_": 0
+        },
+        "dueType": "dates",
+        "dueDates": [
+          "2026-10-20",
+          "2026-10-12",
+          "2026-10-15"
+        ],
+        "createdAt": "2026-09-20T08:00:00.000Z"
+      },
+      {
+        "id": "i_month",
+        "clientId": "c_bright",
+        "title": "Monthly report",
+        "priority": "low",
+        "status": "todo",
+        "dueType": "monthly",
+        "dueRef": "2026-09-14",
+        "createdAt": 1757800000000
+      },
+      {
+        "id": "i_wkref",
+        "clientId": "c_bright",
+        "title": "Fix NAP",
+        "status": "todo",
+        "dueType": "weekly",
+        "dueRef": "2026-09-17",
+        "createdAt": 1757800000000
+      }
+    ],
+    "monthly": [
+      {
+        "id": "std_c_acme_gbp-posts",
+        "clientId": "c_acme",
+        "title": "GBP Posts",
+        "freq": "monthly",
+        "dueMode": "monthly",
+        "dueDay": null,
+        "target": 4,
+        "whoId": "tm_max",
+        "notes": "",
+        "createdAt": 1735776000000
+      },
+      {
+        "id": "m_social",
+        "clientId": "c_acme",
+        "title": "Social posts",
+        "freq": "weekly",
+        "dueMode": "weekly",
+        "target": 2,
+        "assignees": [
+          {
+            "id": "tm_max",
+            "n": 2
+          },
+          {
+            "id": "tm_nia",
+            "n": 2
+          }
+        ],
+        "team": true,
+        "createdAt": 1736000000000
+      },
+      {
+        "id": "m_pages",
+        "clientId": "c_acme",
+        "title": "Pages",
+        "freq": "monthly",
+        "dueMode": "monthly",
+        "target": 3,
+        "parts": [
+          {
+            "id": "pt1",
+            "name": "Service Pages",
+            "n": 2,
+            "who": "tm_max"
+          },
+          {
+            "id": "pt2",
+            "name": "Location Pages",
+            "n": 1,
+            "people": [
+              {
+                "id": "tm_nia",
+                "n": 1
+              }
+            ]
+          }
+        ],
+        "assignees": [
+          {
+            "id": "tm_max",
+            "n": 2
+          },
+          {
+            "id": "tm_nia",
+            "n": 1
+          }
+        ],
+        "team": false,
+        "createdAt": 1736000000000
+      },
+      {
+        "id": "m_blogs",
+        "clientId": "c_coast",
+        "title": "Blogs",
+        "freq": "monthly",
+        "dueMode": "dates",
+        "dueFromDay": 10,
+        "dueDay": 15,
+        "target": 2,
+        "createdAt": 1736000000000
+      },
+      {
+        "id": "m_legacy",
+        "clientId": "c_bright",
+        "title": "Citations",
+        "dueDay": 10,
+        "target": 1,
+        "createdAt": 1736000000000
+      }
+    ],
+    "monthlyDone": [
+      {
+        "id": "std_c_acme_gbp-posts__2026-09",
+        "taskId": "std_c_acme_gbp-posts",
+        "clientId": "c_acme",
+        "month": "2026-09",
+        "count": 4,
+        "status": "done",
+        "by": {
+          "tm_max": 4
+        },
+        "doneAt": "2026-09-20T10:00:00.000Z",
+        "review": {
+          "state": "accepted",
+          "by": "tm_lee",
+          "byName": "Lee Lead",
+          "at": "2026-09-21T10:00:00.000Z",
+          "submittedBy": "tm_max",
+          "submittedAt": "2026-09-20T10:00:00.000Z"
+        },
+        "updatedAt": 1758448800000
+      },
+      {
+        "id": "m_social__2026-09-w2",
+        "taskId": "m_social",
+        "clientId": "c_acme",
+        "month": "2026-09",
+        "week": 2,
+        "count": 1,
+        "status": "doing",
+        "by": {
+          "tm_max": 1
+        },
+        "updatedAt": 1757700000000
+      },
+      {
+        "id": "m_blogs__2026-08",
+        "taskId": "m_blogs",
+        "clientId": "c_coast",
+        "month": "2026-08",
+        "count": 0,
+        "status": "skipped",
+        "skippedAt": "2026-09-01T09:00:00.000Z",
+        "updatedAt": "2026-09-01T09:00:00.000Z"
+      },
+      {
+        "id": "m_pages__2026-09",
+        "taskId": "m_pages",
+        "clientId": "c_acme",
+        "month": "2026-09",
+        "count": 2,
+        "status": "doing",
+        "by": {
+          "tm_max": 2
+        },
+        "parts": {
+          "pt1": 2,
+          "pt1|tm_max": 2
+        },
+        "updatedAt": 1758000000000
+      }
+    ],
+    "activity": [
+      {
+        "id": "a1",
+        "personId": "tm_max",
+        "personName": "Max Member",
+        "date": "2026-09-20",
+        "at": "2026-09-20T10:00:00.000Z",
+        "kind": "auto",
+        "source": "monthly",
+        "clientId": "c_acme",
+        "title": "GBP Posts",
+        "detail": "Monthly \u00b7 4/4",
+        "qty": 4,
+        "refKey": "rec:std_c_acme_gbp-posts__2026-09"
+      },
+      {
+        "id": "a2",
+        "personId": "tm_max",
+        "date": "2026-09-08",
+        "at": 1757345400000,
+        "kind": "auto",
+        "source": "board",
+        "clientId": "c_acme",
+        "title": "Fix the H1 on /plumbers",
+        "detail": "Fixed",
+        "refKey": "item:i_h1"
+      },
+      {
+        "id": "a3",
+        "personId": "tm_nia",
+        "date": "2026-09-22",
+        "at": "2026-09-22T16:00:00.000Z",
+        "kind": "manual",
+        "source": "manual",
+        "clientId": "",
+        "title": "Other work",
+        "minutes": 90,
+        "notes": "Training"
+      },
+      {
+        "id": "a_bad",
+        "personId": "",
+        "at": "2026-09-22T16:00:00.000Z"
+      }
+    ],
+    "edits": [
+      {
+        "id": "e1",
+        "kind": "add",
+        "type": "items",
+        "docId": "i_h1",
+        "clientId": "c_acme",
+        "targets": [],
+        "title": "Fix the H1 on /plumbers",
+        "detail": "urgent \u00b7 To fix",
+        "byId": "tm_lee",
+        "byName": "Lee Lead",
+        "byRole": "lead",
+        "at": "2026-09-03T11:00:00.000Z",
+        "changes": []
+      },
+      {
+        "id": "e2",
+        "kind": "edit",
+        "type": "items",
+        "docId": "i_h1",
+        "clientId": "c_acme",
+        "title": "Fix the H1 on /plumbers",
+        "byId": "tm_lee",
+        "byRole": "lead",
+        "at": 1756998000000,
+        "changes": [
+          {
+            "field": "priority",
+            "label": "priority",
+            "from": "high",
+            "to": "urgent"
+          }
+        ]
+      },
+      {
+        "id": "e3",
+        "kind": "project",
+        "type": "client",
+        "docId": "c_coast",
+        "clientId": "c_coast",
+        "title": "Coastal Roofing",
+        "detail": "moved to paused projects",
+        "byId": "tm_admin",
+        "byRole": "admin",
+        "at": "2026-09-25T09:00:00.000Z"
+      }
+    ],
+    "trash": [
+      {
+        "id": "t1",
+        "type": "items",
+        "docId": "i_old",
+        "data": {
+          "id": "i_old",
+          "clientId": "c_acme",
+          "title": "Old task",
+          "status": "todo",
+          "priority": "normal",
+          "createdAt": 1756000000000
+        },
+        "title": "Old task",
+        "clientId": "c_acme",
+        "deletedAt": "2026-09-28T12:00:00.000Z",
+        "byId": "tm_lee",
+        "byName": "Lee Lead"
+      }
+    ],
+    "dismissals": [
+      {
+        "id": "tm_lee",
+        "items": {
+          "unassigned:2": "2026-09-25T08:00:00.000Z",
+          "overdue:tm_max:2026-09-24": 1758700000000
+        }
+      }
+    ],
+    "settings": [
+      {
+        "id": "workweek",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "updatedAt": "2026-01-01T00:00:00.000Z"
+      },
+      {
+        "id": "admin",
+        "salt": "zz",
+        "codeHash": "deadbeef"
+      },
+      {
+        "id": "gdrive",
+        "clientId": "x",
+        "clientSecret": "do-not-import"
+      }
+    ],
+    "visitors": [
+      {
+        "id": "acct_9",
+        "firstSeen": "2026-01-01T00:00:00.000Z",
+        "lastSeen": "2026-09-01T00:00:00.000Z"
+      }
+    ]
+  }
+}

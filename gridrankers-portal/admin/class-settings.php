@@ -25,12 +25,22 @@ class GRP_Admin_Settings {
 	}
 
 	/**
-	 * Adds the page under Settings. Only administrators (manage_options) can open it.
+	 * Adds the top-level GridRankers menu (Settings, Import, Export). Administrators only.
 	 */
 	public static function register_menu() {
-		add_options_page(
+		add_menu_page(
 			__( 'GridRankers Portal', 'gridrankers-portal' ),
+			__( 'GridRankers', 'gridrankers-portal' ),
+			'manage_options',
+			self::PAGE_SLUG,
+			array( __CLASS__, 'render' ),
+			'dashicons-groups',
+			3
+		);
+		add_submenu_page(
+			self::PAGE_SLUG,
 			__( 'GridRankers Portal', 'gridrankers-portal' ),
+			__( 'Settings', 'gridrankers-portal' ),
 			'manage_options',
 			self::PAGE_SLUG,
 			array( __CLASS__, 'render' )

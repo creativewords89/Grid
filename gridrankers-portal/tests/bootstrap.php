@@ -25,6 +25,9 @@ tests_add_filter(
 	'muplugins_loaded',
 	static function () {
 		require dirname( __DIR__ ) . '/gridrankers-portal.php';
+		// Admin screens load only in wp-admin; tests exercise them directly.
+		require_once dirname( __DIR__ ) . '/admin/class-settings.php';
+		require_once dirname( __DIR__ ) . '/admin/class-import-export.php';
 	}
 );
 
