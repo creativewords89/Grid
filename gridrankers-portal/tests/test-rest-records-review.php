@@ -84,6 +84,30 @@ class Test_GRP_REST_Records_Review extends GRP_REST_TestCase {
 		$this->assertStatus( 404, $this->tick( 'member', array( 'id' => 'ghost' ) ) );
 	}
 
+	public function test_biweekly_keys_are_two_week_periods() {
+		$today    = GRP_Cycles::today();
+		$biweekly = $this->monthly(
+			array(
+				'due_mode' => 'biweekly',
+				'target'   => 3,
+			)
+		);
+		$cycle    = GRP_Cycles::cycle_range( $this->project, 0, $today );
+		$current  = GRP_Cycles::period_key( $biweekly, $this->project, null, 0, $today );
+		$tick     = function ( $key ) use ( $biweekly ) {
+			return $this->tick( 'member', $biweekly, 1, array( 'periodKey' => $key ) );
+		};
+
+		$this->assertMatchesRegularExpression( '/-h[12]$/', $current );
+		$this->assertStatus( 200, $tick( $current ) );
+		$this->assertStatus( 200, $tick( $cycle['key'] . '-h1' ) );
+		$this->assertStatus( 400, $tick( $cycle['key'] . '-w1' ), 'a week key is not a two-week period' );
+		$this->assertStatus( 400, $tick( $cycle['key'] . '-h3' ), 'a normal cycle has two' );
+		$rec = GRP_Store::get( 'grp_cycle_records', GRP_Cycles::record_id( $biweekly['id'], $cycle['key'] . '-h1' ) );
+		$this->assertSame( 1, $rec['week'] );
+		$this->assertStringContainsString( '2-week period 1', wp_list_pluck( GRP_Store::find( 'grp_activity', array( 'ref_key' => 'rec:' . $rec['id'] ) ), 'detail' )[0] ?? '' );
+	}
+
 	public function test_weekly_keys_are_cycle_weeks() {
 		$today   = GRP_Cycles::today();
 		$project = $this->project( 'Mid Month', 15 );

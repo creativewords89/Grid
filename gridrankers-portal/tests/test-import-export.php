@@ -359,4 +359,41 @@ class Test_GRP_Import_Export extends GRP_REST_TestCase {
 		$this->assertStringContainsString( 'name="_wpnonce"', $form );
 		$this->assertStringContainsString( 'grp_import_file', $form );
 	}
+
+	public function test_biweekly_deadlines_survive_export_and_import() {
+		$project = $this->project( 'Biweekly Co', 15 );
+		$meeting = $this->api_as(
+			'lead',
+			'POST',
+			'/meeting-tasks',
+			array(
+				'project_id' => $project['id'],
+				'title'      => 'Two-week fix',
+				'deadline'   => array(
+					'type' => 'biweekly',
+					'from' => '2026-10-05',
+				),
+			)
+		)->get_data();
+		$monthly = $this->api_as(
+			'lead',
+			'POST',
+			'/monthly-tasks',
+			array(
+				'project_id' => $project['id'],
+				'title'      => 'Fortnightly report',
+				'due_mode'   => 'biweekly',
+			)
+		)->get_data();
+
+		$export = json_decode( wp_json_encode( GRP_Export::build() ), true );
+		GRP_Store::delete( 'grp_meeting_tasks', $meeting['id'] );
+		GRP_Store::delete( 'grp_monthly_tasks', $monthly['id'] );
+		GRP_Import::run( $export );
+
+		$this->assertSame( $meeting['deadline'], GRP_Store::get( 'grp_meeting_tasks', $meeting['id'] )['deadline'] );
+		$back = GRP_Store::get( 'grp_monthly_tasks', $monthly['id'] );
+		$this->assertSame( 'biweekly', $back['freq'] );
+		$this->assertSame( 'biweekly', $back['due_mode'] );
+	}
 }

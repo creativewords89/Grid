@@ -2,7 +2,8 @@ import { addDays, daysBetween } from './cycles.js';
 import { monthEnd, short } from './format.js';
 
 // Meeting-task deadline (SPEC.md 6.3; reference itemDeadline + deadlineInfo).
-// deadline JSON: {type: none|weekly|date|dates|monthly, weeks, date, from, to, month}.
+// deadline JSON: {type: none|weekly|biweekly|date|dates|monthly, weeks, date, from, to, month}.
+// biweekly: two weeks from the Monday `from`, due the Sunday of the second week (`to`).
 
 export function itemDeadline(task) {
 	const D = task.deadline || {};
@@ -13,6 +14,8 @@ export function itemDeadline(task) {
 			const ranges = weeks.map((w) => ({ start: w, end: addDays(w, 6) }));
 			return { type: 'weekly', start: ranges[0].start, end: ranges[ranges.length - 1].end, ranges };
 		}
+		case 'biweekly':
+			return D.from ? { type: 'biweekly', start: D.from, end: D.to || addDays(D.from, 13) } : null;
 		case 'monthly': {
 			if (!D.month) return null;
 			return { type: 'monthly', start: D.month + '-01', end: monthEnd(D.month) };
@@ -39,7 +42,9 @@ export function deadlineInfo(task, today) {
 			? D.ranges.length === 1
 				? `Due week of ${short(D.start)} – ${short(D.end)}`
 				: `Due ${D.ranges.length} weeks${next ? ` · this one ${short(next.start)} – ${short(next.end)}` : ` · last ${short(D.end)}`}`
-			: D.type === 'monthly'
+			: D.type === 'biweekly'
+				? `Due ${short(D.start)} – ${short(D.end)} · 2 weeks`
+				: D.type === 'monthly'
 				? `Due ${short(D.end)} · end of month`
 				: D.type === 'date'
 					? `Due ${short(D.end)}`

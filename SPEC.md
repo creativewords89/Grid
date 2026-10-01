@@ -122,20 +122,22 @@ All tables: `id` CHAR(26) ULID (or keep imported string ids, VARCHAR(64)), `crea
 ### 6.2 Weeks
 - Weekly tasks follow the **project cycle**, not the calendar month: weeks are counted from the cycle's start day. W1 = cycle days 1–7, W2 = 8–14, W3 = 15–21, W4 = 22 to the cycle end (the last week takes the leftover days). A period has `max(1, floor(days / 7))` weeks: a normal cycle has 4, a short transition period fewer (e.g. 14 days → 2 weeks), a merged longer period more. Example, cycle day 15: W1 Oct 15–21, W2 Oct 22–28, W3 Oct 29–Nov 4, W4 Nov 5–14. Projects with cycle day 1 get the same weeks as calendar months.
 - Weekly period key `{cycle key}-wN` (e.g. `2026-10-w1`; transition `T2026-10-01-w2`). Schema 3 converts records stored under the old calendar-week keys to the cycle week containing that calendar week's first day.
-- Weekly tasks run in transition periods too (they are not waived).
-- Monthly Tasks has a week bar (when the Weekly filter is on): "Week N of M · dates · x/y done · ‹ ›".
+- **Two-week periods** (bi-weekly tasks): pairs of cycle weeks — weeks 1–2 and weeks 3–4 in a normal cycle; a period has `max(1, floor(weeks / 2))` of them, the last taking a leftover week (5 weeks → 1–2, 3–5). Labelled by the weeks they cover ("Weeks 3–4", short "W3–4"). Period key `{cycle key}-hN`. Example, cycle day 15: Oct 15–28 and Oct 29–Nov 14.
+- Weekly and bi-weekly tasks run in transition periods too (they are not waived).
+- Monthly Tasks has a week bar when the Weekly or Bi-weekly filter is on: "Week N of M" / "Weeks 1–2 of M" · dates · x/y done · ‹ ›.
 - *Change from the reference portal, which used calendar-month weeks for every project.*
 
 ### 6.3 Meeting task deadlines (`deadline` JSON)
-`{type: none|weekly|date|dates|monthly, weeks: ['YYYY-MM-DD' (Mondays)], date, from, to, month: 'YYYY-MM'}`
+`{type: none|weekly|biweekly|date|dates|monthly, weeks: ['YYYY-MM-DD' (Mondays)], date, from, to, month: 'YYYY-MM'}`
 - **Weekly**: pick one or more Mon–Sun weeks (grid of this week + next 11). Card: "Due week of Oct 5 – Oct 11" / "Due 3 weeks · this one …".
+- **Bi-weekly**: a two-week window — pick the starting Monday (this week by default); due the Sunday of the second week (`from` Monday, `to` = from + 13 days). Card "Due Oct 5 – Oct 18 · 2 weeks". *Not in the reference portal.*
 - **Specific date**: one date. Card "Due Oct 5".
 - **Certain dates**: From / To range. Card "Due Oct 12 – Oct 20 (9 days)".
 - **Monthly**: automatically the **last day of the current calendar month** (locked to the month it was set). Card "Due Sep 30 · end of month".
 - Overdue (end < today, not done): card red "Overdue · …"; due within 2 days: amber.
 
 ### 6.4 Monthly task deadlines (repeat every cycle)
-`due_mode`: **monthly** (default, end of each cycle), **weekly** (freq weekly), **date** (day N of each cycle), **dates** (days A–B of each cycle), **none** (never late during the cycle; missed only if the cycle ends undone).
+`due_mode`: **monthly** (default, end of each cycle), **weekly** (freq weekly), **biweekly** (freq biweekly: due at the end of each two-week period of the cycle, 6.2; quantity is per 2 weeks; *not in the reference portal*), **date** (day N of each cycle), **dates** (days A–B of each cycle), **none** (never late during the cycle; missed only if the cycle ends undone).
 
 ### 6.5 Quantities, people and breakdowns
 - **Meeting tasks**: `target` (default 1). With target > 1 and several assignees, each has a share `n` (auto even split; editing one share rebalances the others so the total never exceeds target; each ≥ 1). Each person ticks only their own share; status auto-moves: first tick → In progress, total = target → Fixed (→ review).
@@ -175,7 +177,7 @@ Every project (new and existing) has these six monthly tasks (Monthly deadline, 
 `grp_daily`: for each project whose current cycle key ≠ `std_cycle`, add any missing standard task (matched by title, deterministic id `std_{projectId}_{slug}`), then set `std_cycle`. New projects get them on creation. Deleted standard tasks stay gone until the next cycle.
 
 ### 6.9 Trash, audit, notifications
-- Delete = soft delete into `grp_trash` (30 days) + toast "Task deleted · Undo" (9 s). Recently deleted tasks are listed at the top of the project's **Recent Activities** (admin/lead), deleted projects on the **Dashboard**: Restore / Delete forever.
+- Delete = soft delete into `grp_trash` (30 days) + toast "Task deleted · Undo" (9 s). Recently deleted tasks are behind the **Recently deleted** button of the project's **Recent Activities** (admin/lead), deleted projects in **Team → Settings** (Super Admin): Restore / Delete forever.
 - Audit log rows for: added, changed (field-by-field), status, progress, completed, assigned, deleted, restored, review, project moves, cycle changes.
 - Notifications (admin/lead Dashboard): "Waiting for your review" (non-dismissable), plus dismissable items: unassigned urgent tasks, overdue recurring tasks, members without a code, member edits. Dismissals are per person; "sticky" items return after 7 days if unresolved.
 
@@ -183,11 +185,11 @@ Every project (new and existing) has these six monthly tasks (Monthly deadline, 
 
 ### 7.0 Dashboard (everyone)
 *Not in the reference portal.* The landing page after sign-in, and what **GridRankers** in the sidebar opens.
-- Filter chips **All · Active · Paused · Inactive** with counts, project search.
-- One card per project (click → that project's Meeting Minutes): name, status badge, cycle ("Starts day N · ends Nov 14 · 12 days left", or "Pick a start day"), open meeting tasks (urgent in red), this cycle's monthly progress (done / total), waiting for review, overdue, last activity ("Updated 2 h ago", from the newest change to the project, its tasks or records).
-- **+ New project** (Super Admin, Team Leader): name, cycle start day (optional; locks it as 6.1), status.
-- Card menu (Super Admin, Team Leader): move to Active / Paused / Inactive. **Delete project** (Super Admin only; tasks go to the trash with it).
-- **Recently deleted projects** (Super Admin, Team Leader): Restore (brings its tasks back) / Delete forever; kept 30 days.
+- Project search and **+ New project** (Super Admin, Team Leader: name, cycle start day — optional, locks it as 6.1 — and status) at the top.
+- Status tabs **Active · Paused · Inactive · All** with counts (underlined tab; opens on Active).
+- One clean card per project (click → that project's Meeting Minutes): name; "Day N · X days left" (or "No cycle start day yet", plus the status when not active); this cycle's monthly progress (done / total, with a bar); open meeting tasks; one attention line — "2 urgent · 1 overdue · 1 to review" in red, or "On track" in green.
+- "⋯" menu on each card (Super Admin, Team Leader): Move to Active / Paused / Inactive; **Delete project** (Super Admin only; its tasks go to the trash with it).
+- Deleted projects are not shown here: they are in **Team → Settings → Deleted projects** (7.5).
 
 ### 7.1 Layout
 - Left sidebar: **GridRankers** / Team portal (click → Dashboard, 7.0), groups **Active / Paused / Inactive projects** with counts for quick switching. No "Add a project", no drag & drop, no move or delete buttons: those live on the Dashboard.
@@ -200,13 +202,16 @@ Alert banner (cycle-scoped), project cycle bar, stats (status chips, cycle dates
 **Details window**: header (tags, status pill, title, project), info grid (meeting, added, deadline, fixed, responsible), Progress (full steppers), Details text, Page link, Completion & review (+ reviewer actions). No history.
 
 ### 7.3 Monthly Tasks
-Banner, project cycle bar, stats, filters (All / Weekly / Monthly) + week bar, cards, "+ Add monthly task".
-**Card**: Monthly/Weekly chip, "Qty N per cycle/week"; title; due chip; W1–W4 boxes for weekly; mini progress "x/n · k types"; status segment; footer as above.
+Banner, project cycle bar, stats, filters (All / Weekly / Bi-weekly / Monthly) + week bar, cards, "+ Add monthly task".
+**Card**: Monthly/Weekly/Bi-weekly chip, "Qty N per cycle/week/2 weeks"; title; due chip; W1–W4 boxes for weekly, W1–2 / W3–4 for bi-weekly; mini progress "x/n · k types"; status segment; footer as above.
 **Dialog**: Client, Task, Deadline (6.4), Quantity (locked when breakdown exists), Breakdown (6.5), Responsible (people only), Details.
 
 ### 7.4 Recent Activities
-**Project-specific**: everything on this tab belongs to the selected project. Recently deleted (admin/lead; that project's meeting and monthly tasks only — deleted projects are on the Dashboard) then a dated log with tags: Added, Status, Progress, Completed, Assigned, Changed (field: from → to), Deleted, Restored, Review, Project, Cycle change — each with who (+ role) and time. No project column (every row is the selected project).
-*Change from the reference portal, whose recently-deleted list covered every project.*
+**Project-specific**: everything on this tab belongs to the selected project.
+- Filter chips **All · Added · Completed · Reviews · Changes** (Changes = every other kind).
+- A table, newest first, one row per change: **When** ("Today · 2:41 PM", "Yesterday · …", "Sep 28 · …") · **What** (coloured tag: Added, Status, Progress, Completed, Assigned, Changed, Deleted, Restored, Review, Project, Cycle change) · **Task** (+ meeting / monthly task) · **Who** (avatar + name; role on hover) · **Details** (detail and field changes "field: from → to", cut to one line, full text on hover). On narrow screens each row stacks.
+- **Recently deleted (N)** button (admin/lead) opens that project's deleted meeting and monthly tasks: Restore / Delete forever.
+*Change from the reference portal (a dated log, and a recently-deleted list covering every project).*
 (The Recent Activities tab of a person's page, 7.5, stays across all projects: it is that person's history.)
 
 ### 7.5 Team area (admin/lead)
@@ -214,7 +219,7 @@ Tabs **Dashboard · Activity · Team · Settings**, Daily/Weekly/Monthly period 
 - Dashboard: notifications (6.9), greeting with counts (done / assigned / unassigned), Workload (open tasks per person), completed-tasks chart (per day; per person in Daily view), team list.
 - Activity: completed + logged work grouped by day, person filter, Copy report.
 - Team: member cards (open, urgent, done this period, projects), search, + Add member.
-- Settings: Members & access table (role, contact, open tasks, sign-in status, **Set code**, Open, Remove), Export all data.
+- Settings: Members & access table (role, contact, open tasks, sign-in status, **Set code**, Open, Remove), **Deleted projects** (Restore — brings back the tasks deleted with it — / Delete forever; kept 30 days), Export all data.
 
 ### 7.6 Member page (own page for members; any member for admin/lead)
 Tabs **My dashboard · My tasks · Calendar · Recent Activities · Settings**.

@@ -11,6 +11,7 @@ import PeoplePicker, { evenSplit } from '../PeoplePicker.jsx';
 const TYPES = [
 	['none', 'No deadline'],
 	['weekly', 'Weekly'],
+	['biweekly', 'Bi-weekly'],
 	['date', 'Specific date'],
 	['dates', 'Certain dates'],
 	['monthly', 'Monthly'],
@@ -27,6 +28,7 @@ function DeadlineField({ value, onChange, today }) {
 
 	const setType = (t) => {
 		if (t === 'weekly') return onChange({ type: t, weeks: weeks.length ? weeks : [thisWeek] });
+		if (t === 'biweekly') return onChange({ type: t, from: value.type === 'biweekly' && value.from ? value.from : thisWeek });
 		if (t === 'monthly') return onChange({ type: t, month: value.month || today.slice(0, 7) });
 		onChange({ ...value, type: t });
 	};
@@ -67,6 +69,30 @@ function DeadlineField({ value, onChange, today }) {
 								</button>
 							);
 						})}
+					</div>
+				</div>
+			)}
+			{type === 'biweekly' && (
+				<div className="dl-f">
+					<span className="dl-note">Two weeks from the Monday you pick — due on the Sunday of the second week</span>
+					<div className="dl-weeks">
+						{list
+							.filter((w) => w >= thisWeek || w === value.from)
+							.map((w) => {
+								const on = value.from === w;
+								const end = addDays(w, 13);
+								return (
+									<button type="button" key={w} className={`dl-wk ${on ? 'on' : ''} ${end < today ? 'past' : ''}`} aria-pressed={on} onClick={() => onChange({ type: 'biweekly', from: w })}>
+										<b>
+											Weeks {weekNo(w)}–{weekNo(addDays(w, 7))}
+											{w === thisWeek ? ' · from this week' : ''}
+										</b>
+										<span>
+											{short(w)} – {short(end)}
+										</span>
+									</button>
+								);
+							})}
 					</div>
 				</div>
 			)}
@@ -135,6 +161,7 @@ export default function TaskDialog({ taskId, onClose }) {
 	const deadlinePayload = () => {
 		const D = f.deadline;
 		if (D.type === 'weekly' && !(D.weeks || []).length) return { type: 'none' };
+		if (D.type === 'biweekly') return D.from ? { type: 'biweekly', from: D.from } : { type: 'none' };
 		if (D.type === 'date' && !D.date) return { type: 'none' };
 		if (D.type === 'dates' && !D.from) return { type: 'none' };
 		if (D.type === 'dates') return { type: 'dates', from: D.from, to: D.to || D.from };

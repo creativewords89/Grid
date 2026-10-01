@@ -24,7 +24,7 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 		'done'  => 'Fixed',
 	);
 
-	const DEADLINE_TYPES = array( 'none', 'weekly', 'date', 'dates', 'monthly' );
+	const DEADLINE_TYPES = array( 'none', 'weekly', 'biweekly', 'date', 'dates', 'monthly' );
 
 	/**
 	 * Field labels for the audit log (reference FIELD_LABEL).
@@ -510,6 +510,18 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 				return array(
 					'type'  => 'weekly',
 					'weeks' => array_slice( $weeks, 0, 12 ),
+				);
+
+			case 'biweekly':
+				// Two weeks from a Monday: due on the Sunday of the second week.
+				$from = self::date( $raw['from'] ?? '', 'from date' );
+				if ( is_wp_error( $from ) || ! $from || '1' !== gmdate( 'N', strtotime( $from . ' 00:00:00 UTC' ) ) ) {
+					return self::invalid( __( 'Bi-weekly deadlines start on a Monday.', 'gridrankers-portal' ) );
+				}
+				return array(
+					'type' => 'biweekly',
+					'from' => $from,
+					'to'   => gmdate( 'Y-m-d', strtotime( $from . ' 00:00:00 UTC +13 days' ) ),
 				);
 
 			case 'date':

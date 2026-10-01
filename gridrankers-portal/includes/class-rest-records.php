@@ -215,7 +215,7 @@ class GRP_REST_Records extends GRP_REST_Controller {
 	 *
 	 * @param array       $task       Monthly task.
 	 * @param string      $period_key Period key.
-	 * @param int|null    $week       Week number 1–4 for weekly tasks.
+	 * @param int|null    $week       Week (weekly) or two-week period (bi-weekly) number.
 	 * @param array|null  $prev       Existing record.
 	 * @param int         $count      New count (whole task, or the person's own count with `$pid`).
 	 * @param string      $status     doing, done, todo or skipped.
@@ -364,17 +364,19 @@ class GRP_REST_Records extends GRP_REST_Controller {
 		$today = GRP_Cycles::today();
 		$week  = null;
 
-		if ( GRP_Cycles::is_weekly( $task ) ) {
-			// `{cycle key}-wN`: a started week of a current or past cycle of the project.
+		if ( GRP_Cycles::is_weekly( $task ) || GRP_Cycles::is_biweekly( $task ) ) {
+			// `{cycle key}-wN` (weekly) or `-hN` (bi-weekly): a started week or two-week period
+			// of a current or past cycle of the project.
+			$letter = GRP_Cycles::is_weekly( $task ) ? 'w' : 'h';
 			$period = null;
-			if ( preg_match( '/^(.+)-w([1-9])$/', $key, $m ) ) {
+			if ( preg_match( '/^(.+)-' . $letter . '([1-9])$/', $key, $m ) ) {
 				$period = wp_list_filter( GRP_Cycles::periods_of( $project, $today ), array( 'key' => $m[1] ) );
 				$period = $period ? reset( $period ) : null;
 			}
-			$weeks = $period ? GRP_Cycles::weeks_in( $period ) : array();
+			$slots = $period ? GRP_Cycles::slots_in( $task, $period ) : array();
 			$week  = $period ? (int) $m[2] : 0;
-			if ( ! $period || $week > count( $weeks ) || $weeks[ $week - 1 ]['start'] > $today ) {
-				return self::invalid( __( 'Invalid week.', 'gridrankers-portal' ) );
+			if ( ! $period || $week > count( $slots ) || $slots[ $week - 1 ]['start'] > $today ) {
+				return self::invalid( 'w' === $letter ? __( 'Invalid week.', 'gridrankers-portal' ) : __( 'Invalid two-week period.', 'gridrankers-portal' ) );
 			}
 		} else {
 			$period = wp_list_filter( GRP_Cycles::periods_of( $project, $today ), array( 'key' => $key ) );
@@ -494,13 +496,17 @@ class GRP_REST_Records extends GRP_REST_Controller {
 	}
 
 	/**
-	 * "Week N" or "This cycle".
+	 * "Week N", "2-week period N" or "This cycle".
 	 *
 	 * @param array    $task Task.
-	 * @param int|null $week Week number.
+	 * @param int|null $week Week or two-week period number.
 	 * @return string
 	 */
 	private static function period_label( array $task, $week ) {
+		if ( GRP_Cycles::is_biweekly( $task ) ) {
+			return "2-week period $week";
+		}
+
 		return GRP_Cycles::is_weekly( $task ) ? "Week $week" : 'This cycle';
 	}
 

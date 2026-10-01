@@ -146,9 +146,42 @@ export function activeWeek(project, off, today) {
 }
 
 export const isWeekly = (task) => task.freq === 'weekly';
+export const isBiweekly = (task) => task.freq === 'biweekly';
+// Tracked per week or per two weeks rather than per cycle.
+export const isSplit = (task) => isWeekly(task) || isBiweekly(task);
+
+// Two-week periods of a period: pairs of its weeks, the last taking a leftover week
+// (SPEC.md 6.2). Each knows which weeks it covers (1-based).
+export function halvesIn(period) {
+	const weeks = weeksIn(period);
+	const n = Math.max(1, Math.floor(weeks.length / 2));
+	return Array.from({ length: n }, (_, h) => {
+		const last = h === n - 1 ? weeks.length - 1 : 2 * h + 1;
+		return { start: weeks[2 * h].start, end: weeks[last].end, fromWeek: 2 * h + 1, toWeek: last + 1 };
+	});
+}
+
+// Weeks (weekly), two-week periods (bi-weekly) or null (monthly: the whole period).
+export const slotsIn = (task, period) => (isWeekly(task) ? weeksIn(period) : isBiweekly(task) ? halvesIn(period) : null);
+export const slotsOf = (task, project, off, today) => slotsIn(task, cycleRange(project, off, today)) || [];
+
+export function activeSlot(task, project, off, today) {
+	const slots = slotsOf(task, project, off, today);
+	for (let i = slots.length - 1; i > 0; i--) if (today >= slots[i].start) return i;
+	return 0;
+}
+
+export function slotRange(task, project, i, off, today) {
+	const slots = slotsOf(task, project, off, today);
+	return slots[Math.max(0, Math.min(slots.length - 1, i))];
+}
+
+// "Week 2" / "Weeks 3–4" (short: "W2" / "W3–4").
+export const slotLabel = (task, slot, i, short = false) =>
+	isBiweekly(task) ? `${short ? 'W' : 'Weeks '}${slot.fromWeek}–${slot.toWeek}` : `${short ? 'W' : 'Week '}${i + 1}`;
 
 export function dueAt(task, project, w, off, today) {
-	if (isWeekly(task)) return weekRange(project, w === undefined || w === null ? activeWeek(project, off, today) : w, off, today).end;
+	if (isSplit(task)) return slotRange(task, project, w === undefined || w === null ? activeSlot(task, project, off, today) : w, off, today).end;
 	const range = cycleRange(project, off, today);
 	const dueDay = parseInt(task.due_day ?? task.dueDay, 10) || 0;
 	if (!dueDay) return range.end;

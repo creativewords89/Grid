@@ -23,6 +23,8 @@ describe('monthly state', () => {
 		const mid = { cycle_day: 15 };
 		expect(periodKeyOf({ freq: 'weekly' }, mid, undefined, 0, '2026-10-01')).toBe('2026-09-w3');
 		expect(periodKeyOf({ freq: 'weekly' }, mid, undefined, 0, '2026-10-31')).toBe('2026-10-w3');
+		expect(periodKeyOf({ freq: 'biweekly' }, mid, undefined, 0, '2026-10-31')).toBe('2026-10-h2');
+		expect(periodKeyOf({ freq: 'biweekly' }, mid, 0, 0, '2026-10-31')).toBe('2026-10-h1');
 	});
 
 	it('bornAt is the start of the cycle the task was added in', () => {
@@ -74,5 +76,14 @@ describe('computeMissed', () => {
 		const weekly = { id: 'w1', project_id: 'p1', freq: 'weekly', due_mode: 'weekly', target: 1, created_at: '2026-10-01 09:00:00' };
 		const missed = computeMissed([weekly], projects, { 'w1__2026-10-w1': { count: 1, status: 'done' } }, today);
 		expect(missed.map((m) => [m.w, m.due])).toEqual([[1, '2026-10-14']]);
+	});
+});
+
+describe('bi-weekly missed periods', () => {
+	it('each finished two-week period that is not done is missed', () => {
+		const mid = { id: 'p3', cycle_day: 15, cycle_set: 1 };
+		const t = { id: 'b1', project_id: 'p3', freq: 'biweekly', due_mode: 'biweekly', target: 1, created_at: '2026-10-15 09:00:00' };
+		expect(computeMissed([t], { p3: mid }, {}, '2026-10-30').map((m) => [m.w, m.due, m.label.split(' · ')[0]])).toEqual([[0, '2026-10-28', 'Weeks 1–2']]);
+		expect(computeMissed([t], { p3: mid }, { 'b1__2026-10-h1': { count: 1, status: 'done' } }, '2026-10-30')).toEqual([]);
 	});
 });

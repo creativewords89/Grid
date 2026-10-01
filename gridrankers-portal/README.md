@@ -142,7 +142,7 @@ nothing loads from a CDN.
 Super Admin asks for a revision → member completes again → Super Admin accepts), a member being unable
 to edit or delete (in the UI and through the API), cycle switching and a cycle change, the import /
 export round trip from WP-admin, the Dashboard (adding, moving, deleting and restoring projects;
-per-project Recent Activities) and weekly tasks following the project cycle.
+per-project Recent Activities), weekly tasks following the project cycle, and bi-weekly deadlines.
 
 Each run builds a throwaway WordPress site from `vendor/roots/wordpress-no-content` (so run
 `composer install` first) with a fresh database `grp_e2e`, seeds a team (`app/e2e/site/install.php`) and

@@ -3,8 +3,8 @@
     "file": "assets/_commonjsHelpers-_d1bhYXs.js",
     "name": "_commonjsHelpers"
   },
-  "_jspdf.es.min-BqsnTTRI.js": {
-    "file": "assets/jspdf.es.min-BqsnTTRI.js",
+  "_jspdf.es.min-BB_H_8gr.js": {
+    "file": "assets/jspdf.es.min-BB_H_8gr.js",
     "name": "jspdf.es.min",
     "isDynamicEntry": true,
     "imports": [
@@ -16,13 +16,13 @@
       "node_modules/canvg/lib/index.es.js"
     ]
   },
-  "_jspdf.plugin.autotable-Cm8ukkL_.js": {
-    "file": "assets/jspdf.plugin.autotable-Cm8ukkL_.js",
+  "_jspdf.plugin.autotable-CB9-Grf0.js": {
+    "file": "assets/jspdf.plugin.autotable-CB9-Grf0.js",
     "name": "jspdf.plugin.autotable",
     "isDynamicEntry": true,
     "imports": [
       "__commonjsHelpers-_d1bhYXs.js",
-      "_jspdf.es.min-BqsnTTRI.js"
+      "_jspdf.es.min-BB_H_8gr.js"
     ]
   },
   "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-500-normal.woff": {
@@ -146,13 +146,13 @@
     "src": "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-ext-600-normal.woff2"
   },
   "node_modules/canvg/lib/index.es.js": {
-    "file": "assets/index.es-n3uk__Sc.js",
+    "file": "assets/index.es-BoRQw-iB.js",
     "name": "index.es",
     "src": "node_modules/canvg/lib/index.es.js",
     "isDynamicEntry": true,
     "imports": [
       "__commonjsHelpers-_d1bhYXs.js",
-      "_jspdf.es.min-BqsnTTRI.js",
+      "_jspdf.es.min-BB_H_8gr.js",
       "src/main.jsx"
     ]
   },
@@ -169,16 +169,16 @@
     "isDynamicEntry": true
   },
   "src/main.jsx": {
-    "file": "assets/main-pWQTOq4G.js",
+    "file": "assets/main-BdxpFIO0.js",
     "name": "main",
     "src": "src/main.jsx",
     "isEntry": true,
     "dynamicImports": [
-      "_jspdf.es.min-BqsnTTRI.js",
-      "_jspdf.plugin.autotable-Cm8ukkL_.js"
+      "_jspdf.es.min-BB_H_8gr.js",
+      "_jspdf.plugin.autotable-CB9-Grf0.js"
     ],
     "css": [
-      "assets/main-cN0gYYHT.css"
+      "assets/main-wyYLyIFb.css"
     ],
     "assets": [
       "assets/bricolage-grotesque-vietnamese-500-normal-FzY9NZwK.woff2",

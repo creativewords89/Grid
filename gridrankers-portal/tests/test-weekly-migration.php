@@ -155,8 +155,12 @@ class Test_GRP_Weekly_Migration extends WP_UnitTestCase {
 
 	public function test_schema_three_adds_the_migration_and_trash_flag() {
 		global $wpdb;
-		$this->assertSame( 3, GRP_Install::DB_VERSION );
+		$this->assertGreaterThanOrEqual( 3, GRP_Install::DB_VERSION );
 		$columns = $wpdb->get_col( $wpdb->prepare( 'SHOW COLUMNS FROM %i', GRP_Install::table( 'grp_trash' ) ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 		$this->assertContains( 'with_project', $columns );
+
+		// Schema 4: bi-weekly frequency and deadline.
+		$freq = $wpdb->get_row( $wpdb->prepare( 'SHOW COLUMNS FROM %i LIKE %s', GRP_Install::table( 'grp_monthly_tasks' ), 'freq' ), ARRAY_A ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$this->assertStringContainsString( "'biweekly'", $freq['Type'] );
 	}
 }

@@ -126,6 +126,41 @@ class Test_GRP_REST_Meeting_Tasks extends GRP_REST_TestCase {
 
 		$monthly = $this->task( 'lead', array( 'deadline' => array( 'type' => 'monthly' ) ) );
 		$this->assertSame( substr( GRP_Cycles::today(), 0, 7 ), $monthly['deadline']['month'] );
+		$biweekly = $this->task(
+			'lead',
+			array(
+				'deadline' => array(
+					'type' => 'biweekly',
+					'from' => '2026-10-05',
+					'to'   => '2099-01-01',
+				),
+			)
+		);
+		$this->assertSame(
+			array(
+				'from' => '2026-10-05',
+				'to'   => '2026-10-18',
+				'type' => 'biweekly',
+			),
+			$biweekly['deadline'],
+			'two weeks from the Monday; a sent end date is ignored'
+		);
+		$this->assertStatus(
+			400,
+			$this->api_as(
+				'lead',
+				'POST',
+				'/meeting-tasks',
+				array(
+					'project_id' => $this->project['id'],
+					'title'      => 'Not a Monday',
+					'deadline'   => array(
+						'type' => 'biweekly',
+						'from' => '2026-10-07',
+					),
+				)
+			)
+		);
 	}
 
 	public function test_shares_split_evenly_and_one_person_gets_all() {

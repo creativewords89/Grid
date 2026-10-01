@@ -239,6 +239,68 @@ class GRP_Cycles {
 	}
 
 	/**
+	 * Two-week periods of a period (SPEC.md 6.2): pairs of its weeks, the last one taking a
+	 * leftover week (`max(1, floor(weeks / 2))` of them). Each also says which weeks it covers.
+	 *
+	 * @param array $period Period with `start` and `end`.
+	 * @return array[] `[{start, end, from_week, to_week}]` (weeks 1-based).
+	 */
+	public static function halves_in( array $period ) {
+		$weeks = self::weeks_in( $period );
+		$n     = max( 1, intdiv( count( $weeks ), 2 ) );
+		$out   = array();
+		for ( $h = 0; $h < $n; $h++ ) {
+			$last  = $h === $n - 1 ? count( $weeks ) - 1 : 2 * $h + 1;
+			$out[] = array(
+				'start'     => $weeks[ 2 * $h ]['start'],
+				'end'       => $weeks[ $last ]['end'],
+				'from_week' => 2 * $h + 1,
+				'to_week'   => $last + 1,
+			);
+		}
+
+		return $out;
+	}
+
+	/**
+	 * The parts a recurring task is tracked in within a period: weeks for weekly tasks,
+	 * two-week periods for bi-weekly ones, null for monthly tasks (the whole period).
+	 *
+	 * @param array|object $task   Monthly task.
+	 * @param array        $period Period.
+	 * @return array[]|null
+	 */
+	public static function slots_in( $task, array $period ) {
+		$task = (array) $task;
+		if ( self::is_weekly( $task ) ) {
+			return self::weeks_in( $period );
+		}
+
+		return self::is_biweekly( $task ) ? self::halves_in( $period ) : null;
+	}
+
+	/**
+	 * Slot (week or two-week period) of a task containing today in cycle `$off`: the first
+	 * for future cycles, the last for past ones.
+	 *
+	 * @param array|object $task    Monthly task.
+	 * @param array|object $project Project.
+	 * @param int          $off     Cycles from the current one.
+	 * @param string       $today   `Y-m-d`.
+	 * @return int
+	 */
+	public static function active_slot( $task, $project, $off, $today ) {
+		$slots = (array) self::slots_in( $task, self::cycle_range( $project, $off, $today ) );
+		for ( $i = count( $slots ) - 1; $i > 0; $i-- ) {
+			if ( $today >= $slots[ $i ]['start'] ) {
+				return $i;
+			}
+		}
+
+		return 0;
+	}
+
+	/**
 	 * Week `$w` (0-based, clamped to the period's weeks) of a project's cycle.
 	 *
 	 * @param array|object $project Project.
@@ -276,8 +338,9 @@ class GRP_Cycles {
 	/**
 	 * Due date of a recurring task in a period (port of `dueAt`, with cycle weeks).
 	 *
-	 * Weekly tasks: end of week `$w` (default: the active week) of the cycle. Monthly
-	 * tasks: end of the cycle, or day `due_day` of the cycle capped at the cycle end.
+	 * Weekly / bi-weekly tasks: end of week or two-week period `$w` (default: the active one)
+	 * of the cycle. Monthly tasks: end of the cycle, or day `due_day` of the cycle capped at
+	 * the cycle end.
 	 *
 	 * @param array|object $task    Monthly task.
 	 * @param array|object $project Project.
@@ -289,8 +352,10 @@ class GRP_Cycles {
 	public static function due_at( $task, $project, $w, $off, $today ) {
 		$task = (array) $task;
 
-		if ( self::is_weekly( $task ) ) {
-			return self::week_range( $project, null === $w ? self::active_week( $project, $off, $today ) : $w, $off, $today )['end'];
+		$slots = self::slots_in( $task, self::cycle_range( $project, $off, $today ) );
+		if ( $slots ) {
+			$i = null === $w ? self::active_slot( $task, $project, $off, $today ) : (int) $w;
+			return $slots[ max( 0, min( count( $slots ) - 1, $i ) ) ]['end'];
 		}
 
 		$range   = self::cycle_range( $project, $off, $today );
@@ -306,7 +371,8 @@ class GRP_Cycles {
 	}
 
 	/**
-	 * Period key of a recurring task: `{cycle key}-wN` for weekly tasks, else the cycle key.
+	 * Period key of a recurring task: `{cycle key}-wN` for weekly tasks, `{cycle key}-hN` for
+	 * bi-weekly ones (N = two-week period), else the cycle key.
 	 *
 	 * @param array|object $task    Monthly task.
 	 * @param array|object $project Project.
@@ -317,9 +383,10 @@ class GRP_Cycles {
 	 */
 	public static function period_key( $task, $project, $w, $off, $today ) {
 		$cycle = self::cycle_range( $project, $off, $today )['key'];
-		if ( self::is_weekly( (array) $task ) ) {
-			$w = null === $w ? self::active_week( $project, $off, $today ) : (int) $w;
-			return $cycle . '-w' . ( $w + 1 );
+		$task  = (array) $task;
+		if ( self::is_weekly( $task ) || self::is_biweekly( $task ) ) {
+			$w = null === $w ? self::active_slot( $task, $project, $off, $today ) : (int) $w;
+			return $cycle . ( self::is_weekly( $task ) ? '-w' : '-h' ) . ( $w + 1 );
 		}
 
 		return $cycle;
@@ -364,6 +431,16 @@ class GRP_Cycles {
 	 */
 	public static function is_weekly( array $task ) {
 		return 'weekly' === ( $task['freq'] ?? '' );
+	}
+
+	/**
+	 * Whether a task repeats every two weeks (twice in a normal cycle).
+	 *
+	 * @param array $task Task.
+	 * @return bool
+	 */
+	public static function is_biweekly( array $task ) {
+		return 'biweekly' === ( $task['freq'] ?? '' );
 	}
 
 	/**

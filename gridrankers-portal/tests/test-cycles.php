@@ -237,6 +237,45 @@ class Test_GRP_Cycles extends WP_UnitTestCase {
 		$this->assertSame( '2026-11-05..2026-11-14', $this->spans( $long )[5] );
 	}
 
+	public function test_biweekly_tasks_use_two_week_periods() {
+		$project  = array( 'cycle_day' => 15 );
+		$biweekly = array( 'freq' => 'biweekly' );
+		$cycle    = GRP_Cycles::cycle_range( $project, 0, '2026-10-20' );
+
+		$halves = GRP_Cycles::halves_in( $cycle );
+		$this->assertSame( array( '2026-10-15..2026-10-28', '2026-10-29..2026-11-14' ), $this->spans( $halves ) );
+		$this->assertSame( array( 1, 2 ), array( $halves[0]['from_week'], $halves[0]['to_week'] ) );
+		$this->assertSame( array( 3, 4 ), array( $halves[1]['from_week'], $halves[1]['to_week'] ) );
+
+		$this->assertSame( '2026-10-h1', GRP_Cycles::period_key( $biweekly, $project, null, 0, '2026-10-20' ) );
+		$this->assertSame( '2026-10-h2', GRP_Cycles::period_key( $biweekly, $project, null, 0, '2026-11-02' ) );
+		$this->assertSame( '2026-10-28', GRP_Cycles::due_at( $biweekly, $project, null, 0, '2026-10-20' ) );
+		$this->assertSame( '2026-11-14', GRP_Cycles::due_at( $biweekly, $project, 1, 0, '2026-10-20' ) );
+		$this->assertSame( 1, GRP_Cycles::active_slot( $biweekly, $project, -1, '2026-10-20' ), 'past cycle: last period' );
+		$this->assertNull( GRP_Cycles::slots_in( array( 'freq' => 'monthly' ), $cycle ) );
+	}
+
+	public function test_two_week_periods_of_short_and_long_periods() {
+		$span = static function ( $start, $end ) {
+			return GRP_Cycles::halves_in(
+				array(
+					'start' => $start,
+					'end'   => $end,
+				)
+			);
+		};
+		// 14-day transition: one two-week period.
+		$this->assertSame( array( '2026-10-01..2026-10-14' ), $this->spans( $span( '2026-10-01', '2026-10-14' ) ) );
+		// 10 days: one.
+		$this->assertCount( 1, $span( '2026-10-01', '2026-10-10' ) );
+		// 5 weeks (35–41 days): weeks 1–2, then 3–5.
+		$five = $span( '2026-10-01', '2026-11-04' );
+		$this->assertSame( array( '2026-10-01..2026-10-14', '2026-10-15..2026-11-04' ), $this->spans( $five ) );
+		$this->assertSame( array( 3, 5 ), array( $five[1]['from_week'], $five[1]['to_week'] ) );
+		// 6 weeks: three.
+		$this->assertCount( 3, $span( '2026-10-01', '2026-11-14' ) );
+	}
+
 	public function test_transition_period_weeks() {
 		// Day 1 → day 15 from Oct 1 with a transition: Oct 1–14 has two weeks.
 		$project = array(

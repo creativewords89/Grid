@@ -1,12 +1,13 @@
-import { activeWeek, cycleRange, daysBetween, dueAt, isWeekly, weekRange, weeksIn } from './cycles.js';
+import { activeSlot, cycleRange, daysBetween, dueAt, isSplit, isWeekly, slotLabel, slotRange, slotsIn } from './cycles.js';
 import { localYmd, short } from './format.js';
 
 // Recurring-task state per period, ported from the reference (recId, mRec, mState,
 // isWaived, resolved, bornAt, computeMissed).
 
-// Weekly: `{cycle key}-wN` (cycle weeks, SPEC.md 6.2); otherwise the cycle key.
+// Weekly: `{cycle key}-wN` (cycle weeks, SPEC.md 6.2); bi-weekly: `{cycle key}-hN` (two-week
+// periods); otherwise the cycle key.
 export const periodKeyOf = (task, project, w, off, today) =>
-	isWeekly(task) ? `${cycleRange(project, off, today).key}-w${(w ?? activeWeek(project, off, today)) + 1}` : cycleRange(project, off, today).key;
+	isSplit(task) ? `${cycleRange(project, off, today).key}-${isWeekly(task) ? 'w' : 'h'}${(w ?? activeSlot(task, project, off, today)) + 1}` : cycleRange(project, off, today).key;
 
 export const recordOf = (records, task, project, w, off, today) => records[`${task.id}__${periodKeyOf(task, project, w, off, today)}`] || null;
 
@@ -18,7 +19,7 @@ export function stateOf(task, rec) {
 	return 'todo';
 }
 
-export const isWaived = (task, project, off, today) => !isWeekly(task) && cycleRange(project, off, today).monthly === 'waived';
+export const isWaived = (task, project, off, today) => !isSplit(task) && cycleRange(project, off, today).monthly === 'waived';
 
 export function resolved(task, project, records, w, off, today) {
 	if (isWaived(task, project, off, today)) return true;
@@ -26,14 +27,14 @@ export function resolved(task, project, records, w, off, today) {
 	return stateOf(task, rec) === 'done' || (rec && rec.status === 'skipped');
 }
 
-// Tasks count from the start of the period (weekly: the cycle week) they were added in.
+// Tasks count from the start of the period (weekly / bi-weekly: the week or two-week period) they were added in.
 export function bornAt(task, project, today) {
 	const created = localYmd(task.created_at) || today;
 	for (let off = 0; off >= -36; off--) {
 		const r = cycleRange(project, off, today);
 		if (r.start <= created) {
-			if (!isWeekly(task)) return r.start;
-			const week = weeksIn(r).filter((x) => x.start <= created).pop();
+			if (!isSplit(task)) return r.start;
+			const week = slotsIn(task, r).filter((x) => x.start <= created).pop();
 			return week ? week.start : r.start;
 		}
 	}
@@ -52,12 +53,12 @@ export function computeMissed(tasks, projects, records, today) {
 			if (cr.end < born) break;
 			if (off < 0 && cr.key === cycleRange(c, off + 1, today).key) break;
 			if (t.due_mode === 'none' && off === 0) continue;
-			const weeks = isWeekly(t) ? weeksIn(cr).map((_, i) => i) : [undefined];
+			const weeks = isSplit(t) ? slotsIn(t, cr).map((_, i) => i) : [undefined];
 			for (const w of weeks) {
 				const due = dueAt(t, c, w, off, today);
 				if (due >= today || due < born || resolved(t, c, records, w, off, today)) continue;
-				const wr = w !== undefined ? weekRange(c, w, off, today) : null;
-				const label = wr ? `Week ${w + 1} · ${short(wr.start)}–${short(wr.end)}` : off === 0 ? `This cycle · was due ${short(due)}` : `${cr.transition ? 'Transition' : 'Cycle'} ${short(cr.start)}–${short(cr.end)}`;
+				const wr = w !== undefined ? slotRange(t, c, w, off, today) : null;
+				const label = wr ? `${slotLabel(t, wr, w)} · ${short(wr.start)}–${short(wr.end)}` : off === 0 ? `This cycle · was due ${short(due)}` : `${cr.transition ? 'Transition' : 'Cycle'} ${short(cr.start)}–${short(cr.end)}`;
 				out.push({ task: t, project: c, off, w, due, label, days: Math.max(1, daysBetween(due, today)) });
 			}
 		}
@@ -69,6 +70,7 @@ export const DUE_MODE_TEXT = (t) =>
 	({
 		none: 'No deadline',
 		weekly: 'Weekly — end of each week',
+		biweekly: 'Bi-weekly — end of every two weeks',
 		date: `Day ${t.due_day} of each cycle`,
 		dates: `Days ${t.due_from_day}–${t.due_day} of each cycle`,
 		monthly: 'Monthly — end of each cycle',

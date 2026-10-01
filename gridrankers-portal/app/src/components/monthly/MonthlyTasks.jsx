@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { usePortal } from '../../context.js';
-import { activeWeek, addDays, cycleFill, cycleRange, daysBetween, dueAt, periodsOf, weekRange, weeksOf } from '../../lib/cycles.js';
+import { activeSlot, addDays, cycleFill, cycleRange, daysBetween, dueAt, isSplit, periodsOf, slotLabel, slotsOf } from '../../lib/cycles.js';
 import { short } from '../../lib/format.js';
 import { computeMissed, isWaived, periodKeyOf, recordOf, stateOf } from '../../lib/monthly.js';
 import { isManager } from '../../lib/roles.js';
@@ -185,10 +185,13 @@ export default function MonthlyTasks() {
 	const missedOf = (t) => missed.filter((m) => m.task.id === t.id);
 	const q = search.trim().toLowerCase();
 	const members = data.members;
-	const aw = activeWeek(p, cycleOff, today);
-	const nWeeks = weeksOf(p, cycleOff, today).length;
-	const barWeek = freq === 'weekly' && wkSel !== null ? Math.min(wkSel, nWeeks - 1) : null;
-	const weekOf = (t) => (t.freq === 'weekly' ? (selWeek[t.id] !== undefined ? selWeek[t.id] : barWeek) ?? aw : undefined);
+	// The Weekly / Bi-weekly filters show a bar for picking a week or two-week period of the cycle.
+	const split = freq === 'weekly' || freq === 'biweekly';
+	const probe = { freq };
+	const barSlots = split ? slotsOf(probe, p, cycleOff, today) : [];
+	const aw = split ? activeSlot(probe, p, cycleOff, today) : 0;
+	const barWeek = split && wkSel !== null ? Math.min(wkSel, barSlots.length - 1) : null;
+	const weekOf = (t) => (isSplit(t) ? (selWeek[t.id] !== undefined ? selWeek[t.id] : t.freq === freq ? barWeek : null) ?? activeSlot(t, p, cycleOff, today) : undefined);
 	const stOf = (t) => stateOf(t, recordOf(data.records, t, p, weekOf(t), cycleOff, today));
 
 	const scope = all.filter((t) => freq === 'all' || (t.freq || 'monthly') === freq);
@@ -210,8 +213,10 @@ export default function MonthlyTasks() {
 	const tone = phase !== 'now' ? phase : left <= 3 ? 'hot' : left <= 7 ? 'warm' : '';
 
 	const pickW = barWeek ?? aw;
-	const wr = weekRange(p, pickW, cycleOff, today);
-	const wkTasks = scope.filter((t) => t.freq === 'weekly');
+	const wr = barSlots[pickW];
+	const wkTasks = scope.filter((t) => split && t.freq === freq);
+	const unitName = freq === 'biweekly' ? 'these two weeks' : 'this week';
+	const cycleWeeks = split ? slotsOf({ freq: 'weekly' }, p, cycleOff, today).length : 0;
 	const wkDone = wkTasks.filter((t) => stateOf(t, recordOf(data.records, t, p, pickW, cycleOff, today)) === 'done').length;
 
 	return (
@@ -219,16 +224,16 @@ export default function MonthlyTasks() {
 			<TransitionNotice project={p} />
 			<MissedBanner project={p} tasks={all} missed={missed} />
 			<CycleBar project={p} />
-			{freq === 'weekly' && (
+			{split && wr && (
 				<div className="cyc-inline wk-inline">
 					<div className="cyc-chip">
-						<span className="cc-name">Week</span>
+						<span className="cc-name">{freq === 'biweekly' ? 'Two weeks' : 'Week'}</span>
 						<span className="cc-lock">
 							<span className="lk" aria-hidden="true">
 								📅
 							</span>
-							Week <b>{pickW + 1}</b> of {nWeeks}
-							{pickW === aw ? ' · this week' : ''}
+							<b>{slotLabel(probe, wr, pickW)}</b> of {cycleWeeks}
+							{pickW === aw ? ` · ${unitName}` : ''}
 						</span>
 						<span className="cc-dates">
 							<span>
@@ -241,19 +246,19 @@ export default function MonthlyTasks() {
 									<b>{wkDone}</b>/{wkTasks.length} done
 								</>
 							) : (
-								'No weekly tasks'
+								freq === 'biweekly' ? 'No bi-weekly tasks' : 'No weekly tasks'
 							)}
 						</span>
 						{pickW !== aw && (
 							<button type="button" className="cc-change" onClick={() => (setWkSel(null), setSelWeek({}))}>
-								Back to this week
+								Back to {unitName}
 							</button>
 						)}
 						<span className="wk-nav">
-							<button type="button" aria-label="Previous week" disabled={pickW <= 0} onClick={() => (setWkSel(pickW - 1 === aw ? null : pickW - 1), setSelWeek({}))}>
+							<button type="button" aria-label={freq === 'biweekly' ? 'Previous two weeks' : 'Previous week'} disabled={pickW <= 0} onClick={() => (setWkSel(pickW - 1 === aw ? null : pickW - 1), setSelWeek({}))}>
 								‹
 							</button>
-							<button type="button" aria-label="Next week" disabled={pickW >= nWeeks - 1} onClick={() => (setWkSel(pickW + 1 === aw ? null : pickW + 1), setSelWeek({}))}>
+							<button type="button" aria-label={freq === 'biweekly' ? 'Next two weeks' : 'Next week'} disabled={pickW >= barSlots.length - 1} onClick={() => (setWkSel(pickW + 1 === aw ? null : pickW + 1), setSelWeek({}))}>
 								›
 							</button>
 						</span>
@@ -328,6 +333,7 @@ export default function MonthlyTasks() {
 				{[
 					['all', 'All tasks'],
 					['weekly', 'Weekly'],
+					['biweekly', 'Bi-weekly'],
 					['monthly', 'Monthly'],
 				].map(([v, l]) => (
 					<button key={v} className="fchip plain" aria-pressed={freq === v} onClick={() => (setFreq(v), setWkSel(null), setSelWeek({}))}>
@@ -352,7 +358,7 @@ export default function MonthlyTasks() {
 						+
 					</span>
 					<b>Add monthly task</b>
-					<small>{scope.length ? 'Weekly or monthly, with quantity and who’s responsible' : 'Set up the recurring work for this project'}</small>
+					<small>{scope.length ? 'Weekly, bi-weekly or monthly, with quantity and who’s responsible' : 'Set up the recurring work for this project'}</small>
 				</button>
 			</div>
 			{dialog && dialog.type === 'edit' && <MonthlyDialog taskId={dialog.id} onClose={() => setDialog(null)} />}
