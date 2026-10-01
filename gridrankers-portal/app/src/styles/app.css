@@ -6,3 +6,6 @@
 .grp-view{min-height:40vh}
 button{font:inherit;color:inherit;cursor:pointer}
 .det-dlg .det-body{padding:20px 22px 6px;overflow:auto;max-height:calc(88vh - 70px)}
+.nt-meta,.nt-title{overflow-wrap:anywhere}
+.d-bars{gap:min(clamp(2px,1vw,14px),calc(30% / var(--n)))}
+.d-hwrap .d-lab{font-size:.6rem;text-overflow:clip}

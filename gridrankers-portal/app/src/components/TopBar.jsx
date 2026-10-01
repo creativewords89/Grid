@@ -9,7 +9,7 @@ export const TABS = [
 ];
 
 export default function TopBar({ onSignOut }) {
-	const { data, project, view, setView, search, setSearch, me } = usePortal();
+	const { data, project, view, setView, search, setSearch, me, setTeamPerson } = usePortal();
 	const p = project ? data.projects[project] : null;
 	const suffix = p && p.state !== 'active' ? ` (${p.state})` : '';
 
@@ -26,7 +26,7 @@ export default function TopBar({ onSignOut }) {
 			</div>
 			<div className="me">
 				<span>
-					<button type="button" className="me-btn" title={isManager(me) ? 'Open the team page' : 'Open my page'} onClick={() => setView('team')}>
+					<button type="button" className="me-btn" title={isManager(me) ? 'Open the team page' : 'Open my page'} onClick={() => (setTeamPerson('all'), setView('team'))}>
 						<Avatar person={me} />
 						<b>{me.name}</b>
 						<span className={'role r-' + me.role}>{ROLE[me.role]}</span>

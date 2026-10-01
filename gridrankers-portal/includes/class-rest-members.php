@@ -217,8 +217,17 @@ class GRP_REST_Members extends GRP_REST_Controller {
 					GRP_Auth::revoke_sessions( $member['id'] );
 				}
 				$labels = array_combine( array_keys( $changes ), array_map( 'strval', array_keys( $changes ) ) );
-				unset( $labels['notes'] );
+				unset( $labels['notes'], $labels['photo'] );
 				$diff = self::diff( $member, $updated, $labels );
+				if ( isset( $changes['photo'] ) && (string) $changes['photo'] !== (string) $member['photo'] ) {
+					// Never copy the image itself into the log.
+					$diff[] = array(
+						'field' => 'photo',
+						'label' => 'photo',
+						'from'  => $member['photo'] ? 'photo' : 'none',
+						'to'    => $changes['photo'] ? 'new photo' : 'removed',
+					);
+				}
 				if ( $diff ) {
 					GRP_Activity::audit( 'edit', 'team', $updated, self::actor(), '', $diff );
 				}
@@ -317,6 +326,14 @@ class GRP_REST_Members extends GRP_REST_Controller {
 				continue;
 			}
 			$value = $request[ $field ];
+			if ( 'photo' === $field && is_string( $value ) && str_starts_with( $value, 'data:' ) ) {
+				// Cropped 160 px photo from the app (as in the reference portal).
+				if ( strlen( $value ) > 300000 || ! preg_match( '#^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$#', $value ) ) {
+					return self::invalid( __( 'That photo could not be used. Try a smaller JPEG or PNG.', 'gridrankers-portal' ) );
+				}
+				$out[ $field ] = $value;
+				continue;
+			}
 			if ( -1 === $max ) {
 				$value = self::url( $value, str_replace( '_', ' ', $field ) );
 				if ( is_wp_error( $value ) ) {

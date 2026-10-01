@@ -88,6 +88,7 @@ export default function App({ config }) {
 	const [project, setProjectState] = useState(recall(PROJECT_KEY));
 	const [search, setSearch] = useState('');
 	const [cycleOff, setCycleOff] = useState(0);
+	const [teamPerson, setTeamPerson] = useState('all');
 	const [toast, toastView] = useToasts();
 	const [confirm, confirmView] = useConfirm();
 	const [completion, setCompletion] = useState(null);
@@ -160,7 +161,7 @@ export default function App({ config }) {
 	}
 
 	const today = todayYmd();
-	const ctx = { api, data, dispatch, me, view, setView, project, setProject, search, setSearch, toast, confirm, config, cycleOff, setCycleOff, today, askCompletion };
+	const ctx = { api, data, dispatch, me, view, setView, project, setProject, search, setSearch, toast, confirm, config, cycleOff, setCycleOff, today, askCompletion, teamPerson, setTeamPerson };
 
 	return (
 		<PortalContext.Provider value={ctx}>

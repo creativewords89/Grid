@@ -1,23 +1,14 @@
+import { useState } from 'react';
 import { usePortal } from '../context.js';
 import { isManager } from '../lib/roles.js';
-import { pendingReviews, reviewsOf } from '../lib/reviews.js';
-import { ReviewsOfWork, WaitingForReview } from './review/ReviewLists.jsx';
+import MemberPage from './team/MemberPage.jsx';
+import TeamArea from './team/TeamArea.jsx';
 
-// Team area (admin/lead) or own page (member). Step 12 adds the dashboards; reviews live here.
+// Team area (admin/lead) and member pages (SPEC.md 7.5, 7.6). Members only see their own page.
 export default function TeamView() {
-	const { data, me } = usePortal();
-	if (isManager(me)) {
-		return (
-			<div className="grp-team">
-				<WaitingForReview />
-				{!pendingReviews(data).length && <p className="empty">Nothing is waiting for your review.</p>}
-			</div>
-		);
-	}
-	return (
-		<div className="grp-team">
-			<ReviewsOfWork memberId={me.id} self />
-			{!reviewsOf(data, me.id).length && <p className="empty">No reviews of your work in the last 30 days.</p>}
-		</div>
-	);
+	const { me, today, teamPerson, setTeamPerson } = usePortal();
+	const [perf, setPerf] = useState({ mode: 'month', anchor: today });
+	if (!isManager(me)) return <MemberPage pid={me.id} perf={perf} setPerf={setPerf} />;
+	if (teamPerson && teamPerson !== 'all') return <MemberPage pid={teamPerson} perf={perf} setPerf={setPerf} onBack={() => setTeamPerson('all')} />;
+	return <TeamArea perf={perf} setPerf={setPerf} onPerson={setTeamPerson} />;
 }

@@ -401,7 +401,8 @@ abstract class GRP_REST_Controller {
 		foreach ( $labels as $field => $label ) {
 			$from = $before[ $field ] ?? null;
 			$to   = $after[ $field ] ?? null;
-			if ( wp_json_encode( $from ) === wp_json_encode( $to ) ) {
+			// Empty and NULL are the same to a person reading the log.
+			if ( wp_json_encode( $from ) === wp_json_encode( $to ) || ( ! is_array( $from ) && ! is_array( $to ) && (string) $from === (string) $to ) ) {
 				continue;
 			}
 			$changes[] = array(

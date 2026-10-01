@@ -11,6 +11,8 @@
   "dependencies": {
     "@fontsource/bricolage-grotesque": "^5.1.0",
     "@fontsource/instrument-sans": "^5.1.0",
+    "jspdf": "^2.5.2",
+    "jspdf-autotable": "^3.8.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

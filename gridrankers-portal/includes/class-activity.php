@@ -43,7 +43,7 @@ class GRP_Activity {
 				'type'       => $type,
 				'doc_id'     => $doc['id'] ?? null,
 				'project_id' => $project_id,
-				'title'      => (string) ( $doc['title'] ?? $doc['name'] ?? '' ),
+				'title'      => (string) ( 'team' === $type ? ( $doc['name'] ?? $doc['title'] ?? '' ) : ( $doc['title'] ?? $doc['name'] ?? '' ) ),
 				'detail'     => (string) $detail,
 				'changes'    => $changes,
 				'by_member'  => $actor['id'] ?? null,

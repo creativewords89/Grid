@@ -355,4 +355,41 @@ class Test_GRP_REST_Team extends GRP_REST_TestCase {
 			}
 		}
 	}
+
+	public function test_profile_photo_accepts_small_data_images_only() {
+		$me  = $this->team['member']['id'];
+		$jpg = 'data:image/jpeg;base64,' . str_repeat( 'eHh4', 100 );
+
+		$ok = $this->api_as( 'member', 'PATCH', "/members/$me", array( 'photo' => $jpg ) );
+		$this->assertStatus( 200, $ok );
+		$this->assertSame( $jpg, $ok->get_data()['photo'] );
+
+		$this->assertStatus( 400, $this->api_as( 'member', 'PATCH', "/members/$me", array( 'photo' => 'data:text/html;base64,PHNjcmlwdD4=' ) ) );
+		$this->assertStatus( 400, $this->api_as( 'member', 'PATCH', "/members/$me", array( 'photo' => 'data:image/svg+xml;base64,PHN2Zz4=' ) ) );
+		$this->assertStatus( 400, $this->api_as( 'member', 'PATCH', "/members/$me", array( 'photo' => 'data:image/png;base64,' . str_repeat( 'A', 300001 ) ) ) );
+
+		$cleared = $this->api_as( 'member', 'PATCH', "/members/$me", array( 'photo' => '' ) );
+		$this->assertSame( '', $cleared->get_data()['photo'] );
+	}
+
+	public function test_member_audit_uses_name_skips_unchanged_and_never_stores_photo() {
+		$me = $this->team['member']['id'];
+
+		$this->api_as(
+			'member',
+			'PATCH',
+			"/members/$me",
+			array(
+				'title'   => 'SEO specialist',
+				'address' => '',
+				'photo'   => 'data:image/jpeg;base64,' . str_repeat( 'eHh4', 100 ),
+			)
+		);
+
+		$audit = GRP_Store::find( 'grp_audit', array( 'doc_id' => $me ) );
+		$this->assertCount( 1, $audit );
+		$this->assertSame( 'Max Member', $audit[0]['title'] );
+		$this->assertSame( array( 'title', 'photo' ), wp_list_pluck( $audit[0]['changes'], 'field' ) );
+		$this->assertStringNotContainsString( 'base64', wp_json_encode( $audit[0] ) );
+	}
 }

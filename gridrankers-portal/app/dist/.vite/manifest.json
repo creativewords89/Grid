@@ -1,4 +1,30 @@
 {
+  "__commonjsHelpers-_d1bhYXs.js": {
+    "file": "assets/_commonjsHelpers-_d1bhYXs.js",
+    "name": "_commonjsHelpers"
+  },
+  "_jspdf.es.min-BTZhrcS5.js": {
+    "file": "assets/jspdf.es.min-BTZhrcS5.js",
+    "name": "jspdf.es.min",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/main.jsx"
+    ],
+    "dynamicImports": [
+      "node_modules/html2canvas/dist/html2canvas.esm.js",
+      "node_modules/dompurify/dist/purify.es.js",
+      "node_modules/canvg/lib/index.es.js"
+    ]
+  },
+  "_jspdf.plugin.autotable-rjh13zAo.js": {
+    "file": "assets/jspdf.plugin.autotable-rjh13zAo.js",
+    "name": "jspdf.plugin.autotable",
+    "isDynamicEntry": true,
+    "imports": [
+      "__commonjsHelpers-_d1bhYXs.js",
+      "_jspdf.es.min-BTZhrcS5.js"
+    ]
+  },
   "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-500-normal.woff": {
     "file": "assets/bricolage-grotesque-latin-500-normal-CV-uA8Lw.woff",
     "src": "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-500-normal.woff"
@@ -119,13 +145,40 @@
     "file": "assets/instrument-sans-latin-ext-600-normal-BsaQcF38.woff2",
     "src": "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-ext-600-normal.woff2"
   },
+  "node_modules/canvg/lib/index.es.js": {
+    "file": "assets/index.es-Bf9NrI4-.js",
+    "name": "index.es",
+    "src": "node_modules/canvg/lib/index.es.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "__commonjsHelpers-_d1bhYXs.js",
+      "_jspdf.es.min-BTZhrcS5.js",
+      "src/main.jsx"
+    ]
+  },
+  "node_modules/dompurify/dist/purify.es.js": {
+    "file": "assets/purify.es-BwoZCkIS.js",
+    "name": "purify.es",
+    "src": "node_modules/dompurify/dist/purify.es.js",
+    "isDynamicEntry": true
+  },
+  "node_modules/html2canvas/dist/html2canvas.esm.js": {
+    "file": "assets/html2canvas.esm-QH1iLAAe.js",
+    "name": "html2canvas.esm",
+    "src": "node_modules/html2canvas/dist/html2canvas.esm.js",
+    "isDynamicEntry": true
+  },
   "src/main.jsx": {
-    "file": "assets/main-Btk_a3NU.js",
+    "file": "assets/main-DujCu3W6.js",
     "name": "main",
     "src": "src/main.jsx",
     "isEntry": true,
+    "dynamicImports": [
+      "_jspdf.es.min-BTZhrcS5.js",
+      "_jspdf.plugin.autotable-rjh13zAo.js"
+    ],
     "css": [
-      "assets/main-p5jUm-jd.css"
+      "assets/main-Ce2RwFi7.css"
     ],
     "assets": [
       "assets/bricolage-grotesque-vietnamese-500-normal-FzY9NZwK.woff2",
