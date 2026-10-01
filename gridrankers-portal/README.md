@@ -23,3 +23,12 @@ WP_TESTS_DB_NAME=wordpress_test WP_TESTS_DB_USER=root WP_TESTS_DB_PASSWORD= WP_T
 Tables are created on activation and upgraded on `plugins_loaded` whenever the stored version is older.
 To change the schema: edit `GRP_Install::get_schema()`, add any data migration to `GRP_Install::migrations()`
 keyed by the new version, and bump `DB_VERSION`.
+
+## Cycle fixtures
+
+`tests/fixtures/cycles.json` is produced by running the reference portal's own cycle functions
+(extracted from `../site-changelog.html`) at fixed dates. Regenerate after changing the cases:
+
+```sh
+TZ=UTC node tests/fixtures/generate-cycles.mjs
+```

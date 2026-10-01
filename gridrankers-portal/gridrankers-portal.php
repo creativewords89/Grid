@@ -21,6 +21,7 @@ define( 'GRP_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 require_once GRP_PLUGIN_DIR . 'includes/class-install.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-ids.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-permissions.php';
+require_once GRP_PLUGIN_DIR . 'includes/class-cycles.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-auth.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-rest-auth.php';
 
