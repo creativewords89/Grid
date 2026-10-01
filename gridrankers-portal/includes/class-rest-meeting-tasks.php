@@ -99,6 +99,18 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 		if ( ! in_array( $status, self::STATUSES, true ) ) {
 			return self::invalid( __( 'Invalid status.', 'gridrankers-portal' ) );
 		}
+		if ( 'todo' !== $status && ! self::can(
+			GRP_Permissions::CHANGE_STATUS,
+			array(
+				'task' => array(
+					'status'    => 'todo',
+					'assignees' => $fields['assignees'],
+				),
+				'to'   => $status,
+			)
+		) ) {
+			return self::forbidden( __( 'Only the people responsible can start or complete this task.', 'gridrankers-portal' ) );
+		}
 		$completion = 'done' === $status ? self::completion( $request, ! self::is_manager() ) : null;
 		if ( is_wp_error( $completion ) ) {
 			return $completion;

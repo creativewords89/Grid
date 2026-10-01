@@ -30,6 +30,14 @@ require_once GRP_PLUGIN_DIR . 'includes/class-rest-controller.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-rest-projects.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-rest-meeting-tasks.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-rest-monthly-tasks.php';
+require_once GRP_PLUGIN_DIR . 'includes/class-rest-records.php';
+require_once GRP_PLUGIN_DIR . 'includes/class-rest-review.php';
+require_once GRP_PLUGIN_DIR . 'includes/class-rest-activity.php';
+require_once GRP_PLUGIN_DIR . 'includes/class-rest-audit.php';
+require_once GRP_PLUGIN_DIR . 'includes/class-rest-trash.php';
+require_once GRP_PLUGIN_DIR . 'includes/class-rest-members.php';
+require_once GRP_PLUGIN_DIR . 'includes/class-rest-notifications.php';
+require_once GRP_PLUGIN_DIR . 'includes/class-rest-sync.php';
 
 register_activation_hook( __FILE__, array( 'GRP_Install', 'activate' ) );
 register_deactivation_hook( __FILE__, array( 'GRP_Install', 'deactivate' ) );
@@ -41,6 +49,14 @@ GRP_REST_Auth::init();
 GRP_REST_Projects::init();
 GRP_REST_Meeting_Tasks::init();
 GRP_REST_Monthly_Tasks::init();
+GRP_REST_Records::init();
+GRP_REST_Review::init();
+GRP_REST_Activity::init();
+GRP_REST_Audit::init();
+GRP_REST_Trash::init();
+GRP_REST_Members::init();
+GRP_REST_Notifications::init();
+GRP_REST_Sync::init();
 
 if ( is_admin() ) {
 	require_once GRP_PLUGIN_DIR . 'admin/class-settings.php';

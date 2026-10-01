@@ -444,4 +444,28 @@ class Test_GRP_REST_Meeting_Tasks extends GRP_REST_TestCase {
 		$this->assertSame( 'pending', $response->get_data()['review']['state'] );
 		$this->assertCount( 1, $this->credits( $this->team['other']['id'] ) );
 	}
+
+	public function test_member_cannot_create_started_task_for_someone_else() {
+		$response = $this->api_as(
+			'member',
+			'POST',
+			'/meeting-tasks',
+			array(
+				'project_id' => $this->project['id'],
+				'title'      => 'Theirs',
+				'status'     => 'doing',
+				'assignees'  => $this->people( 'other' ),
+			)
+		);
+		$this->assertStatus( 403, $response );
+
+		$own = $this->task(
+			'member',
+			array(
+				'status'    => 'doing',
+				'assignees' => $this->people( 'member' ),
+			)
+		);
+		$this->assertSame( 'doing', $own['status'] );
+	}
 }
