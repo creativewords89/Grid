@@ -17,6 +17,10 @@ E2E_URL="${E2E_URL:-http://127.0.0.1:8090}"
 rm -rf "$E2E_DIR"
 cp -r "$PLUGIN/vendor/roots/wordpress-no-content" "$E2E_DIR"
 mkdir -p "$E2E_DIR/wp-content/plugins" "$E2E_DIR/wp-content/themes"
+# No theme, like a fresh CI checkout: WordPress then prints type='text/javascript' on scripts, which the
+# portal must still turn into a module. Also no .git, so WordPress treats the site as a normal install.
+find "$E2E_DIR/wp-content/themes" -mindepth 1 -maxdepth 1 ! -name index.php -exec rm -rf {} +
+rm -rf "$E2E_DIR/.git"
 ln -s "$PLUGIN" "$E2E_DIR/wp-content/plugins/gridrankers-portal"
 
 mysql -h"$E2E_DB_HOST" -u"$E2E_DB_USER" ${E2E_DB_PASS:+-p"$E2E_DB_PASS"} -e "DROP DATABASE IF EXISTS \`$E2E_DB\`; CREATE DATABASE \`$E2E_DB\`;"

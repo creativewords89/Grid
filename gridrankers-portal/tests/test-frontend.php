@@ -66,6 +66,12 @@ class Test_GRP_Frontend extends WP_UnitTestCase {
 		$this->assertStringContainsString( '<script type="module" src="x.js"', $tag );
 		$this->assertStringContainsString( '<script id="grp-portal-js-before">', $tag, 'inline config stays classic' );
 
+		// Without HTML5 script support WordPress adds type='text/javascript': it is replaced, not kept.
+		$tag = GRP_Frontend::module_tag( "<script type='text/javascript' id='grp-portal-js-before'>\nwindow.GRP_CONFIG = {};\n</script>\n<script type='text/javascript' src='x.js' id='grp-portal-js'></script>", GRP_Frontend::HANDLE );
+		$this->assertStringContainsString( "<script type=\"module\" src='x.js' id='grp-portal-js'>", $tag );
+		$this->assertStringContainsString( "<script type='text/javascript' id='grp-portal-js-before'>", $tag, 'inline config stays classic' );
+		$this->assertSame( 1, substr_count( $tag, 'type="module"' ) );
+
 		$other = '<script src="y.js"></script>';
 		$this->assertSame( $other, GRP_Frontend::module_tag( $other, 'jquery' ) );
 		// phpcs:enable

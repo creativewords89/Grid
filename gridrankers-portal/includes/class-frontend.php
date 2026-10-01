@@ -208,8 +208,16 @@ class GRP_Frontend {
 	 */
 	public static function module_tag( $tag, $handle ) {
 		if ( self::HANDLE === $handle ) {
-			// Only the external file; the inline config before it stays a classic script.
-			$tag = preg_replace( '/<script(?![^>]*\btype=)(?=[^>]*\bsrc=)/', '<script type="module"', $tag );
+			// Only the external file; the inline config before it stays a classic script. Themes without
+			// HTML5 script support make WordPress print type='text/javascript', which must be replaced.
+			$tag = preg_replace_callback(
+				'/<script\b[^>]*\bsrc=[^>]*>/',
+				static function ( $m ) {
+					$open = preg_replace( '/\s+type=(["\'])[^"\']*\1/', '', $m[0] );
+					return preg_replace( '/^<script\b/', '<script type="module"', $open );
+				},
+				$tag
+			);
 		}
 
 		return $tag;
