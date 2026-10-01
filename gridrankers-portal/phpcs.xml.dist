@@ -1,0 +1,49 @@
+<?xml version="1.0"?>
+<ruleset name="GridRankers Portal">
+	<description>WordPress coding standards for the GridRankers Portal plugin.</description>
+
+	<file>.</file>
+	<exclude-pattern>/vendor/*</exclude-pattern>
+	<exclude-pattern>/node_modules/*</exclude-pattern>
+	<exclude-pattern>/app/*</exclude-pattern>
+
+	<arg name="extensions" value="php"/>
+	<arg value="ps"/>
+
+	<config name="minimum_supported_wp_version" value="6.4"/>
+	<config name="testVersion" value="8.1-"/>
+
+	<rule ref="WordPress">
+		<!-- SPEC.md section 2 fixes the file names (includes/class-install.php etc.). -->
+		<exclude name="WordPress.Files.FileName.InvalidClassFileName"/>
+	</rule>
+
+	<rule ref="WordPress.WP.I18n">
+		<properties>
+			<property name="text_domain" type="array">
+				<element value="gridrankers-portal"/>
+			</property>
+		</properties>
+	</rule>
+
+	<!-- SPEC.md fixes the "grp" prefix (grp_ tables, GRP_ classes). -->
+	<rule ref="WordPress.NamingConventions.PrefixAllGlobals.ShortPrefixPassed">
+		<severity>0</severity>
+	</rule>
+	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+		<properties>
+			<property name="prefixes" type="array">
+				<element value="grp"/>
+				<element value="GRP"/>
+			</property>
+		</properties>
+	</rule>
+
+	<!-- Test files follow the WordPress core test-suite conventions. -->
+	<rule ref="Squiz.Commenting.FunctionComment.Missing">
+		<exclude-pattern>/tests/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.Files.FileName">
+		<exclude-pattern>/tests/*</exclude-pattern>
+	</rule>
+</ruleset>
