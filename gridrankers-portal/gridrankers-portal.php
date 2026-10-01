@@ -6,6 +6,7 @@
  * Requires at least: 6.4
  * Requires PHP:      8.1
  * Author:            GridRankers
+ * Update URI:        https://github.com/creativewords89/Grid
  * Text Domain:       gridrankers-portal
  *
  * @package GridRankers_Portal
@@ -44,6 +45,7 @@ require_once GRP_PLUGIN_DIR . 'includes/class-rest-data.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-frontend.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-standard-tasks.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-cron.php';
+require_once GRP_PLUGIN_DIR . 'includes/class-updater.php';
 
 register_activation_hook( __FILE__, array( 'GRP_Install', 'activate' ) );
 register_deactivation_hook( __FILE__, array( 'GRP_Install', 'deactivate' ) );
@@ -66,6 +68,7 @@ GRP_REST_Sync::init();
 GRP_REST_Data::init();
 GRP_Frontend::init();
 GRP_Cron::init();
+GRP_Updater::init();
 
 if ( is_admin() ) {
 	require_once GRP_PLUGIN_DIR . 'admin/class-settings.php';

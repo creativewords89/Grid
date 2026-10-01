@@ -24,6 +24,31 @@ Requires PHP 8.1+, WordPress 6.4+, MySQL 8 or MariaDB 10.6+.
    Members sign in with their code only; no WordPress accounts are needed.
 7. Import the data from the current portal (below).
 
+### Updates (automatic, from GitHub)
+
+Every change merged to `main` that touches `gridrankers-portal/` is tested by GitHub Actions
+(`.github/workflows/plugin.yml`: coding standards, PHPUnit, Vitest, Playwright). If everything passes, it is
+published as a release on https://github.com/creativewords89/Grid/releases with `gridrankers-portal.zip` and
+`update.json`. Nothing is released when a test fails.
+
+The plugin's `Update URI` header points WordPress at those releases (`includes/class-updater.php`):
+
+- **Plugins** shows *Update available* with *View details*. Auto-updates are always on for this plugin.
+- Every hour (`grp_check_update`, run by the server cron below) the plugin checks for a newer release and runs
+  WordPress's own automatic updater straight away. A merged change is usually live within about an hour.
+- To get it immediately, use **Dashboard → Updates → Check again**, then update GridRankers Portal.
+- Only zips from this repository's releases are accepted. Data is kept, and database changes run on their own after an update.
+- To stop automatic installs (updates are still offered), add `define( 'GRP_AUTO_UPDATE', false );` to `wp-config.php`.
+- To go back to an earlier version, download its `gridrankers-portal.zip` from Releases and upload it
+  (Plugins → Add New → Upload → *Replace current with uploaded*). The next newer release will update it again.
+
+Version numbers: the release workflow uses major.minor from the plugin header (`0.1`) and one more than the
+last release for the patch (0.1.1, 0.1.2, …). The repository keeps `0.1.0`. To start 0.2.x, change the header
+`Version` and `GRP_VERSION` to `0.2.0`. To build a zip by hand: `cd app && npm run build`, then
+`bash bin/build-zip.sh 0.1.99`.
+
+WordPress emails the site administrator after each automatic update.
+
 ### Real cron (required)
 
 `grp_daily` is registered with WP-Cron (hourly; every task is safe to repeat). WP-Cron only runs when
@@ -39,7 +64,7 @@ someone visits, so also add a server cron in **hPanel → Advanced → Cron Jobs
 Optionally add `define( 'DISABLE_WP_CRON', true );` to `wp-config.php` once the server cron is in place,
 so page loads never trigger cron.
 
-`grp_daily` does:
+The same cron also drives the hourly update check (*Updates* above). `grp_daily` does:
 
 - standard monthly tasks: each project whose current cycle differs from `std_cycle` gets any missing
   standard task (GBP Posts, Social Posts, Pages, Blogs, Free Backlinks, Paid Backlinks) and `std_cycle`
