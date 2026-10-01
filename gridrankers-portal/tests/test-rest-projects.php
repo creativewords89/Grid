@@ -142,10 +142,10 @@ class Test_GRP_REST_Projects extends GRP_REST_TestCase {
 		$this->assertSame( 20, $data['cycle_day'] );
 		$this->assertSame(
 			array(
-				'from'    => '2026-03-10',
 				'day'     => 20,
-				'prevDay' => 1,
+				'from'    => '2026-03-10',
 				'mode'    => 'merge',
+				'prevDay' => 1,
 				'reason'  => 'Align with billing',
 			),
 			array_intersect_key( $data['cycle_changes'][0], array_flip( array( 'from', 'day', 'prevDay', 'mode', 'reason' ) ) )

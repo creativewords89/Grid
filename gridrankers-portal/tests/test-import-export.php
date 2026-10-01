@@ -106,8 +106,8 @@ class Test_GRP_Import_Export extends GRP_REST_TestCase {
 		$this->assertSame( '2026-09-08 15:30:00', $h1['done_at'] );
 		$this->assertSame(
 			array(
-				'type' => 'date',
 				'date' => '2026-09-10',
+				'type' => 'date',
 			),
 			$h1['deadline']
 		);
@@ -120,9 +120,9 @@ class Test_GRP_Import_Export extends GRP_REST_TestCase {
 
 		$this->assertSame(
 			array(
-				'type' => 'dates',
 				'from' => '2026-10-12',
 				'to'   => '2026-10-20',
+				'type' => 'dates',
 			),
 			GRP_Store::get( 'grp_meeting_tasks', 'i_unas' )['deadline'],
 			'legacy dueDates'

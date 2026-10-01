@@ -31,6 +31,53 @@ class Test_GRP_Store extends WP_UnitTestCase {
 		$this->assertSame( 'Acme', $updated['name'] );
 	}
 
+	public function test_json_reads_the_same_whatever_order_the_database_keeps_keys_in() {
+		global $wpdb;
+		$row   = GRP_Store::insert(
+			'grp_meeting_tasks',
+			array(
+				'project_id' => 'p1',
+				'title'      => 'T',
+				'deadline'   => array(
+					'type' => 'date',
+					'date' => '2026-09-10',
+				),
+				'assignees'  => array(
+					array(
+						'id' => 'b',
+						'n'  => 2,
+					),
+					array(
+						'id' => 'a',
+						'n'  => 1,
+					),
+				),
+			)
+		);
+		$table = GRP_Install::table( 'grp_meeting_tasks' );
+		$this->assertSame( '{"date":"2026-09-10","type":"date"}', $wpdb->get_var( $wpdb->prepare( 'SELECT deadline FROM %i WHERE id = %s', $table, $row['id'] ) ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+
+		// Same content stored with other key orders (as MySQL may) reads back identically; lists keep their order.
+		$wpdb->update( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$table,
+			array(
+				'assignees' => '[{"n": 2, "id": "b"}, {"n": 1, "id": "a"}]',
+				'deadline'  => '{"type": "date", "date": "2026-09-10"}',
+			),
+			array( 'id' => $row['id'] )
+		);
+		$read = GRP_Store::get( 'grp_meeting_tasks', $row['id'] );
+		$this->assertSame( $row['assignees'], $read['assignees'] );
+		$this->assertSame( $row['deadline'], $read['deadline'] );
+		$this->assertSame(
+			array(
+				'id' => 'b',
+				'n'  => 2,
+			),
+			$read['assignees'][0]
+		);
+	}
+
 	public function test_find_conditions_and_order() {
 		foreach ( array(
 			'b' => 3,
