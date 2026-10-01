@@ -4,3 +4,4 @@
 .phpunit.result.cache
 /app/test-results/
 /app/playwright-report/
+/build/

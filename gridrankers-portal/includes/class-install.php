@@ -60,6 +60,7 @@ class GRP_Install {
 	 */
 	public static function deactivate() {
 		GRP_Cron::unschedule();
+		GRP_Updater::unschedule();
 	}
 
 	/**

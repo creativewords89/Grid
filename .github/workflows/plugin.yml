@@ -1,0 +1,146 @@
+# GridRankers Portal: test every change; publish every change merged to main as a release.
+# The live site's plugin checks the latest release hourly and installs it itself (includes/class-updater.php).
+name: Plugin
+
+on:
+  pull_request:
+    paths: ['gridrankers-portal/**', '.github/workflows/plugin.yml']
+  push:
+    branches: [main]
+    paths: ['gridrankers-portal/**', '.github/workflows/plugin.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: plugin-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: gridrankers-portal
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: wordpress_test
+        ports: ['3306:3306']
+        options: --health-cmd="mysqladmin ping -proot" --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      WP_TESTS_DB_HOST: 127.0.0.1
+      WP_TESTS_DB_PASSWORD: root
+      E2E_DB_HOST: 127.0.0.1
+      E2E_DB_PASS: root
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mysqli, zip
+          tools: composer
+          coverage: none
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: gridrankers-portal/app/package-lock.json
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --no-progress
+
+      - name: Coding standards
+        run: composer lint
+
+      - name: PHPUnit
+        run: composer test
+
+      - name: Install app dependencies
+        working-directory: gridrankers-portal/app
+        run: npm ci
+
+      - name: Vitest
+        working-directory: gridrankers-portal/app
+        run: npm test
+
+      - name: Build app
+        working-directory: gridrankers-portal/app
+        run: npm run build
+
+      - name: Playwright e2e
+        working-directory: gridrankers-portal/app
+        run: |
+          npx playwright install --with-deps chromium
+          npm run e2e
+
+      - name: Keep e2e results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: gridrankers-portal/app/test-results
+          if-no-files-found: ignore
+
+      - name: Keep the tested app build
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-dist
+          path: gridrankers-portal/app/dist
+          include-hidden-files: true
+
+  release:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: plugin-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-dist
+          path: gridrankers-portal/app/dist
+
+      - name: Build and publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          MAIN=gridrankers-portal.php
+          # Version: major.minor from the plugin header, patch = one more than the last release.
+          read -r MM PATCH < <(sed -nE 's/^ \* Version: +([0-9]+\.[0-9]+)\.([0-9]+)$/\1 \2/p' "$MAIN")
+          LAST=$(gh release list --limit 100 --json tagName --jq '.[].tagName' | sed -nE "s/^v${MM//./\\.}\.([0-9]+)$/\1/p" | sort -n | tail -1)
+          LAST=${LAST:-0}
+          NEXT=$(( LAST > PATCH ? LAST + 1 : PATCH + 1 ))
+          VERSION="$MM.$NEXT"
+          REQUIRES=$(sed -nE 's/^ \* Requires at least: +(.*)$/\1/p' "$MAIN")
+          REQUIRES_PHP=$(sed -nE 's/^ \* Requires PHP: +(.*)$/\1/p' "$MAIN")
+
+          bash bin/build-zip.sh "$VERSION" "$RUNNER_TEMP/release"
+          jq -n \
+            --arg version "$VERSION" \
+            --arg package "https://github.com/${GITHUB_REPOSITORY}/releases/download/v$VERSION/gridrankers-portal.zip" \
+            --arg requires "$REQUIRES" \
+            --arg requires_php "$REQUIRES_PHP" \
+            --arg notes "$(git log -1 --format=%s)" \
+            '{version: $version, package: $package, requires: $requires, requires_php: $requires_php, notes: $notes}' \
+            > "$RUNNER_TEMP/release/update.json"
+          cat "$RUNNER_TEMP/release/update.json"
+
+          gh release create "v$VERSION" \
+            "$RUNNER_TEMP/release/gridrankers-portal.zip" \
+            "$RUNNER_TEMP/release/update.json" \
+            --target "$GITHUB_SHA" \
+            --title "GridRankers Portal $VERSION" \
+            --generate-notes
