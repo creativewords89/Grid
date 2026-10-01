@@ -217,4 +217,69 @@ class Test_GRP_Updater extends WP_UnitTestCase {
 		$this->assertFalse( wp_next_scheduled( GRP_Updater::HOOK ) );
 		$this->assertFalse( wp_next_scheduled( GRP_Cron::HOOK ) );
 	}
+
+	public function test_each_check_records_its_outcome() {
+		delete_option( GRP_Updater::STATUS );
+		$this->assertNull( GRP_Updater::status() );
+
+		GRP_Updater::manifest( true );
+		$ok = GRP_Updater::status();
+		$this->assertTrue( $ok['ok'] );
+		$this->assertSame( '9.9.9', $ok['version'] );
+		$this->assertSame( 'Reached GitHub.', $ok['message'] );
+		$this->assertEqualsWithDelta( time(), $ok['at'], 5 );
+
+		$this->manifest_response = new WP_Error( 'http_request_failed', 'Connection timed out' );
+		GRP_Updater::manifest( true );
+		$this->assertFalse( GRP_Updater::status()['ok'] );
+		$this->assertSame( "Couldn't reach GitHub: Connection timed out", GRP_Updater::status()['message'] );
+
+		$this->manifest_response = 404;
+		GRP_Updater::manifest( true );
+		$this->assertStringContainsString( 'HTTP 404', GRP_Updater::status()['message'] );
+
+		$this->manifest_response = array( 'version' => 'x' );
+		GRP_Updater::manifest( true );
+		$this->assertStringContainsString( 'not valid', GRP_Updater::status()['message'] );
+	}
+
+	public function test_check_now_skips_the_cache_and_refreshes_wordpress() {
+		GRP_Updater::manifest();
+		set_site_transient( 'update_plugins', (object) array( 'stale' => true ) );
+
+		$status = GRP_Updater::run_check();
+
+		$this->assertSame( 2, $this->manifest_requests(), 'asked GitHub again' );
+		$this->assertTrue( $status['ok'] );
+		$this->assertObjectNotHasProperty( 'stale', get_site_transient( 'update_plugins' ) );
+	}
+
+	public function test_settings_page_shows_the_updates_box() {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		if ( is_multisite() ) {
+			grant_super_admin( get_current_user_id() );
+		}
+		GRP_Updater::manifest( true );
+
+		ob_start();
+		GRP_Admin_Settings::render_updates();
+		$html = ob_get_clean();
+
+		$this->assertStringContainsString( 'Installed version', $html );
+		$this->assertStringContainsString( esc_html( GRP_VERSION ), $html );
+		$this->assertStringContainsString( '9.9.9 — an update is available', $html );
+		$this->assertStringContainsString( 'Reached GitHub.', $html );
+		$this->assertStringContainsString( 'name="action" value="grp_update_check"', $html );
+		$this->assertStringContainsString( 'Update now to 9.9.9', $html );
+		$this->assertStringContainsString( 'action=upgrade-plugin', $html );
+
+		// Up to date: no Update now button.
+		$this->manifest_response = $this->release( GRP_VERSION );
+		GRP_Updater::manifest( true );
+		ob_start();
+		GRP_Admin_Settings::render_updates();
+		$html = ob_get_clean();
+		$this->assertStringContainsString( 'you are up to date', $html );
+		$this->assertStringNotContainsString( 'Update now', $html );
+	}
 }

@@ -37,6 +37,9 @@ The plugin's `Update URI` header points WordPress at those releases (`includes/c
 - Every hour (`grp_check_update`, run by the server cron below) the plugin checks for a newer release and runs
   WordPress's own automatic updater straight away. A merged change is usually live within about an hour.
 - To get it immediately, use **Dashboard → Updates → Check again**, then update GridRankers Portal.
+- **GridRankers → Settings → Updates** shows the installed and latest version, when the site last checked and
+  what happened ("Reached GitHub", or the exact error, e.g. a timeout if the server can't reach github.com),
+  with **Check now** and, when a newer release exists, **Update now**.
 - Only zips from this repository's releases are accepted. Data is kept, and database changes run on their own after an update.
 - To stop automatic installs (updates are still offered), add `define( 'GRP_AUTO_UPDATE', false );` to `wp-config.php`.
 - To go back to an earlier version, download its `gridrankers-portal.zip` from Releases and upload it
