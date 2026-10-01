@@ -107,6 +107,42 @@ class GRP_Permissions {
 	/** Mark a missed recurring period as skipped. Managers. */
 	const SKIP_PERIOD = 'skip_period';
 
+	/** See the Projects tab of the Dashboard (SPEC.md 7.0). */
+	const VIEW_PROJECTS_TAB = 'view_projects_tab';
+
+	/** Take (lead) or request (member) day leave. Context: `{member_id}` the leave is for. Never the Super Admin. */
+	const TAKE_LEAVE = 'take_leave';
+
+	/** Approve or reject a leave request. Context: `{role}` of the person asking (Team Members only). */
+	const DECIDE_LEAVE = 'decide_leave';
+
+	/** Cancel leave. Context: `{member_id, role, status}` of the leave and its owner. */
+	const CANCEL_LEAVE = 'cancel_leave';
+
+	/** See the type, reason and message of a person's leave. Context: `{member_id}`. Managers or self. */
+	const VIEW_LEAVE_DETAILS = 'view_leave_details';
+
+	/** Monthly settlement and the year-end leave report. Super Admin. */
+	const VIEW_LEAVE_REPORT = 'view_leave_report';
+
+	/** Days off and automatic messages. Super Admin. */
+	const MANAGE_PEOPLE_SETTINGS = 'manage_people_settings';
+
+	/**
+	 * Post or remove an announcement or shout-out. Context when posting: `{kind, to_role?}`
+	 * (shout-outs go to Team Members only); when removing: `{created_by}`.
+	 */
+	const MANAGE_POST = 'manage_post';
+
+	/** Ask someone to review one's own finished task. Managers. */
+	const REQUEST_REVIEW = 'request_review';
+
+	/** Approve / send back a review someone asked for. Context: `{reviewer}`. The reviewer or the Super Admin. */
+	const ANSWER_REVIEW_REQUEST = 'answer_review_request';
+
+	/** Set a birthday. Context: `{member_id}`. Self (or the Super Admin). */
+	const SET_BIRTHDAY = 'set_birthday';
+
 	/**
 	 * Whether `$user` may perform `$action` on `$context`.
 	 *
@@ -142,6 +178,8 @@ class GRP_Permissions {
 			case self::REVIEW:
 			case self::AUTO_ACCEPT:
 			case self::VIEW_TEAM_DASHBOARD:
+			case self::VIEW_PROJECTS_TAB:
+			case self::REQUEST_REVIEW:
 				return $manager;
 
 			case self::DELETE_PROJECT:
@@ -149,6 +187,8 @@ class GRP_Permissions {
 			case self::LINK_WP_USER:
 			case self::EXPORT_DATA:
 			case self::IMPORT_DATA:
+			case self::VIEW_LEAVE_REPORT:
+			case self::MANAGE_PEOPLE_SETTINGS:
 				return $admin;
 
 			case self::CHANGE_PROJECT_CYCLE:
@@ -173,7 +213,34 @@ class GRP_Permissions {
 				return $manager || self::is_self( $user, $context['member_id'] ?? null );
 
 			case self::EDIT_MEMBER_PROFILE:
+			case self::SET_BIRTHDAY:
 				return $admin || self::is_self( $user, $context['member_id'] ?? null );
+
+			case self::TAKE_LEAVE:
+				// No leave in the portal for the Super Admin; everyone else for themselves only.
+				return ! $admin && self::is_self( $user, $context['member_id'] ?? null );
+
+			case self::DECIDE_LEAVE:
+				// Team Leaders' leave is approved straight away: only Team Members' requests wait.
+				return $manager && self::ROLE_MEMBER === ( $context['role'] ?? '' );
+
+			case self::CANCEL_LEAVE:
+				return self::can_cancel_leave( $user, $role, $context );
+
+			case self::VIEW_LEAVE_DETAILS:
+				return $manager || self::is_self( $user, $context['member_id'] ?? null );
+
+			case self::MANAGE_POST:
+				if ( ! $manager ) {
+					return false;
+				}
+				if ( array_key_exists( 'created_by', $context ) ) {
+					return $admin || self::is_self( $user, $context['created_by'] );
+				}
+				return 'shoutout' !== ( $context['kind'] ?? '' ) || self::ROLE_MEMBER === ( $context['to_role'] ?? '' );
+
+			case self::ANSWER_REVIEW_REQUEST:
+				return $admin || self::is_self( $user, $context['reviewer'] ?? null );
 
 			case self::DELETE_ACTIVITY:
 				return $admin || ( 'manual' === ( $context['kind'] ?? '' ) && self::is_self( $user, $context['member_id'] ?? null ) );
@@ -272,6 +339,30 @@ class GRP_Permissions {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Cancelling leave: the Super Admin anyone's; a Team Leader their own and any Team
+	 * Member's; a Team Member only their own request while it is pending.
+	 *
+	 * @param array  $user    Acting member.
+	 * @param string $role    Actor's effective role.
+	 * @param array  $context `{member_id, role, status}`.
+	 * @return bool
+	 */
+	private static function can_cancel_leave( array $user, $role, array $context ) {
+		if ( ! in_array( $context['status'] ?? '', array( 'pending', 'approved' ), true ) ) {
+			return false;
+		}
+		if ( self::ROLE_ADMIN === $role ) {
+			return true;
+		}
+		$own = self::is_self( $user, $context['member_id'] ?? null );
+		if ( self::ROLE_LEAD === $role ) {
+			return $own || self::ROLE_MEMBER === ( $context['role'] ?? '' );
+		}
+
+		return $own && 'pending' === $context['status'];
 	}
 
 	/**

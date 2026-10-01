@@ -32,6 +32,9 @@ class GRP_Export {
 			'edits'       => array_map( array( __CLASS__, 'audit' ), GRP_Store::find( 'grp_audit', array(), array( 'order_by' => 'at' ) ) ),
 			'trash'       => array_map( array( __CLASS__, 'trash' ), GRP_Store::find( 'grp_trash', array(), array( 'order_by' => 'deleted_at' ) ) ),
 			'dismissals'  => self::dismissals(),
+			'leave'       => array_map( array( __CLASS__, 'leave' ), GRP_Store::find( 'grp_leave', array(), array( 'order_by' => 'created_at' ) ) ),
+			'daysOff'     => array_map( array( __CLASS__, 'day_off' ), GRP_Store::find( 'grp_days_off', array(), array( 'order_by' => 'from_date' ) ) ),
+			'posts'       => array_map( array( __CLASS__, 'post' ), GRP_Store::find( 'grp_posts', array(), array( 'order_by' => 'created_at' ) ) ),
 			'visitors'    => array(),
 		);
 
@@ -224,6 +227,8 @@ class GRP_Export {
 				'codeSetAt' => self::iso( $r['code_set_at'] ),
 				'wpUserId'  => $r['wp_user_id'],
 				'active'    => (bool) $r['active'],
+				'birthday'  => $r['birthday'],
+				'weeklyOff' => $r['weekly_off'],
 				'createdAt' => self::iso( $r['created_at'] ),
 			)
 		);
@@ -340,6 +345,75 @@ class GRP_Export {
 				'clientId'  => $r['project_id'],
 				'deletedAt' => self::iso( $r['deleted_at'] ),
 				'byId'      => $r['deleted_by'],
+			)
+		);
+	}
+
+	/**
+	 * Leave row → leave.
+	 *
+	 * @param array $r Row.
+	 * @return array
+	 */
+	public static function leave( array $r ) {
+		return self::clean(
+			array(
+				'id'        => $r['id'],
+				'personId'  => $r['member_id'],
+				'type'      => $r['type'],
+				'from'      => $r['from_date'],
+				'to'        => $r['to_date'],
+				'days'      => $r['days'],
+				'reason'    => $r['reason'],
+				'status'    => $r['status'],
+				'decidedBy' => $r['decided_by'],
+				'decidedAt' => self::iso( $r['decided_at'] ),
+				'message'   => $r['message'],
+				'by'        => $r['created_by'],
+				'createdAt' => self::iso( $r['created_at'] ),
+			)
+		);
+	}
+
+	/**
+	 * Days-off row → daysOff.
+	 *
+	 * @param array $r Row.
+	 * @return array
+	 */
+	public static function day_off( array $r ) {
+		return self::clean(
+			array(
+				'id'        => $r['id'],
+				'kind'      => $r['kind'],
+				'name'      => $r['name'],
+				'from'      => $r['from_date'],
+				'to'        => $r['to_date'],
+				'by'        => $r['created_by'],
+				'createdAt' => self::iso( $r['created_at'] ),
+			)
+		);
+	}
+
+	/**
+	 * Post row → posts (announcements and shout-outs).
+	 *
+	 * @param array $r Row.
+	 * @return array
+	 */
+	public static function post( array $r ) {
+		return self::clean(
+			array(
+				'id'        => $r['id'],
+				'kind'      => $r['kind'],
+				'title'     => $r['title'],
+				'body'      => $r['body'],
+				'toId'      => $r['to_member'],
+				'pinned'    => (bool) $r['pinned'],
+				'showUntil' => $r['show_until'],
+				'by'        => $r['created_by'],
+				'deletedAt' => self::iso( $r['deleted_at'] ),
+				'createdAt' => self::iso( $r['created_at'] ),
 			)
 		);
 	}

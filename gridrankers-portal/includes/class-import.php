@@ -31,6 +31,9 @@ class GRP_Import {
 		'trash'       => 'grp_trash',
 		'dismissals'  => 'grp_dismissals',
 		'settings'    => 'grp_settings',
+		'leave'       => 'grp_leave',
+		'daysOff'     => 'grp_days_off',
+		'posts'       => 'grp_posts',
 	);
 
 	/**
@@ -160,6 +163,12 @@ class GRP_Import {
 				return self::dismissals( $doc );
 			case 'settings':
 				return self::wrap( self::setting( $doc ) );
+			case 'leave':
+				return self::wrap( self::leave( $doc ) );
+			case 'daysOff':
+				return self::wrap( self::day_off( $doc ) );
+			case 'posts':
+				return self::wrap( self::post( $doc ) );
 		}
 
 		return array();
@@ -196,7 +205,106 @@ class GRP_Import {
 			'code_set_at' => self::time( $d['codeSetAt'] ?? null ),
 			'wp_user_id'  => ! empty( $d['wpUserId'] ) ? (int) $d['wpUserId'] : null,
 			'active'      => isset( $d['active'] ) ? ( $d['active'] ? 1 : 0 ) : 1,
+			'birthday'    => self::birthday( $d['birthday'] ?? null ),
+			'weekly_off'  => GRP_People::weekdays( $d['weeklyOff'] ?? null ),
 			'created_at'  => self::time( $d['createdAt'] ?? null ),
+		);
+	}
+
+	/**
+	 * `MM-DD` birthday, or null.
+	 *
+	 * @param mixed $value Raw value.
+	 * @return string|null
+	 */
+	public static function birthday( $value ) {
+		if ( is_string( $value ) && preg_match( '/^(\d{2})-(\d{2})$/', $value, $m ) && checkdate( (int) $m[1], (int) $m[2], 2024 ) ) {
+			return $value;
+		}
+
+		return null;
+	}
+
+	/**
+	 * `leave` → grp_leave (schema 5 exports).
+	 *
+	 * @param array $d Document.
+	 * @return array|null
+	 */
+	public static function leave( array $d ) {
+		$id   = self::id( $d['id'] ?? '' );
+		$from = self::ymd( $d['from'] ?? null );
+		$to   = self::ymd( $d['to'] ?? null );
+		if ( ! $id || empty( $d['personId'] ) || ! $from || ! $to || $to < $from ) {
+			return null;
+		}
+
+		return array(
+			'id'         => $id,
+			'member_id'  => (string) $d['personId'],
+			'type'       => 'sick' === ( $d['type'] ?? '' ) ? 'sick' : 'day',
+			'from_date'  => $from,
+			'to_date'    => $to,
+			'days'       => max( 0, min( 255, (int) ( $d['days'] ?? 0 ) ) ),
+			'reason'     => isset( $d['reason'] ) ? (string) $d['reason'] : null,
+			'status'     => in_array( $d['status'] ?? '', array( 'pending', 'approved', 'rejected', 'cancelled' ), true ) ? $d['status'] : 'pending',
+			'decided_by' => ! empty( $d['decidedBy'] ) ? (string) $d['decidedBy'] : null,
+			'decided_at' => self::time( $d['decidedAt'] ?? null ),
+			'message'    => isset( $d['message'] ) ? (string) $d['message'] : null,
+			'created_by' => ! empty( $d['by'] ) ? (string) $d['by'] : null,
+			'created_at' => self::time( $d['createdAt'] ?? null ),
+		);
+	}
+
+	/**
+	 * `daysOff` → grp_days_off.
+	 *
+	 * @param array $d Document.
+	 * @return array|null
+	 */
+	public static function day_off( array $d ) {
+		$id   = self::id( $d['id'] ?? '' );
+		$from = self::ymd( $d['from'] ?? null );
+		$to   = self::ymd( $d['to'] ?? null ) ?? $from;
+		if ( ! $id || ! $from || $to < $from ) {
+			return null;
+		}
+
+		return array(
+			'id'         => $id,
+			'kind'       => 'seasonal' === ( $d['kind'] ?? '' ) ? 'seasonal' : 'event',
+			'name'       => mb_substr( (string) ( $d['name'] ?? '' ), 0, 191 ),
+			'from_date'  => $from,
+			'to_date'    => $to,
+			'created_by' => ! empty( $d['by'] ) ? (string) $d['by'] : null,
+			'created_at' => self::time( $d['createdAt'] ?? null ),
+		);
+	}
+
+	/**
+	 * `posts` → grp_posts (announcements and shout-outs).
+	 *
+	 * @param array $d Document.
+	 * @return array|null
+	 */
+	public static function post( array $d ) {
+		$id   = self::id( $d['id'] ?? '' );
+		$body = (string) ( $d['body'] ?? '' );
+		if ( ! $id || '' === trim( $body ) ) {
+			return null;
+		}
+
+		return array(
+			'id'         => $id,
+			'kind'       => 'shoutout' === ( $d['kind'] ?? '' ) ? 'shoutout' : 'announcement',
+			'title'      => isset( $d['title'] ) ? mb_substr( (string) $d['title'], 0, 191 ) : null,
+			'body'       => $body,
+			'to_member'  => ! empty( $d['toId'] ) ? (string) $d['toId'] : null,
+			'pinned'     => ! empty( $d['pinned'] ) ? 1 : 0,
+			'show_until' => self::ymd( $d['showUntil'] ?? null ),
+			'created_by' => ! empty( $d['by'] ) ? (string) $d['by'] : null,
+			'deleted_at' => self::time( $d['deletedAt'] ?? null ),
+			'created_at' => self::time( $d['createdAt'] ?? null ),
 		);
 	}
 

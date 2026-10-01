@@ -824,4 +824,260 @@ class Test_GRP_Permissions extends WP_UnitTestCase {
 			$admin
 		);
 	}
+
+	/**
+	 * Row: See the Projects tab of the Dashboard.
+	 */
+	public function test_projects_tab() {
+		$this->assert_matrix(
+			GRP_Permissions::VIEW_PROJECTS_TAB,
+			null,
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => false,
+			)
+		);
+	}
+
+	/**
+	 * Row: Take / request day leave for self — never the Super Admin, never for someone else.
+	 */
+	public function test_take_leave() {
+		$this->assert_matrix(
+			GRP_Permissions::TAKE_LEAVE,
+			fn ( $role ) => array( 'member_id' => $this->users[ $role ]['id'] ),
+			array(
+				'admin'  => false,
+				'lead'   => true,
+				'member' => true,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::TAKE_LEAVE,
+			array( 'member_id' => 'm-other' ),
+			array(
+				'admin'  => false,
+				'lead'   => false,
+				'member' => false,
+			)
+		);
+	}
+
+	/**
+	 * Row: Approve / reject a Team Member's leave request (Team Leaders' leave never waits).
+	 */
+	public function test_decide_leave() {
+		$this->assert_matrix(
+			GRP_Permissions::DECIDE_LEAVE,
+			array( 'role' => 'member' ),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => false,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::DECIDE_LEAVE,
+			array( 'role' => 'lead' ),
+			array(
+				'admin'  => false,
+				'lead'   => false,
+				'member' => false,
+			)
+		);
+	}
+
+	/**
+	 * Row: Cancel leave — Super Admin anyone's; Team Leader own + Team Members'; Team Member own pending only.
+	 */
+	public function test_cancel_leave() {
+		$leave = static fn ( $member_id, $role, $status ) => array(
+			'member_id' => $member_id,
+			'role'      => $role,
+			'status'    => $status,
+		);
+		$this->assert_matrix(
+			GRP_Permissions::CANCEL_LEAVE,
+			$leave( 'm-other', 'member', 'approved' ),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => false,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::CANCEL_LEAVE,
+			$leave( 'm-other-lead', 'lead', 'approved' ),
+			array(
+				'admin'  => true,
+				'lead'   => false,
+				'member' => false,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::CANCEL_LEAVE,
+			fn ( $role ) => $leave( $this->users[ $role ]['id'], $role, 'pending' ),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => true,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::CANCEL_LEAVE,
+			fn ( $role ) => $leave( $this->users[ $role ]['id'], $role, 'approved' ),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => false,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::CANCEL_LEAVE,
+			$leave( 'm-other', 'member', 'rejected' ),
+			array(
+				'admin'  => false,
+				'lead'   => false,
+				'member' => false,
+			)
+		);
+	}
+
+	/**
+	 * Leave type, reason and message: managers and the person themself only.
+	 */
+	public function test_view_leave_details() {
+		$this->assert_matrix(
+			GRP_Permissions::VIEW_LEAVE_DETAILS,
+			array( 'member_id' => 'm-other' ),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => false,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::VIEW_LEAVE_DETAILS,
+			array( 'member_id' => 'm-member' ),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => true,
+			)
+		);
+	}
+
+	/**
+	 * Rows: leave settlement and reports; days off and automatic messages (Super Admin).
+	 */
+	public function test_leave_report_and_people_settings() {
+		$admin_only = array(
+			'admin'  => true,
+			'lead'   => false,
+			'member' => false,
+		);
+		$this->assert_matrix( GRP_Permissions::VIEW_LEAVE_REPORT, null, $admin_only );
+		$this->assert_matrix( GRP_Permissions::MANAGE_PEOPLE_SETTINGS, null, $admin_only );
+	}
+
+	/**
+	 * Rows: post / remove announcements and shout-outs (shout-outs only to Team Members).
+	 */
+	public function test_manage_posts() {
+		$managers = array(
+			'admin'  => true,
+			'lead'   => true,
+			'member' => false,
+		);
+		$nobody   = array(
+			'admin'  => false,
+			'lead'   => false,
+			'member' => false,
+		);
+		$this->assert_matrix( GRP_Permissions::MANAGE_POST, array( 'kind' => 'announcement' ), $managers );
+		$this->assert_matrix(
+			GRP_Permissions::MANAGE_POST,
+			array(
+				'kind'    => 'shoutout',
+				'to_role' => 'member',
+			),
+			$managers
+		);
+		$this->assert_matrix(
+			GRP_Permissions::MANAGE_POST,
+			array(
+				'kind'    => 'shoutout',
+				'to_role' => 'lead',
+			),
+			$nobody
+		);
+		$this->assert_matrix(
+			GRP_Permissions::MANAGE_POST,
+			array( 'created_by' => 'm-other' ),
+			array(
+				'admin'  => true,
+				'lead'   => false,
+				'member' => false,
+			)
+		);
+		$this->assert_matrix( GRP_Permissions::MANAGE_POST, fn ( $role ) => array( 'created_by' => $this->users[ $role ]['id'] ), $managers );
+	}
+
+	/**
+	 * Rows: ask someone to review own work (managers); answer a review asked of you.
+	 */
+	public function test_review_requests() {
+		$this->assert_matrix(
+			GRP_Permissions::REQUEST_REVIEW,
+			null,
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => false,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::ANSWER_REVIEW_REQUEST,
+			fn ( $role ) => array( 'reviewer' => $this->users[ $role ]['id'] ),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => true,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::ANSWER_REVIEW_REQUEST,
+			array( 'reviewer' => 'm-other' ),
+			array(
+				'admin'  => true,
+				'lead'   => false,
+				'member' => false,
+			)
+		);
+	}
+
+	/**
+	 * Row: Set own birthday.
+	 */
+	public function test_set_birthday() {
+		$this->assert_matrix(
+			GRP_Permissions::SET_BIRTHDAY,
+			fn ( $role ) => array( 'member_id' => $this->users[ $role ]['id'] ),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => true,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::SET_BIRTHDAY,
+			array( 'member_id' => 'm-other' ),
+			array(
+				'admin'  => true,
+				'lead'   => false,
+				'member' => false,
+			)
+		);
+	}
 }
