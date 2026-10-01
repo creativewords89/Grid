@@ -73,6 +73,17 @@ Three portal roles, stored on the team member (`role`): `admin` (Super Admin), `
 | Manage members, roles, codes | ✔ (only Super Admin can grant `admin`) | approve new members as Member only | ✘ |
 | Export / import data | ✔ | ✘ | ✘ |
 | Log manual work | for anyone | for anyone | for self |
+| See the **Projects** tab of the Dashboard (7.0) | ✔ | ✔ | ✘ |
+| Take / request day leave for self (6.10) | ✘ (no leave in the portal) | ✔ approved straight away | ✔ request (pending) |
+| Approve / reject a Team Member's leave request | ✔ | ✔ | ✘ |
+| Cancel leave | anyone's | own + any Team Member's | own pending requests only |
+| See leave settlement and yearly reports | ✔ | ✘ | ✘ |
+| Set days off and automatic messages | ✔ | ✘ | ✘ |
+| Post / remove an announcement | ✔ (any) | ✔ (own) | ✘ |
+| Send / remove a shout-out (to Team Members only) | ✔ (any) | ✔ (own) | ✘ |
+| Ask someone to review own finished task (6.6) | ✔ | ✔ | ✘ |
+| Approve / send back a review someone asked **you** for | ✔ | ✔ | ✔ (only that task) |
+| Set own birthday (day and month) | ✔ | ✔ | ✔ |
 
 Every REST endpoint calls `GRP_Permissions::can($user, $action, $object)`. Unit-test every row above.
 
@@ -96,7 +107,7 @@ All tables: `id` CHAR(26) ULID (or keep imported string ids, VARCHAR(64)), `crea
 
 | Table | Key columns |
 |---|---|
-| `grp_members` | id, name, role ENUM(admin,lead,member), color, photo (media id/url), title, email, phone, address, drive_url, notes, code_hash, code_salt (legacy), code_set_at, wp_user_id NULL, active TINYINT |
+| `grp_members` | id, name, role ENUM(admin,lead,member), color, photo (media id/url), title, email, phone, address, drive_url, notes, code_hash, code_salt (legacy), code_set_at, wp_user_id NULL, active TINYINT, birthday CHAR(5) NULL (`MM-DD`, no year), weekly_off JSON NULL (own weekly day off, weekdays 0–6; NULL = the team's) |
 | `grp_sessions` | id, member_id, token_hash, expires_at, ip, user_agent |
 | `grp_projects` | id, name UNIQUE, state ENUM(active,paused,inactive), cycle_day TINYINT 1–28, cycle_set TINYINT, cycle_changes JSON, cycle_log JSON, std_cycle VARCHAR (last cycle key the standard tasks were checked) |
 | `grp_meeting_tasks` | id, project_id, title, notes, url, priority ENUM(urgent,high,normal,low), status ENUM(todo,doing,done), meeting_date DATE, done_at, target INT (quantity, default 1), assignees JSON `[{id,n}]`, team TINYINT, progress JSON `{memberId: count}`, deadline JSON (6.3), review JSON (6.6), completion JSON (6.6), created_by |
@@ -107,7 +118,10 @@ All tables: `id` CHAR(26) ULID (or keep imported string ids, VARCHAR(64)), `crea
 | `grp_trash` | id, type, doc_id, data JSON (full row), title, project_id, deleted_at, deleted_by — purge after 30 days |
 | `grp_dismissals` | member_id, key, at — per-person dismissed notifications |
 | `grp_requests` | access requests (only if a public request flow is wanted; otherwise skip) |
-| `grp_settings` | key, value JSON (e.g. `workweek`) |
+| `grp_settings` | key, value JSON (e.g. `workweek`; `weekly_off` = team weekly day off, weekdays 0–6, default `[5]` Friday; `messages` = `{birthday, day_off, leave_approved}` texts with `{name}`) |
+| `grp_leave` | id, member_id, type ENUM(day,sick), from_date DATE, to_date DATE, days TINYINT (working days in the range, 6.10), reason, status ENUM(pending,approved,rejected,cancelled), decided_by NULL, decided_at NULL, message (approver's note), created_by — *new* |
+| `grp_days_off` | id, kind ENUM(event,seasonal), name, from_date DATE, to_date DATE (= from_date for an event), created_by — whole team — *new* |
+| `grp_posts` | id, kind ENUM(announcement,shoutout), title NULL, body, to_member NULL (shout-outs), pinned TINYINT, show_until DATE NULL, created_by, soft delete — *new* |
 
 ## 6. Domain logic
 
@@ -148,8 +162,8 @@ All tables: `id` CHAR(26) ULID (or keep imported string ids, VARCHAR(64)), `crea
 
 ### 6.6 Completion, review and status locks
 - When a **Team Member** clicks Fixed / Completed: modal "What did you complete?" (required note, optional https link) → saved as `completion {note, link, by, at}` and `review {state:'pending', submittedBy, submittedAt}`.
-- Super Admin / Team Leader completions are `review.state='accepted', auto=1` (no prompt).
-- Reviewers see **"Waiting for your review"** (Dashboard top) with Accept / Revise / Reject, also in the task Details:
+- Super Admin / Team Leader completions are `review.state='accepted', auto=1` by default. Their **Mark as done** dialog offers **Done — no review needed** (default) or **Ask someone to review it**: pick anyone (Super Admin, a Team Leader or a Team Member) and add an optional note → `review {state:'pending', submittedBy, submittedAt, reviewer: memberId, note}`. Only that person (plus the Super Admin) can then **Approve** (= Accept) or **Send back** (= Revise, note required), even when they are a Team Member. *Not in the reference portal.*
+- Reviewers see pending work in **Needs your approval** on My day (7.0) and in the task Details, with Accept / Revise / Reject:
   - **Accept** → accepted (no badge shown afterwards).
   - **Revise** (note required) → status In progress; quantity tasks lose one unit (from the submitter); activity credit removed for that unit.
   - **Reject** (reason required) → status To fix / Not started; all units cleared; all credit removed.
@@ -179,21 +193,50 @@ Every project (new and existing) has these six monthly tasks (Monthly deadline, 
 ### 6.9 Trash, audit, notifications
 - Delete = soft delete into `grp_trash` (30 days) + toast "Task deleted · Undo" (9 s). Recently deleted tasks are behind the **Recently deleted** button of the project's **Recent Activities** (admin/lead), deleted projects in **Team → Settings** (Super Admin): Restore / Delete forever.
 - Audit log rows for: added, changed (field-by-field), status, progress, completed, assigned, deleted, restored, review, project moves, cycle changes.
-- Notifications (admin/lead Dashboard): "Waiting for your review" (non-dismissable), plus dismissable items: unassigned urgent tasks, overdue recurring tasks, members without a code, member edits. Dismissals are per person; "sticky" items return after 7 days if unresolved.
+- Notifications (admin/lead Team dashboard): "Waiting for your review" (non-dismissable), plus dismissable items: unassigned urgent tasks, overdue recurring tasks, members without a code, member edits. Dismissals are per person; "sticky" items return after 7 days if unresolved.
+- **Bell** (My day top bar, everyone): a list of what is new for that person — leave decisions, review requests and review results, shout-outs to them, announcements, and (admin/lead) the items above. The red number counts unread items; opening the list marks them read.
+
+### 6.10 People: leave, days off, birthdays, announcements, shout-outs
+*Not in the reference portal.* "Today" and month ends use the site time zone.
+- **Days off** (set by the Super Admin in Team → Settings): the team's **weekly day off** (one or more weekdays, default Friday); a person's **own weekly day off** instead of the team's; **event** days off (one date, a name, e.g. Durga Puja) and **seasonal** days off (a date range, e.g. Eid holidays), both for the whole team. Deadlines do not move on days off. Days off never use anyone's leave.
+- **Day leave**: everyone except the Super Admin gets **1 leave day per calendar month**. Day leave and sick leave (`type`) share that one day. A request covers From–To; `days` counts the dates in the range that are not the person's days off. Ranges may not overlap the person's other pending or approved leave, may start up to 30 days in the past (e.g. sick leave), and are split by calendar month when counted.
+  - **Team Member**: the request is `pending`; any Team Leader or the Super Admin approves or rejects it with an optional message. The member can cancel it while pending.
+  - **Team Leader**: leave is `approved` straight away (no approval step).
+  - The Super Admin can cancel anyone's leave; a Team Leader can cancel a Team Member's leave and their own.
+  - Taking more than the month's day is allowed (the dialog warns "N days over, deducted from {Month}'s salary").
+- **Monthly settlement** (computed from approved leave, never stored): per person per calendar month, taken = approved leave days in that month. 0 → **1 day paid** with that month's salary; 1 → even; more → **taken − 1 days deducted**. Nothing carries over; each month starts again at 1. The **year-end report** only counts, per person: day leave, sick leave, total, and the company days off in the year.
+- **Who's out today**: everyone else whose day off is today (weekly, own, event, seasonal) or who has approved leave today, with "Day off" / "On leave" and when they are back (the next date that is neither). Never shows day vs sick leave or a reason.
+- **Birthdays**: everyone sets their day and month in their own Settings (7.6). On the day, that person sees the birthday message and everyone else sees "Today is {name}'s birthday."
+- **Automatic messages** (Super Admin edits the texts; `{name}` = first name): **birthday**, **signed in on a day off** (shown when today is the person's day off), **leave approved** (used when the approver types no message).
+- **Announcements**: Super Admin and Team Leaders post a title, a message, an optional **show until** date and **pin**. Everyone sees active announcements (newest pinned first) until they dismiss them or the date passes.
+- **Shout-outs**: Super Admin and Team Leaders praise a **Team Member** (to, message). Shown to every Team Member for **30 days**; the recipient also gets a bell item.
 
 ## 7. Screens (match the reference file)
 
 ### 7.0 Dashboard (everyone)
-*Not in the reference portal.* The landing page after sign-in, and what **GridRankers** in the sidebar opens.
-- Project search and **+ New project** (Super Admin, Team Leader: name, cycle start day — optional, locks it as 6.1 — and status) at the top.
-- Status tabs **Active · Paused · Inactive · All** with counts (underlined tab; opens on Active).
-- One clean card per project (click → that project's Meeting Minutes): name; "Day N · X days left" (or "No cycle start day yet", plus the status when not active); this cycle's monthly progress (done / total, with a bar); open meeting tasks; one attention line — "2 urgent · 1 overdue · 1 to review" in red, or "On track" in green.
-- "⋯" menu on each card (Super Admin, Team Leader): Move to Active / Paused / Inactive; **Delete project** (Super Admin only; its tasks go to the trash with it).
-- Deleted projects are not shown here: they are in **Team → Settings → Deleted projects** (7.5).
+*Not in the reference portal.* The landing page after sign-in, and what **GridRankers** in the sidebar opens. Design reference: the "Employee dashboard" boards H–U of the design canvas. No statistics (days worked, percentages) anywhere on it.
+
+**Top bar** (everyone): "Good morning / afternoon / evening, {first name}" (before 12:00 / until 17:00 / after), today's date, the **bell** (6.9), user chip and Sign out. Below them, slim message strips, each with Dismiss (per person, 6.9): the day-off message (6.10), birthday ("Happy birthday, {name}!" for that person — button Thanks — and "Today is {name}'s birthday. Wish them a happy birthday!" for everyone else), leave approved / rejected with the approver's message, "{name} asked you to review '{task}'" with **Review now**, and active announcements. No strips → just the greeting row.
+
+**Tabs** (Super Admin, Team Leader only): **My day · Projects** (with the number of attention items), and on the right **Send shout-out** and **Post announcement**. Team Members have no tabs: they only have My day.
+
+**My day** — two columns that start and end level (the stretching box fills the gap):
+- **Left: My projects.** Every project in which this person has open work: meeting tasks assigned to them and not done, and recurring tasks of the current period where they are responsible (or the task is unassigned) and their share is not done. Most urgent first: red edge = something overdue or urgent; amber = something due within the next 3 days; then by the next deadline; projects with no deadline last. Each project box: name, "N tasks", one flag ("Overdue", "Urgent", "Due today", "Due in 3 days", "Due Oct 8", "Next due Oct 20"), up to 2 tasks (checkbox look, title · kind, due chip), "+N more tasks" (expands in place). Filter chips **All · Urgent · Overdue · Due this week** with counts. **5 projects per page** with "Showing 1–5 of 8 projects" and ‹ Previous · 1 · 2 · Next ›. Click a task → its Details; click the project name → its Meeting Minutes. Empty: green tick, **You're all caught up**, "No open tasks. New tasks assigned to you will show here, most urgent first."
+- **Right column:**
+  1. **Who's out today** (everyone, 6.10). Empty: "Everyone is in today."
+  2. Team Member: **Shout-outs** — the 3 latest of the last 30 days as soft gold tiles ("Lee Lead → you · yesterday", star, message), header "Last 30 days"; the box stretches. Empty: star, **No shout-outs yet**, "When a Team Leader praises someone's work, it shows here."
+     Team Leader / Super Admin: **Needs your approval** (stretches) — the newest items as small cards, with **View all N**: leave requests from Team Members (type, dates, days, "within October's 1 day" or "2 days over, deducted" in red; **Approve** / **Reject**, optional message), finished work waiting for review (6.6: **Approve** / **Send back**), and reviews someone asked them for. Empty: tick, **Nothing waiting for you**, "Leave requests and finished tasks to check will show here."
+  3. **Day leave** (Team Member, Team Leader; not the Super Admin): "**N** day left in {Month}" (1 − leave taken this month, never below 0), **My leave** link (member page), and **Request day leave** (Team Member) or **Take day leave** with "Your leave is approved straight away." (Team Leader). The dialog: Type (Day leave / Sick leave), From, To, Reason (optional); it shows the days counted (days off not counted) and, when over, "This request is N days over. Settled at the end of {Month}: N days deducted from {Month}'s salary." After approval the box shows "Approved: 19–21 Oct."
+
+**Projects** (Super Admin, Team Leader):
+- **Needs attention** across all active projects: one row per item — project, task, reason chip, person, **Open** — with chips **All · Overdue · Due soon · To review · Unassigned** and counts. Overdue = 6.3 / missed recurring periods; Due soon = due within 3 days; To review = pending review; Unassigned = open tasks with nobody responsible.
+- **All projects** below it: project search and **+ New project** (name, cycle start day — optional, locks it as 6.1 — and status); status tabs **Active · Paused · Inactive · All** with counts (opens on Active); one card per project (click → Meeting Minutes): name; "Day N · X days left" (or "No cycle start day yet", plus the status when not active); this cycle's monthly progress (done / total, with a bar); open meeting tasks; one attention line ("2 urgent · 1 overdue · 1 to review" in red, or "On track" in green); "⋯" menu: Move to Active / Paused / Inactive, **Delete project** (Super Admin only; its tasks go to the trash with it). Deleted projects are in **Team → Settings → Deleted projects** (7.5).
+
+**Send shout-out** dialog: To (Team Members only), Message → "Shown on everyone's My day for 30 days, with a notification to {name}." **Post announcement** dialog: Title, Message, Show until (optional), Pin to the top.
 
 ### 7.1 Layout
 - Left sidebar: **GridRankers** / Team portal (click → Dashboard, 7.0), groups **Active / Paused / Inactive projects** with counts for quick switching. No "Add a project", no drag & drop, no move or delete buttons: those live on the Dashboard.
-- Top bar: project title (+ "(paused)/(inactive)"), task search, tabs **Meeting Minutes · Monthly Tasks · Recent Activities**, user chip (avatar → Team area; admin/lead → Team dashboard, member → own page), Sign out.
+- Top bar on a project's screens (the Dashboard has its own, 7.0): project title (+ "(paused)/(inactive)"), task search, tabs **Meeting Minutes · Monthly Tasks · Recent Activities**, user chip (avatar → Team area; admin/lead → Team dashboard, member → own page), Sign out.
 
 ### 7.2 Meeting Minutes
 Alert banner (cycle-scoped), project cycle bar, stats (status chips, cycle dates, cycle progress, days left / ended / starts in), cards, "+ Add task" tile.
@@ -215,19 +258,21 @@ Banner, project cycle bar, stats, filters (All / Weekly / Bi-weekly / Monthly) +
 (The Recent Activities tab of a person's page, 7.5, stays across all projects: it is that person's history.)
 
 ### 7.5 Team area (admin/lead)
-Tabs **Dashboard · Activity · Team · Settings**, Daily/Weekly/Monthly period selector.
+Tabs **Dashboard · Activity · Team · Leave · Settings**, Daily/Weekly/Monthly period selector.
 - Dashboard: notifications (6.9), greeting with counts (done / assigned / unassigned), Workload (open tasks per person), completed-tasks chart (per day; per person in Daily view), team list.
 - Activity: completed + logged work grouped by day, person filter, Copy report.
 - Team: member cards (open, urgent, done this period, projects), search, + Add member.
-- Settings: Members & access table (role, contact, open tasks, sign-in status, **Set code**, Open, Remove), **Deleted projects** (Restore — brings back the tasks deleted with it — / Delete forever; kept 30 days), Export all data.
+- Leave (*new*): everyone's leave, newest first — person, type, dates, days, status, decided by, message — with filters (person, status, month) and Approve / Reject / Cancel per the rules in 6.10. Super Admin only: **Monthly settlement** (pick a month: per person taken, then "1 day paid" / "Even" / "N days deducted") and **Year-end report** (per person: Day leave · Sick leave · Company days off · Total), both with **Download CSV** and **Print**.
+- Settings: Members & access table (role, contact, open tasks, sign-in status, **Set code**, Open, Remove), **Deleted projects** (Restore — brings back the tasks deleted with it — / Delete forever; kept 30 days), Export all data. Super Admin only (*new*): **Days off** (team weekly day off as weekday chips; a person's own weekly day off; list of event and seasonal days off with **+ Add day off** and remove) and **Automatic messages** (birthday, signed in on a day off, leave approved).
 
 ### 7.6 Member page (own page for members; any member for admin/lead)
-Tabs **My dashboard · My tasks · Calendar · Recent Activities · Settings**.
+Tabs **My dashboard · My tasks · Calendar · My leave · Recent Activities · Settings** (no My leave for the Super Admin).
 - My dashboard: greeting + counts, next tasks, completed chart.
 - My tasks: Reviews of your work; filters All / To start / In progress / Completed + Project; groups To start, In progress, Completed this period; + Log work; ⬇ Download PDF report.
 - Calendar: Month / Week / Day. Monthly tasks = bar across the cycle; weekly = bar across the week; meeting deadlines per type; dated items = chips; colours: blue to do, orange urgent, green done (struck), red missed; click a day → Day view.
 - Recent Activities: grouped by month, filter chips (All / Assigned / Completed / Logged work / Other changes), date column, coloured icon, tag + title, meta line, time.
-- Settings: photo (cropped to 160 px), name, job title, email, phone, address, Google Drive link, notes; Super Admin: role + Set code + Remove.
+- Settings: photo (cropped to 160 px), name, job title, email, phone, address, Google Drive link, notes, **birthday** (day and month, *new*); Super Admin: role + Set code + Remove.
+- My leave (*new*; the Day leave box's **My leave** link opens it): this month's days left, the person's requests (type, dates, days, status, decided by, message; Cancel while pending) and past months' settlement ("1 day paid" / "Even" / "N days deducted").
 
 ## 8. REST API (namespace `gr-portal/v1`)
 
@@ -240,6 +285,12 @@ Tabs **My dashboard · My tasks · Calendar · Recent Activities · Settings**.
 | GET/POST/PATCH/DELETE `/monthly-tasks[/id]` | tasks |
 | POST `/records/tick` `{taskId, periodKey, partId?, memberId?, delta}` · POST `/records/status` | recurring progress |
 | POST `/review` `{kind: item|record, id, action: accept|revision|reject, note}` | review |
+| POST `/review/request` `{kind, id, reviewer, note}` | ask someone to review own finished task (6.6) |
+| GET/POST `/leave` · PATCH `/leave/id` `{action: approve|reject|cancel, message}` | day leave (6.10) |
+| GET `/leave/report?month=YYYY-MM` · `?year=YYYY` (Super Admin) | monthly settlement / year-end counts |
+| GET/POST/DELETE `/days-off[/id]` · PUT `/days-off/weekly` `{weekdays, member?}` (Super Admin) | days off |
+| GET/POST/DELETE `/posts[/id]` `{kind: announcement|shoutout, …}` | announcements, shout-outs |
+| PUT `/settings/messages` (Super Admin) | automatic messages |
 | GET/POST/DELETE `/activity` | logged work |
 | GET `/audit?project=&from=&to=` | Recent Activities |
 | GET `/trash` · POST `/trash/id/restore` · DELETE `/trash/id` | trash |
@@ -248,6 +299,8 @@ Tabs **My dashboard · My tasks · Calendar · Recent Activities · Settings**.
 | GET `/export` · POST `/import` (admin, nonce) | data |
 
 All writes validate input, check permissions (section 3), write the audit row in the same transaction, and return the updated row.
+
+`/sync` also carries the new tables. Leave privacy is enforced there: a Team Member receives their own leave rows in full and, for other people, only approved leave as `{member_id, from_date, to_date}` (enough for Who's out today) — never the type, reason or message. Team Leaders and the Super Admin receive all leave rows.
 
 ## 9. Non-functional
 
@@ -283,5 +336,13 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 12. Team area (dashboard, notifications, activity, team, settings) and member page (tabs, calendar, activities, settings, PDF).
 13. Standard tasks + `grp_daily` cron; README for Hostinger cron + cache exclusions.
 14. Playwright e2e: member completes → admin revises → member re-completes → admin accepts; member cannot edit/delete; cycle switching; import round-trip.
+
+**My day and people features (6.10, 7.0) — released as 0.1.5 (steps 15–16, server only) and 0.1.6 (steps 17–19):**
+
+15. Schema 5: `grp_leave`, `grp_days_off`, `grp_posts`, `grp_members.birthday` / `weekly_off`, settings `weekly_off` / `messages`; new permission rows of section 3; leave day counting, monthly settlement and Who's-out-today as pure functions. Export includes the new tables. **Tests:** every new permission row, day counting across days off and month ends, settlement 0 / 1 / over.
+16. REST: `/leave` (+ report), `/days-off`, `/posts`, `/settings/messages`, `/review/request`, member birthday, `/sync` with leave privacy. **Tests:** a Team Member cannot approve leave, see other people's leave type or reason, post, or read reports; a Team Leader's leave is approved on creation; only the named reviewer (or Super Admin) can act on a review request.
+17. My day (7.0): top bar with greeting, bell and strips; My projects (ordering, filters, pagination, empty state); right column per role (Who's out today, Shout-outs / Needs your approval, Day leave + leave dialog); Projects tab (Needs attention + project cards); Send shout-out and Post announcement dialogs; Mark as done → Ask someone to review it.
+18. Team → Leave (list, monthly settlement, year-end report, CSV / Print) and Team → Settings → Days off + Automatic messages; member page My leave tab and Settings → birthday.
+19. Playwright e2e: member requests 3 days → leader sees it in Needs your approval → approves with a message → member sees the strip and "0 days left"; leader takes leave (approved straight away, shows in Who's out today); Super Admin sets a day off → member signing in that day sees the day-off strip; birthday strip; shout-out appears for members; leader asks a member to review → member approves.
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).
