@@ -161,7 +161,7 @@ class Test_GRP_REST_Team extends GRP_REST_TestCase {
 		$member = $this->api_as( 'lead', 'POST', '/members', array( 'name' => 'Nia New' ) );
 		$this->assertStatus( 201, $member );
 		$this->assertSame( 'member', $member->get_data()['role'] );
-		$this->assertMatchesRegularExpression( '/^#[0-9a-f]{6}$/', $member->get_data()['color'] );
+		$this->assertMatchesRegularExpression( '/^#[0-9a-f]{6}$/i', $member->get_data()['color'] );
 
 		$lead = $this->api_as(
 			'admin',

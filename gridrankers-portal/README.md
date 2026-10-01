@@ -46,3 +46,21 @@ sign in with WordPress. The old `admin` and `gdrive` settings documents and `vis
 
 **GridRankers → Export** (or `GET /wp-json/gr-portal/v1/export`) downloads the same format, which can be
 imported again.
+
+## Front end (React app)
+
+The portal is a React app in `app/`, built with Vite into `app/dist/` (committed, so the plugin
+installs without Node). Activating the plugin creates a page with `[gridrankers_portal]`, makes it
+the site's front page, and redirects every other front-end URL (posts, search, feeds) to it. The
+page is `noindex` and served with `Cache-Control: no-store`, as is every `/wp-json/gr-portal/*`
+response.
+
+```sh
+cd app
+npm install
+npm test            # Vitest
+npm run build       # writes app/dist (commit it)
+node extract-styles.mjs   # re-copy the reference stylesheet into src/styles/portal.css
+```
+
+Fonts (Bricolage Grotesque, Instrument Sans) are bundled from `@fontsource`; nothing loads from a CDN.

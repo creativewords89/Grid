@@ -51,6 +51,7 @@ class GRP_Install {
 	 */
 	public static function activate() {
 		self::install();
+		GRP_Frontend::install_page();
 	}
 
 	/**

@@ -15,9 +15,9 @@ class GRP_REST_Members extends GRP_REST_Controller {
 	const TABLE = 'grp_members';
 
 	/**
-	 * Avatar colours for new members.
+	 * Avatar colours for new members (reference PALETTE).
 	 */
-	const PALETTE = array( '#2563eb', '#16a34a', '#db2777', '#ea580c', '#7c3aed', '#0891b2', '#ca8a04', '#dc2626' );
+	const PALETTE = array( '#2753C9', '#C2410C', '#0E7C66', '#9333EA', '#B45309', '#BE185D', '#0369A1', '#4D7C0F' );
 
 	/**
 	 * Profile fields: name => max length (0 = multi-line).

@@ -1,0 +1,7 @@
+/* Additions to the reference stylesheet (portal.css) for markup that differs in the React app. */
+.ag-card .ag-field{display:flex;flex-direction:column;gap:4px;width:100%;text-align:left;font-size:.85rem;font-weight:600}
+.ag-card .ag-field input{border:1px solid var(--line);background:var(--panel-2);border-radius:8px;padding:10px 12px;font:inherit;font-weight:400;letter-spacing:.08em;color:var(--ink)}
+.ag-card .btn.link{margin:0 auto}
+.ag-card .ag-acct a{color:var(--accent)}
+.grp-view{min-height:40vh}
+button{font:inherit;color:inherit;cursor:pointer}

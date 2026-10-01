@@ -126,7 +126,7 @@ class GRP_REST_Auth {
 			return $result;
 		}
 
-		return rest_ensure_response( array( 'member' => GRP_Auth::public_member( $result['member'] ) ) );
+		return rest_ensure_response( array( 'member' => self::me_payload( $result['member'] ) ) );
 	}
 
 	/**
@@ -150,7 +150,7 @@ class GRP_REST_Auth {
 
 		return rest_ensure_response(
 			array(
-				'member'     => $member ? GRP_Auth::public_member( $member ) : null,
+				'member'     => $member ? self::me_payload( $member ) : null,
 				'needsSetup' => ! $member && GRP_Auth::needs_setup(),
 			)
 		);
@@ -168,6 +168,20 @@ class GRP_REST_Auth {
 			return $member;
 		}
 
-		return rest_ensure_response( array( 'member' => GRP_Auth::public_member( $member ) ) );
+		return rest_ensure_response( array( 'member' => self::me_payload( $member ) ) );
+	}
+
+	/**
+	 * The signed-in member for the app, with the role they actually hold
+	 * (an `admin` not linked to a WordPress administrator acts as a member).
+	 *
+	 * @param array $member Member row.
+	 * @return array
+	 */
+	private static function me_payload( array $member ) {
+		$out         = GRP_Auth::public_member( $member );
+		$out['role'] = GRP_Permissions::effective_role( $member );
+
+		return $out;
 	}
 }
