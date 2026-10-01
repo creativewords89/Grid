@@ -11,6 +11,7 @@ import Sidebar from './components/Sidebar.jsx';
 import TopBar from './components/TopBar.jsx';
 import CompletionDialog from './components/CompletionDialog.jsx';
 import MeetingMinutes from './components/meeting/MeetingMinutes.jsx';
+import MonthlyTasks from './components/monthly/MonthlyTasks.jsx';
 import { todayYmd } from './lib/cycles.js';
 
 const VIEW_KEY = 'grp:view';
@@ -172,6 +173,8 @@ export default function App({ config }) {
 							</div>
 						) : view === 'board' ? (
 							<MeetingMinutes />
+						) : view === 'monthly' ? (
+							<MonthlyTasks />
 						) : (
 							<p className="empty">This screen arrives in a later build step.</p>
 						)}

@@ -37,8 +37,19 @@ function changesOf(p) {
 	return (Array.isArray(ch) ? ch : []).filter((c) => c && c.from);
 }
 
+const CACHE = new Map();
+
 export function periodsOf(project, today) {
 	const changes = [...changesOf(project)].sort((a, b) => String(a.from).localeCompare(String(b.from)));
+	const sig = `${project.cycle_day ?? project.cycleDay}|${today}|${JSON.stringify(changes)}`;
+	if (CACHE.has(sig)) return CACHE.get(sig);
+	if (CACHE.size > 500) CACHE.clear();
+	const list = buildPeriods(project, changes, today);
+	CACHE.set(sig, list);
+	return list;
+}
+
+function buildPeriods(project, changes, today) {
 	const [ny, nm] = parts(today);
 	let day = clampDay(changes.length ? changes[0].prevDay : project.cycle_day ?? project.cycleDay);
 	let cur = ymd(ny, nm - WINDOW, day);
