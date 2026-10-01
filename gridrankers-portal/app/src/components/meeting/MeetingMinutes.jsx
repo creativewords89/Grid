@@ -102,7 +102,7 @@ const FILTERS = [
 ];
 
 // Meeting Minutes (SPEC.md 7.2): banner, project cycle bar, stats, cards, "+ Add task".
-export default function MeetingMinutes({ reviewActions }) {
+export default function MeetingMinutes() {
 	const { data, project, search, cycleOff, today } = usePortal();
 	const [filter, setFilter] = useState('all');
 	const [dialog, setDialog] = useState(null);
@@ -213,7 +213,7 @@ export default function MeetingMinutes({ reviewActions }) {
 				</button>
 			</div>
 			{dialog && dialog.type === 'edit' && <TaskDialog taskId={dialog.id} onClose={() => setDialog(null)} />}
-			{dialog && dialog.type === 'details' && <TaskDetails taskId={dialog.id} onClose={() => setDialog(null)} reviewActions={reviewActions} />}
+			{dialog && dialog.type === 'details' && <TaskDetails taskId={dialog.id} onClose={() => setDialog(null)} />}
 		</>
 	);
 }

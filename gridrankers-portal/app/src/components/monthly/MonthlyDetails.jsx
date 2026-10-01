@@ -6,8 +6,9 @@ import Avatar from '../Avatar.jsx';
 import Modal from '../Modal.jsx';
 import { ReviewDetail } from '../meeting/TaskDetails.jsx';
 import { DueChip, ProgressBox, usePeriod } from './MonthlyCard.jsx';
+import ReviewActions from '../review/ReviewActions.jsx';
 
-export default function MonthlyDetails({ taskId, week, missed, onClose, reviewActions }) {
+export default function MonthlyDetails({ taskId, week, missed, onClose }) {
 	const { data } = usePortal();
 	const task = data.monthly_tasks[taskId];
 	const period = usePeriod(task || { project_id: '', freq: 'monthly' }, week);
@@ -88,7 +89,7 @@ export default function MonthlyDetails({ taskId, week, missed, onClose, reviewAc
 				<section className="dt-sec">
 					<h4>Completion &amp; review</h4>
 					<ReviewDetail review={rec && rec.review} completion={rec && rec.completion} members={members} />
-					{rec && reviewActions ? reviewActions(rec, st) : null}
+					{rec && <ReviewActions kind="record" id={rec.id} review={rec.review} done={st === 'done'} />}
 				</section>
 			</div>
 			<div className="dlg-acts">

@@ -168,7 +168,7 @@ const TILES = [
 ];
 
 // Monthly Tasks (SPEC.md 7.3): banner, project cycle bar, stats, filters + week bar, cards.
-export default function MonthlyTasks({ reviewActions }) {
+export default function MonthlyTasks() {
 	const { data, project, search, cycleOff, today } = usePortal();
 	const [freq, setFreq] = useState('all');
 	const [status, setStatus] = useState('all');
@@ -355,7 +355,7 @@ export default function MonthlyTasks({ reviewActions }) {
 			</div>
 			{dialog && dialog.type === 'edit' && <MonthlyDialog taskId={dialog.id} onClose={() => setDialog(null)} />}
 			{dialog && dialog.type === 'details' && (
-				<MonthlyDetails taskId={dialog.id} week={dialog.week} missed={missedOf(data.monthly_tasks[dialog.id] || { id: '' })} onClose={() => setDialog(null)} reviewActions={reviewActions} />
+				<MonthlyDetails taskId={dialog.id} week={dialog.week} missed={missedOf(data.monthly_tasks[dialog.id] || { id: '' })} onClose={() => setDialog(null)} />
 			)}
 		</>
 	);

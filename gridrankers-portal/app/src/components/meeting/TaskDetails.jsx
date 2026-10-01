@@ -6,6 +6,7 @@ import { PRI_LABEL, REVIEW_TXT, STATUS_TXT, assigneesOf, progressTotal } from '.
 import Avatar from '../Avatar.jsx';
 import Modal from '../Modal.jsx';
 import useTaskActions from './useTaskActions.js';
+import ReviewActions from '../review/ReviewActions.jsx';
 
 export function ReviewDetail({ review, completion, members }) {
 	const name = (id) => (members[id] ? members[id].name : 'someone');
@@ -91,7 +92,7 @@ export function ShareSteppers({ task, members, me, onTick }) {
 }
 
 // Details window (SPEC.md 7.2): header, info grid, progress, details, page link, completion & review.
-export default function TaskDetails({ taskId, onClose, reviewActions }) {
+export default function TaskDetails({ taskId, onClose }) {
 	const { data, me, today } = usePortal();
 	const { tick } = useTaskActions();
 	const task = data.meeting_tasks[taskId];
@@ -178,7 +179,7 @@ export default function TaskDetails({ taskId, onClose, reviewActions }) {
 				<section className="dt-sec">
 					<h4>Completion &amp; review</h4>
 					<ReviewDetail review={task.review} completion={task.completion} members={members} />
-					{reviewActions ? reviewActions(task) : null}
+					<ReviewActions kind="item" id={task.id} review={task.review} done={task.status === 'done'} />
 				</section>
 			</div>
 			<div className="dlg-acts">

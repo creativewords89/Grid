@@ -161,7 +161,8 @@ abstract class GRP_REST_Controller {
 		if ( '' === $value ) {
 			return '';
 		}
-		if ( ! preg_match( '#^https?://#i', $value ) || ! wp_http_validate_url( $value ) ) {
+		// Syntax only: wp_http_validate_url() resolves the host, which rejects valid client URLs.
+		if ( ! preg_match( '#^https?://[^/\s]+#i', $value ) || false === filter_var( $value, FILTER_VALIDATE_URL ) ) {
 			/* translators: %s: field name. */
 			return self::invalid( sprintf( __( 'The %s should start with https://', 'gridrankers-portal' ), $https_label ) );
 		}

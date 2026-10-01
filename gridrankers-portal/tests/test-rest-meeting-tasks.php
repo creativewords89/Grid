@@ -468,4 +468,17 @@ class Test_GRP_REST_Meeting_Tasks extends GRP_REST_TestCase {
 		);
 		$this->assertSame( 'doing', $own['status'] );
 	}
+
+	public function test_links_are_checked_by_syntax_not_dns() {
+		$task = $this->task( 'lead', array( 'url' => 'https://client-site.invalid/plumbers?x=1' ) );
+		$this->assertSame( 'https://client-site.invalid/plumbers?x=1', $task['url'] );
+
+		$this->act_as( 'lead' );
+		$base = array(
+			'project_id' => $this->project['id'],
+			'title'      => 'x',
+		);
+		$this->assertStatus( 400, $this->api( 'POST', '/meeting-tasks', array( 'url' => 'https://' ) + $base ) );
+		$this->assertStatus( 400, $this->api( 'POST', '/meeting-tasks', array( 'url' => 'https://a b.com' ) + $base ) );
+	}
 }

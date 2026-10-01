@@ -5,7 +5,7 @@ import { bornAt, isShared, isWaived, periodKeyOf, recordOf, stateOf, typePeople 
 import { isManager } from '../../lib/roles.js';
 import { assigneesOf, canWorkOn, isAssigned } from '../../lib/tasks.js';
 import Avatar from '../Avatar.jsx';
-import { MiniReview, People } from '../meeting/TaskCard.jsx';
+import { MiniReview, People, ReviewBadge } from '../meeting/TaskCard.jsx';
 import useRecordActions from './useRecordActions.js';
 
 // Everything the card and the Details window need about a task in the viewed period.
@@ -304,6 +304,7 @@ export default function MonthlyCard({ task, selWeek, onSelectWeek, missed, onDet
 				<DueChip task={task} period={period} missed={missed} />
 				<MiniReview review={period.rec && period.rec.review} me={me} />
 			</div>
+			<ReviewBadge review={period.rec && period.rec.review} me={me} members={members} />
 			{weeks}
 			{n > 1 && (
 				<div className="mini-prog">

@@ -12,6 +12,7 @@ import TopBar from './components/TopBar.jsx';
 import CompletionDialog from './components/CompletionDialog.jsx';
 import MeetingMinutes from './components/meeting/MeetingMinutes.jsx';
 import MonthlyTasks from './components/monthly/MonthlyTasks.jsx';
+import TeamView from './components/TeamView.jsx';
 import { todayYmd } from './lib/cycles.js';
 
 const VIEW_KEY = 'grp:view';
@@ -143,6 +144,7 @@ export default function App({ config }) {
 			/* signed out anyway */
 		}
 		signOutLocally();
+		setView('board');
 		if (config.isWpAdmin) window.location.reload();
 	};
 
@@ -175,6 +177,8 @@ export default function App({ config }) {
 							<MeetingMinutes />
 						) : view === 'monthly' ? (
 							<MonthlyTasks />
+						) : view === 'team' ? (
+							<TeamView />
 						) : (
 							<p className="empty">This screen arrives in a later build step.</p>
 						)}

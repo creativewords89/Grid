@@ -39,6 +39,18 @@ export function MiniReview({ review, me }) {
 	return <span className={'mini-rv ' + (review.state === 'revision' ? 'r' : 'x')}>{REVIEW_TXT[review.state]}</span>;
 }
 
+// The submitter's own revision / rejection with the reviewer's note (SPEC.md 6.6).
+export function ReviewBadge({ review, me, members }) {
+	if (!review || !['revision', 'rejected'].includes(review.state) || isManager(me) || review.submittedBy !== me.id) return null;
+	return (
+		<div className={'rv rv-' + review.state}>
+			<span className="rv-tag">{REVIEW_TXT[review.state]}</span>
+			<span className="rv-who">{review.by && members[review.by] ? `by ${members[review.by].name}` : ''}</span>
+			{review.note && <span className="rv-note">“{review.note}”</span>}
+		</div>
+	);
+}
+
 // Compact meeting-task card (SPEC.md 7.2; reference bcard).
 export default function TaskCard({ task, onDetails, onEdit }) {
 	const { data, me, today } = usePortal();
@@ -96,6 +108,7 @@ export default function TaskCard({ task, onDetails, onEdit }) {
 				)}
 				<MiniReview review={task.review} me={me} />
 			</div>
+			<ReviewBadge review={task.review} me={me} members={members} />
 			{target > 1 && (
 				<div className="mini-prog">
 					<span className="mp-bar">
