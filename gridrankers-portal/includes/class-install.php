@@ -15,7 +15,7 @@ class GRP_Install {
 	/**
 	 * Current schema version. Bump it whenever get_schema() or migrations() changes.
 	 */
-	const DB_VERSION = 1;
+	const DB_VERSION = 2;
 
 	/**
 	 * Option that stores the installed schema version.
@@ -26,7 +26,8 @@ class GRP_Install {
 	 * Unprefixed table names, without the `{$wpdb->prefix}` part.
 	 *
 	 * The optional `grp_requests` table from SPEC.md section 5 is not created:
-	 * there is no public access-request flow.
+	 * there is no public access-request flow. `grp_deletions` (schema 2) is an addition:
+	 * tombstones for hard-deleted rows so GET /sync can report deletions.
 	 *
 	 * @var string[]
 	 */
@@ -42,6 +43,7 @@ class GRP_Install {
 		'grp_trash',
 		'grp_dismissals',
 		'grp_settings',
+		'grp_deletions',
 	);
 
 	/**
@@ -345,6 +347,18 @@ class GRP_Install {
 				updated_at datetime NOT NULL,
 				PRIMARY KEY  (id),
 				UNIQUE KEY setting_key (setting_key),
+				KEY updated_at (updated_at)
+			) $collate;",
+
+			"CREATE TABLE {$t['grp_deletions']} (
+				id varchar(64) NOT NULL,
+				table_name varchar(32) NOT NULL,
+				doc_id varchar(191) NOT NULL,
+				deleted_at datetime NOT NULL,
+				created_at datetime NOT NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				KEY table_doc (table_name,doc_id),
 				KEY updated_at (updated_at)
 			) $collate;",
 		);

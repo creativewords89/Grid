@@ -766,4 +766,62 @@ class Test_GRP_Permissions extends WP_UnitTestCase {
 		$this->assertTrue( GRP_Permissions::can( (object) $this->users['lead'], GRP_Permissions::EDIT_TASK ) );
 		$this->assertFalse( GRP_Permissions::can( (object) $this->users['member'], GRP_Permissions::EDIT_TASK ) );
 	}
+
+	/**
+	 * Supporting actions used by the REST controllers.
+	 */
+	public function test_supporting_actions() {
+		$managers = array(
+			'admin'  => true,
+			'lead'   => true,
+			'member' => false,
+		);
+		$admin    = array(
+			'admin'  => true,
+			'lead'   => false,
+			'member' => false,
+		);
+
+		$this->assert_matrix( GRP_Permissions::EDIT_PROJECT, null, $managers );
+		$this->assert_matrix( GRP_Permissions::SKIP_PERIOD, null, $managers );
+		$this->assert_matrix( GRP_Permissions::LINK_WP_USER, null, $admin );
+		$this->assert_matrix( GRP_Permissions::EDIT_MEMBER_PROFILE, array( 'member_id' => 'm-other' ), $admin );
+		$this->assert_matrix(
+			GRP_Permissions::EDIT_MEMBER_PROFILE,
+			fn ( $role ) => array( 'member_id' => $this->users[ $role ]['id'] ),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => true,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::DELETE_ACTIVITY,
+			array(
+				'member_id' => 'm-other',
+				'kind'      => 'manual',
+			),
+			$admin
+		);
+		$this->assert_matrix(
+			GRP_Permissions::DELETE_ACTIVITY,
+			fn ( $role ) => array(
+				'member_id' => $this->users[ $role ]['id'],
+				'kind'      => 'manual',
+			),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => true,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::DELETE_ACTIVITY,
+			fn ( $role ) => array(
+				'member_id' => $this->users[ $role ]['id'],
+				'kind'      => 'auto',
+			),
+			$admin
+		);
+	}
 }

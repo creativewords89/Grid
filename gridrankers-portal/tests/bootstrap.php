@@ -18,6 +18,9 @@ $grp_tests_dir = getenv( 'WP_PHPUNIT__DIR' );
 
 require_once $grp_tests_dir . '/includes/functions.php';
 
+// WP_UnitTestCase wraps each test in a transaction; GRP_Store must use savepoints inside it.
+tests_add_filter( 'grp_use_savepoints', '__return_true' );
+
 tests_add_filter(
 	'muplugins_loaded',
 	static function () {
@@ -29,3 +32,5 @@ require $grp_tests_dir . '/includes/bootstrap.php';
 
 // Real (non-temporary) plugin tables for every test; test-install.php drops and recreates them.
 GRP_Install::install();
+
+require_once __DIR__ . '/class-grp-rest-testcase.php';

@@ -27,6 +27,7 @@ class Test_GRP_Install extends WP_UnitTestCase {
 		'grp_trash'         => array( 'id', 'type', 'doc_id', 'data', 'title', 'project_id', 'deleted_at', 'deleted_by' ),
 		'grp_dismissals'    => array( 'id', 'member_id', 'notice_key', 'at' ),
 		'grp_settings'      => array( 'id', 'setting_key', 'value' ),
+		'grp_deletions'     => array( 'id', 'table_name', 'doc_id', 'deleted_at' ),
 	);
 
 	/**

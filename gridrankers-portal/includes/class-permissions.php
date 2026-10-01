@@ -89,8 +89,23 @@ class GRP_Permissions {
 	/** Import data. */
 	const IMPORT_DATA = 'import_data';
 
-	/** Log manual work. Object: `{member_id}` the work is logged for. */
+	/** Log manual work. Context: `{member_id}` the work is logged for. */
 	const LOG_WORK = 'log_work';
+
+	/** Rename a project (not in the section 3 table; managers, like moving projects). */
+	const EDIT_PROJECT = 'edit_project';
+
+	/** Edit a member's profile (name, contact, photo…). Context: `{member_id}`. Super Admin or self. */
+	const EDIT_MEMBER_PROFILE = 'edit_member_profile';
+
+	/** Link a member to a WordPress user. Super Admin only. */
+	const LINK_WP_USER = 'link_wp_user';
+
+	/** Delete an activity row. Context: `{member_id, kind}`. Super Admin any; others their own manual rows. */
+	const DELETE_ACTIVITY = 'delete_activity';
+
+	/** Mark a missed recurring period as skipped. Managers. */
+	const SKIP_PERIOD = 'skip_period';
 
 	/**
 	 * Whether `$user` may perform `$action` on `$context`.
@@ -118,6 +133,8 @@ class GRP_Permissions {
 				return true;
 
 			case self::SET_PROJECT_STATE:
+			case self::EDIT_PROJECT:
+			case self::SKIP_PERIOD:
 			case self::EDIT_TASK:
 			case self::CHANGE_TASK_SCHEDULE:
 			case self::DELETE_TASK:
@@ -129,6 +146,7 @@ class GRP_Permissions {
 
 			case self::DELETE_PROJECT:
 			case self::REMOVE_MEMBER:
+			case self::LINK_WP_USER:
 			case self::EXPORT_DATA:
 			case self::IMPORT_DATA:
 				return $admin;
@@ -153,6 +171,12 @@ class GRP_Permissions {
 			case self::VIEW_MEMBER_PAGE:
 			case self::LOG_WORK:
 				return $manager || self::is_self( $user, $context['member_id'] ?? null );
+
+			case self::EDIT_MEMBER_PROFILE:
+				return $admin || self::is_self( $user, $context['member_id'] ?? null );
+
+			case self::DELETE_ACTIVITY:
+				return $admin || ( 'manual' === ( $context['kind'] ?? '' ) && self::is_self( $user, $context['member_id'] ?? null ) );
 
 			case self::ADD_MEMBER:
 				if ( $admin ) {
