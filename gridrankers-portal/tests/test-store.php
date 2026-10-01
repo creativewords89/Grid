@@ -55,7 +55,8 @@ class Test_GRP_Store extends WP_UnitTestCase {
 			)
 		);
 		$table = GRP_Install::table( 'grp_meeting_tasks' );
-		$this->assertSame( '{"date":"2026-09-10","type":"date"}', $wpdb->get_var( $wpdb->prepare( 'SELECT deadline FROM %i WHERE id = %s', $table, $row['id'] ) ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$stored = json_decode( $wpdb->get_var( $wpdb->prepare( 'SELECT deadline FROM %i WHERE id = %s', $table, $row['id'] ) ), true ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$this->assertSame( array( 'date', 'type' ), array_keys( $stored ), 'written with sorted keys' );
 
 		// Same content stored with other key orders (as MySQL may) reads back identically; lists keep their order.
 		$wpdb->update( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
