@@ -13,6 +13,7 @@ import CompletionDialog from './components/CompletionDialog.jsx';
 import MeetingMinutes from './components/meeting/MeetingMinutes.jsx';
 import MonthlyTasks from './components/monthly/MonthlyTasks.jsx';
 import TeamView from './components/TeamView.jsx';
+import RecentActivities from './components/RecentActivities.jsx';
 import { todayYmd } from './lib/cycles.js';
 
 const VIEW_KEY = 'grp:view';
@@ -179,6 +180,8 @@ export default function App({ config }) {
 							<MonthlyTasks />
 						) : view === 'team' ? (
 							<TeamView />
+						) : view === 'log' ? (
+							<RecentActivities />
 						) : (
 							<p className="empty">This screen arrives in a later build step.</p>
 						)}
