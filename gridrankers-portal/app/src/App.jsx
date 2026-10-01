@@ -9,6 +9,9 @@ import SignIn from './components/SignIn.jsx';
 import Setup from './components/Setup.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import TopBar from './components/TopBar.jsx';
+import CompletionDialog from './components/CompletionDialog.jsx';
+import MeetingMinutes from './components/meeting/MeetingMinutes.jsx';
+import { todayYmd } from './lib/cycles.js';
 
 const VIEW_KEY = 'grp:view';
 const PROJECT_KEY = 'grp:project';
@@ -81,8 +84,17 @@ export default function App({ config }) {
 	const [view, setViewState] = useState(recall(VIEW_KEY) || 'board');
 	const [project, setProjectState] = useState(recall(PROJECT_KEY));
 	const [search, setSearch] = useState('');
+	const [cycleOff, setCycleOff] = useState(0);
 	const [toast, toastView] = useToasts();
 	const [confirm, confirmView] = useConfirm();
+	const [completion, setCompletion] = useState(null);
+
+	// "What did you complete?" — resolves {note, link} or null.
+	const askCompletion = useCallback((title) => new Promise((resolve) => setCompletion({ title, resolve })), []);
+	const finishCompletion = (value) => {
+		if (completion) completion.resolve(value);
+		setCompletion(null);
+	};
 
 	const signOutLocally = useCallback(() => {
 		dispatch({ type: 'reset' });
@@ -109,6 +121,7 @@ export default function App({ config }) {
 	};
 	const setProject = (id) => {
 		setProjectState(id);
+		setCycleOff(0);
 		remember(PROJECT_KEY, id);
 		if (view === 'team') setView('board');
 	};
@@ -142,7 +155,8 @@ export default function App({ config }) {
 		return <SignIn api={api} loginUrl={config.loginUrl} onSignedIn={(member) => setAuth({ status: 'signedIn', me: member })} />;
 	}
 
-	const ctx = { api, data, dispatch, me, view, setView, project, setProject, search, setSearch, toast, confirm, config };
+	const today = todayYmd();
+	const ctx = { api, data, dispatch, me, view, setView, project, setProject, search, setSearch, toast, confirm, config, cycleOff, setCycleOff, today, askCompletion };
 
 	return (
 		<PortalContext.Provider value={ctx}>
@@ -152,7 +166,12 @@ export default function App({ config }) {
 					<TopBar onSignOut={signOut} />
 					<section className="grp-view" aria-label="Content">
 						{projects.length === 0 ? (
-							<p className="empty">No projects yet. Add your first project in the sidebar.</p>
+							<div className="col" style={{ maxWidth: 520 }}>
+								<h2>Start with a project</h2>
+								<p className="empty">Add your first project in the sidebar, then add its tasks.</p>
+							</div>
+						) : view === 'board' ? (
+							<MeetingMinutes />
 						) : (
 							<p className="empty">This screen arrives in a later build step.</p>
 						)}
@@ -161,6 +180,7 @@ export default function App({ config }) {
 			</div>
 			{toastView}
 			{confirmView}
+			<CompletionDialog open={!!completion} title={completion ? completion.title : ''} onCancel={() => finishCompletion(null)} onSubmit={finishCompletion} />
 		</PortalContext.Provider>
 	);
 }

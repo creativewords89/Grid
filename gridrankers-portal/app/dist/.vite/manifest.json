@@ -120,12 +120,12 @@
     "src": "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-ext-600-normal.woff2"
   },
   "src/main.jsx": {
-    "file": "assets/main-jX7T2VLv.js",
+    "file": "assets/main-darieh0U.js",
     "name": "main",
     "src": "src/main.jsx",
     "isEntry": true,
     "css": [
-      "assets/main-DpxnclVK.css"
+      "assets/main-p5jUm-jd.css"
     ],
     "assets": [
       "assets/bricolage-grotesque-vietnamese-500-normal-FzY9NZwK.woff2",

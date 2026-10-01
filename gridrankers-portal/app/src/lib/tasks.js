@@ -1,0 +1,20 @@
+import { isManager } from './roles.js';
+
+export const PRI = { urgent: 0, high: 1, normal: 2, low: 3 };
+export const PRI_LABEL = { urgent: 'Urgent', high: 'High', normal: 'Normal', low: 'Low' };
+export const STATUS_TXT = { todo: 'To fix', doing: 'In progress', done: 'Fixed' };
+export const REVIEW_TXT = { pending: 'Awaiting review', accepted: 'Accepted', revision: 'Revision requested', rejected: 'Rejected' };
+
+// Assignees that are still on the team.
+export const assigneesOf = (task, members) => (Array.isArray(task.assignees) ? task.assignees : []).filter((a) => members[a.id]);
+
+export const isAssigned = (task, id) => (task.assignees || []).some((a) => a.id === id);
+
+// Who may work on a task (reference canWorkOn; the server enforces the same rule).
+export const canWorkOn = (task, me) => !!me && (isManager(me) || !(task.assignees || []).length || isAssigned(task, me.id));
+
+export const progressTotal = (task) => Object.values(task.progress || {}).reduce((a, b) => a + (+b || 0), 0);
+
+export const sortOpen = (a, b) => (PRI[a.priority] ?? 2) - (PRI[b.priority] ?? 2) || String(b.created_at || '').localeCompare(String(a.created_at || ''));
+
+export const searchText = (parts) => parts.filter(Boolean).join(' ').toLowerCase();

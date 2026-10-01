@@ -5,3 +5,4 @@
 .ag-card .ag-acct a{color:var(--accent)}
 .grp-view{min-height:40vh}
 button{font:inherit;color:inherit;cursor:pointer}
+.det-dlg .det-body{padding:20px 22px 6px;overflow:auto;max-height:calc(88vh - 70px)}
