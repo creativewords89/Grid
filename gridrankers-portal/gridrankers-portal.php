@@ -42,6 +42,8 @@ require_once GRP_PLUGIN_DIR . 'includes/class-import.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-export.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-rest-data.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-frontend.php';
+require_once GRP_PLUGIN_DIR . 'includes/class-standard-tasks.php';
+require_once GRP_PLUGIN_DIR . 'includes/class-cron.php';
 
 register_activation_hook( __FILE__, array( 'GRP_Install', 'activate' ) );
 register_deactivation_hook( __FILE__, array( 'GRP_Install', 'deactivate' ) );
@@ -63,6 +65,7 @@ GRP_REST_Notifications::init();
 GRP_REST_Sync::init();
 GRP_REST_Data::init();
 GRP_Frontend::init();
+GRP_Cron::init();
 
 if ( is_admin() ) {
 	require_once GRP_PLUGIN_DIR . 'admin/class-settings.php';

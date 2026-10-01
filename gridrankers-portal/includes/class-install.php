@@ -52,13 +52,14 @@ class GRP_Install {
 	public static function activate() {
 		self::install();
 		GRP_Frontend::install_page();
+		GRP_Cron::schedule();
 	}
 
 	/**
 	 * Deactivation hook. Tables and data are kept.
 	 */
 	public static function deactivate() {
-		wp_clear_scheduled_hook( 'grp_daily' );
+		GRP_Cron::unschedule();
 	}
 
 	/**

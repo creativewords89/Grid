@@ -34,6 +34,10 @@ tests_add_filter(
 require $grp_tests_dir . '/includes/bootstrap.php';
 
 // Real (non-temporary) plugin tables for every test; test-install.php drops and recreates them.
+// The WordPress installer only resets core tables, so empty ours to start every run clean.
 GRP_Install::install();
+foreach ( GRP_Install::TABLES as $grp_table ) {
+	$GLOBALS['wpdb']->query( 'TRUNCATE TABLE ' . GRP_Install::table( $grp_table ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery
+}
 
 require_once __DIR__ . '/class-grp-rest-testcase.php';

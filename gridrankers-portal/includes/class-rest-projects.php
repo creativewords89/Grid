@@ -85,7 +85,9 @@ class GRP_REST_Projects extends GRP_REST_Controller {
 			static function () use ( $row ) {
 				$project = GRP_Store::insert( 'grp_projects', $row );
 				GRP_Activity::audit( 'project', 'client', $project, self::actor(), 'project added' );
-				return $project;
+				// New projects start with the standard monthly tasks for this cycle.
+				GRP_Standard_Tasks::ensure( $project, GRP_Cycles::today() );
+				return GRP_Store::get( 'grp_projects', $project['id'] );
 			}
 		);
 
