@@ -44,11 +44,12 @@ class Test_GRP_Install extends WP_UnitTestCase {
 	}
 
 	/**
-	 * DDL commits implicitly, so clean up by hand.
+	 * DDL commits implicitly, so clean up by hand and leave a fresh install for other tests.
 	 */
 	public function tear_down() {
 		$this->drop_tables();
 		delete_option( GRP_Install::DB_VERSION_OPTION );
+		GRP_Install::install();
 
 		parent::tear_down();
 	}

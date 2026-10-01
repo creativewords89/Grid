@@ -26,3 +26,6 @@ tests_add_filter(
 );
 
 require $grp_tests_dir . '/includes/bootstrap.php';
+
+// Real (non-temporary) plugin tables for every test; test-install.php drops and recreates them.
+GRP_Install::install();
