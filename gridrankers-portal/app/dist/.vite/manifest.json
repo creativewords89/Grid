@@ -1,0 +1,216 @@
+{
+  "__commonjsHelpers-_d1bhYXs.js": {
+    "file": "assets/_commonjsHelpers-_d1bhYXs.js",
+    "name": "_commonjsHelpers"
+  },
+  "_jspdf.es.min-q3_ypqi1.js": {
+    "file": "assets/jspdf.es.min-q3_ypqi1.js",
+    "name": "jspdf.es.min",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/main.jsx"
+    ],
+    "dynamicImports": [
+      "node_modules/html2canvas/dist/html2canvas.esm.js",
+      "node_modules/dompurify/dist/purify.es.js",
+      "node_modules/canvg/lib/index.es.js"
+    ]
+  },
+  "_jspdf.plugin.autotable-CwUBg04q.js": {
+    "file": "assets/jspdf.plugin.autotable-CwUBg04q.js",
+    "name": "jspdf.plugin.autotable",
+    "isDynamicEntry": true,
+    "imports": [
+      "__commonjsHelpers-_d1bhYXs.js",
+      "_jspdf.es.min-q3_ypqi1.js"
+    ]
+  },
+  "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-500-normal.woff": {
+    "file": "assets/bricolage-grotesque-latin-500-normal-CV-uA8Lw.woff",
+    "src": "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-500-normal.woff"
+  },
+  "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-500-normal.woff2": {
+    "file": "assets/bricolage-grotesque-latin-500-normal-DEDBoLFO.woff2",
+    "src": "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-500-normal.woff2"
+  },
+  "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-700-normal.woff": {
+    "file": "assets/bricolage-grotesque-latin-700-normal-DvJDmrLu.woff",
+    "src": "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-700-normal.woff"
+  },
+  "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-700-normal.woff2": {
+    "file": "assets/bricolage-grotesque-latin-700-normal-gtcctNPv.woff2",
+    "src": "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-700-normal.woff2"
+  },
+  "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-800-normal.woff": {
+    "file": "assets/bricolage-grotesque-latin-800-normal-Br4b-5gk.woff",
+    "src": "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-800-normal.woff"
+  },
+  "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-800-normal.woff2": {
+    "file": "assets/bricolage-grotesque-latin-800-normal-J50vIsBe.woff2",
+    "src": "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-800-normal.woff2"
+  },
+  "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-ext-500-normal.woff": {
+    "file": "assets/bricolage-grotesque-latin-ext-500-normal-B0ZDNVGf.woff",
+    "src": "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-ext-500-normal.woff"
+  },
+  "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-ext-500-normal.woff2": {
+    "file": "assets/bricolage-grotesque-latin-ext-500-normal-DIhLz7G7.woff2",
+    "src": "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-ext-500-normal.woff2"
+  },
+  "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-ext-700-normal.woff": {
+    "file": "assets/bricolage-grotesque-latin-ext-700-normal-BXpPFNFj.woff",
+    "src": "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-ext-700-normal.woff"
+  },
+  "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-ext-700-normal.woff2": {
+    "file": "assets/bricolage-grotesque-latin-ext-700-normal-fBkt-7fi.woff2",
+    "src": "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-ext-700-normal.woff2"
+  },
+  "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-ext-800-normal.woff": {
+    "file": "assets/bricolage-grotesque-latin-ext-800-normal-CkoBqIJM.woff",
+    "src": "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-ext-800-normal.woff"
+  },
+  "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-ext-800-normal.woff2": {
+    "file": "assets/bricolage-grotesque-latin-ext-800-normal-BimIDUhy.woff2",
+    "src": "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-ext-800-normal.woff2"
+  },
+  "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-vietnamese-500-normal.woff": {
+    "file": "assets/bricolage-grotesque-vietnamese-500-normal-CAK5R6Iy.woff",
+    "src": "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-vietnamese-500-normal.woff"
+  },
+  "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-vietnamese-500-normal.woff2": {
+    "file": "assets/bricolage-grotesque-vietnamese-500-normal-FzY9NZwK.woff2",
+    "src": "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-vietnamese-500-normal.woff2"
+  },
+  "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-vietnamese-700-normal.woff": {
+    "file": "assets/bricolage-grotesque-vietnamese-700-normal-CHrFuVHU.woff",
+    "src": "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-vietnamese-700-normal.woff"
+  },
+  "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-vietnamese-700-normal.woff2": {
+    "file": "assets/bricolage-grotesque-vietnamese-700-normal-BLYPkJbo.woff2",
+    "src": "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-vietnamese-700-normal.woff2"
+  },
+  "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-vietnamese-800-normal.woff": {
+    "file": "assets/bricolage-grotesque-vietnamese-800-normal-DJ4hCX8l.woff",
+    "src": "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-vietnamese-800-normal.woff"
+  },
+  "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-vietnamese-800-normal.woff2": {
+    "file": "assets/bricolage-grotesque-vietnamese-800-normal-RJtJa6zl.woff2",
+    "src": "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-vietnamese-800-normal.woff2"
+  },
+  "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-400-normal.woff": {
+    "file": "assets/instrument-sans-latin-400-normal-D1W7dsQl.woff",
+    "src": "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-400-normal.woff"
+  },
+  "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-400-normal.woff2": {
+    "file": "assets/instrument-sans-latin-400-normal-DRC__1Mx.woff2",
+    "src": "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-400-normal.woff2"
+  },
+  "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-500-normal.woff": {
+    "file": "assets/instrument-sans-latin-500-normal-Z6ESRlEs.woff",
+    "src": "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-500-normal.woff"
+  },
+  "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-500-normal.woff2": {
+    "file": "assets/instrument-sans-latin-500-normal-Dk9ku72i.woff2",
+    "src": "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-500-normal.woff2"
+  },
+  "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-600-normal.woff": {
+    "file": "assets/instrument-sans-latin-600-normal-B9e8oLYv.woff",
+    "src": "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-600-normal.woff"
+  },
+  "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-600-normal.woff2": {
+    "file": "assets/instrument-sans-latin-600-normal-B7fBEWYG.woff2",
+    "src": "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-600-normal.woff2"
+  },
+  "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-ext-400-normal.woff": {
+    "file": "assets/instrument-sans-latin-ext-400-normal-r32jotim.woff",
+    "src": "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-ext-400-normal.woff"
+  },
+  "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-ext-400-normal.woff2": {
+    "file": "assets/instrument-sans-latin-ext-400-normal-Q_nF8v4l.woff2",
+    "src": "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-ext-400-normal.woff2"
+  },
+  "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-ext-500-normal.woff": {
+    "file": "assets/instrument-sans-latin-ext-500-normal-CAxz3nsc.woff",
+    "src": "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-ext-500-normal.woff"
+  },
+  "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-ext-500-normal.woff2": {
+    "file": "assets/instrument-sans-latin-ext-500-normal-CTEe1bJa.woff2",
+    "src": "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-ext-500-normal.woff2"
+  },
+  "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-ext-600-normal.woff": {
+    "file": "assets/instrument-sans-latin-ext-600-normal-DMks36a2.woff",
+    "src": "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-ext-600-normal.woff"
+  },
+  "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-ext-600-normal.woff2": {
+    "file": "assets/instrument-sans-latin-ext-600-normal-BsaQcF38.woff2",
+    "src": "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-ext-600-normal.woff2"
+  },
+  "node_modules/canvg/lib/index.es.js": {
+    "file": "assets/index.es-kyu8ZzKZ.js",
+    "name": "index.es",
+    "src": "node_modules/canvg/lib/index.es.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "__commonjsHelpers-_d1bhYXs.js",
+      "_jspdf.es.min-q3_ypqi1.js",
+      "src/main.jsx"
+    ]
+  },
+  "node_modules/dompurify/dist/purify.es.js": {
+    "file": "assets/purify.es-BwoZCkIS.js",
+    "name": "purify.es",
+    "src": "node_modules/dompurify/dist/purify.es.js",
+    "isDynamicEntry": true
+  },
+  "node_modules/html2canvas/dist/html2canvas.esm.js": {
+    "file": "assets/html2canvas.esm-QH1iLAAe.js",
+    "name": "html2canvas.esm",
+    "src": "node_modules/html2canvas/dist/html2canvas.esm.js",
+    "isDynamicEntry": true
+  },
+  "src/main.jsx": {
+    "file": "assets/main-DCB5Y7zB.js",
+    "name": "main",
+    "src": "src/main.jsx",
+    "isEntry": true,
+    "dynamicImports": [
+      "_jspdf.es.min-q3_ypqi1.js",
+      "_jspdf.plugin.autotable-CwUBg04q.js"
+    ],
+    "css": [
+      "assets/main-Ce2RwFi7.css"
+    ],
+    "assets": [
+      "assets/bricolage-grotesque-vietnamese-500-normal-FzY9NZwK.woff2",
+      "assets/bricolage-grotesque-vietnamese-500-normal-CAK5R6Iy.woff",
+      "assets/bricolage-grotesque-latin-ext-500-normal-DIhLz7G7.woff2",
+      "assets/bricolage-grotesque-latin-ext-500-normal-B0ZDNVGf.woff",
+      "assets/bricolage-grotesque-latin-500-normal-DEDBoLFO.woff2",
+      "assets/bricolage-grotesque-latin-500-normal-CV-uA8Lw.woff",
+      "assets/bricolage-grotesque-vietnamese-700-normal-BLYPkJbo.woff2",
+      "assets/bricolage-grotesque-vietnamese-700-normal-CHrFuVHU.woff",
+      "assets/bricolage-grotesque-latin-ext-700-normal-fBkt-7fi.woff2",
+      "assets/bricolage-grotesque-latin-ext-700-normal-BXpPFNFj.woff",
+      "assets/bricolage-grotesque-latin-700-normal-gtcctNPv.woff2",
+      "assets/bricolage-grotesque-latin-700-normal-DvJDmrLu.woff",
+      "assets/bricolage-grotesque-vietnamese-800-normal-RJtJa6zl.woff2",
+      "assets/bricolage-grotesque-vietnamese-800-normal-DJ4hCX8l.woff",
+      "assets/bricolage-grotesque-latin-ext-800-normal-BimIDUhy.woff2",
+      "assets/bricolage-grotesque-latin-ext-800-normal-CkoBqIJM.woff",
+      "assets/bricolage-grotesque-latin-800-normal-J50vIsBe.woff2",
+      "assets/bricolage-grotesque-latin-800-normal-Br4b-5gk.woff",
+      "assets/instrument-sans-latin-ext-400-normal-Q_nF8v4l.woff2",
+      "assets/instrument-sans-latin-ext-400-normal-r32jotim.woff",
+      "assets/instrument-sans-latin-400-normal-DRC__1Mx.woff2",
+      "assets/instrument-sans-latin-400-normal-D1W7dsQl.woff",
+      "assets/instrument-sans-latin-ext-500-normal-CTEe1bJa.woff2",
+      "assets/instrument-sans-latin-ext-500-normal-CAxz3nsc.woff",
+      "assets/instrument-sans-latin-500-normal-Dk9ku72i.woff2",
+      "assets/instrument-sans-latin-500-normal-Z6ESRlEs.woff",
+      "assets/instrument-sans-latin-ext-600-normal-BsaQcF38.woff2",
+      "assets/instrument-sans-latin-ext-600-normal-DMks36a2.woff",
+      "assets/instrument-sans-latin-600-normal-B7fBEWYG.woff2",
+      "assets/instrument-sans-latin-600-normal-B9e8oLYv.woff"
+    ]
+  }
+}
