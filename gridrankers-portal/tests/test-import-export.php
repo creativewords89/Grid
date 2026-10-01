@@ -254,6 +254,13 @@ class Test_GRP_Import_Export extends GRP_REST_TestCase {
 
 		$this->assertSame( 1, $summary['counts']['clients']['skipped'] );
 		$this->assertNotEmpty( preg_grep( '/Acme Plumbing/', $summary['warnings'] ) );
+
+		// The skipped project's tasks are not imported without a project.
+		$this->assertNull( GRP_Store::get( 'grp_projects', 'c_acme' ) );
+		$this->assertSame( array(), GRP_Store::find( 'grp_meeting_tasks', array( 'project_id' => 'c_acme' ) ) );
+		$this->assertSame( array(), GRP_Store::find( 'grp_monthly_tasks', array( 'project_id' => 'c_acme' ) ) );
+		$this->assertSame( array(), GRP_Store::find( 'grp_cycle_records', array( 'project_id' => 'c_acme' ) ) );
+		$this->assertSame( 2, $summary['counts']['items']['skipped'] );
 	}
 
 	public function test_export_round_trip() {

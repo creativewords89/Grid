@@ -18,6 +18,7 @@ import { todayYmd } from './lib/cycles.js';
 
 const VIEW_KEY = 'grp:view';
 const PROJECT_KEY = 'grp:project';
+const VIEW_OWNER_KEY = 'grp:view-owner';
 
 const remember = (key, value) => {
 	try {
@@ -115,6 +116,16 @@ export default function App({ config }) {
 	}, [api]);
 
 	const syncStatus = useSync(api, auth.status === 'signedIn', dispatch);
+
+	// The remembered view belongs to whoever chose it: someone else signing in on this browser
+	// (e.g. after the session expired, without "Sign out") starts on the board.
+	const meId = auth.me ? auth.me.id : '';
+	useEffect(() => {
+		if (!meId || recall(VIEW_OWNER_KEY) === meId) return;
+		remember(VIEW_OWNER_KEY, meId);
+		setViewState('board');
+		remember(VIEW_KEY, 'board');
+	}, [meId]);
 
 	// Keep "me" fresh from synced member rows (role or name changes).
 	const me = auth.me && data.members[auth.me.id] ? { ...auth.me, ...data.members[auth.me.id], role: auth.me.role } : auth.me;

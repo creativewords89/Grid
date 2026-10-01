@@ -111,6 +111,24 @@ node extract-styles.mjs   # re-copy the reference stylesheet into src/styles/por
 Fonts (Bricolage Grotesque, Instrument Sans) and jsPDF / AutoTable for the PDF report are bundled;
 nothing loads from a CDN.
 
+### End-to-end tests (Playwright)
+
+`app/e2e/` drives the real portal in Chromium: the completion review round trip (member completes →
+Super Admin asks for a revision → member completes again → Super Admin accepts), a member being unable
+to edit or delete (in the UI and through the API), cycle switching and a cycle change, and the import /
+export round trip from WP-admin.
+
+Each run builds a throwaway WordPress site from `vendor/roots/wordpress-no-content` (so run
+`composer install` first) with a fresh database `grp_e2e`, seeds a team (`app/e2e/site/install.php`) and
+serves it with `php -S` on port 8090. It needs a local MySQL/MariaDB the `mysql` client can reach.
+
+```sh
+cd app
+npm run build             # the tests use app/dist
+npm run e2e               # E2E_DB_USER / E2E_DB_PASS / E2E_DB_HOST / E2E_PORT / E2E_DIR to override
+CHROMIUM_PATH=/path/to/chrome npm run e2e   # use an installed Chromium instead of Playwright's
+```
+
 ### Schema versioning
 
 `GRP_Install::DB_VERSION` is the schema version; the installed version is stored in the `grp_db_version` option.

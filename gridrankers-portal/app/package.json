@@ -1,26 +1,28 @@
 {
-  "name": "gridrankers-portal-app",
-  "private": true,
-  "version": "0.1.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "test": "vitest run"
-  },
-  "dependencies": {
-    "@fontsource/bricolage-grotesque": "^5.1.0",
-    "@fontsource/instrument-sans": "^5.1.0",
-    "jspdf": "^2.5.2",
-    "jspdf-autotable": "^3.8.4",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
-  },
-  "devDependencies": {
-    "@testing-library/react": "^16.1.0",
-    "@vitejs/plugin-react": "^4.3.4",
-    "jsdom": "^25.0.1",
-    "vite": "^6.0.0",
-    "vitest": "^2.1.8"
-  }
+	"name": "gridrankers-portal-app",
+	"private": true,
+	"version": "0.1.0",
+	"type": "module",
+	"scripts": {
+		"dev": "vite",
+		"build": "vite build",
+		"test": "vitest run",
+		"e2e": "playwright test -c e2e/playwright.config.mjs"
+	},
+	"dependencies": {
+		"@fontsource/bricolage-grotesque": "^5.1.0",
+		"@fontsource/instrument-sans": "^5.1.0",
+		"jspdf": "^2.5.2",
+		"jspdf-autotable": "^3.8.4",
+		"react": "^19.0.0",
+		"react-dom": "^19.0.0"
+	},
+	"devDependencies": {
+		"@playwright/test": "^1.55.0",
+		"@testing-library/react": "^16.1.0",
+		"@vitejs/plugin-react": "^4.3.4",
+		"jsdom": "^25.0.1",
+		"vite": "^6.0.0",
+		"vitest": "^2.1.8"
+	}
 }

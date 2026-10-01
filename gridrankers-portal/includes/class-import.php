@@ -34,6 +34,11 @@ class GRP_Import {
 	);
 
 	/**
+	 * Tables whose rows belong to one project and are skipped with it.
+	 */
+	const PROJECT_CHILDREN = array( 'grp_meeting_tasks', 'grp_monthly_tasks', 'grp_cycle_records' );
+
+	/**
 	 * Settings documents that are not imported (old in-browser admin code, Google Drive secret).
 	 */
 	const SKIPPED_SETTINGS = array( 'admin', 'gdrive' );
@@ -69,6 +74,8 @@ class GRP_Import {
 
 		$result = GRP_Store::transaction(
 			static function () use ( $export, $dry_run, &$summary ) {
+				// Projects skipped for a name clash; their tasks and records are skipped too.
+				$skipped_projects = array();
 				foreach ( self::COLLECTIONS as $collection => $table ) {
 					$summary['counts'][ $collection ] = array(
 						'inserted' => 0,
@@ -82,7 +89,14 @@ class GRP_Import {
 							continue;
 						}
 						foreach ( $rows as $row ) {
+							if ( in_array( $table, self::PROJECT_CHILDREN, true ) && isset( $skipped_projects[ (string) $row['project_id'] ] ) ) {
+								++$summary['counts'][ $collection ]['skipped'];
+								continue;
+							}
 							$outcome = self::upsert( $table, $row, $summary['warnings'] );
+							if ( 'grp_projects' === $table && 'skipped' === $outcome ) {
+								$skipped_projects[ $row['id'] ] = true;
+							}
 							++$summary['counts'][ $collection ][ $outcome ];
 						}
 					}
