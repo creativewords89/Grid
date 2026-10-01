@@ -43,6 +43,11 @@ class GRP_Updater {
 	const CACHE = 'grp_update_manifest';
 
 	/**
+	 * Option holding the outcome of the last request to GitHub (for GridRankers → Settings).
+	 */
+	const STATUS = 'grp_update_status';
+
+	/**
 	 * Hourly check, so a new release is installed within about an hour.
 	 */
 	const HOOK = 'grp_check_update';
@@ -104,13 +109,80 @@ class GRP_Updater {
 				'headers'     => array( 'Accept' => 'application/json' ),
 			)
 		);
-		if ( ! is_wp_error( $response ) && 200 === (int) wp_remote_retrieve_response_code( $response ) ) {
+		$code     = is_wp_error( $response ) ? 0 : (int) wp_remote_retrieve_response_code( $response );
+		if ( 200 === $code ) {
 			$manifest = self::validate( json_decode( (string) wp_remote_retrieve_body( $response ), true ) );
 		}
+
+		if ( is_wp_error( $response ) ) {
+			/* translators: %s: error from the HTTP request, e.g. "Connection timed out". */
+			$message = sprintf( __( "Couldn't reach GitHub: %s", 'gridrankers-portal' ), $response->get_error_message() );
+		} elseif ( 200 !== $code ) {
+			/* translators: %d: HTTP status code. */
+			$message = sprintf( __( 'GitHub answered with HTTP %d (no release file found).', 'gridrankers-portal' ), $code );
+		} elseif ( ! $manifest ) {
+			$message = __( 'Reached GitHub, but the release file is not valid.', 'gridrankers-portal' );
+		} else {
+			$message = __( 'Reached GitHub.', 'gridrankers-portal' );
+		}
+		update_option(
+			self::STATUS,
+			array(
+				'at'      => time(),
+				'ok'      => (bool) $manifest,
+				'version' => $manifest ? $manifest['version'] : null,
+				'message' => $message,
+			),
+			false
+		);
 
 		set_transient( self::CACHE, $manifest ? $manifest : array(), $manifest ? HOUR_IN_SECONDS : 15 * MINUTE_IN_SECONDS );
 
 		return $manifest;
+	}
+
+	/**
+	 * Outcome of the last request to GitHub, or null before the first one.
+	 *
+	 * @return array|null `{at, ok, version, message}`.
+	 */
+	public static function status() {
+		$status = get_option( self::STATUS );
+
+		return is_array( $status ) ? $status : null;
+	}
+
+	/**
+	 * "Check now": asks GitHub (skipping the cache) and refreshes WordPress' list of updates.
+	 *
+	 * @return array|null The new status.
+	 */
+	public static function run_check() {
+		self::manifest( true );
+		delete_site_transient( 'update_plugins' );
+		wp_update_plugins();
+
+		return self::status();
+	}
+
+	/**
+	 * Whether automatic installs are on (`GRP_AUTO_UPDATE` not set to false).
+	 *
+	 * @return bool
+	 */
+	public static function auto_enabled() {
+		return ! ( defined( 'GRP_AUTO_UPDATE' ) && ! GRP_AUTO_UPDATE );
+	}
+
+	/**
+	 * WordPress' own one-click "update this plugin" link.
+	 *
+	 * @return string
+	 */
+	public static function update_url() {
+		$plugin = self::basename();
+
+		return wp_nonce_url( self_admin_url( 'update.php?action=upgrade-plugin&plugin=' . rawurlencode( $plugin ) ), 'upgrade-plugin_' . $plugin );
 	}
 
 	/**
@@ -182,7 +254,7 @@ class GRP_Updater {
 	 */
 	public static function auto_update( $update, $item ) {
 		if ( isset( $item->plugin ) && self::basename() === $item->plugin ) {
-			return ! ( defined( 'GRP_AUTO_UPDATE' ) && ! GRP_AUTO_UPDATE );
+			return self::auto_enabled();
 		}
 
 		return $update;
