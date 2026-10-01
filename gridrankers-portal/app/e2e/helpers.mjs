@@ -19,7 +19,13 @@ export function watchErrors(page) {
 	page.on('console', (m) => {
 		if (onPortal() && m.type() === 'error' && !/401|403/.test(m.text())) add(`console: ${m.text()}`);
 	});
-	page.on('requestfailed', (r) => onPortal() && add(`request failed: ${r.url()} ${r.failure()?.errorText}`));
+	page.on('requestfailed', (r) => {
+		const why = r.failure()?.errorText || '';
+		if (!onPortal()) return;
+		// Leaving the page cancels requests still in flight (ERR_ABORTED): logged, not an error.
+		if (why.includes('ERR_ABORTED')) console.log(`[browser] cancelled: ${r.url()}`);
+		else add(`request failed: ${r.url()} ${why}`);
+	});
 	return () => expect(errors).toEqual([]);
 }
 
