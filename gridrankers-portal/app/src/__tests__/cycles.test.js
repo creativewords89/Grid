@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { activeWeek, cycleAt, cycleRange, dueAt, monthRange, periodsOf, weekRange, weeksIn, weeksOf } from '../lib/cycles.js';
+import { activeSlot, activeWeek, cycleAt, cycleRange, dueAt, halvesIn, monthRange, periodsOf, slotLabel, slotsOf, weekRange, weeksIn, weeksOf } from '../lib/cycles.js';
 
 // Same fixtures as the PHP port (tests/fixtures/cycles.json, generated from the reference).
 const here = dirname(fileURLToPath(import.meta.url));
@@ -72,5 +72,30 @@ describe('cycle weeks (SPEC.md 6.2)', () => {
 		// Same expectations as tests/test-cycles.php test_period_keys_and_record_ids.
 		expect(activeWeek(mid, 0, '2026-10-01')).toBe(2);
 		expect(cycleRange(mid, 0, '2026-10-01').key).toBe('2026-09');
+	});
+});
+
+describe('two-week periods (bi-weekly tasks)', () => {
+	const mid = { cycle_day: 15 };
+	const bi = { freq: 'biweekly' };
+
+	it('pair the cycle weeks; the last takes a leftover week', () => {
+		expect(spans(halvesIn({ start: '2026-10-15', end: '2026-11-14' }))).toEqual(['2026-10-15..2026-10-28', '2026-10-29..2026-11-14']);
+		const five = halvesIn({ start: '2026-10-01', end: '2026-11-04' });
+		expect(five.map((h) => [h.fromWeek, h.toWeek])).toEqual([
+			[1, 2],
+			[3, 5],
+		]);
+		expect(halvesIn({ start: '2026-10-01', end: '2026-10-14' })).toHaveLength(1);
+	});
+
+	it('due dates, active period and labels', () => {
+		expect(dueAt(bi, mid, undefined, 0, '2026-10-20')).toBe('2026-10-28');
+		expect(dueAt(bi, mid, 1, 0, '2026-10-20')).toBe('2026-11-14');
+		expect(activeSlot(bi, mid, 0, '2026-11-02')).toBe(1);
+		const slots = slotsOf(bi, mid, 0, '2026-10-20');
+		expect(slotLabel(bi, slots[1], 1)).toBe('Weeks 3–4');
+		expect(slotLabel(bi, slots[0], 0, true)).toBe('W1–2');
+		expect(slotLabel({ freq: 'weekly' }, slots[0], 0)).toBe('Week 1');
 	});
 });

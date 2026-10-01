@@ -9,6 +9,7 @@ import PeoplePicker, { evenSplit } from '../PeoplePicker.jsx';
 const MODES = [
 	['none', 'No deadline'],
 	['weekly', 'Weekly'],
+	['biweekly', 'Bi-weekly'],
 	['date', 'Specific date'],
 	['dates', 'Certain dates'],
 	['monthly', 'Monthly'],
@@ -151,6 +152,7 @@ export default function MonthlyDialog({ taskId, onClose }) {
 	})();
 	const unpicked = total - fromParts.reduce((a, b) => a + b.n, 0);
 	const wk = f.due_mode === 'weekly';
+	const bw = f.due_mode === 'biweekly';
 
 	const addPart = () => {
 		const name = add.name.trim();
@@ -237,7 +239,12 @@ export default function MonthlyDialog({ taskId, onClose }) {
 					)}
 					{f.due_mode === 'weekly' && (
 						<div className="dl-f">
-							<span className="dl-note">Repeats every week: due at the end of each week (1–7, 8–14, 15–21, 22–end).</span>
+							<span className="dl-note">Repeats every week of the project's cycle: due at the end of each week (cycle days 1–7, 8–14, 15–21, 22–end).</span>
+						</div>
+					)}
+					{f.due_mode === 'biweekly' && (
+						<div className="dl-f">
+							<span className="dl-note">Repeats every two weeks of the project's cycle: due at the end of weeks 1–2 and weeks 3–4.</span>
 						</div>
 					)}
 					{f.due_mode === 'date' && (
@@ -269,7 +276,7 @@ export default function MonthlyDialog({ taskId, onClose }) {
 				</div>
 				<div className="row">
 					<label>
-						<span>{wk ? 'Quantity per week' : 'Quantity per cycle'}</span>
+						<span>{wk ? 'Quantity per week' : bw ? 'Quantity per 2 weeks' : 'Quantity per cycle'}</span>
 						<input type="number" min={1} max={999} value={f.parts.length ? total : f.target} disabled={f.parts.length > 0} onChange={set('target')} required />
 					</label>
 				</div>

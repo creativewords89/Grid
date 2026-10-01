@@ -6,6 +6,7 @@ import { pendingReviews } from '../../lib/reviews.js';
 import { ROLE, isAdmin } from '../../lib/roles.js';
 import { rowsOf } from '../../lib/store.js';
 import Avatar from '../Avatar.jsx';
+import { Trash } from '../RecentActivities.jsx';
 import { trend } from './MemberPage.jsx';
 import Notifications, { attentionItems } from './Notifications.jsx';
 import { AddMemberDialog, BarChart, LogWorkDialog, PeriodHead, SetCodeDialog, dayLabel } from './parts.jsx';
@@ -436,6 +437,12 @@ export default function TeamArea({ perf, setPerf, onPerson }) {
 					</div>
 					<p className="hint">Super Admins sign in with their WordPress account. Team Leaders and Members sign in with the code set here; setting a new code signs them out everywhere.</p>
 				</section>
+				<Trash
+					entries={rowsOf(data, 'trash').filter((e) => e.type === 'grp_projects')}
+					title="Deleted projects"
+					hint="Kept 30 days · restoring a project brings back the tasks deleted with it"
+					empty="No deleted projects."
+				/>
 				<section className="dcard">
 					<div className="dc-head">
 						<span className="s-k">Export all data</span>

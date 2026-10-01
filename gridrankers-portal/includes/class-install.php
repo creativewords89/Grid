@@ -15,7 +15,7 @@ class GRP_Install {
 	/**
 	 * Current schema version. Bump it whenever get_schema() or migrations() changes.
 	 */
-	const DB_VERSION = 3;
+	const DB_VERSION = 4;
 
 	/**
 	 * Option that stores the installed schema version.
@@ -292,8 +292,8 @@ class GRP_Install {
 				project_id varchar(64) NOT NULL,
 				title text NOT NULL,
 				notes longtext NULL,
-				freq enum('monthly','weekly') NOT NULL DEFAULT 'monthly',
-				due_mode enum('none','weekly','date','dates','monthly') NOT NULL DEFAULT 'monthly',
+				freq enum('monthly','weekly','biweekly') NOT NULL DEFAULT 'monthly',
+				due_mode enum('none','weekly','biweekly','date','dates','monthly') NOT NULL DEFAULT 'monthly',
 				due_day tinyint(2) unsigned NULL,
 				due_from_day tinyint(2) unsigned NULL,
 				target int(10) unsigned NOT NULL DEFAULT 1,

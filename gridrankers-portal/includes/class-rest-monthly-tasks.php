@@ -15,7 +15,7 @@ class GRP_REST_Monthly_Tasks extends GRP_REST_Controller {
 
 	const TABLE = 'grp_monthly_tasks';
 
-	const DUE_MODES = array( 'none', 'weekly', 'date', 'dates', 'monthly' );
+	const DUE_MODES = array( 'none', 'weekly', 'biweekly', 'date', 'dates', 'monthly' );
 
 	const FIELD_LABELS = array(
 		'project_id'   => 'project',
@@ -84,7 +84,7 @@ class GRP_REST_Monthly_Tasks extends GRP_REST_Controller {
 		$task = GRP_Store::transaction(
 			static function () use ( $fields ) {
 				$task = GRP_Store::insert( self::TABLE, $fields + array( 'created_by' => self::actor()['id'] ) );
-				GRP_Activity::audit( 'add', 'monthly', $task, self::actor(), $task['target'] > 1 ? $task['target'] . '× per cycle' : $task['freq'] );
+				GRP_Activity::audit( 'add', 'monthly', $task, self::actor(), self::freq_text( $task ) );
 				return $task;
 			}
 		);
@@ -216,7 +216,30 @@ class GRP_REST_Monthly_Tasks extends GRP_REST_Controller {
 	}
 
 	/**
-	 * Deadline mode and days (SPEC.md 6.4). Weekly mode makes the task weekly.
+	 * "4× per cycle", "every two weeks", "weekly"... for the audit log.
+	 *
+	 * @param array $task Task.
+	 * @return string
+	 */
+	private static function freq_text( array $task ) {
+		$per  = array(
+			'weekly'   => 'per week',
+			'biweekly' => 'per 2 weeks',
+			'monthly'  => 'per cycle',
+		);
+		$how  = array(
+			'weekly'   => 'weekly',
+			'biweekly' => 'every two weeks',
+			'monthly'  => 'monthly',
+		);
+		$freq = $task['freq'] ?? 'monthly';
+
+		return (int) $task['target'] > 1 ? $task['target'] . '× ' . ( $per[ $freq ] ?? 'per cycle' ) : ( $how[ $freq ] ?? $freq );
+	}
+
+	/**
+	 * Deadline mode and days (SPEC.md 6.4). Weekly / bi-weekly mode makes the task repeat
+	 * every week / every two weeks of the cycle.
 	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return array|WP_Error
@@ -229,7 +252,7 @@ class GRP_REST_Monthly_Tasks extends GRP_REST_Controller {
 
 		$out = array(
 			'due_mode'     => $mode,
-			'freq'         => 'weekly' === $mode ? 'weekly' : 'monthly',
+			'freq'         => in_array( $mode, array( 'weekly', 'biweekly' ), true ) ? $mode : 'monthly',
 			'due_day'      => null,
 			'due_from_day' => null,
 		);

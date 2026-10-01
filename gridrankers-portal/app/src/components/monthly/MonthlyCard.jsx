@@ -1,5 +1,5 @@
 import { usePortal } from '../../context.js';
-import { activeWeek, cycleRange, daysBetween, dueAt, isWeekly, parts, weeksOf, ymd } from '../../lib/cycles.js';
+import { activeSlot, cycleRange, daysBetween, dueAt, isBiweekly, isSplit, parts, slotLabel, slotsOf, ymd } from '../../lib/cycles.js';
 import { localYmd, short } from '../../lib/format.js';
 import { bornAt, isShared, isWaived, periodKeyOf, recordOf, stateOf, typePeople } from '../../lib/monthly.js';
 import { isManager } from '../../lib/roles.js';
@@ -12,19 +12,23 @@ import useRecordActions from './useRecordActions.js';
 export function usePeriod(task, selWeek) {
 	const { data, cycleOff, today } = usePortal();
 	const project = data.projects[task.project_id];
-	const wk = isWeekly(task);
-	const aw = activeWeek(project, cycleOff, today);
-	const nWeeks = weeksOf(project, cycleOff, today).length;
-	const sel = wk ? Math.min(selWeek ?? aw, nWeeks - 1) : undefined;
+	// wk: tracked per week (weekly) or per two weeks (bi-weekly); "slots" are those periods.
+	const wk = isSplit(task);
+	const slots = wk ? slotsOf(task, project, cycleOff, today) : [];
+	const aw = wk ? activeSlot(task, project, cycleOff, today) : 0;
+	const sel = wk ? Math.min(selWeek ?? aw, slots.length - 1) : undefined;
+	const name = (i, short) => (slots[i] ? slotLabel(task, slots[i], i, short) : '');
+	const unit = isBiweekly(task) ? '2 weeks' : 'week';
+	const freqLabel = !wk ? 'Monthly' : isBiweekly(task) ? 'Bi-weekly' : 'Weekly';
 	const range = cycleRange(project, cycleOff, today);
 	const periodKey = periodKeyOf(task, project, sel, cycleOff, today);
 	const rec = recordOf(data.records, task, project, sel, cycleOff, today);
-	return { project, wk, aw, sel, range, periodKey, rec, st: stateOf(task, rec), n: Math.max(1, task.target || 1), count: rec && rec.status !== 'skipped' ? rec.count || 0 : 0 };
+	return { project, wk, aw, sel, slots, name, unit, freqLabel, range, periodKey, rec, st: stateOf(task, rec), n: Math.max(1, task.target || 1), count: rec && rec.status !== 'skipped' ? rec.count || 0 : 0 };
 }
 
 export function DueChip({ task, period, missed }) {
 	const { cycleOff, today } = usePortal();
-	const { project, wk, sel, range, rec, st } = period;
+	const { project, wk, sel, range, rec, st, name } = period;
 	const due = dueAt(task, project, sel, cycleOff, today);
 	const left = daysBetween(today, due);
 	if (range.end < bornAt(task, project, today)) {
@@ -48,7 +52,7 @@ export function DueChip({ task, period, missed }) {
 			</span>
 		);
 	}
-	if (wk && st === 'done') return <span className="due ok">Week {sel + 1} done</span>;
+	if (wk && st === 'done') return <span className="due ok">{name(sel)} done</span>;
 	if (st === 'done') return <span className="due ok">Done{rec && rec.done_at ? ' ' + short(localYmd(rec.done_at)) : ''}</span>;
 	if (due < today) return <span className="due late">{today > range.end ? 'Unfinished' : `Overdue ${daysBetween(due, today)}d`}</span>;
 	if (task.due_mode === 'none') return <span className="due">No deadline · this cycle</span>;
@@ -91,13 +95,13 @@ export function ProgressBox({ task, period }) {
 	const { data, me } = usePortal();
 	const { tick } = useRecordActions();
 	const members = data.members;
-	const { periodKey, rec, wk, sel, aw, n, count, st } = period;
+	const { periodKey, rec, wk, sel, aw, n, count, st, name, unit } = period;
 	const locked = !canWorkOn(task, me) || st === 'done';
 	const people = assigneesOf(task, members);
 	const shared = isShared(task);
 	const byPerson = (rec && rec.by_person) || {};
 	const pc = (rec && rec.parts) || {};
-	const when = wk ? (sel === aw ? 'this week' : `in week ${sel + 1}`) : 'this cycle';
+	const when = wk ? (sel === aw ? `this ${unit === 'week' ? 'week' : 'two weeks'}` : `in ${name(sel).toLowerCase()}`) : 'this cycle';
 	const mayTick = (id) => st !== 'done' && (isManager(me) || id === me.id);
 
 	if (Array.isArray(task.parts) && task.parts.length) {
@@ -239,7 +243,7 @@ export default function MonthlyCard({ task, selWeek, onSelectWeek, missed, onDet
 	const { data, me, cycleOff, today } = usePortal();
 	const { setStatus, remove } = useRecordActions();
 	const period = usePeriod(task, selWeek);
-	const { project, wk, aw, sel, range, periodKey, st, n, count } = period;
+	const { project, wk, aw, sel, slots, name, unit, freqLabel, range, periodKey, st, n, count } = period;
 	const members = data.members;
 	const locked = !canWorkOn(task, me);
 	const late = missed.length > 0;
@@ -264,8 +268,8 @@ export default function MonthlyCard({ task, selWeek, onSelectWeek, missed, onDet
 	));
 
 	const weeks = wk && (
-		<div className="weeks" role="group" aria-label="Weeks this cycle" style={{ gridTemplateColumns: `repeat(${weeksOf(project, cycleOff, today).length},1fr)` }}>
-			{weeksOf(project, cycleOff, today).map((r2, w) => {
+		<div className="weeks" role="group" aria-label={unit === 'week' ? 'Weeks this cycle' : 'Two-week periods this cycle'} style={{ gridTemplateColumns: `repeat(${slots.length},1fr)` }}>
+			{slots.map((r2, w) => {
 				const rec2 = recordOf(data.records, task, project, w, cycleOff, today);
 				const ws = stateOf(task, rec2);
 				const skipped = rec2 && rec2.status === 'skipped';
@@ -279,11 +283,11 @@ export default function MonthlyCard({ task, selWeek, onSelectWeek, missed, onDet
 						type="button"
 						className={`wk ${cls} ${cur ? 'cur' : ''} ${w === sel ? 'sel' : ''}`}
 						aria-pressed={w === sel}
-						title={`Week ${w + 1} · ${short(r2.start)}–${short(r2.end)} · ${lab}${cur ? ' · this week' : ''}. Click to select this week`}
-						aria-label={`Week ${w + 1}, ${lab}${cur ? ', this week' : ''}`}
+						title={`${name(w)} · ${short(r2.start)}–${short(r2.end)} · ${lab}${cur ? ' · now' : ''}. Click to select`}
+						aria-label={`${name(w)}, ${lab}${cur ? ', now' : ''}`}
 						onClick={() => onSelectWeek(task.id, w === aw ? null : w)}
 					>
-						W{w + 1}
+						{name(w, true)}
 						{ws === 'done' ? ' ✓' : ''}
 					</button>
 				);
@@ -294,9 +298,9 @@ export default function MonthlyCard({ task, selWeek, onSelectWeek, missed, onDet
 	return (
 		<article className={`card mcard st-${st} ${late ? 'late' : ''} ${wk && sel !== aw ? 'off-wk' : ''}`}>
 			<div className="co-row">
-				<span className={'freq ' + (wk ? 'fw' : 'fm')}>{wk ? 'Weekly' : 'Monthly'}</span>
+				<span className={'freq ' + (wk ? 'fw' : 'fm')}>{freqLabel}</span>
 				<span className="qty" title="Quantity">
-					Qty {n} per {wk ? 'week' : 'cycle'}
+					Qty {n} per {wk ? unit : 'cycle'}
 				</span>
 			</div>
 			<h3>{task.title}</h3>

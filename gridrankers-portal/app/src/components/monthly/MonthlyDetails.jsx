@@ -27,7 +27,7 @@ export default function MonthlyDetails({ taskId, week, missed, onClose }) {
 		);
 	}
 	const members = data.members;
-	const { wk, sel, range, rec, st, n } = period;
+	const { wk, sel, range, rec, st, n, name, unit, freqLabel } = period;
 	const people = assigneesOf(task, members);
 	const hasParts = Array.isArray(task.parts) && task.parts.length > 0;
 
@@ -36,16 +36,16 @@ export default function MonthlyDetails({ taskId, week, missed, onClose }) {
 			<div className="det-body">
 				<header className="dt-head">
 					<div className="co-row">
-						<span className={'freq ' + (wk ? 'fw' : 'fm')}>{wk ? 'Weekly' : 'Monthly'}</span>
+						<span className={'freq ' + (wk ? 'fw' : 'fm')}>{freqLabel}</span>
 						<span className="qty q-strong">
-							Qty {n} per {wk ? 'week' : 'cycle'}
+							Qty {n} per {wk ? unit : 'cycle'}
 						</span>
 						<span className={'dt-st s-' + st}>{M_STATUS_TXT[st]}</span>
 					</div>
 					<h2 id="grpMDetTitle">{task.title}</h2>
 					<p className="muted">
 						{period.project.name}
-						{wk ? ` · showing week ${sel + 1}` : ` · cycle ${short(range.start)} – ${short(range.end)}`}
+						{wk ? ` · showing ${name(sel).toLowerCase()}` : ` · cycle ${short(range.start)} – ${short(range.end)}`}
 					</p>
 				</header>
 				<dl className="dt-grid">

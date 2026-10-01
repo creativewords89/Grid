@@ -41,6 +41,16 @@ class Test_GRP_REST_Monthly_Tasks extends GRP_REST_TestCase {
 		);
 	}
 
+	public function test_biweekly_mode_makes_a_biweekly_task() {
+		$response = $this->create( 'lead', array( 'due_mode' => 'biweekly' ) );
+		$this->assertStatus( 201, $response );
+		$this->assertSame( 'biweekly', $response->get_data()['freq'] );
+		$this->assertSame( 'biweekly', $response->get_data()['due_mode'] );
+
+		$back = $this->api_as( 'lead', 'PATCH', '/monthly-tasks/' . $response->get_data()['id'], array( 'due_mode' => 'monthly' ) );
+		$this->assertSame( 'monthly', $back->get_data()['freq'] );
+	}
+
 	public function test_member_adds_monthly_task_with_defaults() {
 		$response = $this->create( 'member' );
 

@@ -1,4 +1,4 @@
-import { activeWeek, addDays, cycleRange, daysBetween, dueAt, isWeekly, parts, weekRange, weeksOf, ymd } from './cycles.js';
+import { activeSlot, addDays, cycleRange, daysBetween, dueAt, isSplit, parts, slotLabel, slotRange, slotsOf, ymd } from './cycles.js';
 import { deadlineInfo, itemDeadline } from './deadline.js';
 import { localYmd, mondayOf, short, toDate } from './format.js';
 import { bornAt, isShared, recordOf, stateOf, typePeople } from './monthly.js';
@@ -76,7 +76,7 @@ export function assignedFor(data, pid, today) {
 	rowsOf(data, 'monthly_tasks').forEach((t) => {
 		const c = data.projects[t.project_id];
 		if (!isOn(t, pid) || !c) return;
-		const w = isWeekly(t) ? activeWeek(c, 0, today) : undefined;
+		const w = isSplit(t) ? activeSlot(t, c, 0, today) : undefined;
 		const rec = recordOf(data.records, t, c, w, 0, today);
 		const st = stateOf(t, rec);
 		const shared = isShared(t);
@@ -93,7 +93,7 @@ export function assignedFor(data, pid, today) {
 			title: t.title,
 			priority: late ? 'urgent' : 'normal',
 			group: st === 'doing' || cnt > 0 ? 'doing' : 'todo',
-			sub: `${isWeekly(t) ? `Week ${w + 1}` : 'This cycle'}${n > 1 ? ` · ${cnt}/${n} done${shared ? ' (your share)' : ''}` : shared ? ' · shared' : ''}`,
+			sub: `${isSplit(t) ? slotLabel(t, slotRange(t, c, w, 0, today), w) : 'This cycle'}${n > 1 ? ` · ${cnt}/${n} done${shared ? ' (your share)' : ''}` : shared ? ' · shared' : ''}`,
 			when: late ? `Overdue since ${short(due)}` : `Due ${short(due)}`,
 			due,
 			sort: late ? 0 : 1.5,
@@ -121,9 +121,9 @@ export function missedWork(data, pid, r, today) {
 		for (let off = -3; off <= 0; off++) {
 			const cr = cycleRange(c, off, today);
 			if (cr.end < born) continue;
-			if (isWeekly(t)) {
-				weeksOf(c, off, today).forEach((wr, w) => {
-					if (wr.start >= born) check(w, off, `Week of ${short(wr.start)}`, wr.end);
+			if (isSplit(t)) {
+				slotsOf(t, c, off, today).forEach((wr, w) => {
+					if (wr.start >= born) check(w, off, `${slotLabel(t, wr, w)} · from ${short(wr.start)}`, wr.end);
 				});
 			} else check(undefined, off, `Cycle ${short(cr.start)} – ${short(cr.end)}`, cr.end);
 		}
@@ -145,8 +145,8 @@ export function calEvents(data, pid, from, to, today) {
 		const need = isShared(t) ? shareOf(t, pid) : Math.max(1, t.target || 1);
 		const born = bornAt(t, c, today);
 		const add = (w, off) => {
-			let R = isWeekly(t) ? weekRange(c, w, off, today) : cycleRange(c, off, today);
-			if (!isWeekly(t) && t.due_mode === 'dates' && t.due_from_day) {
+			let R = isSplit(t) ? slotRange(t, c, w, off, today) : cycleRange(c, off, today);
+			if (!isSplit(t) && t.due_mode === 'dates' && t.due_from_day) {
 				const [y, m, d] = parts(R.start);
 				R = { ...R, start: ymd(y, m, d + t.due_from_day - 1), end: dueAt(t, c, undefined, off, today) };
 			}
@@ -157,16 +157,16 @@ export function calEvents(data, pid, from, to, today) {
 			const got = isShared(t) ? ((rec && rec.by_person) || {})[pid] || 0 : rec && rec.status !== 'skipped' ? rec.count || 0 : 0;
 			const due = dueAt(t, c, w, off, today);
 			const status = rec && rec.status === 'skipped' ? 'skipped' : got >= need ? 'done' : R.end < today ? 'missed' : got > 0 ? 'doing' : 'open';
-			if (!isWeekly(t) && t.due_mode === 'date') {
+			if (!isSplit(t) && t.due_mode === 'date') {
 				if (due >= from && due <= to) {
 					dated.push({ date: due, kind: 'monthly', title: t.title, client: cname(t.project_id), project_id: t.project_id, status: status !== 'done' && status !== 'skipped' && due < today ? 'missed' : status, detail: `Due day ${t.due_day}${need > 1 ? ` · ${got}/${need}` : ''}`, tab: 'monthly' });
 				}
 				return;
 			}
-			spans.push({ start: R.start, end: R.end, kind: isWeekly(t) ? 'weekly' : 'monthly', title: t.title, client: cname(t.project_id), project_id: t.project_id, status, detail: `${isWeekly(t) ? `Week ${w + 1}` : 'This cycle'}${need > 1 ? ` · ${got}/${need}` : ''}${!isWeekly(t) && t.due_day ? ` · due ${short(due)}` : ''}`, tab: 'monthly' });
+			spans.push({ start: R.start, end: R.end, kind: isSplit(t) ? 'weekly' : 'monthly', title: t.title, client: cname(t.project_id), project_id: t.project_id, status, detail: `${isSplit(t) ? slotLabel(t, R, w) : 'This cycle'}${need > 1 ? ` · ${got}/${need}` : ''}${!isSplit(t) && t.due_day ? ` · due ${short(due)}` : ''}`, tab: 'monthly' });
 		};
 		for (let off = -4; off <= 3; off++) {
-			if (isWeekly(t)) weeksOf(c, off, today).forEach((_, w) => add(w, off));
+			if (isSplit(t)) slotsOf(t, c, off, today).forEach((_, w) => add(w, off));
 			else add(undefined, off);
 		}
 	});
@@ -180,6 +180,7 @@ export function calEvents(data, pid, from, to, today) {
 		if (dl && dl.type === 'weekly') return dl.ranges.forEach((r, k) => bar(r.start, r.end, 'weekly', dl.ranges.length > 1 ? `week ${k + 1} of ${dl.ranges.length}` : 'due this week'));
 		if (dl && dl.type === 'monthly') return bar(dl.start, dl.end, 'monthly', `due ${short(dl.end)}`);
 		if (dl && dl.type === 'dates') return bar(dl.start, dl.end, 'range', `due ${short(dl.start)} – ${short(dl.end)}`);
+		if (dl && dl.type === 'biweekly') return bar(dl.start, dl.end, 'weekly', `due ${short(dl.end)} · 2 weeks`);
 		if (dl && dl.type === 'date') {
 			if (dl.end >= from && dl.end <= to) dated.push({ date: dl.end, kind: 'meeting', title: i.title, client: cname(i.project_id), project_id: i.project_id, status: i.status === 'done' ? 'done' : dl.overdue ? 'missed' : stI, detail: 'Due', tab: 'board' });
 			return;
@@ -214,7 +215,7 @@ export function personEvents(data, pid, audit) {
 	});
 	[...rowsOf(data, 'meeting_tasks').map((x) => ({ ...x, _t: 'items' })), ...rowsOf(data, 'monthly_tasks').map((x) => ({ ...x, _t: 'monthly' }))].forEach((x) => {
 		if (!isOn(x, pid) || !x.created_at) return;
-		out.push({ date: localYmd(x.created_at), at: x.created_at, kind: 'assigned', title: x.title, detail: x.target > 1 ? `Share: ${shareOf(x, pid) || x.target} of ${x.target}` : '', client: cname(x.project_id), src: x._t === 'monthly' ? (isWeekly(x) ? 'Weekly task' : 'Monthly task') : 'Meeting task' });
+		out.push({ date: localYmd(x.created_at), at: x.created_at, kind: 'assigned', title: x.title, detail: x.target > 1 ? `Share: ${shareOf(x, pid) || x.target} of ${x.target}` : '', client: cname(x.project_id), src: x._t === 'monthly' ? (x.freq === 'weekly' ? 'Weekly task' : x.freq === 'biweekly' ? 'Bi-weekly task' : 'Monthly task') : 'Meeting task' });
 	});
 	const seen = new Set();
 	return out

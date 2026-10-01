@@ -19,7 +19,7 @@ test('weekly tasks use cycle weeks', async ({ page }) => {
 	await page.getByRole('tab', { name: 'Monthly Tasks' }).click();
 	await page.getByRole('button', { name: 'Add monthly task' }).click();
 	await page.getByLabel('Task', { exact: true }).fill('Weekly social post');
-	await page.locator('.dl-opts').getByText('Weekly').click();
+	await page.locator('.dl-opts').getByText('Weekly', { exact: true }).click();
 	await page.getByRole('button', { name: 'Save task' }).click();
 	await page.getByText('Weekly social post').first().waitFor();
 
@@ -34,7 +34,7 @@ test('weekly tasks use cycle weeks', async ({ page }) => {
 	expect(cycleRange(project, 0, today).day).toBe(15);
 	expect(weeks).toHaveLength(4);
 
-	await page.locator('.mfilters').getByRole('button', { name: 'Weekly' }).click();
+	await page.locator('.mfilters').getByRole('button', { name: 'Weekly', exact: true }).click();
 	await expect(page.locator('.wk-inline')).toContainText(`Week ${aw + 1} of 4`);
 	const box = page.locator('article.mcard', { hasText: 'Weekly social post' }).locator('.weeks .wk');
 	await expect(box).toHaveCount(4);

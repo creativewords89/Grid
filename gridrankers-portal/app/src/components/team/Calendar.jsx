@@ -155,7 +155,7 @@ export default function Calendar({ pid }) {
 		grid = <div className="cal-m week">{weekRow(from, false)}</div>;
 	} else {
 		const list = [
-			...spans.filter((e) => e.start <= C.anchor && e.end >= C.anchor).map((e) => ({ ...e, when: `${e.kind === 'weekly' ? 'This week' : e.kind === 'range' ? 'Between' : e.meeting ? 'This month' : 'This cycle'} (${short(e.start)} – ${short(e.end)})` })),
+			...spans.filter((e) => e.start <= C.anchor && e.end >= C.anchor).map((e) => ({ ...e, when: `${e.kind === 'weekly' ? (daysBetween(e.start, e.end) > 7 ? 'These two weeks' : 'This week') : e.kind === 'range' ? 'Between' : e.meeting ? 'This month' : 'This cycle'} (${short(e.start)} – ${short(e.end)})` })),
 			...(byDay[C.anchor] || []).map((e) => ({ ...e, when: 'This day' })),
 		];
 		grid = (

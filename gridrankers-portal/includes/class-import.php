@@ -281,7 +281,7 @@ class GRP_Import {
 
 		$weekly = 'weekly' === ( $d['freq'] ?? '' );
 		$mode   = $d['dueMode'] ?? null;
-		if ( ! in_array( $mode, array( 'none', 'weekly', 'date', 'dates', 'monthly' ), true ) ) {
+		if ( ! in_array( $mode, array( 'none', 'weekly', 'biweekly', 'date', 'dates', 'monthly' ), true ) ) {
 			$mode = $weekly ? 'weekly' : ( ! empty( $d['dueDay'] ) ? 'date' : 'monthly' );
 		}
 		$target = max( 1, (int) ( $d['target'] ?? 1 ) );
@@ -320,7 +320,7 @@ class GRP_Import {
 			'project_id'   => (string) $d['clientId'],
 			'title'        => (string) ( $d['title'] ?? '' ),
 			'notes'        => (string) ( $d['notes'] ?? '' ),
-			'freq'         => $weekly || 'weekly' === $mode ? 'weekly' : 'monthly',
+			'freq'         => 'biweekly' === $mode ? 'biweekly' : ( $weekly || 'weekly' === $mode ? 'weekly' : 'monthly' ),
 			'due_mode'     => $mode,
 			'due_day'      => ! empty( $d['dueDay'] ) ? (int) $d['dueDay'] : null,
 			'due_from_day' => ! empty( $d['dueFromDay'] ) ? (int) $d['dueFromDay'] : null,
@@ -673,6 +673,15 @@ class GRP_Import {
 				return $month ? array(
 					'type'  => 'monthly',
 					'month' => $month,
+				) : array( 'type' => 'none' );
+
+			case 'biweekly':
+				// Written by this plugin's export (two weeks from a Monday).
+				$from = self::ymd( $d['dueFrom'] ?? null );
+				return $from ? array(
+					'type' => 'biweekly',
+					'from' => $from,
+					'to'   => self::ymd( $d['dueTo'] ?? null ) ? self::ymd( $d['dueTo'] ) : gmdate( 'Y-m-d', strtotime( $from . ' 00:00:00 UTC +13 days' ) ),
 				) : array( 'type' => 'none' );
 
 			case 'date':
