@@ -99,15 +99,58 @@ class GRP_REST_Trash extends GRP_REST_Controller {
 
 		$row = GRP_Store::transaction(
 			static function () use ( $entry, $table, $data ) {
-				unset( $data['updated_at'] );
-				$row = GRP_Store::insert( $table, $data );
-				GRP_Store::delete( self::TABLE, $entry['id'] );
-				GRP_Activity::audit( 'restore', self::RESTORABLE[ $table ], $row, self::actor() );
+				$row = self::put_back( $entry, $table, $data );
+				// A restored project brings back the tasks that were deleted with it.
+				if ( 'grp_projects' === $table ) {
+					foreach ( self::tasks_deleted_with( $row['id'] ) as $task_entry ) {
+						if ( ! GRP_Store::get( $task_entry['type'], (string) ( $task_entry['data']['id'] ?? '' ) ) ) {
+							self::put_back( $task_entry, $task_entry['type'], (array) $task_entry['data'] );
+						}
+					}
+				}
 				return $row;
 			}
 		);
 
 		return rest_ensure_response( $row );
+	}
+
+	/**
+	 * Re-inserts a trashed row, removes its trash entry and logs the restore.
+	 *
+	 * @param array  $entry Trash entry.
+	 * @param string $table Table.
+	 * @param array  $data  Row.
+	 * @return array Restored row.
+	 */
+	private static function put_back( array $entry, $table, array $data ) {
+		unset( $data['updated_at'] );
+		$row = GRP_Store::insert( $table, $data );
+		GRP_Store::delete( self::TABLE, $entry['id'] );
+		GRP_Activity::audit( 'restore', self::RESTORABLE[ $table ], $row, self::actor() );
+
+		return $row;
+	}
+
+	/**
+	 * Trash entries of the tasks deleted together with a project.
+	 *
+	 * @param string $project_id Project.
+	 * @return array[]
+	 */
+	private static function tasks_deleted_with( $project_id ) {
+		return array_filter(
+			GRP_Store::find(
+				self::TABLE,
+				array(
+					'project_id'   => $project_id,
+					'with_project' => 1,
+				)
+			),
+			static function ( $e ) {
+				return 'grp_projects' !== $e['type'];
+			}
+		);
 	}
 
 	/**
@@ -125,7 +168,17 @@ class GRP_REST_Trash extends GRP_REST_Controller {
 		if ( ! $entry ) {
 			return self::not_found();
 		}
-		GRP_Store::delete( self::TABLE, $entry['id'] );
+		GRP_Store::transaction(
+			static function () use ( $entry ) {
+				GRP_Store::delete( self::TABLE, $entry['id'] );
+				// A project deleted forever takes every task of it still in the trash along.
+				if ( 'grp_projects' === $entry['type'] && ! GRP_Store::get( 'grp_projects', $entry['doc_id'] ) ) {
+					foreach ( GRP_Store::find( self::TABLE, array( 'project_id' => $entry['doc_id'] ) ) as $task_entry ) {
+						GRP_Store::delete( self::TABLE, $task_entry['id'] );
+					}
+				}
+			}
+		);
 
 		return rest_ensure_response(
 			array(

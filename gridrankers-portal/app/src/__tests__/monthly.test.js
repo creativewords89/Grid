@@ -15,15 +15,20 @@ describe('monthly state', () => {
 		expect(stateOf(t, { count: 3, status: 'skipped' })).toBe('todo');
 	});
 
-	it('period keys: cycle key or YYYY-MM-wN', () => {
+	it('period keys: cycle key or {cycle key}-wN', () => {
 		expect(periodKeyOf({ freq: 'monthly' }, project, undefined, 0, today)).toBe('2026-10');
 		expect(periodKeyOf({ freq: 'weekly' }, project, undefined, 0, today)).toBe('2026-10-w3');
 		expect(periodKeyOf({ freq: 'weekly' }, project, 0, -1, today)).toBe('2026-09-w1');
+		// Cycle day 15: Oct 1 is in W3 (Sep 29 – Oct 5) of the Sep 15 cycle; Oct 31 in W3 of the Oct 15 cycle.
+		const mid = { cycle_day: 15 };
+		expect(periodKeyOf({ freq: 'weekly' }, mid, undefined, 0, '2026-10-01')).toBe('2026-09-w3');
+		expect(periodKeyOf({ freq: 'weekly' }, mid, undefined, 0, '2026-10-31')).toBe('2026-10-w3');
 	});
 
 	it('bornAt is the start of the cycle the task was added in', () => {
 		expect(bornAt({ freq: 'monthly', created_at: '2026-08-20 10:00:00' }, project, today)).toBe('2026-08-01');
-		expect(bornAt({ freq: 'weekly', created_at: '2026-08-20 10:00:00' }, project, today)).toBe('2026-08-01');
+		// Weekly tasks start counting from the cycle week they were added in.
+		expect(bornAt({ freq: 'weekly', created_at: '2026-08-20 10:00:00' }, project, today)).toBe('2026-08-15');
 	});
 });
 
@@ -52,6 +57,17 @@ describe('computeMissed', () => {
 		const none = { ...monthly, id: 'm3', due_mode: 'none', created_at: '2026-10-01 09:00:00' };
 		const missed = computeMissed([dated, none], projects, {}, today);
 		expect(missed.map((m) => [m.task.id, m.off, m.due])).toEqual([['m2', 0, '2026-10-10']]);
+	});
+
+	it('weekly tasks miss each finished cycle week', () => {
+		const mid = { id: 'p2', cycle_day: 15, cycle_set: 1 };
+		const weekly = { id: 'w2', project_id: 'p2', freq: 'weekly', due_mode: 'weekly', target: 1, created_at: '2026-10-15 09:00:00' };
+		const missed = computeMissed([weekly], { p2: mid }, {}, '2026-10-30');
+		// Cycle Oct 15 – Nov 14: W1 (to Oct 21) and W2 (to Oct 28) have ended.
+		expect(missed.map((m) => [m.w, m.due])).toEqual([
+			[0, '2026-10-21'],
+			[1, '2026-10-28'],
+		]);
 	});
 
 	it('weekly tasks miss each finished week', () => {

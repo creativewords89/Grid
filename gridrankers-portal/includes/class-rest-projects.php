@@ -69,9 +69,14 @@ class GRP_REST_Projects extends GRP_REST_Controller {
 			return self::conflict( __( 'A project with that name already exists.', 'gridrankers-portal' ), 'grp_name_taken' );
 		}
 
+		$state = (string) ( $request['state'] ?? 'active' );
+		if ( ! in_array( $state, array( 'active', 'paused', 'inactive' ), true ) ) {
+			return self::invalid( __( 'Invalid project status.', 'gridrankers-portal' ) );
+		}
+
 		$row = array(
 			'name'  => $name,
-			'state' => 'active',
+			'state' => $state,
 		);
 		if ( isset( $request['cycle_day'] ) && '' !== $request['cycle_day'] ) {
 			$day                  = self::int( $request['cycle_day'], 1, 28, 1 );
@@ -160,15 +165,17 @@ class GRP_REST_Projects extends GRP_REST_Controller {
 			return self::forbidden( __( 'Only the Super Admin can delete projects.', 'gridrankers-portal' ) );
 		}
 
-		GRP_Store::transaction(
+		$trash = GRP_Store::transaction(
 			static function () use ( $project ) {
+				$trash = array();
 				foreach ( array( 'grp_meeting_tasks', 'grp_monthly_tasks' ) as $table ) {
 					foreach ( GRP_Store::find( $table, array( 'project_id' => $project['id'] ) ) as $task ) {
-						self::trash( $table, $task );
+						$trash[] = self::trash( $table, $task, true );
 					}
 				}
-				self::trash( 'grp_projects', $project );
+				$trash[] = self::trash( 'grp_projects', $project );
 				GRP_Activity::audit( 'delete', 'client', $project, self::actor(), 'project deleted' );
+				return $trash;
 			}
 		);
 
@@ -176,6 +183,7 @@ class GRP_REST_Projects extends GRP_REST_Controller {
 			array(
 				'deleted' => true,
 				'id'      => $project['id'],
+				'trash'   => $trash,
 			)
 		);
 	}

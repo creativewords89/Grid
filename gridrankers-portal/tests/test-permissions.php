@@ -104,7 +104,7 @@ class Test_GRP_Permissions extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Row: Add a project.
+	 * Row: Add a project (Super Admin and Team Leader).
 	 */
 	public function test_add_project() {
 		$this->assert_matrix(
@@ -113,7 +113,7 @@ class Test_GRP_Permissions extends WP_UnitTestCase {
 			array(
 				'admin'  => true,
 				'lead'   => true,
-				'member' => true,
+				'member' => false,
 			)
 		);
 	}

@@ -1,5 +1,5 @@
 import { usePortal } from '../../context.js';
-import { activeWeek, cycleRange, daysBetween, dueAt, isWeekly, monthRange, parts, weekRange, ymd } from '../../lib/cycles.js';
+import { activeWeek, cycleRange, daysBetween, dueAt, isWeekly, parts, weeksOf, ymd } from '../../lib/cycles.js';
 import { localYmd, short } from '../../lib/format.js';
 import { bornAt, isShared, isWaived, periodKeyOf, recordOf, stateOf, typePeople } from '../../lib/monthly.js';
 import { isManager } from '../../lib/roles.js';
@@ -13,9 +13,10 @@ export function usePeriod(task, selWeek) {
 	const { data, cycleOff, today } = usePortal();
 	const project = data.projects[task.project_id];
 	const wk = isWeekly(task);
-	const aw = activeWeek(cycleOff, today);
-	const sel = wk ? (selWeek ?? aw) : undefined;
-	const range = wk ? monthRange(cycleOff, today) : cycleRange(project, cycleOff, today);
+	const aw = activeWeek(project, cycleOff, today);
+	const nWeeks = weeksOf(project, cycleOff, today).length;
+	const sel = wk ? Math.min(selWeek ?? aw, nWeeks - 1) : undefined;
+	const range = cycleRange(project, cycleOff, today);
 	const periodKey = periodKeyOf(task, project, sel, cycleOff, today);
 	const rec = recordOf(data.records, task, project, sel, cycleOff, today);
 	return { project, wk, aw, sel, range, periodKey, rec, st: stateOf(task, rec), n: Math.max(1, task.target || 1), count: rec && rec.status !== 'skipped' ? rec.count || 0 : 0 };
@@ -263,9 +264,8 @@ export default function MonthlyCard({ task, selWeek, onSelectWeek, missed, onDet
 	));
 
 	const weeks = wk && (
-		<div className="weeks" role="group" aria-label="Weeks this cycle" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
-			{[0, 1, 2, 3].map((w) => {
-				const r2 = weekRange(w, cycleOff, today);
+		<div className="weeks" role="group" aria-label="Weeks this cycle" style={{ gridTemplateColumns: `repeat(${weeksOf(project, cycleOff, today).length},1fr)` }}>
+			{weeksOf(project, cycleOff, today).map((r2, w) => {
 				const rec2 = recordOf(data.records, task, project, w, cycleOff, today);
 				const ws = stateOf(task, rec2);
 				const skipped = rec2 && rec2.status === 'skipped';

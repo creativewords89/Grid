@@ -1,4 +1,4 @@
-import { activeWeek, addDays, cycleRange, daysBetween, dueAt, isWeekly, parts, weekRange, ymd } from './cycles.js';
+import { activeWeek, addDays, cycleRange, daysBetween, dueAt, isWeekly, parts, weekRange, weeksOf, ymd } from './cycles.js';
 import { deadlineInfo, itemDeadline } from './deadline.js';
 import { localYmd, mondayOf, short, toDate } from './format.js';
 import { bornAt, isShared, recordOf, stateOf, typePeople } from './monthly.js';
@@ -76,7 +76,7 @@ export function assignedFor(data, pid, today) {
 	rowsOf(data, 'monthly_tasks').forEach((t) => {
 		const c = data.projects[t.project_id];
 		if (!isOn(t, pid) || !c) return;
-		const w = isWeekly(t) ? activeWeek(0, today) : undefined;
+		const w = isWeekly(t) ? activeWeek(c, 0, today) : undefined;
 		const rec = recordOf(data.records, t, c, w, 0, today);
 		const st = stateOf(t, rec);
 		const shared = isShared(t);
@@ -122,8 +122,7 @@ export function missedWork(data, pid, r, today) {
 			const cr = cycleRange(c, off, today);
 			if (cr.end < born) continue;
 			if (isWeekly(t)) {
-				[0, 1, 2, 3].forEach((w) => {
-					const wr = weekRange(w, off, today);
+				weeksOf(c, off, today).forEach((wr, w) => {
 					if (wr.start >= born) check(w, off, `Week of ${short(wr.start)}`, wr.end);
 				});
 			} else check(undefined, off, `Cycle ${short(cr.start)} – ${short(cr.end)}`, cr.end);
@@ -146,7 +145,7 @@ export function calEvents(data, pid, from, to, today) {
 		const need = isShared(t) ? shareOf(t, pid) : Math.max(1, t.target || 1);
 		const born = bornAt(t, c, today);
 		const add = (w, off) => {
-			let R = isWeekly(t) ? weekRange(w, off, today) : cycleRange(c, off, today);
+			let R = isWeekly(t) ? weekRange(c, w, off, today) : cycleRange(c, off, today);
 			if (!isWeekly(t) && t.due_mode === 'dates' && t.due_from_day) {
 				const [y, m, d] = parts(R.start);
 				R = { ...R, start: ymd(y, m, d + t.due_from_day - 1), end: dueAt(t, c, undefined, off, today) };
@@ -167,7 +166,7 @@ export function calEvents(data, pid, from, to, today) {
 			spans.push({ start: R.start, end: R.end, kind: isWeekly(t) ? 'weekly' : 'monthly', title: t.title, client: cname(t.project_id), project_id: t.project_id, status, detail: `${isWeekly(t) ? `Week ${w + 1}` : 'This cycle'}${need > 1 ? ` · ${got}/${need}` : ''}${!isWeekly(t) && t.due_day ? ` · due ${short(due)}` : ''}`, tab: 'monthly' });
 		};
 		for (let off = -4; off <= 3; off++) {
-			if (isWeekly(t)) [0, 1, 2, 3].forEach((w) => add(w, off));
+			if (isWeekly(t)) weeksOf(c, off, today).forEach((_, w) => add(w, off));
 			else add(undefined, off);
 		}
 	});

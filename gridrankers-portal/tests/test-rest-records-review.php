@@ -84,6 +84,33 @@ class Test_GRP_REST_Records_Review extends GRP_REST_TestCase {
 		$this->assertStatus( 404, $this->tick( 'member', array( 'id' => 'ghost' ) ) );
 	}
 
+	public function test_weekly_keys_are_cycle_weeks() {
+		$today   = GRP_Cycles::today();
+		$project = $this->project( 'Mid Month', 15 );
+		$weekly  = $this->api_as(
+			'lead',
+			'POST',
+			'/monthly-tasks',
+			array(
+				'project_id' => $project['id'],
+				'title'      => 'Weekly post',
+				'due_mode'   => 'weekly',
+			)
+		)->get_data();
+		$cycle   = GRP_Cycles::cycle_range( $project, 0, $today );
+		$current = GRP_Cycles::period_key( $weekly, $project, null, 0, $today );
+		$tick    = function ( $key ) use ( $weekly ) {
+			return $this->tick( 'member', $weekly, 1, array( 'periodKey' => $key ) );
+		};
+
+		$this->assertStatus( 200, $tick( $current ) );
+		$this->assertSame( $current, GRP_Store::get( 'grp_cycle_records', GRP_Cycles::record_id( $weekly['id'], $current ) )['period_key'] );
+		$this->assertStatus( 200, $tick( $cycle['key'] . '-w1' ), 'earlier week of this cycle' );
+		$this->assertStatus( 400, $tick( $cycle['key'] . '-w9' ), 'no such week' );
+		$this->assertStatus( 400, $tick( '2099-01-w1' ), 'not a cycle of the project' );
+		$this->assertStatus( 400, $tick( GRP_Cycles::cycle_range( $project, 1, $today )['key'] . '-w1' ), 'future cycle' );
+	}
+
 	public function test_member_ticks_unassigned_task_to_done_pending_review() {
 		$task = $this->monthly( array( 'target' => 2 ) );
 

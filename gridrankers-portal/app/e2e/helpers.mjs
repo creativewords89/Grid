@@ -58,8 +58,10 @@ export async function signOutOwner(page) {
 
 export const card = (page, title) => page.locator('article.mcard', { hasText: title });
 
+// Sidebar project → its Meeting Minutes (everyone lands on the Dashboard after signing in).
 export async function openProject(page, name) {
 	await page.locator('button.pick', { hasText: name }).click();
+	await expect(page.locator('.top h1')).toHaveText(new RegExp(`^${name}`));
 }
 
 export async function addMeetingTask(page, title, assignee) {

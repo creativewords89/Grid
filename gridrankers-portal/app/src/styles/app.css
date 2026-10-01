@@ -9,3 +9,41 @@ button{font:inherit;color:inherit;cursor:pointer}
 .nt-meta,.nt-title{overflow-wrap:anywhere}
 .d-bars{gap:min(clamp(2px,1vw,14px),calc(30% / var(--n)))}
 .d-hwrap .d-lab{font-size:.6rem;text-overflow:clip}
+
+/* Recent Activities is per project (SPEC.md 7.4): no project column. */
+.log.no-c li{grid-template-columns:1fr}
+
+/* Sidebar brand opens the Dashboard (SPEC.md 7.0). */
+button.brand{all:unset;cursor:pointer;display:block;font-family:var(--display);font-weight:800;font-size:1.25rem;line-height:1.1;letter-spacing:-.01em;border-radius:8px;padding:2px 4px;margin:-2px -4px}
+button.brand:hover,button.brand[aria-current="page"]{background:var(--panel-2)}
+button.brand:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
+/* Dashboard (SPEC.md 7.0) */
+.pd{display:flex;flex-direction:column;gap:16px}
+.pd-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pd-bar .segs{justify-content:flex-start}
+.pd-bar .sg b{margin-left:4px;font-weight:700}
+.pd-search{flex:1 1 200px;max-width:320px}
+.pd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.pd-card{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:0 1px 2px rgba(10,20,35,.04);display:flex;flex-direction:column;overflow:hidden}
+.pd-card.st-paused{border-style:dashed}
+.pd-card.st-inactive{opacity:.75}
+.pd-open{all:unset;cursor:pointer;display:flex;flex-direction:column;gap:8px;padding:16px 18px;flex:1}
+.pd-open:hover{background:var(--panel-2)}
+.pd-open:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.pd-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.pd-name{font-family:var(--display);font-size:1.1rem;overflow-wrap:anywhere}
+.pd-state{font-size:.72rem;font-weight:700;border-radius:99px;padding:2px 8px;white-space:nowrap}
+.ps-active{background:var(--done-bg);color:var(--done)}
+.ps-paused{background:var(--doing-bg);color:var(--doing)}
+.ps-inactive{background:var(--panel-2);color:var(--ink-2)}
+.pd-cycle{font-size:.82rem;color:var(--ink-2)}
+.pd-stats{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:.85rem}
+.pd-stats b{font-size:1rem}
+.pd-hot{color:var(--urgent)}
+.pd-warm{color:var(--doing)}
+.pd-upd{font-size:.78rem;color:var(--ink-2)}
+.pd-acts{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 18px;border-top:1px solid var(--line);background:var(--panel-2)}
+.pd-acts select{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:4px 8px;font:inherit;font-size:.82rem}
+@media (max-width:600px){.pd-search{max-width:none}.pd-bar .btn{width:100%}}

@@ -128,10 +128,10 @@ class GRP_Permissions {
 
 		switch ( $action ) {
 			case self::VIEW_PROJECTS:
-			case self::ADD_PROJECT:
 			case self::ADD_TASK:
 				return true;
 
+			case self::ADD_PROJECT:
 			case self::SET_PROJECT_STATE:
 			case self::EDIT_PROJECT:
 			case self::SKIP_PERIOD:

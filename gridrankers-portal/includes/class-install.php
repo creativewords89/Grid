@@ -15,7 +15,7 @@ class GRP_Install {
 	/**
 	 * Current schema version. Bump it whenever get_schema() or migrations() changes.
 	 */
-	const DB_VERSION = 2;
+	const DB_VERSION = 3;
 
 	/**
 	 * Option that stores the installed schema version.
@@ -106,7 +106,74 @@ class GRP_Install {
 	 * @return array<int, callable>
 	 */
 	private static function migrations() {
-		return array();
+		return array(
+			3 => array( __CLASS__, 'migrate_weekly_records' ),
+		);
+	}
+
+	/**
+	 * Schema 3: weekly tasks follow the project cycle (SPEC.md 6.2). Records stored under a
+	 * calendar-week key (`YYYY-MM-wN`) move to the cycle week containing that calendar
+	 * week's first day, with their activity credits. Projects starting on day 1 keep their
+	 * keys (same weeks). A record whose new key is already taken stays where it was.
+	 *
+	 * @return int Records moved.
+	 */
+	public static function migrate_weekly_records() {
+		// New cycle-week keys look like old calendar-week keys: never convert twice.
+		if ( get_option( 'grp_weekly_migrated' ) ) {
+			return 0;
+		}
+		update_option( 'grp_weekly_migrated', 1, false );
+
+		$today = GRP_Cycles::today();
+		$moved = 0;
+
+		foreach ( GRP_Store::find( 'grp_monthly_tasks', array( 'freq' => 'weekly' ) ) as $task ) {
+			$project = GRP_Store::get( 'grp_projects', $task['project_id'] );
+			if ( ! $project ) {
+				continue;
+			}
+			foreach ( GRP_Store::find( 'grp_cycle_records', array( 'task_id' => $task['id'] ) ) as $rec ) {
+				if ( ! preg_match( '/^(\d{4})-(\d{2})-w([1-4])$/', (string) $rec['period_key'], $m ) ) {
+					continue;
+				}
+				$first         = sprintf( '%s-%s-%02d', $m[1], $m[2], 1 + 7 * ( (int) $m[3] - 1 ) );
+				list( $p, $w ) = GRP_Cycles::week_at( $project, $first, $today );
+				$key           = $p['key'] . '-w' . ( $w + 1 );
+				$id            = GRP_Cycles::record_id( $task['id'], $key );
+				// Outside the ±18-month window of known cycles, or nothing to change, or taken.
+				$outside = $first < $p['start'] || $first > $p['end'];
+				if ( $outside || $key === $rec['period_key'] || GRP_Store::get( 'grp_cycle_records', $id ) ) {
+					continue;
+				}
+
+				GRP_Store::transaction(
+					static function () use ( $rec, $id, $key, $w ) {
+						$old = $rec['id'];
+						unset( $rec['created_at'], $rec['updated_at'] );
+						GRP_Store::insert(
+							'grp_cycle_records',
+							array_merge(
+								$rec,
+								array(
+									'id'         => $id,
+									'period_key' => $key,
+									'week'       => $w + 1,
+								)
+							)
+						);
+						GRP_Store::delete( 'grp_cycle_records', $old );
+						foreach ( GRP_Store::find( 'grp_activity', array( 'ref_key' => 'rec:' . $old ) ) as $credit ) {
+							GRP_Store::update( 'grp_activity', $credit['id'], array( 'ref_key' => 'rec:' . $id ) );
+						}
+					}
+				);
+				++$moved;
+			}
+		}
+
+		return $moved;
 	}
 
 	/**
@@ -319,6 +386,7 @@ class GRP_Install {
 				data json NULL,
 				title text NULL,
 				project_id varchar(64) NULL,
+				with_project tinyint(1) NOT NULL DEFAULT 0,
 				deleted_at datetime NOT NULL,
 				deleted_by varchar(64) NULL,
 				created_at datetime NOT NULL,

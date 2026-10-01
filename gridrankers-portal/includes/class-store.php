@@ -33,6 +33,7 @@ class GRP_Store {
 	 */
 	const INT_COLUMNS = array(
 		'active',
+		'with_project',
 		'wp_user_id',
 		'cycle_day',
 		'cycle_set',

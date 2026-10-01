@@ -42,12 +42,15 @@ export default function useTaskActions() {
 		try {
 			const res = await api.del(`meeting-tasks/${task.id}`);
 			dispatch({ type: 'remove', table: 'meeting_tasks', id: task.id });
+			// Show it in Recently deleted now, not at the next sync.
+			if (res.trash) dispatch({ type: 'upsert', table: 'trash', row: res.trash });
 			toast('Task deleted', {
 				action: {
 					label: 'Undo',
 					run: async () => {
 						try {
 							save(await api.post(`trash/${res.trash_id}/restore`));
+							dispatch({ type: 'remove', table: 'trash', id: res.trash_id });
 							toast(`“${task.title}” restored`);
 						} catch (err) {
 							toast(err.message);

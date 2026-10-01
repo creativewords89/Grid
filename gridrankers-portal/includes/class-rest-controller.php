@@ -366,21 +366,23 @@ abstract class GRP_REST_Controller {
 	/**
 	 * Moves a row to the trash (soft delete) and removes it from its table.
 	 *
-	 * @param string $table Table.
-	 * @param array  $row   Row.
+	 * @param string $table        Table.
+	 * @param array  $row          Row.
+	 * @param bool   $with_project Deleted as part of deleting its project (restored with it).
 	 * @return array The trash row.
 	 */
-	protected static function trash( $table, array $row ) {
+	protected static function trash( $table, array $row, $with_project = false ) {
 		$trash = GRP_Store::insert(
 			'grp_trash',
 			array(
-				'type'       => $table,
-				'doc_id'     => $row['id'],
-				'data'       => $row,
-				'title'      => (string) ( $row['title'] ?? $row['name'] ?? '' ),
-				'project_id' => 'grp_projects' === $table ? $row['id'] : ( $row['project_id'] ?? null ),
-				'deleted_at' => GRP_Ids::now(),
-				'deleted_by' => self::actor()['id'],
+				'type'         => $table,
+				'doc_id'       => $row['id'],
+				'data'         => $row,
+				'title'        => (string) ( $row['title'] ?? $row['name'] ?? '' ),
+				'project_id'   => 'grp_projects' === $table ? $row['id'] : ( $row['project_id'] ?? null ),
+				'with_project' => $with_project ? 1 : 0,
+				'deleted_at'   => GRP_Ids::now(),
+				'deleted_by'   => self::actor()['id'],
 			)
 		);
 		GRP_Store::delete( $table, $row['id'] );

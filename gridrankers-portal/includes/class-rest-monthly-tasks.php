@@ -154,6 +154,7 @@ class GRP_REST_Monthly_Tasks extends GRP_REST_Controller {
 				'deleted'  => true,
 				'id'       => $task['id'],
 				'trash_id' => $trash['id'],
+				'trash'    => $trash,
 			)
 		);
 	}

@@ -344,7 +344,7 @@ class GRP_REST_Records extends GRP_REST_Controller {
 	/**
 	 * Loads task + period from a request and validates the period key.
 	 *
-	 * Weekly: `YYYY-MM-wN`. Monthly: the key of a current or past cycle of the project
+	 * Weekly: `{cycle key}-wN`, a started week of the project's cycle. Monthly: the key of a current or past cycle of the project
 	 * (waived transition periods cannot be worked on).
 	 *
 	 * @param WP_REST_Request $request Request.
@@ -365,10 +365,17 @@ class GRP_REST_Records extends GRP_REST_Controller {
 		$week  = null;
 
 		if ( GRP_Cycles::is_weekly( $task ) ) {
-			if ( ! preg_match( '/^(\d{4})-(0[1-9]|1[0-2])-w([1-4])$/', $key, $m ) || $key > GRP_Cycles::month_range( 0, $today )['key'] . '-w4' ) {
+			// `{cycle key}-wN`: a started week of a current or past cycle of the project.
+			$period = null;
+			if ( preg_match( '/^(.+)-w([1-9])$/', $key, $m ) ) {
+				$period = wp_list_filter( GRP_Cycles::periods_of( $project, $today ), array( 'key' => $m[1] ) );
+				$period = $period ? reset( $period ) : null;
+			}
+			$weeks = $period ? GRP_Cycles::weeks_in( $period ) : array();
+			$week  = $period ? (int) $m[2] : 0;
+			if ( ! $period || $week > count( $weeks ) || $weeks[ $week - 1 ]['start'] > $today ) {
 				return self::invalid( __( 'Invalid week.', 'gridrankers-portal' ) );
 			}
-			$week = (int) $m[3];
 		} else {
 			$period = wp_list_filter( GRP_Cycles::periods_of( $project, $today ), array( 'key' => $key ) );
 			$period = $period ? reset( $period ) : null;

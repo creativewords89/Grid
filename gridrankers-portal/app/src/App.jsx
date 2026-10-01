@@ -13,6 +13,7 @@ import CompletionDialog from './components/CompletionDialog.jsx';
 import MeetingMinutes from './components/meeting/MeetingMinutes.jsx';
 import MonthlyTasks from './components/monthly/MonthlyTasks.jsx';
 import TeamView from './components/TeamView.jsx';
+import Dashboard from './components/Dashboard.jsx';
 import RecentActivities from './components/RecentActivities.jsx';
 import { todayYmd } from './lib/cycles.js';
 
@@ -20,16 +21,25 @@ const VIEW_KEY = 'grp:view';
 const PROJECT_KEY = 'grp:project';
 const VIEW_OWNER_KEY = 'grp:view-owner';
 
-const remember = (key, value) => {
+// The last project is remembered per browser; the screen per tab (sessionStorage), so opening
+// the portal starts on the Dashboard while a reload keeps the current screen (SPEC.md 7.0).
+const store = (kind) => {
 	try {
-		window.localStorage.setItem(key, value || '');
+		return window[kind];
+	} catch (e) {
+		return null;
+	}
+};
+const remember = (key, value, kind = 'localStorage') => {
+	try {
+		store(kind).setItem(key, value || '');
 	} catch (e) {
 		/* private mode: not remembered */
 	}
 };
-const recall = (key) => {
+const recall = (key, kind = 'localStorage') => {
 	try {
-		return window.localStorage.getItem(key) || '';
+		return store(kind).getItem(key) || '';
 	} catch (e) {
 		return '';
 	}
@@ -85,7 +95,7 @@ function useSync(api, active, dispatch) {
 export default function App({ config }) {
 	const [auth, setAuth] = useState({ status: 'loading', me: null });
 	const [data, dispatch] = useReducer(dataReducer, undefined, emptyData);
-	const [view, setViewState] = useState(recall(VIEW_KEY) || 'board');
+	const [view, setViewState] = useState(recall(VIEW_KEY, 'sessionStorage') || 'dash');
 	const [project, setProjectState] = useState(recall(PROJECT_KEY));
 	const [search, setSearch] = useState('');
 	const [cycleOff, setCycleOff] = useState(0);
@@ -117,14 +127,14 @@ export default function App({ config }) {
 
 	const syncStatus = useSync(api, auth.status === 'signedIn', dispatch);
 
-	// The remembered view belongs to whoever chose it: someone else signing in on this browser
-	// (e.g. after the session expired, without "Sign out") starts on the board.
+	// The remembered screen belongs to whoever chose it: someone else signing in on this tab
+	// (e.g. after the session expired, without "Sign out") starts on the Dashboard.
 	const meId = auth.me ? auth.me.id : '';
 	useEffect(() => {
-		if (!meId || recall(VIEW_OWNER_KEY) === meId) return;
-		remember(VIEW_OWNER_KEY, meId);
-		setViewState('board');
-		remember(VIEW_KEY, 'board');
+		if (!meId || recall(VIEW_OWNER_KEY, 'sessionStorage') === meId) return;
+		remember(VIEW_OWNER_KEY, meId, 'sessionStorage');
+		setViewState('dash');
+		remember(VIEW_KEY, 'dash', 'sessionStorage');
 	}, [meId]);
 
 	// Keep "me" fresh from synced member rows (role or name changes).
@@ -132,13 +142,13 @@ export default function App({ config }) {
 
 	const setView = (v) => {
 		setViewState(v);
-		remember(VIEW_KEY, v);
+		remember(VIEW_KEY, v, 'sessionStorage');
 	};
 	const setProject = (id) => {
 		setProjectState(id);
 		setCycleOff(0);
 		remember(PROJECT_KEY, id);
-		if (view === 'team') setView('board');
+		if (view === 'team' || view === 'dash') setView('board');
 	};
 
 	// Always show one project: default to the first active one (reference behaviour).
@@ -157,7 +167,7 @@ export default function App({ config }) {
 			/* signed out anyway */
 		}
 		signOutLocally();
-		setView('board');
+		setView('dash');
 		if (config.isWpAdmin) window.location.reload();
 	};
 
@@ -165,10 +175,10 @@ export default function App({ config }) {
 		return <div className="auth-gate" aria-busy="true" />;
 	}
 	if (auth.status === 'setup') {
-		return <Setup api={api} defaultName={config.wpUserName} onDone={(member) => setAuth({ status: 'signedIn', me: member })} />;
+		return <Setup api={api} defaultName={config.wpUserName} onDone={(member) => (setView('dash'), setAuth({ status: 'signedIn', me: member }))} />;
 	}
 	if (auth.status !== 'signedIn') {
-		return <SignIn api={api} loginUrl={config.loginUrl} onSignedIn={(member) => setAuth({ status: 'signedIn', me: member })} />;
+		return <SignIn api={api} loginUrl={config.loginUrl} onSignedIn={(member) => (setView('dash'), setAuth({ status: 'signedIn', me: member }))} />;
 	}
 
 	const today = todayYmd();
@@ -181,17 +191,19 @@ export default function App({ config }) {
 				<main>
 					<TopBar onSignOut={signOut} />
 					<section className="grp-view" aria-label="Content">
-						{projects.length === 0 ? (
+						{view === 'dash' ? (
+							<Dashboard />
+						) : view === 'team' ? (
+							<TeamView />
+						) : projects.length === 0 ? (
 							<div className="col" style={{ maxWidth: 520 }}>
 								<h2>Start with a project</h2>
-								<p className="empty">Add your first project in the sidebar, then add its tasks.</p>
+								<p className="empty">Projects are added on the Dashboard (click GridRankers at the top left).</p>
 							</div>
 						) : view === 'board' ? (
 							<MeetingMinutes />
 						) : view === 'monthly' ? (
 							<MonthlyTasks />
-						) : view === 'team' ? (
-							<TeamView />
 						) : view === 'log' ? (
 							<RecentActivities />
 						) : (
