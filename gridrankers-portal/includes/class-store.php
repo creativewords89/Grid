@@ -264,7 +264,7 @@ class GRP_Store {
 	public static function decode( $table, array $row ) {
 		foreach ( self::JSON_COLUMNS[ $table ] ?? array() as $column ) {
 			if ( isset( $row[ $column ] ) && is_string( $row[ $column ] ) ) {
-				$row[ $column ] = json_decode( $row[ $column ], true );
+				$row[ $column ] = self::canonical( json_decode( $row[ $column ], true ) );
 			}
 		}
 		foreach ( self::INT_COLUMNS as $column ) {
@@ -277,6 +277,25 @@ class GRP_Store {
 	}
 
 	/**
+	 * Sorts the keys of every JSON object in a value (lists keep their order). MySQL's JSON type
+	 * reorders object keys while MariaDB keeps them, so rows read the same on both.
+	 *
+	 * @param mixed $value Decoded JSON value.
+	 * @return mixed
+	 */
+	public static function canonical( $value ) {
+		if ( ! is_array( $value ) ) {
+			return $value;
+		}
+		$value = array_map( array( __CLASS__, 'canonical' ), $value );
+		if ( ! array_is_list( $value ) ) {
+			ksort( $value, SORT_STRING );
+		}
+
+		return $value;
+	}
+
+	/**
 	 * Encodes JSON columns for writing.
 	 *
 	 * @param string $table Table.
@@ -286,7 +305,7 @@ class GRP_Store {
 	private static function encode( $table, array $row ) {
 		foreach ( self::JSON_COLUMNS[ $table ] ?? array() as $column ) {
 			if ( array_key_exists( $column, $row ) && null !== $row[ $column ] && ! is_string( $row[ $column ] ) ) {
-				$row[ $column ] = wp_json_encode( $row[ $column ] );
+				$row[ $column ] = wp_json_encode( self::canonical( $row[ $column ] ) );
 			}
 		}
 

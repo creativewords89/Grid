@@ -192,6 +192,32 @@ class Test_GRP_REST_Meeting_Tasks extends GRP_REST_TestCase {
 		$this->assertSame( 'Max Member', $changes[2]['to'] );
 	}
 
+	public function test_unchanged_json_fields_are_not_logged_whatever_the_stored_key_order() {
+		global $wpdb;
+		$task = $this->task( 'lead', array( 'assignees' => $this->people( 'member' ) ) );
+
+		// MySQL's JSON type stores object keys in its own order.
+		$wpdb->update( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			GRP_Install::table( 'grp_meeting_tasks' ),
+			array( 'assignees' => '[{"n": 1, "id": "' . $task['assignees'][0]['id'] . '"}]' ),
+			array( 'id' => $task['id'] )
+		);
+
+		$response = $this->api_as(
+			'lead',
+			'PATCH',
+			"/meeting-tasks/{$task['id']}",
+			array(
+				'title'     => 'Renamed',
+				'assignees' => $this->people( 'member' ),
+			)
+		);
+		$this->assertStatus( 200, $response );
+
+		$edit = wp_list_filter( $this->audit_for( $task['id'] ), array( 'kind' => 'edit' ) );
+		$this->assertSame( array( 'title' ), wp_list_pluck( reset( $edit )['changes'], 'field' ) );
+	}
+
 	public function test_edit_cannot_reopen_done_task() {
 		$task = $this->task( 'lead', array( 'status' => 'done' ) );
 

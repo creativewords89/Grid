@@ -402,7 +402,7 @@ abstract class GRP_REST_Controller {
 			$from = $before[ $field ] ?? null;
 			$to   = $after[ $field ] ?? null;
 			// Empty and NULL are the same to a person reading the log.
-			if ( wp_json_encode( $from ) === wp_json_encode( $to ) || ( ! is_array( $from ) && ! is_array( $to ) && (string) $from === (string) $to ) ) {
+			if ( wp_json_encode( GRP_Store::canonical( $from ) ) === wp_json_encode( GRP_Store::canonical( $to ) ) || ( ! is_array( $from ) && ! is_array( $to ) && (string) $from === (string) $to ) ) {
 				continue;
 			}
 			$changes[] = array(

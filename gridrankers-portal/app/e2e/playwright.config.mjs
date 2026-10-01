@@ -13,9 +13,12 @@ export default defineConfig({
 	workers: 1,
 	timeout: 60000,
 	reporter: [['list']],
+	outputDir: '../test-results',
 	use: {
 		baseURL: url,
 		viewport: { width: 1280, height: 900 },
+		screenshot: 'only-on-failure',
+		trace: 'retain-on-failure',
 		launchOptions: process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {},
 	},
 	webServer: {

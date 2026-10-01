@@ -11,9 +11,20 @@ const live = (page) => page.getByText('Shared with your team · live').waitFor({
 export function watchErrors(page) {
 	const errors = [];
 	const onPortal = () => !/\/wp-(admin|login)/.test(page.url());
-	page.on('pageerror', (e) => onPortal() && errors.push(`pageerror: ${e.message}`));
+	const add = (msg) => {
+		console.log(`[browser] ${msg}`); // shows up in the CI log
+		errors.push(msg);
+	};
+	page.on('pageerror', (e) => onPortal() && add(`pageerror: ${e.message}`));
 	page.on('console', (m) => {
-		if (onPortal() && m.type() === 'error' && !/401|403/.test(m.text())) errors.push(`console: ${m.text()}`);
+		if (onPortal() && m.type() === 'error' && !/401|403/.test(m.text())) add(`console: ${m.text()}`);
+	});
+	page.on('requestfailed', (r) => {
+		const why = r.failure()?.errorText || '';
+		if (!onPortal()) return;
+		// Leaving the page cancels requests still in flight (ERR_ABORTED): logged, not an error.
+		if (why.includes('ERR_ABORTED')) console.log(`[browser] cancelled: ${r.url()}`);
+		else add(`request failed: ${r.url()} ${why}`);
 	});
 	return () => expect(errors).toEqual([]);
 }
