@@ -33,7 +33,7 @@ class Test_GRP_Store extends WP_UnitTestCase {
 
 	public function test_json_reads_the_same_whatever_order_the_database_keeps_keys_in() {
 		global $wpdb;
-		$row   = GRP_Store::insert(
+		$row    = GRP_Store::insert(
 			'grp_meeting_tasks',
 			array(
 				'project_id' => 'p1',
@@ -54,7 +54,7 @@ class Test_GRP_Store extends WP_UnitTestCase {
 				),
 			)
 		);
-		$table = GRP_Install::table( 'grp_meeting_tasks' );
+		$table  = GRP_Install::table( 'grp_meeting_tasks' );
 		$stored = json_decode( $wpdb->get_var( $wpdb->prepare( 'SELECT deadline FROM %i WHERE id = %s', $table, $row['id'] ) ), true ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 		$this->assertSame( array( 'date', 'type' ), array_keys( $stored ), 'written with sorted keys' );
 
