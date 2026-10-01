@@ -118,7 +118,7 @@ All tables: `id` CHAR(26) ULID (or keep imported string ids, VARCHAR(64)), `crea
 | `grp_trash` | id, type, doc_id, data JSON (full row), title, project_id, deleted_at, deleted_by — purge after 30 days |
 | `grp_dismissals` | member_id, key, at — per-person dismissed notifications |
 | `grp_requests` | access requests (only if a public request flow is wanted; otherwise skip) |
-| `grp_settings` | key, value JSON (e.g. `workweek`; `weekly_off` = team weekly day off, weekdays 0–6, default `[5]` Friday; `messages` = `{birthday, day_off, leave_approved}` texts with `{name}`) |
+| `grp_settings` | key, value JSON (e.g. `workweek`; `weekly_off` = team weekly day off `{days: [0–6]}`, default `{days: [5]}` (Friday); `messages` = `{birthday, day_off, leave_approved}` texts with `{name}`) |
 | `grp_leave` | id, member_id, type ENUM(day,sick), from_date DATE, to_date DATE, days TINYINT (working days in the range, 6.10), reason, status ENUM(pending,approved,rejected,cancelled), decided_by NULL, decided_at NULL, message (approver's note), created_by — *new* |
 | `grp_days_off` | id, kind ENUM(event,seasonal), name, from_date DATE, to_date DATE (= from_date for an event), created_by — whole team — *new* |
 | `grp_posts` | id, kind ENUM(announcement,shoutout), title NULL, body, to_member NULL (shout-outs), pinned TINYINT, show_until DATE NULL, created_by, soft delete — *new* |

@@ -32,6 +32,9 @@ class GRP_REST_Sync extends GRP_REST_Controller {
 		'grp_trash'         => 'trash',
 		'grp_dismissals'    => 'dismissals',
 		'grp_settings'      => 'settings',
+		'grp_leave'         => 'leave',
+		'grp_days_off'      => 'days_off',
+		'grp_posts'         => 'posts',
 	);
 
 	/**
@@ -59,6 +62,7 @@ class GRP_REST_Sync extends GRP_REST_Controller {
 
 		$changes = array();
 		$more    = false;
+		$hidden  = array();
 		foreach ( self::TABLES as $table => $key ) {
 			$where = '' !== $since ? array( 'updated_at >=' => $since ) : array();
 
@@ -85,6 +89,9 @@ class GRP_REST_Sync extends GRP_REST_Controller {
 			if ( 'grp_members' === $table ) {
 				$rows = array_map( array( 'GRP_REST_Members', 'visible' ), $rows );
 			}
+			if ( 'grp_leave' === $table && ! $manager ) {
+				$rows = self::leave_for_member( $rows, $actor, $hidden );
+			}
 			$changes[ $key ] = $rows;
 		}
 
@@ -100,6 +107,14 @@ class GRP_REST_Sync extends GRP_REST_Controller {
 			}
 		}
 
+		// Other people's leave that is no longer approved disappears for Team Members.
+		foreach ( $hidden as $id ) {
+			$deletions[] = array(
+				'table' => 'leave',
+				'id'    => $id,
+			);
+		}
+
 		$response = rest_ensure_response(
 			array(
 				'cursor'    => $cursor,
@@ -113,5 +128,30 @@ class GRP_REST_Sync extends GRP_REST_Controller {
 		$response->header( 'Cache-Control', 'no-store' );
 
 		return $response;
+	}
+
+	/**
+	 * Leave as a Team Member may see it (SPEC.md section 8): their own rows in full; other
+	 * people's approved leave without type, reason or message; other rows not at all
+	 * (their ids are collected so the app drops them).
+	 *
+	 * @param array[]  $rows   Leave rows.
+	 * @param array    $actor  Viewer.
+	 * @param string[] $hidden Ids of rows not shown (appended).
+	 * @return array[]
+	 */
+	private static function leave_for_member( array $rows, array $actor, array &$hidden ) {
+		$out = array();
+		foreach ( $rows as $row ) {
+			if ( (string) $row['member_id'] === (string) $actor['id'] ) {
+				$out[] = $row;
+			} elseif ( 'approved' === $row['status'] ) {
+				$out[] = GRP_REST_Leave::public_row( $row );
+			} else {
+				$hidden[] = $row['id'];
+			}
+		}
+
+		return $out;
 	}
 }

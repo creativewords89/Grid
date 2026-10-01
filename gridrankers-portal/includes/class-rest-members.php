@@ -146,7 +146,7 @@ class GRP_REST_Members extends GRP_REST_Controller {
 	}
 
 	/**
-	 * PATCH /members/{id}: profile fields (self or Super Admin), `role` (Super Admin),
+	 * PATCH /members/{id}: profile fields and `birthday` `MM-DD` (self or Super Admin), `role` (Super Admin),
 	 * `wp_user_id` (Super Admin), `active` (Super Admin; re-adds a removed member).
 	 *
 	 * @param WP_REST_Request $request Request.
@@ -168,6 +168,17 @@ class GRP_REST_Members extends GRP_REST_Controller {
 			return self::forbidden( __( 'Only the Super Admin can change other people’s details.', 'gridrankers-portal' ) );
 		}
 		$changes += $profile;
+
+		if ( null !== $request->get_param( 'birthday' ) ) {
+			if ( ! self::can( GRP_Permissions::SET_BIRTHDAY, array( 'member_id' => $member['id'] ) ) ) {
+				return self::forbidden( __( 'You can only set your own birthday.', 'gridrankers-portal' ) );
+			}
+			$birthday = trim( (string) $request['birthday'] );
+			if ( '' !== $birthday && ! GRP_Import::birthday( $birthday ) ) {
+				return self::invalid( __( 'Pick the day and month of your birthday.', 'gridrankers-portal' ) );
+			}
+			$changes['birthday'] = '' === $birthday ? null : $birthday;
+		}
 
 		if ( null !== $request->get_param( 'wp_user_id' ) ) {
 			if ( ! self::can( GRP_Permissions::LINK_WP_USER ) ) {
