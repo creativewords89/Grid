@@ -1,6 +1,6 @@
 // Member completes → admin asks for a revision → member completes again → admin accepts (SPEC.md 6.4).
 import { test, expect } from '@playwright/test';
-import { LEAD, MAX, addMeetingTask, card, signIn, signInOwner, signOut, signOutOwner, watchErrors } from './helpers.mjs';
+import { LEAD, MAX, addMeetingTask, card, openProject, signIn, signInOwner, signOut, signOutOwner, watchErrors } from './helpers.mjs';
 
 test('completion review round trip', async ({ page }) => {
 	const noErrors = watchErrors(page);
@@ -12,6 +12,7 @@ test('completion review round trip', async ({ page }) => {
 
 	// Member completes: a completion note is required.
 	await signIn(page, MAX);
+	await openProject(page, 'Acme Plumbing');
 	await card(page, title).getByRole('button', { name: 'Fixed' }).click();
 	await page.getByRole('button', { name: 'Mark completed' }).click();
 	await expect(page.getByText('Add a few words about what you completed.')).toBeVisible();
@@ -34,6 +35,7 @@ test('completion review round trip', async ({ page }) => {
 
 	// Member sees the revision and completes again.
 	await signIn(page, MAX);
+	await openProject(page, 'Acme Plumbing');
 	const mine = card(page, title);
 	await expect(mine.locator('.rv')).toContainText('Add the city to the meta title too');
 	await mine.getByRole('button', { name: 'Fixed' }).click();
@@ -55,6 +57,7 @@ test('completion review round trip', async ({ page }) => {
 
 	// The member sees the acceptance.
 	await signIn(page, MAX);
+	await openProject(page, 'Acme Plumbing');
 	await expect(card(page, title).locator('.rv')).toHaveCount(0);
 	await expect(card(page, title).locator('.seg [aria-pressed=true]')).toHaveText('Fixed');
 	// Accepted work leaves "Reviews of your work" (it lists revisions and rejections).

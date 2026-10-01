@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { usePortal } from '../../context.js';
-import { activeWeek, addDays, cycleFill, cycleRange, daysBetween, dueAt, periodsOf, weekRange } from '../../lib/cycles.js';
+import { activeWeek, addDays, cycleFill, cycleRange, daysBetween, dueAt, periodsOf, weekRange, weeksOf } from '../../lib/cycles.js';
 import { short } from '../../lib/format.js';
 import { computeMissed, isWaived, periodKeyOf, recordOf, stateOf } from '../../lib/monthly.js';
 import { isManager } from '../../lib/roles.js';
@@ -185,8 +185,9 @@ export default function MonthlyTasks() {
 	const missedOf = (t) => missed.filter((m) => m.task.id === t.id);
 	const q = search.trim().toLowerCase();
 	const members = data.members;
-	const aw = activeWeek(cycleOff, today);
-	const barWeek = freq === 'weekly' && wkSel !== null ? wkSel : null;
+	const aw = activeWeek(p, cycleOff, today);
+	const nWeeks = weeksOf(p, cycleOff, today).length;
+	const barWeek = freq === 'weekly' && wkSel !== null ? Math.min(wkSel, nWeeks - 1) : null;
 	const weekOf = (t) => (t.freq === 'weekly' ? (selWeek[t.id] !== undefined ? selWeek[t.id] : barWeek) ?? aw : undefined);
 	const stOf = (t) => stateOf(t, recordOf(data.records, t, p, weekOf(t), cycleOff, today));
 
@@ -209,7 +210,7 @@ export default function MonthlyTasks() {
 	const tone = phase !== 'now' ? phase : left <= 3 ? 'hot' : left <= 7 ? 'warm' : '';
 
 	const pickW = barWeek ?? aw;
-	const wr = weekRange(pickW, cycleOff, today);
+	const wr = weekRange(p, pickW, cycleOff, today);
 	const wkTasks = scope.filter((t) => t.freq === 'weekly');
 	const wkDone = wkTasks.filter((t) => stateOf(t, recordOf(data.records, t, p, pickW, cycleOff, today)) === 'done').length;
 
@@ -226,7 +227,8 @@ export default function MonthlyTasks() {
 							<span className="lk" aria-hidden="true">
 								📅
 							</span>
-							Week <b>{pickW + 1}</b> of 4{pickW === aw ? ' · this week' : ''}
+							Week <b>{pickW + 1}</b> of {nWeeks}
+							{pickW === aw ? ' · this week' : ''}
 						</span>
 						<span className="cc-dates">
 							<span>
@@ -251,7 +253,7 @@ export default function MonthlyTasks() {
 							<button type="button" aria-label="Previous week" disabled={pickW <= 0} onClick={() => (setWkSel(pickW - 1 === aw ? null : pickW - 1), setSelWeek({}))}>
 								‹
 							</button>
-							<button type="button" aria-label="Next week" disabled={pickW >= 3} onClick={() => (setWkSel(pickW + 1 === aw ? null : pickW + 1), setSelWeek({}))}>
+							<button type="button" aria-label="Next week" disabled={pickW >= nWeeks - 1} onClick={() => (setWkSel(pickW + 1 === aw ? null : pickW + 1), setSelWeek({}))}>
 								›
 							</button>
 						</span>

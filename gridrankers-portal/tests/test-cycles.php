@@ -74,22 +74,19 @@ class Test_GRP_Cycles extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Months, weeks and active week.
+	 * Calendar months. (The reference's calendar-month weeks are no longer used: weeks
+	 * follow the project cycle, SPEC.md 6.2, tested below.)
 	 *
 	 * @dataProvider cases
 	 *
 	 * @param int $i Case index.
 	 */
-	public function test_months_and_weeks_match_reference( $i ) {
+	public function test_months_match_reference( $i ) {
 		$case  = self::fixture()['cases'][ $i ];
 		$today = $case['now'];
 
 		foreach ( $case['months'] as $off => $month ) {
 			$this->assertSame( $month, GRP_Cycles::month_range( (int) $off, $today ), "month $off" );
-			$this->assertSame( $case['activeWeek'][ $off ], GRP_Cycles::active_week( (int) $off, $today ), "active week $off" );
-			foreach ( $case['weeks'][ $off ] as $w => $week ) {
-				$this->assertSame( $week, GRP_Cycles::week_range( $w, (int) $off, $today ), "week $w of month $off" );
-			}
 		}
 	}
 
@@ -127,12 +124,8 @@ class Test_GRP_Cycles extends WP_UnitTestCase {
 			foreach ( $expected['due'] as $task_name => $by_off ) {
 				$task = $fixture['tasks'][ $task_name ];
 				foreach ( $by_off as $off => $due ) {
-					if ( is_array( $due ) ) {
-						$this->assertSame( $due['active'], GRP_Cycles::due_at( $task, $project, null, (int) $off, $today ), "$name $task_name active week, off $off" );
-						foreach ( $due['weeks'] as $w => $week_due ) {
-							$this->assertSame( $week_due, GRP_Cycles::due_at( $task, $project, $w, (int) $off, $today ), "$name $task_name week $w, off $off" );
-						}
-					} else {
+					// Weekly tasks (array fixtures) used calendar weeks in the reference; see the cycle-week tests.
+					if ( ! is_array( $due ) ) {
 						$this->assertSame( $due, GRP_Cycles::due_at( $task, $project, null, (int) $off, $today ), "$name $task_name off $off" );
 					}
 				}
@@ -168,38 +161,101 @@ class Test_GRP_Cycles extends WP_UnitTestCase {
 
 		$this->assertSame( '2026-09', GRP_Cycles::period_key( array( 'freq' => 'monthly' ), $project, null, 0, '2026-10-01' ) );
 		$this->assertSame( '2026-10', GRP_Cycles::period_key( array( 'freq' => 'monthly' ), $project, null, 0, '2026-10-20' ) );
-		$this->assertSame( '2026-10-w1', GRP_Cycles::period_key( array( 'freq' => 'weekly' ), $project, null, 0, '2026-10-01' ) );
-		$this->assertSame( '2026-10-w4', GRP_Cycles::period_key( array( 'freq' => 'weekly' ), $project, null, 0, '2026-10-31' ) );
+		// Cycle Sep 15 – Oct 14: Oct 1 is in W3 (Sep 29 – Oct 5).
+		$this->assertSame( '2026-09-w3', GRP_Cycles::period_key( array( 'freq' => 'weekly' ), $project, null, 0, '2026-10-01' ) );
+		// Cycle Oct 15 – Nov 14: Oct 31 is in W3 (Oct 29 – Nov 4).
+		$this->assertSame( '2026-10-w3', GRP_Cycles::period_key( array( 'freq' => 'weekly' ), $project, null, 0, '2026-10-31' ) );
 		$this->assertSame( '2026-09-w2', GRP_Cycles::period_key( array( 'freq' => 'weekly' ), $project, 1, -1, '2026-10-31' ) );
 		$this->assertSame( 'task1__2026-09', GRP_Cycles::record_id( 'task1', '2026-09' ) );
 	}
 
-	public function test_calendar_month_weeks() {
+	/**
+	 * Start/end pairs of a list of weeks.
+	 *
+	 * @param array[] $weeks Weeks.
+	 * @return string[]
+	 */
+	private function spans( array $weeks ) {
+		return array_map(
+			static function ( $w ) {
+				return $w['start'] . '..' . $w['end'];
+			},
+			$weeks
+		);
+	}
+
+	public function test_weeks_follow_the_project_cycle() {
+		$project = array( 'cycle_day' => 15 );
+
 		$this->assertSame(
-			array(
+			array( '2026-10-15..2026-10-21', '2026-10-22..2026-10-28', '2026-10-29..2026-11-04', '2026-11-05..2026-11-14' ),
+			$this->spans( GRP_Cycles::weeks_of( $project, 0, '2026-10-20' ) )
+		);
+		$this->assertSame( 0, GRP_Cycles::active_week( $project, 0, '2026-10-15' ) );
+		$this->assertSame( 2, GRP_Cycles::active_week( $project, 0, '2026-11-04' ) );
+		$this->assertSame( 3, GRP_Cycles::active_week( $project, 0, '2026-11-14' ) );
+		$this->assertSame( 3, GRP_Cycles::active_week( $project, -1, '2026-10-20' ), 'past cycle: last week' );
+		$this->assertSame( 0, GRP_Cycles::active_week( $project, 1, '2026-10-20' ), 'future cycle: first week' );
+
+		$weekly = array( 'freq' => 'weekly' );
+		$this->assertSame( '2026-10-28', GRP_Cycles::due_at( $weekly, $project, null, 0, '2026-10-25' ) );
+		$this->assertSame( '2026-11-14', GRP_Cycles::due_at( $weekly, $project, 3, 0, '2026-10-25' ) );
+		$this->assertSame( array( '2026-11-05', '2026-11-14' ), array_values( GRP_Cycles::week_range( $project, 9, 0, '2026-10-25' ) ), 'clamped to the last week' );
+	}
+
+	public function test_day_one_projects_keep_calendar_weeks() {
+		$this->assertSame(
+			array( '2026-02-01..2026-02-07', '2026-02-08..2026-02-14', '2026-02-15..2026-02-21', '2026-02-22..2026-02-28' ),
+			$this->spans( GRP_Cycles::weeks_of( array( 'cycle_day' => 1 ), 0, '2026-02-10' ) )
+		);
+		$this->assertSame(
+			array( '2026-10-01..2026-10-07', '2026-10-08..2026-10-14', '2026-10-15..2026-10-21', '2026-10-22..2026-10-31' ),
+			$this->spans( GRP_Cycles::weeks_of( array( 'cycle_day' => 1 ), 0, '2026-10-10' ) )
+		);
+		$this->assertSame( '2026-10-w3', GRP_Cycles::period_key( array( 'freq' => 'weekly' ), array( 'cycle_day' => 1 ), null, 0, '2026-10-16' ) );
+	}
+
+	public function test_short_and_long_periods_have_fewer_or_more_weeks() {
+		$span = static function ( $start, $end ) {
+			return GRP_Cycles::weeks_in(
 				array(
-					'start' => '2026-02-01',
-					'end'   => '2026-02-07',
-				),
+					'start' => $start,
+					'end'   => $end,
+				)
+			);
+		};
+
+		// A 14-day transition period: 2 weeks.
+		$this->assertSame( array( '2026-10-01..2026-10-07', '2026-10-08..2026-10-14' ), $this->spans( $span( '2026-10-01', '2026-10-14' ) ) );
+		// 10 days: one week that takes them all.
+		$this->assertSame( array( '2026-10-01..2026-10-10' ), $this->spans( $span( '2026-10-01', '2026-10-10' ) ) );
+		// 3 days: still one week.
+		$this->assertSame( array( '2026-10-12..2026-10-14' ), $this->spans( $span( '2026-10-12', '2026-10-14' ) ) );
+		// A merged 45-day period: 6 weeks, the last one 10 days.
+		$long = $span( '2026-10-01', '2026-11-14' );
+		$this->assertCount( 6, $long );
+		$this->assertSame( '2026-11-05..2026-11-14', $this->spans( $long )[5] );
+	}
+
+	public function test_transition_period_weeks() {
+		// Day 1 → day 15 from Oct 1 with a transition: Oct 1–14 has two weeks.
+		$project = array(
+			'cycle_day'     => 15,
+			'cycle_changes' => array(
 				array(
-					'start' => '2026-02-08',
-					'end'   => '2026-02-14',
-				),
-				array(
-					'start' => '2026-02-15',
-					'end'   => '2026-02-21',
-				),
-				array(
-					'start' => '2026-02-22',
-					'end'   => '2026-02-28',
+					'from'    => '2026-10-01',
+					'day'     => 15,
+					'prevDay' => 1,
+					'mode'    => 'due',
 				),
 			),
-			array_map(
-				static function ( $w ) {
-					return GRP_Cycles::week_range( $w, 0, '2026-02-10' );
-				},
-				array( 0, 1, 2, 3 )
-			)
 		);
+		$this->assertSame( 'T2026-10-01', GRP_Cycles::cycle_range( $project, 0, '2026-10-05' )['key'] );
+		$this->assertSame( array( '2026-10-01..2026-10-07', '2026-10-08..2026-10-14' ), $this->spans( GRP_Cycles::weeks_of( $project, 0, '2026-10-05' ) ) );
+		$this->assertSame( 'T2026-10-01-w2', GRP_Cycles::period_key( array( 'freq' => 'weekly' ), $project, null, 0, '2026-10-09' ) );
+
+		list( $period, $w ) = GRP_Cycles::week_at( $project, '2026-10-30', '2026-10-05' );
+		$this->assertSame( '2026-10', $period['key'] );
+		$this->assertSame( 2, $w );
 	}
 }

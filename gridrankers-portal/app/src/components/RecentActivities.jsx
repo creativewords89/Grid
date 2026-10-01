@@ -22,11 +22,12 @@ const TYPE_LABEL = { client: 'project', monthly: 'monthly task', items: 'meeting
 const TRASH_TABLE = { grp_meeting_tasks: 'meeting_tasks', grp_monthly_tasks: 'monthly_tasks', grp_projects: 'projects' };
 const TRASH_TAG = { grp_meeting_tasks: ['board', 'Meeting'], grp_monthly_tasks: ['monthly', 'Recurring'], grp_projects: ['board', 'Project'] };
 
-// "Recently deleted" (admin/lead): restore puts it back exactly where it was.
-function Trash() {
+// "Recently deleted" (admin/lead): restore puts it back exactly where it was. Recent Activities
+// shows the selected project's tasks; the Dashboard shows deleted projects (SPEC.md 7.0, 7.4).
+export function Trash({ entries, title = 'Recently deleted', hint = 'Kept 30 days · restore puts a task back exactly where it was' }) {
 	const { api, data, dispatch, toast, confirm } = usePortal();
 	const [all, setAll] = useState(false);
-	const list = rowsOf(data, 'trash').sort((a, b) => String(b.deleted_at).localeCompare(String(a.deleted_at)));
+	const list = [...entries].sort((a, b) => String(b.deleted_at).localeCompare(String(a.deleted_at)));
 	if (!list.length) return null;
 	const show = all ? list : list.slice(0, 5);
 	const name = (id) => (data.members[id] ? data.members[id].name : '');
@@ -36,13 +37,26 @@ function Trash() {
 			const row = await api.post(`trash/${e.id}/restore`);
 			dispatch({ type: 'upsert', table: TRASH_TABLE[e.type], row });
 			dispatch({ type: 'remove', table: 'trash', id: e.id });
-			toast(`“${e.title || 'Task'}” restored`);
+			if (e.type === 'grp_projects') {
+				// Its tasks came back with it: show them now, not at the next sync.
+				for (const table of ['meeting_tasks', 'monthly_tasks']) {
+					api
+						.get(table.replace('_', '-'), { project: row.id })
+						.then((rows) => rows.forEach((r) => dispatch({ type: 'upsert', table, row: r })))
+						.catch(() => {});
+				}
+				rowsOf(data, 'trash')
+					.filter((x) => x.project_id === row.id && x.with_project)
+					.forEach((x) => dispatch({ type: 'remove', table: 'trash', id: x.id }));
+			}
+			toast(`“${e.title || 'Task'}” restored${e.type === 'grp_projects' ? ' with its tasks' : ''}`);
 		} catch (err) {
 			toast(err.message);
 		}
 	};
 	const purge = async (e) => {
-		const ok = await confirm({ title: 'Delete forever?', message: `“${e.title || 'Untitled'}” can't be restored after this.`, ok: 'Delete forever', danger: true });
+		const message = e.type === 'grp_projects' ? `“${e.title || 'Untitled'}” and its deleted tasks can't be restored after this.` : `“${e.title || 'Untitled'}” can't be restored after this.`;
+		const ok = await confirm({ title: 'Delete forever?', message, ok: 'Delete forever', danger: true });
 		if (!ok) return;
 		try {
 			await api.del(`trash/${e.id}`);
@@ -56,8 +70,8 @@ function Trash() {
 	return (
 		<section className="dcard tr-card">
 			<div className="dc-head">
-				<span className="s-k">Recently deleted</span>
-				<span className="muted">Kept 30 days · restore puts a task back exactly where it was</span>
+				<span className="s-k">{title}</span>
+				<span className="muted">{hint}</span>
 			</div>
 			<ul className="tr-list">
 				{show.map((e) => {
@@ -92,7 +106,8 @@ function Trash() {
 	);
 }
 
-// Recent Activities (SPEC.md 7.4): recently deleted, then a dated log of changes.
+// Recent Activities (SPEC.md 7.4), for the selected project: its recently deleted tasks, then a
+// dated log of its changes.
 export default function RecentActivities() {
 	const { api, data, me, project } = usePortal();
 	const [rows, setRows] = useState(null);
@@ -123,22 +138,21 @@ export default function RecentActivities() {
 		else groups.push({ day, list: [x] });
 	});
 	const name = (id) => (data.members[id] ? data.members[id].name : 'Someone');
-	const projectName = (id) => (data.projects[id] ? data.projects[id].name : '—');
+	const deleted = rowsOf(data, 'trash').filter((e) => e.project_id === project && e.type !== 'grp_projects');
 
 	return (
 		<>
-			{isManager(me) && <Trash />}
+			{isManager(me) && <Trash entries={deleted} />}
 			{error && <p className="err">{error}</p>}
 			{rows && !rows.length && <p className="empty">Nothing yet. Completed tasks, edits, deletions and cycle changes are all logged here by date.</p>}
 			{groups.length > 0 && (
-				<div className="log">
+				<div className="log no-c">
 					{groups.map((g) => (
 						<div key={g.day}>
 							<h2>{longDate(g.day)}</h2>
 							<ul>
 								{g.list.map((x) => (
 									<li key={x.id} className={x.kind === 'cycle' ? 'lg-cyc' : `lg-ev lg-${x.kind}`}>
-										<span className="c">{projectName(x.project_id)}</span>
 										<span className="t">
 											<span className={`lg-tag lgk-${x.kind}`}>{TAG[x.kind] || 'Changed'}</span> {x.title || 'Untitled'} {x.type && <span className="lg-type">{TYPE_LABEL[x.type] || x.type}</span>}
 											<small>

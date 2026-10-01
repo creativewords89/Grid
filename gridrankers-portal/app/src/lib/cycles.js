@@ -1,5 +1,5 @@
 // Project cycle and calendar-week maths, ported from the reference portal (periodsOf,
-// cycleRange, cycleAt, monthRange, weekRange, activeWeek, dueAt, cycleFill). Same as
+// cycleRange, cycleAt, monthRange, dueAt, cycleFill; weeks follow the project cycle). Same as
 // includes/class-cycles.php: every function takes "today" as 'YYYY-MM-DD' and returns
 // 'YYYY-MM-DD' strings; period ends are inclusive. Tested against the same fixtures.
 
@@ -123,24 +123,32 @@ export function monthRange(off, today) {
 	return { key: start.slice(0, 7), start, end: ymd(y, m + off + 1, 0) };
 }
 
-export function weekRange(w, off, today) {
-	const month = monthRange(off, today);
-	const [y, m] = parts(month.start);
-	return { start: ymd(y, m, 1 + w * 7), end: w < 3 ? ymd(y, m, 7 + w * 7) : month.end };
+// Weeks of a period counted from its start (SPEC.md 6.2): 7-day weeks, the last one taking
+// the leftover days; max(1, floor(days / 7)) weeks. Not the reference's calendar-month weeks.
+export function weeksIn(period) {
+	const n = Math.max(1, Math.floor((daysBetween(period.start, period.end) + 1) / 7));
+	const [y, m, d] = parts(period.start);
+	return Array.from({ length: n }, (_, w) => ({ start: ymd(y, m, d + 7 * w), end: w < n - 1 ? ymd(y, m, d + 7 * w + 6) : period.end }));
 }
 
-export function activeWeek(off, today) {
-	const month = monthRange(off, today);
-	if (today < month.start) return 0;
-	if (today > month.end) return 3;
-	for (let w = 3; w >= 0; w--) if (today >= weekRange(w, off, today).start) return w;
+export const weeksOf = (project, off, today) => weeksIn(cycleRange(project, off, today));
+
+export function weekRange(project, w, off, today) {
+	const weeks = weeksOf(project, off, today);
+	return weeks[Math.max(0, Math.min(weeks.length - 1, w))];
+}
+
+// Week containing today in cycle `off`: first week of future cycles, last week of past ones.
+export function activeWeek(project, off, today) {
+	const weeks = weeksOf(project, off, today);
+	for (let w = weeks.length - 1; w > 0; w--) if (today >= weeks[w].start) return w;
 	return 0;
 }
 
 export const isWeekly = (task) => task.freq === 'weekly';
 
 export function dueAt(task, project, w, off, today) {
-	if (isWeekly(task)) return weekRange(w === undefined || w === null ? activeWeek(off, today) : w, off, today).end;
+	if (isWeekly(task)) return weekRange(project, w === undefined || w === null ? activeWeek(project, off, today) : w, off, today).end;
 	const range = cycleRange(project, off, today);
 	const dueDay = parseInt(task.due_day ?? task.dueDay, 10) || 0;
 	if (!dueDay) return range.end;

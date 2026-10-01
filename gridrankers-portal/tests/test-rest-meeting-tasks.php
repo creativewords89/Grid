@@ -233,6 +233,7 @@ class Test_GRP_REST_Meeting_Tasks extends GRP_REST_TestCase {
 		$response = $this->api_as( 'lead', 'DELETE', "/meeting-tasks/{$task['id']}" );
 		$this->assertStatus( 200, $response );
 		$trash = GRP_Store::get( 'grp_trash', $response->get_data()['trash_id'] );
+		$this->assertSame( $trash, $response->get_data()['trash'] );
 		$this->assertSame( 'grp_meeting_tasks', $trash['type'] );
 		$this->assertSame( 'Fix the H1', $trash['data']['title'] );
 		$this->assertSame( $this->project['id'], $trash['project_id'] );

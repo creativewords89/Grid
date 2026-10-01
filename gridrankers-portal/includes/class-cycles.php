@@ -9,7 +9,8 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Pure functions ported from the reference portal (periodsOf, cycleRange, cycleAt,
- * monthRange, weekRange, activeWeek, dueAt). Every function takes "today" as a
+ * monthRange, dueAt); weeks follow the project cycle (SPEC.md 6.2), not the reference's
+ * calendar-month weeks. Every function takes "today" as a
  * `Y-m-d` string so results are deterministic; dates are returned as `Y-m-d`
  * strings (period ends are inclusive, i.e. the whole end day belongs to the period).
  *
@@ -204,42 +205,67 @@ class GRP_Cycles {
 	}
 
 	/**
-	 * Calendar-month week `$w` (0–3): 1–7, 8–14, 15–21, 22–end (port of `weekRange`).
+	 * Weeks of a period, counted from its start: 7-day weeks, the last one taking the
+	 * leftover days. A period has `max(1, floor(days / 7))` weeks (SPEC.md 6.2).
 	 *
-	 * @param int    $w     Week index 0–3.
-	 * @param int    $off   Months from the current one.
-	 * @param string $today `Y-m-d`.
-	 * @return array `{start, end}`.
+	 * @param array $period Period with `start` and `end`.
+	 * @return array[] `[{start, end}]`.
 	 */
-	public static function week_range( $w, $off, $today ) {
-		$month         = self::month_range( $off, $today );
-		list( $y, $m ) = self::parts( $month['start'] );
-		$w             = (int) $w;
+	public static function weeks_in( array $period ) {
+		$days              = self::days_between( $period['start'], $period['end'] ) + 1;
+		$n                 = max( 1, intdiv( $days, 7 ) );
+		list( $y, $m, $d ) = self::parts( $period['start'] );
+		$weeks             = array();
+		for ( $w = 0; $w < $n; $w++ ) {
+			$weeks[] = array(
+				'start' => self::date( $y, $m, $d + 7 * $w ),
+				'end'   => $w < $n - 1 ? self::date( $y, $m, $d + 7 * $w + 6 ) : $period['end'],
+			);
+		}
 
-		return array(
-			'start' => self::date( $y, $m, 1 + $w * 7 ),
-			'end'   => $w < 3 ? self::date( $y, $m, 7 + $w * 7 ) : $month['end'],
-		);
+		return $weeks;
 	}
 
 	/**
-	 * Week index (0–3) containing today within the month `$off` (port of `activeWeek`).
-	 * Months in the future give 0, months in the past give 3.
+	 * Weeks of the project's cycle `$off` cycles from the current one.
 	 *
-	 * @param int    $off   Months from the current one.
-	 * @param string $today `Y-m-d`.
+	 * @param array|object $project Project.
+	 * @param int          $off     Cycles from the current one.
+	 * @param string       $today   `Y-m-d`.
+	 * @return array[]
+	 */
+	public static function weeks_of( $project, $off, $today ) {
+		return self::weeks_in( self::cycle_range( $project, $off, $today ) );
+	}
+
+	/**
+	 * Week `$w` (0-based, clamped to the period's weeks) of a project's cycle.
+	 *
+	 * @param array|object $project Project.
+	 * @param int          $w       Week index.
+	 * @param int          $off     Cycles from the current one.
+	 * @param string       $today   `Y-m-d`.
+	 * @return array `{start, end}`.
+	 */
+	public static function week_range( $project, $w, $off, $today ) {
+		$weeks = self::weeks_of( $project, $off, $today );
+
+		return $weeks[ max( 0, min( count( $weeks ) - 1, (int) $w ) ) ];
+	}
+
+	/**
+	 * Index of the week containing today in cycle `$off`: the first week for future
+	 * cycles, the last week for past ones.
+	 *
+	 * @param array|object $project Project.
+	 * @param int          $off     Cycles from the current one.
+	 * @param string       $today   `Y-m-d`.
 	 * @return int
 	 */
-	public static function active_week( $off, $today ) {
-		$month = self::month_range( $off, $today );
-		if ( $today < $month['start'] ) {
-			return 0;
-		}
-		if ( $today > $month['end'] ) {
-			return 3;
-		}
-		for ( $w = 3; $w >= 0; $w-- ) {
-			if ( $today >= self::week_range( $w, $off, $today )['start'] ) {
+	public static function active_week( $project, $off, $today ) {
+		$weeks = self::weeks_of( $project, $off, $today );
+		for ( $w = count( $weeks ) - 1; $w > 0; $w-- ) {
+			if ( $today >= $weeks[ $w ]['start'] ) {
 				return $w;
 			}
 		}
@@ -248,15 +274,15 @@ class GRP_Cycles {
 	}
 
 	/**
-	 * Due date of a recurring task in a period (port of `dueAt`).
+	 * Due date of a recurring task in a period (port of `dueAt`, with cycle weeks).
 	 *
-	 * Weekly tasks: end of week `$w` (default: the active week). Monthly tasks: end of
-	 * the cycle, or day `due_day` of the cycle capped at the cycle end.
+	 * Weekly tasks: end of week `$w` (default: the active week) of the cycle. Monthly
+	 * tasks: end of the cycle, or day `due_day` of the cycle capped at the cycle end.
 	 *
 	 * @param array|object $task    Monthly task.
 	 * @param array|object $project Project.
 	 * @param int|null     $w       Week index for weekly tasks.
-	 * @param int          $off     Cycles (months for weekly tasks) from the current one.
+	 * @param int          $off     Cycles from the current one.
 	 * @param string       $today   `Y-m-d`.
 	 * @return string `Y-m-d`.
 	 */
@@ -264,7 +290,7 @@ class GRP_Cycles {
 		$task = (array) $task;
 
 		if ( self::is_weekly( $task ) ) {
-			return self::week_range( null === $w ? self::active_week( $off, $today ) : $w, $off, $today )['end'];
+			return self::week_range( $project, null === $w ? self::active_week( $project, $off, $today ) : $w, $off, $today )['end'];
 		}
 
 		$range   = self::cycle_range( $project, $off, $today );
@@ -280,22 +306,43 @@ class GRP_Cycles {
 	}
 
 	/**
-	 * Period key of a recurring task: `YYYY-MM-wN` for weekly tasks, else the cycle key.
+	 * Period key of a recurring task: `{cycle key}-wN` for weekly tasks, else the cycle key.
 	 *
 	 * @param array|object $task    Monthly task.
 	 * @param array|object $project Project.
 	 * @param int|null     $w       Week index for weekly tasks (default: active week).
-	 * @param int          $off     Cycles (months for weekly tasks) from the current one.
+	 * @param int          $off     Cycles from the current one.
 	 * @param string       $today   `Y-m-d`.
 	 * @return string
 	 */
 	public static function period_key( $task, $project, $w, $off, $today ) {
+		$cycle = self::cycle_range( $project, $off, $today )['key'];
 		if ( self::is_weekly( (array) $task ) ) {
-			$w = null === $w ? self::active_week( $off, $today ) : (int) $w;
-			return self::month_range( $off, $today )['key'] . '-w' . ( $w + 1 );
+			$w = null === $w ? self::active_week( $project, $off, $today ) : (int) $w;
+			return $cycle . '-w' . ( $w + 1 );
 		}
 
-		return self::cycle_range( $project, $off, $today )['key'];
+		return $cycle;
+	}
+
+	/**
+	 * The cycle week containing a date: `[period, week index]`.
+	 *
+	 * @param array|object $project Project.
+	 * @param string       $date    `Y-m-d`.
+	 * @param string       $today   `Y-m-d`.
+	 * @return array
+	 */
+	public static function week_at( $project, $date, $today ) {
+		$period = self::cycle_at( $project, $date, $today );
+		$weeks  = self::weeks_in( $period );
+		for ( $w = count( $weeks ) - 1; $w > 0; $w-- ) {
+			if ( $date >= $weeks[ $w ]['start'] ) {
+				return array( $period, $w );
+			}
+		}
+
+		return array( $period, 0 );
 	}
 
 	/**
@@ -397,6 +444,17 @@ class GRP_Cycles {
 	 */
 	private static function date( $y, $month_index, $d ) {
 		return gmdate( 'Y-m-d', gmmktime( 0, 0, 0, $month_index + 1, $d, $y ) );
+	}
+
+	/**
+	 * Whole days from `$a` to `$b` (`Y-m-d`).
+	 *
+	 * @param string $a Date.
+	 * @param string $b Date.
+	 * @return int
+	 */
+	private static function days_between( $a, $b ) {
+		return (int) round( ( strtotime( $b . ' 00:00:00 UTC' ) - strtotime( $a . ' 00:00:00 UTC' ) ) / DAY_IN_SECONDS );
 	}
 
 	/**

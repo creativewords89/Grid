@@ -140,8 +140,9 @@ nothing loads from a CDN.
 
 `app/e2e/` drives the real portal in Chromium: the completion review round trip (member completes →
 Super Admin asks for a revision → member completes again → Super Admin accepts), a member being unable
-to edit or delete (in the UI and through the API), cycle switching and a cycle change, and the import /
-export round trip from WP-admin.
+to edit or delete (in the UI and through the API), cycle switching and a cycle change, the import /
+export round trip from WP-admin, the Dashboard (adding, moving, deleting and restoring projects;
+per-project Recent Activities) and weekly tasks following the project cycle.
 
 Each run builds a throwaway WordPress site from `vendor/roots/wordpress-no-content` (so run
 `composer install` first) with a fresh database `grp_e2e`, seeds a team (`app/e2e/site/install.php`) and

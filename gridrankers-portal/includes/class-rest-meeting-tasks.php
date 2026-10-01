@@ -210,6 +210,7 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 				'deleted'  => true,
 				'id'       => $task['id'],
 				'trash_id' => $trash['id'],
+				'trash'    => $trash,
 			)
 		);
 	}
