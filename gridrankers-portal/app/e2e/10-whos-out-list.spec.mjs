@@ -3,14 +3,14 @@
 import { test, expect } from '@playwright/test';
 import { apiCall, signIn, signInOwner, signOut, signOutOwner, watchErrors } from './helpers.mjs';
 
-const NAMES = ['Alamin Hossen', 'Homayun Kabir', 'Lutor Rahman', 'Rajon Ahmed', 'Shakil Khan'];
+const NAMES = ['Alamin Hossen', 'Homayun Kabir', 'Lutor Rahman', 'Rajon Ahmed', 'Shakil Khan', 'Tanvir Hasan', 'Sumon Ali', 'Rakib Uddin'];
 
 test('see everyone who is out today', async ({ page }) => {
 	const noErrors = watchErrors(page);
 	const box = page.locator('.md-card', { has: page.getByRole('heading', { name: 'Who’s out today' }) });
 	const dlg = page.locator('dialog[open]');
 
-	// Super Admin: five more people, each with today as their own weekly day off.
+	// Super Admin: eight more people, each with today as their own weekly day off.
 	await signInOwner(page);
 	const today = new Date().getDay();
 	for (const name of NAMES) {
@@ -23,9 +23,21 @@ test('see everyone who is out today', async ({ page }) => {
 
 	await box.getByRole('button', { name: /See all/ }).click();
 	await expect(dlg.getByRole('heading', { name: 'Who’s out today' })).toBeVisible();
-	for (const name of NAMES) await expect(dlg.locator('li', { hasText: name })).toContainText('Day off');
-	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/wo-all.png' });
+	// 10 per page: the first page shows 10, the next page the rest.
+	const total = Number(await dlg.locator('.ld-count').textContent());
+	expect(total).toBeGreaterThan(10);
+	await expect(dlg.locator('li')).toHaveCount(10);
+	await expect(dlg.locator('.ld-foot')).toContainText(`1–10 of ${total}`);
+	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/wo-page.png' });
+	await dlg.getByRole('button', { name: 'Next page' }).click();
+	await expect(dlg.locator('li')).toHaveCount(total - 10);
+	await expect(dlg.getByRole('button', { name: 'Next page' })).toBeDisabled();
+	await dlg.getByRole('button', { name: 'Previous page' }).click();
 
+	for (const name of NAMES) {
+		await dlg.getByLabel('Search people').fill(name);
+		await expect(dlg.locator('li', { hasText: name })).toContainText('Day off');
+	}
 	await dlg.getByLabel('Search people').fill('raj');
 	await expect(dlg.locator('li')).toHaveCount(1);
 	await expect(dlg.locator('li')).toContainText('Rajon Ahmed');

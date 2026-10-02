@@ -26,7 +26,7 @@ const backText = (back, today) => {
 
 const FACES = 8;
 const NAMES = 3;
-const PAGE = 20;
+const PAGE = 10;
 
 function OutRow({ o, today }) {
 	return (
@@ -47,7 +47,7 @@ const SEARCH = (
 	</svg>
 );
 
-// "See all": everyone out today, searchable, 20 per page. The filter shows only when people
+// "See all": everyone out today, searchable, 10 per page. The filter shows only when people
 // are out for both reasons.
 function OutList({ list, today, onClose }) {
 	const [q, setQ] = useState('');
@@ -98,26 +98,24 @@ function OutList({ list, today, onClose }) {
 				)}
 			</div>
 			<div className="ld-foot">
-				{pages > 1 ? (
-					<span className="ld-pages">
-						<button type="button" className="pg" disabled={at === 0} onClick={() => setPage(at - 1)}>
-							‹ Previous
-						</button>
-						<span className="muted">
-							Page {at + 1} of {pages}
-						</span>
-						<button type="button" className="pg" disabled={at === pages - 1} onClick={() => setPage(at + 1)}>
-							Next ›
-						</button>
-					</span>
-				) : (
-					<span className="muted">
-						{shown.length} {shown.length === 1 ? 'person' : 'people'}
-					</span>
-				)}
-				<button type="button" className="btn" onClick={onClose}>
-					Close
-				</button>
+				<span className="muted">
+					{pages > 1 ? `${at * PAGE + 1}–${Math.min(shown.length, at * PAGE + PAGE)} of ${shown.length}` : `${shown.length} ${shown.length === 1 ? 'person' : 'people'}`}
+				</span>
+				<span className="ld-pages">
+					{pages > 1 && (
+						<>
+							<button type="button" className="pg" aria-label="Previous page" disabled={at === 0} onClick={() => setPage(at - 1)}>
+								‹
+							</button>
+							<button type="button" className="pg" aria-label="Next page" disabled={at === pages - 1} onClick={() => setPage(at + 1)}>
+								›
+							</button>
+						</>
+					)}
+					<button type="button" className="btn" onClick={onClose}>
+						Close
+					</button>
+				</span>
 			</div>
 		</Modal>
 	);
