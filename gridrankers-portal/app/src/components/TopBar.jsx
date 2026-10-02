@@ -1,5 +1,5 @@
 import { usePortal } from '../context.js';
-import { ROLE, isManager } from '../lib/roles.js';
+import { ROLE } from '../lib/roles.js';
 import Avatar from './Avatar.jsx';
 
 export const TABS = [
@@ -27,7 +27,7 @@ export default function TopBar({ onSignOut }) {
 			</div>
 			<div className="me">
 				<span>
-					<button type="button" className="me-btn" title={isManager(me) ? 'Open the team page' : 'Open my page'} onClick={() => (setTeamPerson('all'), setView('team'))}>
+					<button type="button" className="me-btn" title="Open my page" onClick={() => (setTeamPerson(me.id), setView('team'))}>
 						<Avatar person={me} />
 						<b>{me.name}</b>
 						<span className={'role r-' + me.role}>{ROLE[me.role]}</span>

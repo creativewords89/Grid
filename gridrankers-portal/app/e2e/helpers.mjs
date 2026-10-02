@@ -115,3 +115,8 @@ export async function showStrip(page, text) {
 	await expect(strip).toBeVisible();
 	return strip;
 }
+
+// Leaders and the Super Admin: the Team area, from Team in the sidebar (SPEC.md 7.5).
+export async function openTeam(page) {
+	await page.locator('aside').getByRole('button', { name: 'Team', exact: true }).click();
+}

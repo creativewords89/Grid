@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePortal } from '../../context.js';
 import { bellItems, strips } from '../../lib/day.js';
 import { weekdayDate } from '../../lib/format.js';
-import { MEMBER_TAB_KEY, firstName, greeting } from '../../lib/people.js';
-import { ROLE, isManager } from '../../lib/roles.js';
+import { MEMBER_TAB_KEY, greeting } from '../../lib/people.js';
+import { ROLE } from '../../lib/roles.js';
 import Avatar from '../Avatar.jsx';
 
 const ICON = {
@@ -194,7 +194,7 @@ export default function DayHeader({ onSignOut }) {
 			<div className="md-row">
 				<div className="md-hello">
 					<h1>
-						{greeting()}, {firstName(me.name)}
+						{greeting()}, {me.name}
 					</h1>
 					<span className="md-date">
 						{weekdayDate(today)}
@@ -203,7 +203,7 @@ export default function DayHeader({ onSignOut }) {
 				</div>
 				<Bell />
 				<div className="md-me">
-					<button type="button" className="me-btn" title={isManager(me) ? 'Open the team page' : 'Open my page'} onClick={() => (setTeamPerson('all'), setView('team'))}>
+					<button type="button" className="me-btn" title="Open my page" onClick={() => (setTeamPerson(me.id), setView('team'))}>
 						<Avatar person={me} />
 						<b>{me.name}</b>
 						<span className={'role r-' + me.role}>{ROLE[me.role]}</span>

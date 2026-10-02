@@ -2,7 +2,7 @@
 // (Super Admin / Team Leader only), deleting and restoring a project (Team → Settings);
 // Recent Activities is per project (7.4).
 import { test, expect } from '@playwright/test';
-import { LEAD, MAX, addMeetingTask, apiCall, card, openProject, openProjectsTab, signIn, signInOwner, signOut, signOutOwner, watchErrors } from './helpers.mjs';
+import { LEAD, MAX, addMeetingTask, apiCall, card, openProject, openProjectsTab, signIn, signInOwner, signOut, signOutOwner, watchErrors, openTeam } from './helpers.mjs';
 
 test('dashboard, project lifecycle and per-project Recent Activities', async ({ page }) => {
 	const noErrors = watchErrors(page);
@@ -90,7 +90,7 @@ test('dashboard, project lifecycle and per-project Recent Activities', async ({ 
 	await expect(pd('Harbor Hotel')).toHaveCount(0);
 	await expect(page.getByText('Deleted projects')).toHaveCount(0);
 
-	await page.locator('.me-btn').click();
+	await openTeam(page);
 	await page.locator('nav.ttabs').getByRole('tab', { name: 'Settings' }).click();
 	const trash = page.locator('.tr-card', { hasText: 'Deleted projects' });
 	await trash.locator('li', { hasText: 'Harbor Hotel' }).getByRole('button', { name: 'Restore' }).click();

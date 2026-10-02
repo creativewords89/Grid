@@ -1,6 +1,6 @@
 // Member completes → admin asks for a revision → member completes again → admin accepts (SPEC.md 6.4).
 import { test, expect } from '@playwright/test';
-import { LEAD, MAX, addMeetingTask, card, openProject, signIn, signInOwner, signOut, signOutOwner, watchErrors } from './helpers.mjs';
+import { LEAD, MAX, addMeetingTask, card, openProject, signIn, signInOwner, signOut, signOutOwner, watchErrors, openTeam } from './helpers.mjs';
 
 test('completion review round trip', async ({ page }) => {
 	const noErrors = watchErrors(page);
@@ -24,7 +24,7 @@ test('completion review round trip', async ({ page }) => {
 
 	// Super Admin asks for a revision from their review list.
 	await signInOwner(page);
-	await page.locator('.me-btn').click();
+	await openTeam(page);
 	await expect(page.getByText('Waiting for your review')).toBeVisible();
 	const pending = page.locator('.rv-card', { hasText: title });
 	await pending.getByRole('button', { name: 'Revise' }).click();
@@ -32,6 +32,10 @@ test('completion review round trip', async ({ page }) => {
 	await page.getByRole('button', { name: 'Request revision' }).click();
 	await page.getByText('Revision requested').first().waitFor();
 	await expect(page.locator('.rv-card', { hasText: title })).toHaveCount(0);
+	// The Super Admin's own page: no My leave, so it opens on Calendar.
+	await page.locator('.me-btn').click();
+	await expect(page.locator('nav.ttabs').getByRole('tab')).toHaveText(['Calendar', 'Settings', 'Recent Activities']);
+	await expect(page.locator('nav.ttabs').getByRole('tab', { name: 'Calendar' })).toHaveAttribute('aria-selected', 'true');
 	await signOutOwner(page);
 
 	// Member sees the revision and completes again.
@@ -61,9 +65,12 @@ test('completion review round trip', async ({ page }) => {
 	await openProject(page, 'Acme Plumbing');
 	await expect(card(page, title).locator('.rv')).toHaveCount(0);
 	await expect(card(page, title).locator('.seg [aria-pressed=true]')).toHaveText('Fixed');
-	// Accepted work leaves "Reviews of your work" (it lists revisions and rejections).
+	// The name chip opens your own page (SPEC.md 7.6): no dashboard or task list, and no project
+	// highlighted in the sidebar.
 	await page.locator('.me-btn').click();
-	await expect(page.getByRole('tab', { name: 'My dashboard' })).toBeVisible();
-	await expect(page.locator('.rv-mine li', { hasText: title })).toHaveCount(0);
+	await expect(page.locator('.ph-card')).toContainText('Max Member');
+	await expect(page.locator('nav.ttabs').getByRole('tab')).toHaveText(['My leave', 'Calendar', 'Settings', 'Recent Activities']);
+	await expect(page.locator('aside .pick[aria-current="true"]')).toHaveCount(0);
+	await expect(page.locator('aside').getByRole('button', { name: 'Team', exact: true })).toHaveCount(0);
 	noErrors();
 });

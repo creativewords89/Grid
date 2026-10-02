@@ -269,3 +269,17 @@ dialog label.chk{flex-direction:row;align-items:center;gap:8px;align-self:end;mi
 .pf-warn{margin:0;background:var(--urgent-bg);color:var(--urgent);border-radius:10px;padding:8px 12px;font-size:.85rem}
 .pf-missing input{border-color:var(--urgent) !important;box-shadow:0 0 0 1px var(--urgent)}
 .pf-req{color:var(--urgent);font-size:.75rem;font-weight:700}
+/* Your own page (SPEC.md 7.6): profile header. */
+.ph-card{display:flex;align-items:center;gap:18px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-bottom:6px}
+.ph-card .av.big{width:64px;height:64px;font-size:1.3rem}
+.ph-who{display:flex;flex-direction:column;gap:4px;min-width:0}
+.ph-who h1{margin:0;font-family:var(--display);font-size:1.6rem;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ph-who h1 .role{font-family:var(--body)}
+.ph-title{color:var(--ink-2);font-size:.92rem}
+.ph-facts{list-style:none;margin:2px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:6px 16px;color:var(--ink-2);font-size:.85rem}
+.ph-facts li{display:inline-flex;align-items:center;gap:6px}
+/* Sidebar: Team (leaders and the Super Admin). */
+.side-link{display:flex;align-items:center;gap:8px;width:100%;border:0;background:none;border-radius:8px;padding:8px 10px;font:inherit;font-weight:600;color:var(--ink);text-align:left;cursor:pointer}
+.side-link:hover{background:var(--panel-2)}
+.side-link[aria-current="page"]{background:var(--ink);color:var(--panel)}
+@media (max-width:600px){.ph-card{padding:16px;gap:12px}.ph-card .av.big{width:52px;height:52px}}

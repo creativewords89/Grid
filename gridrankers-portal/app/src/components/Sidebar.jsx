@@ -1,4 +1,5 @@
 import { usePortal } from '../context.js';
+import { isManager } from '../lib/roles.js';
 import { rowsOf } from '../lib/store.js';
 
 const GROUPS = [
@@ -7,10 +8,12 @@ const GROUPS = [
 	{ state: 'inactive', title: 'Inactive projects', empty: 'No inactive projects' },
 ];
 
-// Brand (→ Dashboard) and the project list for quick switching. Adding, moving and deleting
+// Brand (→ Dashboard), Team (leaders and the Super Admin) and the project list for quick switching. Adding, moving and deleting
 // projects happen on the Dashboard (SPEC.md 7.0, 7.1).
 export default function Sidebar({ syncStatus }) {
-	const { data, view, setView, setProject, project } = usePortal();
+	const { data, view, setView, setProject, project, me, teamPerson, setTeamPerson } = usePortal();
+	// A project is highlighted only on its own screens, never on My day or a person's page.
+	const onProject = ['board', 'monthly', 'log'].includes(view);
 
 	const projects = rowsOf(data, 'projects').sort((a, b) => a.name.localeCompare(b.name));
 	const tasks = rowsOf(data, 'meeting_tasks');
@@ -27,6 +30,14 @@ export default function Sidebar({ syncStatus }) {
 			<button type="button" className="brand" aria-current={view === 'dash' ? 'page' : undefined} title="Dashboard: all projects" onClick={() => setView('dash')}>
 				GridRankers<small>Team portal</small>
 			</button>
+			{isManager(me) && (
+				<button type="button" className="side-link" aria-current={view === 'team' && teamPerson !== me.id ? 'page' : undefined} onClick={() => (setTeamPerson('all'), setView('team'))}>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+						<path d="M9 4.5a3.5 3.5 0 1 0 0 7a3.5 3.5 0 1 0 0-7M2.5 20c1-3.5 3.5-5.5 6.5-5.5s5.5 2 6.5 5.5M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c2 .7 3.2 2.5 3.8 5.2" />
+					</svg>
+					Team
+				</button>
+			)}
 			{GROUPS.map((g) => {
 				const list = projects.filter((p) => p.state === g.state);
 				return (
@@ -40,7 +51,7 @@ export default function Sidebar({ syncStatus }) {
 								const c = counts(p.id);
 								return (
 									<li key={p.id}>
-										<button className="pick" aria-current={view !== 'dash' && project === p.id} onClick={() => setProject(p.id)}>
+										<button className="pick" aria-current={onProject && project === p.id} onClick={() => setProject(p.id)}>
 											<span className="nm">{p.name}</span>
 											{c.red ? (
 												<span className="pill red" title="Urgent fixes">

@@ -26,7 +26,7 @@ class GRP_REST_People extends GRP_REST_Controller {
 	const MESSAGES_KEY = 'messages';
 
 	/**
-	 * Default automatic messages (`{name}` = first name).
+	 * Default automatic messages (`{name}` = full name).
 	 */
 	const DEFAULT_MESSAGES = array(
 		'birthday'       => 'Happy birthday, {name}! The whole GridRankers team wishes you a wonderful year ahead.',

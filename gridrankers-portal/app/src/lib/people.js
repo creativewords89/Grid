@@ -101,9 +101,9 @@ export function whosOut(date, members, leaves, team, daysOff, exceptId) {
 	return out.sort((a, b) => a.member.name.localeCompare(b.member.name));
 }
 
-export const firstName = (name) => String(name || '').trim().split(/\s+/)[0] || '';
 
-export const fill = (text, person) => String(text || '').replace(/\{name\}/g, firstName(person && person.name));
+// Messages greet people by their full name.
+export const fill = (text, person) => String(text || '').replace(/\{name\}/g, String((person && person.name) || '').trim());
 
 export function messages(data) {
 	const stored = settingOf(data, 'messages') || {};
