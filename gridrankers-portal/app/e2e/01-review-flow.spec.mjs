@@ -7,6 +7,7 @@ test('completion review round trip', async ({ page }) => {
 	const title = 'Fix the H1 on /plumbers';
 
 	await signIn(page, LEAD);
+	await openProject(page, 'Acme Plumbing');
 	await addMeetingTask(page, title, 'Max Member');
 	await signOut(page);
 
@@ -46,7 +47,7 @@ test('completion review round trip', async ({ page }) => {
 
 	// Super Admin accepts in Details.
 	await signInOwner(page);
-	await page.getByRole('tab', { name: 'Meeting Minutes' }).click();
+	await openProject(page, 'Acme Plumbing');
 	await card(page, title).getByRole('button', { name: 'Details' }).click();
 	await page.locator('.dt-racts').getByRole('button', { name: 'Accept' }).click();
 	await page.getByText('Accepted', { exact: true }).first().waitFor();

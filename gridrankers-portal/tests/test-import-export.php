@@ -295,6 +295,74 @@ class Test_GRP_Import_Export extends GRP_REST_TestCase {
 		$this->assertCount( 5, $second['data']['items'] );
 	}
 
+	public function test_people_data_survives_export_and_import() {
+		GRP_Import::run( $this->fixture() );
+		$member = GRP_Store::find( 'grp_members', array( 'role' => 'member' ) )[0];
+		GRP_Store::update(
+			'grp_members',
+			$member['id'],
+			array(
+				'birthday'   => '10-14',
+				'weekly_off' => array( 4 ),
+			)
+		);
+		GRP_Store::insert(
+			'grp_leave',
+			array(
+				'id'         => 'l_1',
+				'member_id'  => $member['id'],
+				'type'       => 'sick',
+				'from_date'  => '2026-10-19',
+				'to_date'    => '2026-10-21',
+				'days'       => 3,
+				'reason'     => 'Flu',
+				'status'     => 'approved',
+				'decided_by' => 'm_lead',
+				'decided_at' => '2026-10-18 09:00:00',
+				'message'    => 'Get well soon',
+			)
+		);
+		GRP_Store::insert(
+			'grp_days_off',
+			array(
+				'id'        => 'o_1',
+				'kind'      => 'seasonal',
+				'name'      => 'Eid holidays',
+				'from_date' => '2027-03-20',
+				'to_date'   => '2027-03-23',
+			)
+		);
+		GRP_Store::insert(
+			'grp_posts',
+			array(
+				'id'         => 'p_1',
+				'kind'       => 'shoutout',
+				'body'       => 'Great work on the Acme H1 fixes',
+				'to_member'  => $member['id'],
+				'pinned'     => 0,
+				'created_by' => 'm_lead',
+			)
+		);
+		$first = json_decode( wp_json_encode( GRP_Export::build() ), true );
+
+		foreach ( array( 'grp_leave', 'grp_days_off', 'grp_posts', 'grp_members' ) as $table ) {
+			global $wpdb;
+			$wpdb->query( $wpdb->prepare( 'DELETE FROM %i', GRP_Install::table( $table ) ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		}
+		$summary = GRP_Import::run( $first );
+
+		$this->assertSame( 1, $summary['counts']['leave']['inserted'] );
+		$this->assertSame( 1, $summary['counts']['daysOff']['inserted'] );
+		$this->assertSame( 1, $summary['counts']['posts']['inserted'] );
+		$this->assertSame( '10-14', GRP_Store::get( 'grp_members', $member['id'] )['birthday'] );
+		$this->assertSame( array( 4 ), GRP_Store::get( 'grp_members', $member['id'] )['weekly_off'] );
+		$leave = GRP_Store::get( 'grp_leave', 'l_1' );
+		$this->assertSame( array( 'sick', '2026-10-19', '2026-10-21', 3, 'approved', 'Get well soon' ), array( $leave['type'], $leave['from_date'], $leave['to_date'], $leave['days'], $leave['status'], $leave['message'] ) );
+		$this->assertSame( 'Eid holidays', GRP_Store::get( 'grp_days_off', 'o_1' )['name'] );
+		$this->assertSame( $member['id'], GRP_Store::get( 'grp_posts', 'p_1' )['to_member'] );
+		$this->assertEquals( $first['data']['leave'], GRP_Export::build()['data']['leave'] );
+	}
+
 	public function test_rest_export_and_import_super_admin_only() {
 		$this->assertStatus( 403, $this->api_as( 'lead', 'GET', '/export' ) );
 		$this->assertStatus( 403, $this->api_as( 'member', 'GET', '/export' ) );

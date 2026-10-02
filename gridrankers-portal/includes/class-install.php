@@ -15,7 +15,7 @@ class GRP_Install {
 	/**
 	 * Current schema version. Bump it whenever get_schema() or migrations() changes.
 	 */
-	const DB_VERSION = 4;
+	const DB_VERSION = 5;
 
 	/**
 	 * Option that stores the installed schema version.
@@ -27,7 +27,8 @@ class GRP_Install {
 	 *
 	 * The optional `grp_requests` table from SPEC.md section 5 is not created:
 	 * there is no public access-request flow. `grp_deletions` (schema 2) is an addition:
-	 * tombstones for hard-deleted rows so GET /sync can report deletions.
+	 * tombstones for hard-deleted rows so GET /sync can report deletions. Schema 5 adds
+	 * leave, days off and posts (announcements, shout-outs) for SPEC.md 6.10.
 	 *
 	 * @var string[]
 	 */
@@ -44,6 +45,9 @@ class GRP_Install {
 		'grp_dismissals',
 		'grp_settings',
 		'grp_deletions',
+		'grp_leave',
+		'grp_days_off',
+		'grp_posts',
 	);
 
 	/**
@@ -220,6 +224,8 @@ class GRP_Install {
 				code_set_at datetime NULL,
 				wp_user_id bigint(20) unsigned NULL,
 				active tinyint(1) NOT NULL DEFAULT 1,
+				birthday char(5) NULL,
+				weekly_off json NULL,
 				created_at datetime NOT NULL,
 				updated_at datetime NOT NULL,
 				PRIMARY KEY  (id),
@@ -430,6 +436,62 @@ class GRP_Install {
 				updated_at datetime NOT NULL,
 				PRIMARY KEY  (id),
 				KEY table_doc (table_name,doc_id),
+				KEY updated_at (updated_at)
+			) $collate;",
+
+			"CREATE TABLE {$t['grp_leave']} (
+				id varchar(64) NOT NULL,
+				member_id varchar(64) NOT NULL,
+				type enum('day','sick') NOT NULL DEFAULT 'day',
+				from_date date NOT NULL,
+				to_date date NOT NULL,
+				days tinyint(3) unsigned NOT NULL DEFAULT 0,
+				reason text NULL,
+				status enum('pending','approved','rejected','cancelled') NOT NULL DEFAULT 'pending',
+				decided_by varchar(64) NULL,
+				decided_at datetime NULL,
+				message text NULL,
+				created_by varchar(64) NULL,
+				created_at datetime NOT NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				KEY member_id (member_id),
+				KEY from_date (from_date),
+				KEY to_date (to_date),
+				KEY status (status),
+				KEY updated_at (updated_at)
+			) $collate;",
+
+			"CREATE TABLE {$t['grp_days_off']} (
+				id varchar(64) NOT NULL,
+				kind enum('event','seasonal') NOT NULL DEFAULT 'event',
+				name varchar(191) NOT NULL DEFAULT '',
+				from_date date NOT NULL,
+				to_date date NOT NULL,
+				created_by varchar(64) NULL,
+				created_at datetime NOT NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				KEY from_date (from_date),
+				KEY updated_at (updated_at)
+			) $collate;",
+
+			"CREATE TABLE {$t['grp_posts']} (
+				id varchar(64) NOT NULL,
+				kind enum('announcement','shoutout') NOT NULL DEFAULT 'announcement',
+				title varchar(191) NULL,
+				body text NOT NULL,
+				to_member varchar(64) NULL,
+				pinned tinyint(1) NOT NULL DEFAULT 0,
+				show_until date NULL,
+				created_by varchar(64) NULL,
+				deleted_at datetime NULL,
+				created_at datetime NOT NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				KEY kind (kind),
+				KEY to_member (to_member),
+				KEY created_at (created_at),
 				KEY updated_at (updated_at)
 			) $collate;",
 		);

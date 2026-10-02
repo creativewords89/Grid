@@ -58,6 +58,7 @@ export function createApi({ root, nonce, onUnauthorized, fetchImpl }) {
 		get: (path, query) => request('GET', path, { query }),
 		post: (path, body) => request('POST', path, { body: body || {} }),
 		patch: (path, body) => request('PATCH', path, { body: body || {} }),
+		put: (path, body) => request('PUT', path, { body: body || {} }),
 		del: (path) => request('DELETE', path),
 	};
 }

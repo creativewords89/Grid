@@ -30,6 +30,7 @@ class GRP_REST_Review extends GRP_REST_Controller {
 	 */
 	public static function register_routes() {
 		self::route( '/review', WP_REST_Server::CREATABLE, 'review' );
+		self::route( '/review/request', WP_REST_Server::CREATABLE, 'request' );
 	}
 
 	/**
@@ -43,10 +44,6 @@ class GRP_REST_Review extends GRP_REST_Controller {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public static function review( WP_REST_Request $request ) {
-		if ( ! self::can( GRP_Permissions::REVIEW ) ) {
-			return self::forbidden( __( 'Only a Super Admin or Team Leader can review work.', 'gridrankers-portal' ) );
-		}
-
 		$action = (string) $request['action'];
 		if ( ! isset( self::ACTIONS[ $action ] ) ) {
 			return self::invalid( __( 'Invalid review action.', 'gridrankers-portal' ) );
@@ -79,6 +76,10 @@ class GRP_REST_Review extends GRP_REST_Controller {
 		$task = GRP_Store::get( 'grp_meeting_tasks', $id );
 		if ( ! $task ) {
 			return self::not_found();
+		}
+		$denied = self::denied( $task['review'] ?? null, $action );
+		if ( $denied ) {
+			return $denied;
 		}
 
 		$review = self::current_review( $task['review'] ?? null, 'done' === $task['status'], $action, $task['done_at'] ?? null, self::first_assignee( $task ) );
@@ -142,6 +143,10 @@ class GRP_REST_Review extends GRP_REST_Controller {
 		if ( ! $rec || ! $task ) {
 			return self::not_found();
 		}
+		$denied = self::denied( $rec['review'] ?? null, $action );
+		if ( $denied ) {
+			return $denied;
+		}
 
 		$n      = max( 1, (int) $task['target'] );
 		$by     = (array) $rec['by_person'];
@@ -185,6 +190,83 @@ class GRP_REST_Review extends GRP_REST_Controller {
 				}
 			)
 		);
+	}
+
+	/**
+	 * POST /review/request `{kind: item|record, id, reviewer, note?}`: a Super Admin or Team
+	 * Leader asks someone to review work they finished themselves (SPEC.md 6.6). The work
+	 * goes back to `pending` with that reviewer; only they (or the Super Admin) can decide.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function request( WP_REST_Request $request ) {
+		if ( ! self::can( GRP_Permissions::REQUEST_REVIEW ) ) {
+			return self::forbidden( __( 'Only a Super Admin or Team Leader can ask for a review.', 'gridrankers-portal' ) );
+		}
+		$actor    = self::actor();
+		$reviewer = GRP_Store::get( 'grp_members', (string) ( $request['reviewer'] ?? '' ) );
+		if ( ! $reviewer || ! (int) $reviewer['active'] || $reviewer['id'] === $actor['id'] ) {
+			return self::invalid( __( 'Pick who should review it.', 'gridrankers-portal' ) );
+		}
+
+		$kind  = (string) $request['kind'];
+		$table = array(
+			'item'   => 'grp_meeting_tasks',
+			'record' => 'grp_cycle_records',
+		)[ $kind ] ?? null;
+		if ( ! $table ) {
+			return self::invalid( __( 'Invalid review kind.', 'gridrankers-portal' ) );
+		}
+		$row = GRP_Store::get( $table, (string) $request['id'] );
+		if ( ! $row ) {
+			return self::not_found();
+		}
+		$review = (array) ( $row['review'] ?? array() );
+		$own    = 'accepted' === ( $review['state'] ?? '' ) && ! empty( $review['auto'] ) && (string) ( $review['submittedBy'] ?? '' ) === (string) $actor['id'];
+		if ( ! $own ) {
+			return self::conflict( __( 'You can only ask for a review of work you finished yourself.', 'gridrankers-portal' ), 'grp_not_own_work' );
+		}
+
+		$changes = array(
+			'review' => array(
+				'state'       => 'pending',
+				'submittedBy' => $actor['id'],
+				'submittedAt' => gmdate( 'c' ),
+				'reviewer'    => $reviewer['id'],
+				'note'        => self::textarea( $request['note'] ?? '', 1000 ),
+			),
+		);
+
+		return rest_ensure_response(
+			GRP_Store::transaction(
+				static function () use ( $table, $row, $changes, $reviewer, $actor ) {
+					$updated = GRP_Store::update( $table, $row['id'], $changes );
+					$task    = 'grp_cycle_records' === $table ? GRP_Store::get( 'grp_monthly_tasks', $row['task_id'] ) : $updated;
+					GRP_Activity::audit( 'review', 'grp_cycle_records' === $table ? 'monthly' : 'items', (array) $task, $actor, 'Review asked of ' . $reviewer['name'] );
+					return $updated;
+				}
+			)
+		);
+	}
+
+	/**
+	 * Why the actor may not decide this review, or null when they may. A review someone
+	 * asked for belongs to that reviewer (and the Super Admin); others need REVIEW.
+	 *
+	 * @param mixed  $review Stored review.
+	 * @param string $action Action.
+	 * @return WP_Error|null
+	 */
+	private static function denied( $review, $action ) {
+		$review = is_array( $review ) ? $review : array();
+		if ( 'pending' === ( $review['state'] ?? '' ) && ! empty( $review['reviewer'] ) ) {
+			$ok = self::can( GRP_Permissions::ANSWER_REVIEW_REQUEST, array( 'reviewer' => $review['reviewer'] ) )
+				&& ( 'reject' !== $action || self::can( GRP_Permissions::REVIEW ) );
+			return $ok ? null : self::forbidden( __( 'Someone else was asked to review this.', 'gridrankers-portal' ) );
+		}
+
+		return self::can( GRP_Permissions::REVIEW ) ? null : self::forbidden( __( 'Only a Super Admin or Team Leader can review work.', 'gridrankers-portal' ) );
 	}
 
 	/**

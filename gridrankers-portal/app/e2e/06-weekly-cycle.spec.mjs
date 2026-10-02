@@ -1,13 +1,14 @@
 // Weekly tasks follow the project cycle (SPEC.md 6.2): the week bar and the week boxes count
 // weeks from the project's start day (4 weeks in a normal cycle).
 import { test, expect } from '@playwright/test';
-import { LEAD, openProject, signIn, watchErrors } from './helpers.mjs';
+import { LEAD, openProject, openProjectsTab, signIn, watchErrors } from './helpers.mjs';
 import { activeWeek, cycleRange, weeksOf } from '../src/lib/cycles.js';
 
 test('weekly tasks use cycle weeks', async ({ page }) => {
 	const noErrors = watchErrors(page);
 	await signIn(page, LEAD);
 
+	await openProjectsTab(page);
 	await page.getByRole('button', { name: '+ New project' }).click();
 	const dlg = page.locator('dialog[open]');
 	await dlg.getByLabel('Project name').fill('Mid Month Co');

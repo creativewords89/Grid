@@ -16,7 +16,7 @@ class Test_GRP_Install extends WP_UnitTestCase {
 	 * @var array<string, string[]>
 	 */
 	const EXPECTED_COLUMNS = array(
-		'grp_members'       => array( 'id', 'name', 'role', 'color', 'photo', 'title', 'email', 'phone', 'address', 'drive_url', 'notes', 'code_hash', 'code_salt', 'code_set_at', 'wp_user_id', 'active' ),
+		'grp_members'       => array( 'id', 'name', 'role', 'color', 'photo', 'title', 'email', 'phone', 'address', 'drive_url', 'notes', 'code_hash', 'code_salt', 'code_set_at', 'wp_user_id', 'active', 'birthday', 'weekly_off' ),
 		'grp_sessions'      => array( 'id', 'member_id', 'token_hash', 'expires_at', 'ip', 'user_agent' ),
 		'grp_projects'      => array( 'id', 'name', 'state', 'cycle_day', 'cycle_set', 'cycle_changes', 'cycle_log', 'std_cycle' ),
 		'grp_meeting_tasks' => array( 'id', 'project_id', 'title', 'notes', 'url', 'priority', 'status', 'meeting_date', 'done_at', 'target', 'assignees', 'team', 'progress', 'deadline', 'review', 'completion', 'created_by' ),
@@ -28,6 +28,9 @@ class Test_GRP_Install extends WP_UnitTestCase {
 		'grp_dismissals'    => array( 'id', 'member_id', 'notice_key', 'at' ),
 		'grp_settings'      => array( 'id', 'setting_key', 'value' ),
 		'grp_deletions'     => array( 'id', 'table_name', 'doc_id', 'deleted_at' ),
+		'grp_leave'         => array( 'id', 'member_id', 'type', 'from_date', 'to_date', 'days', 'reason', 'status', 'decided_by', 'decided_at', 'message', 'created_by' ),
+		'grp_days_off'      => array( 'id', 'kind', 'name', 'from_date', 'to_date', 'created_by' ),
+		'grp_posts'         => array( 'id', 'kind', 'title', 'body', 'to_member', 'pinned', 'show_until', 'created_by', 'deleted_at' ),
 	);
 
 	/**

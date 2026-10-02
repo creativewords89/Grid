@@ -1,18 +1,19 @@
 // A Team Member cannot edit or delete tasks: no buttons in the UI, and 403 from the server (SPEC.md 3).
 import { test, expect } from '@playwright/test';
-import { LEAD, MAX, addMeetingTask, apiCall, card, signIn, signOut, watchErrors } from './helpers.mjs';
+import { LEAD, MAX, addMeetingTask, apiCall, card, openProject, signIn, signOut, watchErrors } from './helpers.mjs';
 
 test('member cannot edit or delete', async ({ page }) => {
 	const noErrors = watchErrors(page);
 	const title = 'Add schema markup';
 
 	await signIn(page, LEAD);
+	await openProject(page, 'Acme Plumbing');
 	await addMeetingTask(page, title, 'Max Member');
 	await expect(card(page, title).getByRole('button', { name: 'Edit' })).toBeVisible();
 	await signOut(page);
 
 	await signIn(page, MAX);
-	await page.getByRole('tab', { name: 'Meeting Minutes' }).click();
+	await openProject(page, 'Acme Plumbing');
 	const mine = card(page, title);
 	await expect(mine).toBeVisible();
 	await expect(mine.getByRole('button', { name: 'Edit' })).toHaveCount(0);

@@ -44,8 +44,14 @@ export async function signOut(page) {
 // Super Admin: WordPress login (owner is linked to tm_owner).
 export async function signInOwner(page) {
 	await page.goto('/wp-login.php');
+	// wp-login.php clears and focuses the username field ~200 ms after load (wp_attempt_focus):
+	// let that happen first, then check both fields before submitting.
+	await page.waitForLoadState('load');
+	await page.waitForTimeout(400);
 	await page.locator('#user_login').fill('owner');
 	await page.locator('#user_pass').fill('owner-pass-123');
+	await expect(page.locator('#user_login')).toHaveValue('owner');
+	await expect(page.locator('#user_pass')).toHaveValue('owner-pass-123');
 	await page.locator('#wp-submit').click();
 	await page.waitForURL(/wp-admin|\/$/);
 	await page.goto('/');
@@ -54,6 +60,12 @@ export async function signInOwner(page) {
 
 export async function signOutOwner(page) {
 	await page.context().clearCookies();
+}
+
+// Dashboard → Projects tab (Super Admin, Team Leader).
+export async function openProjectsTab(page) {
+	await page.locator('.md-tabs').getByRole('tab', { name: /^Projects/ }).click();
+	await page.locator('.pd-tabs').waitFor();
 }
 
 export const card = (page, title) => page.locator('article.mcard', { hasText: title });

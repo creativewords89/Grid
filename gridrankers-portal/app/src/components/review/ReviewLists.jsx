@@ -1,6 +1,6 @@
 import { usePortal } from '../../context.js';
 import { dateTime } from '../../lib/format.js';
-import { pendingReviews, reviewsOf } from '../../lib/reviews.js';
+import { mayDecide, pendingReviews, reviewsOf } from '../../lib/reviews.js';
 import { REVIEW_TXT } from '../../lib/tasks.js';
 import useReview from './useReview.js';
 
@@ -14,10 +14,10 @@ function useOpen() {
 
 // "Waiting for your review" (SPEC.md 6.6): not dismissable, Accept / Revise / Reject.
 export function WaitingForReview() {
-	const { data } = usePortal();
+	const { data, me } = usePortal();
 	const decide = useReview();
 	const open = useOpen();
-	const list = pendingReviews(data);
+	const list = pendingReviews(data).filter((r) => mayDecide(r, me));
 	if (!list.length) return null;
 	const name = (id) => (data.members[id] ? data.members[id].name : 'Someone');
 	return (

@@ -1,0 +1,383 @@
+<?php
+/**
+ * Tests for /leave, /days-off, /settings/messages, /posts, /review/request, member
+ * birthdays and leave privacy in /sync (SPEC.md 6.10, section 8).
+ *
+ * @package GridRankers_Portal
+ */
+
+/**
+ * People features over REST, permissions enforced on the server.
+ */
+class Test_GRP_REST_People extends GRP_REST_TestCase {
+
+	/**
+	 * A Monday at least a week ahead.
+	 *
+	 * @var string
+	 */
+	private $monday;
+
+	public function set_up() {
+		parent::set_up();
+		$this->monday = gmdate( 'Y-m-d', strtotime( 'monday next week', strtotime( GRP_Cycles::today() . ' UTC' ) + 7 * DAY_IN_SECONDS ) );
+	}
+
+	/**
+	 * Date `$n` days after the test Monday.
+	 *
+	 * @param int $n Days.
+	 * @return string
+	 */
+	private function day( $n ) {
+		return GRP_People::add_days( $this->monday, $n );
+	}
+
+	/**
+	 * Asks for leave and returns the response.
+	 *
+	 * @param string $who    Handle.
+	 * @param int    $from   First day (offset from the test Monday).
+	 * @param int    $to     Last day.
+	 * @param array  $fields Extra fields.
+	 * @return WP_REST_Response
+	 */
+	private function ask( $who, $from, $to, array $fields = array() ) {
+		return $this->api_as(
+			$who,
+			'POST',
+			'/leave',
+			$fields + array(
+				'type'   => 'day',
+				'from'   => $this->day( $from ),
+				'to'     => $this->day( $to ),
+				'reason' => 'Family wedding',
+			)
+		);
+	}
+
+	public function test_member_requests_leave_and_a_leader_decides() {
+		// Mon – Fri: the Friday is the team's weekly day off, so 4 days.
+		$response = $this->ask( 'member', 0, 4 );
+		$this->assertStatus( 201, $response );
+		$leave = $response->get_data();
+		$this->assertSame( 'pending', $leave['status'] );
+		$this->assertSame( 4, $leave['days'] );
+
+		$this->assertStatus( 403, $this->api_as( 'other', 'PATCH', "/leave/{$leave['id']}", array( 'action' => 'approve' ) ) );
+		$this->assertStatus( 403, $this->api_as( 'member', 'PATCH', "/leave/{$leave['id']}", array( 'action' => 'approve' ) ) );
+
+		$approved = $this->api_as(
+			'lead',
+			'PATCH',
+			"/leave/{$leave['id']}",
+			array(
+				'action'  => 'approve',
+				'message' => 'Enjoy the wedding!',
+			)
+		);
+		$this->assertStatus( 200, $approved );
+		$this->assertSame( 'approved', $approved->get_data()['status'] );
+		$this->assertSame( 'Enjoy the wedding!', $approved->get_data()['message'] );
+		$this->assertSame( $this->team['lead']['id'], $approved->get_data()['decided_by'] );
+
+		$this->assertSame( 409, $this->api_as( 'admin', 'PATCH', "/leave/{$leave['id']}", array( 'action' => 'reject' ) )->get_status(), 'already decided' );
+		$this->assertStringNotContainsString( 'wedding', wp_json_encode( $this->audit_for( $leave['id'] ) ), 'the public log never carries the reason' );
+	}
+
+	public function test_team_leader_leave_is_approved_straight_away_and_the_super_admin_has_none() {
+		$response = $this->ask( 'lead', 1, 1, array( 'type' => 'sick' ) );
+		$this->assertStatus( 201, $response );
+		$this->assertSame( 'approved', $response->get_data()['status'] );
+		$this->assertSame( $this->team['lead']['id'], $response->get_data()['decided_by'] );
+
+		$this->assertStatus( 403, $this->ask( 'admin', 1, 1 ) );
+		$this->assertStatus( 403, $this->ask( 'member', 1, 1, array( 'member_id' => $this->team['other']['id'] ) ), 'only for yourself' );
+	}
+
+	public function test_leave_validation() {
+		$this->assertStatus( 201, $this->ask( 'member', 0, 1 ) );
+		$this->assertSame( 'grp_leave_overlap', $this->ask( 'member', 1, 2 )->get_data()['code'] );
+		$this->assertSame( 'grp_leave_no_days', $this->ask( 'member', 4, 4 )->get_data()['code'], 'a Friday only' );
+		$this->assertStatus( 400, $this->ask( 'member', 3, 2 ) );
+		$this->assertStatus(
+			400,
+			$this->api_as(
+				'member',
+				'POST',
+				'/leave',
+				array(
+					'from' => GRP_People::add_days( GRP_Cycles::today(), -45 ),
+					'to'   => GRP_People::add_days( GRP_Cycles::today(), -44 ),
+				)
+			),
+			'more than 30 days ago'
+		);
+		$this->assertStatus( 201, $this->ask( 'other', 1, 2 ), 'other people may be off on the same days' );
+	}
+
+	public function test_cancelling_leave() {
+		$pending = $this->ask( 'member', 0, 0 )->get_data();
+		$this->assertStatus( 200, $this->api_as( 'member', 'PATCH', "/leave/{$pending['id']}", array( 'action' => 'cancel' ) ) );
+		$this->assertStatus( 403, $this->api_as( 'member', 'PATCH', "/leave/{$pending['id']}", array( 'action' => 'cancel' ) ), 'already cancelled' );
+
+		$approved = $this->ask( 'member', 1, 1 )->get_data();
+		$this->api_as( 'lead', 'PATCH', "/leave/{$approved['id']}", array( 'action' => 'approve' ) );
+		$this->assertStatus( 403, $this->api_as( 'member', 'PATCH', "/leave/{$approved['id']}", array( 'action' => 'cancel' ) ), 'members cancel pending requests only' );
+		$this->assertStatus( 200, $this->api_as( 'lead', 'PATCH', "/leave/{$approved['id']}", array( 'action' => 'cancel' ) ) );
+
+		$lead_leave = $this->ask( 'lead', 2, 2 )->get_data();
+		$this->assertStatus( 200, $this->api_as( 'admin', 'PATCH', "/leave/{$lead_leave['id']}", array( 'action' => 'cancel' ) ) );
+	}
+
+	public function test_team_members_only_see_their_own_leave_details() {
+		$mine   = $this->ask( 'member', 0, 0 )->get_data();
+		$theirs = $this->ask( 'other', 1, 1, array( 'type' => 'sick' ) )->get_data();
+		$asked  = $this->ask( 'other', 2, 2 )->get_data();
+		$this->api_as( 'lead', 'PATCH', "/leave/{$theirs['id']}", array( 'action' => 'approve' ) );
+
+		$list = $this->api_as( 'member', 'GET', '/leave' )->get_data();
+		$this->assertSame( array( $mine['id'] ), array_column( $list, 'id' ) );
+		$this->assertCount( 3, $this->api_as( 'lead', 'GET', '/leave' )->get_data() );
+
+		$sync  = $this->api_as( 'member', 'GET', '/sync' )->get_data();
+		$leave = array_column( $sync['changes']['leave'], null, 'id' );
+		$this->assertSame( 'Family wedding', $leave[ $mine['id'] ]['reason'] );
+		$this->assertSame(
+			array( 'from_date', 'id', 'member_id', 'status', 'to_date', 'updated_at' ),
+			self::sorted_keys( $leave[ $theirs['id'] ] ),
+			'no type, reason or message for other people'
+		);
+		$this->assertArrayNotHasKey( $asked['id'], $leave, 'other people’s pending requests are not shown' );
+		$this->assertContains(
+			array(
+				'table' => 'leave',
+				'id'    => $asked['id'],
+			),
+			$sync['deletions']
+		);
+
+		$lead = array_column( $this->api_as( 'lead', 'GET', '/sync' )->get_data()['changes']['leave'], null, 'id' );
+		$this->assertSame( 'sick', $lead[ $theirs['id'] ]['type'] );
+		$this->assertArrayHasKey( $asked['id'], $lead );
+	}
+
+	public function test_leave_report_is_for_the_super_admin() {
+		$leave = $this->ask( 'member', 0, 2 )->get_data();
+		$this->api_as( 'lead', 'PATCH', "/leave/{$leave['id']}", array( 'action' => 'approve' ) );
+		$month = substr( $this->monday, 0, 7 );
+
+		$this->assertStatus( 403, $this->api_as( 'lead', 'GET', '/leave/report', array( 'month' => $month ) ) );
+		$this->assertStatus( 403, $this->api_as( 'member', 'GET', '/leave/report', array( 'month' => $month ) ) );
+
+		$rows = array_column( $this->api_as( 'admin', 'GET', '/leave/report', array( 'month' => $month ) )->get_data()['rows'], null, 'member_id' );
+		$this->assertArrayNotHasKey( $this->team['admin']['id'], $rows, 'the Super Admin has no leave' );
+		$taken = GRP_People::taken_in_month( GRP_Store::get( 'grp_members', $this->team['member']['id'] ), $month, array( GRP_Store::get( 'grp_leave', $leave['id'] ) ), null, array() );
+		$this->assertSame( GRP_People::settlement( $taken )['result'], $rows[ $this->team['member']['id'] ]['result'] );
+		$this->assertSame( 'paid', $rows[ $this->team['other']['id'] ]['result'] );
+
+		$year = $this->api_as( 'admin', 'GET', '/leave/report', array( 'year' => (int) substr( $this->monday, 0, 4 ) ) )->get_data();
+		$this->assertSame( 3, array_column( $year['rows'], null, 'member_id' )[ $this->team['member']['id'] ]['day'] );
+		$this->assertStatus( 400, $this->api_as( 'admin', 'GET', '/leave/report' ) );
+	}
+
+	public function test_days_off_and_weekly_days_are_set_by_the_super_admin() {
+		$event = array(
+			'kind' => 'event',
+			'name' => 'Durga Puja',
+			'from' => $this->day( 1 ),
+		);
+		$this->assertStatus( 403, $this->api_as( 'lead', 'POST', '/days-off', $event ) );
+		$created = $this->api_as( 'admin', 'POST', '/days-off', $event );
+		$this->assertStatus( 201, $created );
+		$this->assertSame( $this->day( 1 ), $created->get_data()['to_date'] );
+
+		// The Tuesday is now a day off: Mon – Wed counts 2 days.
+		$this->assertSame( 2, $this->ask( 'member', 0, 2 )->get_data()['days'] );
+
+		$this->assertStatus(
+			400,
+			$this->api_as(
+				'admin',
+				'POST',
+				'/days-off',
+				array(
+					'kind' => 'seasonal',
+					'name' => 'Eid',
+					'from' => $this->day( 9 ),
+					'to'   => $this->day( 8 ),
+				)
+			)
+		);
+		$this->assertStatus( 403, $this->api_as( 'lead', 'DELETE', '/days-off/' . $created->get_data()['id'] ) );
+		$this->assertStatus( 200, $this->api_as( 'admin', 'DELETE', '/days-off/' . $created->get_data()['id'] ) );
+
+		$this->assertStatus( 403, $this->api_as( 'lead', 'PUT', '/days-off/weekly', array( 'weekdays' => array( 5, 6 ) ) ) );
+		$this->assertStatus( 200, $this->api_as( 'admin', 'PUT', '/days-off/weekly', array( 'weekdays' => array( 5, 6 ) ) ) );
+		$this->assertSame( array( 5, 6 ), $this->api_as( 'member', 'GET', '/days-off' )->get_data()['weekly'] );
+
+		$own = $this->api_as(
+			'admin',
+			'PUT',
+			'/days-off/weekly',
+			array(
+				'weekdays' => array( 4 ),
+				'member'   => $this->team['other']['id'],
+			)
+		);
+		$this->assertStatus( 200, $own );
+		$this->assertSame( array( 4 ), GRP_Store::get( 'grp_members', $this->team['other']['id'] )['weekly_off'] );
+		// Rafi-style own Thursday off: Mon – Fri counts 4 (Friday is a working day for them).
+		$this->assertSame( 4, $this->ask( 'other', 7, 11 )->get_data()['days'] );
+	}
+
+	public function test_automatic_messages() {
+		$defaults = $this->api_as( 'member', 'GET', '/settings/messages' )->get_data();
+		$this->assertStringContainsString( '{name}', $defaults['birthday'] );
+
+		$this->assertStatus( 403, $this->api_as( 'lead', 'PUT', '/settings/messages', array( 'birthday' => 'Hi {name}' ) ) );
+		$saved = $this->api_as(
+			'admin',
+			'PUT',
+			'/settings/messages',
+			array(
+				'birthday' => 'Happy birthday {name}!',
+				'day_off'  => '',
+			)
+		)->get_data();
+		$this->assertSame( 'Happy birthday {name}!', $saved['birthday'] );
+		$this->assertSame( $defaults['day_off'], $saved['day_off'], 'empty goes back to the default' );
+	}
+
+	public function test_announcements_and_shoutouts() {
+		$announcement = array(
+			'kind'       => 'announcement',
+			'title'      => 'Office closed on Tuesday',
+			'body'       => 'Enjoy the holiday!',
+			'pinned'     => true,
+			'show_until' => $this->day( 1 ),
+		);
+		$this->assertStatus( 403, $this->api_as( 'member', 'POST', '/posts', $announcement ) );
+		$lead_post = $this->api_as( 'lead', 'POST', '/posts', $announcement );
+		$this->assertStatus( 201, $lead_post );
+		$this->assertSame( 1, $lead_post->get_data()['pinned'] );
+		$this->assertStatus( 400, $this->api_as( 'lead', 'POST', '/posts', array_merge( $announcement, array( 'body' => '' ) ) ) );
+
+		$shout = array(
+			'kind' => 'shoutout',
+			'to'   => $this->team['member']['id'],
+			'body' => 'Great work on the Acme H1 fixes',
+		);
+		$this->assertStatus( 403, $this->api_as( 'member', 'POST', '/posts', $shout ) );
+		$this->assertStatus( 403, $this->api_as( 'admin', 'POST', '/posts', array_merge( $shout, array( 'to' => $this->team['lead']['id'] ) ) ), 'shout-outs are for Team Members' );
+		$admin_shout = $this->api_as( 'admin', 'POST', '/posts', $shout );
+		$this->assertStatus( 201, $admin_shout );
+
+		$ids = array_column( $this->api_as( 'member', 'GET', '/posts' )->get_data(), 'id' );
+		$this->assertSame( array( $admin_shout->get_data()['id'], $lead_post->get_data()['id'] ), $ids, 'newest first' );
+
+		$this->assertStatus( 403, $this->api_as( 'lead', 'DELETE', '/posts/' . $admin_shout->get_data()['id'] ), 'leaders remove their own posts only' );
+		$this->assertStatus( 200, $this->api_as( 'admin', 'DELETE', '/posts/' . $lead_post->get_data()['id'] ) );
+		$this->assertSame( array( $admin_shout->get_data()['id'] ), array_column( $this->api_as( 'member', 'GET', '/posts' )->get_data(), 'id' ) );
+
+		// Past their date or older than 30 days: no longer listed.
+		global $wpdb;
+		$wpdb->update( GRP_Install::table( 'grp_posts' ), array( 'created_at' => gmdate( 'Y-m-d H:i:s', time() - 31 * DAY_IN_SECONDS ) ), array( 'id' => $admin_shout->get_data()['id'] ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$this->assertSame( array(), $this->api_as( 'member', 'GET', '/posts' )->get_data() );
+	}
+
+	public function test_leaders_can_ask_anyone_to_review_their_own_work() {
+		$project = $this->project();
+		$task    = $this->api_as(
+			'lead',
+			'POST',
+			'/meeting-tasks',
+			array(
+				'project_id' => $project['id'],
+				'title'      => 'Approve content plan',
+			)
+		)->get_data();
+		$done    = $this->api_as( 'lead', 'POST', "/meeting-tasks/{$task['id']}/status", array( 'status' => 'done' ) )->get_data();
+		$this->assertSame( 'accepted', $done['review']['state'], 'done straight away by default' );
+
+		$ask = array(
+			'kind'     => 'item',
+			'id'       => $task['id'],
+			'reviewer' => $this->team['member']['id'],
+			'note'     => 'Please check the October topics',
+		);
+		$this->assertStatus( 403, $this->api_as( 'member', 'POST', '/review/request', $ask ) );
+		$this->assertSame( 'grp_not_own_work', $this->api_as( 'admin', 'POST', '/review/request', $ask )->get_data()['code'] );
+		$asked = $this->api_as( 'lead', 'POST', '/review/request', $ask );
+		$this->assertStatus( 200, $asked );
+		$this->assertSame( 'pending', $asked->get_data()['review']['state'] );
+		$this->assertSame( $this->team['member']['id'], $asked->get_data()['review']['reviewer'] );
+
+		$accept = array(
+			'kind'   => 'item',
+			'id'     => $task['id'],
+			'action' => 'accept',
+		);
+		$this->assertStatus( 403, $this->api_as( 'other', 'POST', '/review', $accept ), 'not the reviewer' );
+		$this->assertStatus( 403, $this->api_as( 'lead', 'POST', '/review', $accept ), 'someone else was asked' );
+		$this->assertStatus(
+			403,
+			$this->api_as(
+				'member',
+				'POST',
+				'/review',
+				array(
+					'action' => 'reject',
+					'note'   => 'no',
+				) + $accept
+			),
+			'reviewers approve or send back'
+		);
+		$this->assertStatus( 200, $this->api_as( 'member', 'POST', '/review', $accept ) );
+		$this->assertSame( 'accepted', GRP_Store::get( 'grp_meeting_tasks', $task['id'] )['review']['state'] );
+
+		// Members still can't review other work.
+		$this->assertStatus(
+			403,
+			$this->api_as(
+				'member',
+				'POST',
+				'/review',
+				array_merge(
+					$accept,
+					array(
+						'action' => 'revision',
+						'note'   => 'x',
+					)
+				)
+			)
+		);
+	}
+
+	public function test_everyone_sets_their_own_birthday() {
+		$this->assertStatus( 200, $this->api_as( 'member', 'PATCH', '/members/' . $this->team['member']['id'], array( 'birthday' => '10-14' ) ) );
+		$this->assertSame( '10-14', GRP_Store::get( 'grp_members', $this->team['member']['id'] )['birthday'] );
+		$this->assertStatus( 400, $this->api_as( 'member', 'PATCH', '/members/' . $this->team['member']['id'], array( 'birthday' => '02-30' ) ) );
+		$this->assertStatus( 403, $this->api_as( 'lead', 'PATCH', '/members/' . $this->team['member']['id'], array( 'birthday' => '01-01' ) ) );
+		$this->assertStatus( 200, $this->api_as( 'member', 'PATCH', '/members/' . $this->team['member']['id'], array( 'birthday' => '' ) ) );
+		$this->assertNull( GRP_Store::get( 'grp_members', $this->team['member']['id'] )['birthday'] );
+
+		// Birthdays are visible to everyone (no contact details).
+		$this->api_as( 'lead', 'PATCH', '/members/' . $this->team['lead']['id'], array( 'birthday' => '03-02' ) );
+		$members = array_column( $this->api_as( 'member', 'GET', '/members' )->get_data(), null, 'id' );
+		$this->assertSame( '03-02', $members[ $this->team['lead']['id'] ]['birthday'] );
+	}
+
+	/**
+	 * Keys of an array, sorted.
+	 *
+	 * @param array $row Row.
+	 * @return string[]
+	 */
+	private static function sorted_keys( array $row ) {
+		$keys = array_keys( $row );
+		sort( $keys );
+
+		return $keys;
+	}
+}
