@@ -206,6 +206,8 @@ class GRP_Import {
 			'wp_user_id'  => ! empty( $d['wpUserId'] ) ? (int) $d['wpUserId'] : null,
 			'active'      => isset( $d['active'] ) ? ( $d['active'] ? 1 : 0 ) : 1,
 			'birthday'    => self::birthday( $d['birthday'] ?? null ),
+			'birth_year'  => ! empty( $d['birthYear'] ) ? (int) $d['birthYear'] : null,
+			'location'    => isset( $d['location'] ) ? mb_substr( (string) $d['location'], 0, 191 ) : null,
 			'weekly_off'  => GRP_People::weekdays( $d['weeklyOff'] ?? null ),
 			'created_at'  => self::time( $d['createdAt'] ?? null ),
 		);
@@ -296,10 +298,11 @@ class GRP_Import {
 
 		return array(
 			'id'         => $id,
-			'kind'       => 'shoutout' === ( $d['kind'] ?? '' ) ? 'shoutout' : 'announcement',
+			'kind'       => in_array( $d['kind'] ?? '', array( 'shoutout', 'notice' ), true ) ? $d['kind'] : 'announcement',
 			'title'      => isset( $d['title'] ) ? mb_substr( (string) $d['title'], 0, 191 ) : null,
 			'body'       => $body,
 			'to_member'  => ! empty( $d['toId'] ) ? (string) $d['toId'] : null,
+			'to_members' => is_array( $d['toIds'] ?? null ) ? array_values( array_map( 'strval', $d['toIds'] ) ) : null,
 			'pinned'     => ! empty( $d['pinned'] ) ? 1 : 0,
 			'show_until' => self::ymd( $d['showUntil'] ?? null ),
 			'created_by' => ! empty( $d['by'] ) ? (string) $d['by'] : null,

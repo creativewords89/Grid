@@ -228,6 +228,8 @@ class GRP_Export {
 				'wpUserId'  => $r['wp_user_id'],
 				'active'    => (bool) $r['active'],
 				'birthday'  => $r['birthday'],
+				'birthYear' => $r['birth_year'],
+				'location'  => $r['location'],
 				'weeklyOff' => $r['weekly_off'],
 				'createdAt' => self::iso( $r['created_at'] ),
 			)
@@ -409,6 +411,7 @@ class GRP_Export {
 				'title'     => $r['title'],
 				'body'      => $r['body'],
 				'toId'      => $r['to_member'],
+				'toIds'     => $r['to_members'],
 				'pinned'    => (bool) $r['pinned'],
 				'showUntil' => $r['show_until'],
 				'by'        => $r['created_by'],

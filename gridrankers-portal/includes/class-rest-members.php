@@ -25,6 +25,7 @@ class GRP_REST_Members extends GRP_REST_Controller {
 	const PROFILE_FIELDS = array(
 		'name'      => 191,
 		'title'     => 191,
+		'location'  => 191,
 		'email'     => 191,
 		'phone'     => 64,
 		'address'   => 0,
@@ -37,7 +38,7 @@ class GRP_REST_Members extends GRP_REST_Controller {
 	/**
 	 * Fields only managers and the member themself can see.
 	 */
-	const PRIVATE_FIELDS = array( 'email', 'phone', 'address', 'drive_url', 'notes', 'code_set_at', 'wp_user_id' );
+	const PRIVATE_FIELDS = array( 'email', 'phone', 'address', 'drive_url', 'notes', 'code_set_at', 'wp_user_id', 'birth_year' );
 
 	/**
 	 * Registers routes.
@@ -178,6 +179,16 @@ class GRP_REST_Members extends GRP_REST_Controller {
 				return self::invalid( __( 'Pick the day and month of your birthday.', 'gridrankers-portal' ) );
 			}
 			$changes['birthday'] = '' === $birthday ? null : $birthday;
+		}
+		if ( null !== $request->get_param( 'birth_year' ) ) {
+			if ( ! self::can( GRP_Permissions::SET_BIRTHDAY, array( 'member_id' => $member['id'] ) ) ) {
+				return self::forbidden( __( 'You can only set your own date of birth.', 'gridrankers-portal' ) );
+			}
+			$year = trim( (string) $request['birth_year'] );
+			if ( '' !== $year && ( ! ctype_digit( $year ) || (int) $year < 1900 || (int) $year > (int) gmdate( 'Y' ) ) ) {
+				return self::invalid( __( 'Pick the year you were born.', 'gridrankers-portal' ) );
+			}
+			$changes['birth_year'] = '' === $year ? null : (int) $year;
 		}
 
 		if ( null !== $request->get_param( 'wp_user_id' ) ) {
