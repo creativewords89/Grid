@@ -396,6 +396,6 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 
 32. (Released as 0.1.10.) My page for the Super Admin and Team Leaders (7.5, 7.6): the team sections become tabs of My page; Admin settings with its own menu; Team button and team Dashboard removed. Playwright: Super Admin tabs and Admin settings menu, Team → a person → back to Team; Team Leader tabs and Recent Activity; review from Needs your approval.
 
-33. View someone's My day, view only (7.0). Vitest (who may view whom), Playwright (Super Admin views a member and a leader, nothing to act with, Back and leaving end it; a leader can view a member but not the Super Admin).
+33. (Released as 0.1.11.) View someone's My day, view only (7.0). Vitest (who may view whom), Playwright (Super Admin views a member and a leader, nothing to act with, Back and leaving end it; a leader can view a member but not the Super Admin).
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).
