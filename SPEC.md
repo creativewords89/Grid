@@ -57,6 +57,7 @@ Three portal roles, stored on the team member (`role`): `admin` (Super Admin), `
 | Add a project | ✔ | ✔ | ✘ |
 | Move project Active/Paused/Inactive | ✔ | ✔ | ✘ |
 | Review last cycle and send feedback (6.11) | ✔ | ✔ | ✘ |
+| View someone's My day, view only (7.0) | Team Leaders and Team Members | Team Members and other Team Leaders | ✘ |
 | Delete project | ✔ | ✘ | ✘ |
 | Change project cycle (after first lock) | ✔ (with confirmation + reason) | ✘ | ✘ |
 | Add a task (meeting or monthly) | ✔ | ✔ | ✔ |
@@ -250,6 +251,8 @@ When an **active** project starts a new cycle, a Team Leader or the Super Admin 
 
 **Send notice** dialog: Kind (**Notice** · **Shout-out ★**), To (**Everyone** · **Choose people**; shout-outs: chosen Team Members only), Title (optional), Message, Show for (7 days · 30 days · Until I remove it).
 
+**View someone's My day** (view only): on a person's page (from My page → Team), **View their My day** shows their My day exactly as they see it — their projects and tasks, messages, notices, leave and, for a Team Leader, their approvals and Projects tab — under a pinned bar "Viewing {name}'s My day · {role} · view only" with **← Back to {name}'s page**. The Super Admin can view Team Leaders and Team Members; a Team Leader can view Team Members and other Team Leaders; nobody views the Super Admin. Nothing can be changed: no Send notice, Log work, leave request, approvals, message buttons, bell, weather or Sign out, and every write is refused in the app. Going anywhere else ends it. (Notices sent privately to them by someone else show only if the viewer could see them anyway.)
+
 ### 7.1 Layout
 - Left sidebar (design A, no search): the **GR** mark with **GridRankers** / Team portal and a **My day** link (both → Dashboard, 7.0), then the projects for quick switching, each with a coloured initials badge, its name on one line (full name on hover) and its open-task count only when it has open work (red when something is urgent). **Active projects** are always open; **Paused** and **Inactive projects** are folded (with their count) until opened, and open by themselves while one of their projects is on screen. A project is highlighted only on its own screens. At the bottom: the live sync status with a green dot. No "Add a project", no drag & drop, no move or delete buttons: those live on the Dashboard.
 - Top bar on a project's screens (the Dashboard has its own, 7.0): project title (+ "(paused)/(inactive)"), task search, tabs **Meeting Minutes · Monthly Tasks · Recent Activities**, user chip (avatar → Team area; admin/lead → Team dashboard, member → own page), Sign out.
@@ -392,5 +395,7 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 31. New cycle setup (6.11): schema 7 (`cycle_reviews`, `cycle_setup_since`), REVIEW_CYCLE, POST `/projects/id/cycle-review` with feedback notices; New cycle setup box, Review last cycle dialog, band messages, overdue on project cards. **Tests:** PHPUnit (managers only, stored under last cycle, feedback needs a note and reaches only the responsible people, task from another project refused, install date), Vitest (counts, due day 3, overdue, done, exemptions, band for leaders only), Playwright (leader reviews with feedback and Looks good, assigns everything → Done; member refused and receives the feedback).
 
 32. (Released as 0.1.10.) My page for the Super Admin and Team Leaders (7.5, 7.6): the team sections become tabs of My page; Admin settings with its own menu; Team button and team Dashboard removed. Playwright: Super Admin tabs and Admin settings menu, Team → a person → back to Team; Team Leader tabs and Recent Activity; review from Needs your approval.
+
+33. View someone's My day, view only (7.0). Vitest (who may view whom), Playwright (Super Admin views a member and a leader, nothing to act with, Back and leaving end it; a leader can view a member but not the Super Admin).
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).

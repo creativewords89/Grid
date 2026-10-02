@@ -132,7 +132,7 @@ function Bell() {
 
 // The message band, greeting, date, bell and user chip (SPEC.md 7.0).
 export default function DayHeader({ onSignOut }) {
-	const { data, me, today, setView, setTeamPerson, setProject, setSearch } = usePortal();
+	const { data, me, today, setView, setTeamPerson, setProject, setSearch, viewOnly } = usePortal();
 	const dismiss = useDismiss();
 	const list = useMemo(() => strips(data, me, today), [data, me, today]);
 	const [shown, setShown] = useState(0);
@@ -189,9 +189,11 @@ export default function DayHeader({ onSignOut }) {
 									</button>
 								</span>
 							)}
-							<button type="button" className="md-strip-x" onClick={() => act(s)}>
-								{s.ok || 'Dismiss'}
-							</button>
+							{!viewOnly && (
+								<button type="button" className="md-strip-x" onClick={() => act(s)}>
+									{s.ok || 'Dismiss'}
+								</button>
+							)}
 						</div>
 					))}
 				</div>
@@ -203,19 +205,21 @@ export default function DayHeader({ onSignOut }) {
 					</h1>
 					<span className="md-date">
 						{weekdayDate(today)}
-						<Weather />
+						{!viewOnly && <Weather />}
 					</span>
 				</div>
-				<Bell />
+				{!viewOnly && <Bell />}
 				<div className="md-me">
 					<button type="button" className="me-btn" title="Open my page" onClick={() => (setTeamPerson(me.id), setView('team'))}>
 						<Avatar person={me} />
 						<b>{me.name}</b>
 						<span className={'role r-' + me.role}>{ROLE[me.role]}</span>
 					</button>
-					<button type="button" className="btn small ghost" onClick={onSignOut}>
-						Sign out
-					</button>
+					{!viewOnly && (
+						<button type="button" className="btn small ghost" onClick={onSignOut}>
+							Sign out
+						</button>
+					)}
 				</div>
 			</div>
 		</header>

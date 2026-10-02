@@ -3,7 +3,7 @@ import { usePortal } from '../../context.js';
 import { short, toDate } from '../../lib/format.js';
 import { assignedFor, daysIn, fmtDur, inRange, perfRange, perfShift, perfStats, periodWord, personEvents } from '../../lib/perf.js';
 import { MEMBER_TAB_KEY, REQUIRED_PROFILE, missingProfile } from '../../lib/people.js';
-import { ROLE, initials, isAdmin, isManager } from '../../lib/roles.js';
+import { ROLE, canViewDay, initials, isAdmin, isManager } from '../../lib/roles.js';
 import { rowsOf } from '../../lib/store.js';
 import Avatar from '../Avatar.jsx';
 import { ReviewsOfWork } from '../review/ReviewLists.jsx';
@@ -395,7 +395,7 @@ function ProfileHead({ person }) {
 
 // Member page (SPEC.md 7.6): your own page for everyone, any member's page for admin/lead.
 export default function MemberPage({ pid, perf, setPerf, onBack, initialTab }) {
-	const { api, data, dispatch, toast, me, today, setView, setTeamPerson } = usePortal();
+	const { api, data, dispatch, toast, me, today, setView, setTeamPerson, setViewAs } = usePortal();
 	const [picked, setTab] = useState(() => {
 		// The Day leave box's My leave link opens this page on that tab.
 		try {
@@ -647,11 +647,19 @@ export default function MemberPage({ pid, perf, setPerf, onBack, initialTab }) {
 					← My day
 				</button>
 			) : (
-				isManager(me) &&
-				onBack && (
-					<button type="button" className="linkbtn back" onClick={onBack}>
-						← All team members
-					</button>
+				isManager(me) && (
+					<div className="mp-top">
+						{onBack && (
+							<button type="button" className="linkbtn back" onClick={onBack}>
+								← All team members
+							</button>
+						)}
+						{canViewDay(me, person) && (
+							<button type="button" className="btn small" onClick={() => setViewAs(person.id)}>
+								View their My day
+							</button>
+						)}
+					</div>
 				)
 			)}
 			{self && <ProfileHead person={person} />}

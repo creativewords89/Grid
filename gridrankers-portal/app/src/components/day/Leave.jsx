@@ -111,7 +111,7 @@ export function LeaveDialog({ open, onClose }) {
 
 // Day leave box (Team Member, Team Leader): days left this month and the button.
 export default function DayLeave() {
-	const { data, me, today, setView, setTeamPerson } = usePortal();
+	const { data, me, today, setView, setTeamPerson, viewOnly } = usePortal();
 	const [open, setOpen] = useState(false);
 	const month = today.slice(0, 7);
 	const self = data.members[me.id] || me;
@@ -150,11 +150,13 @@ export default function DayLeave() {
 					{pending} request{pending === 1 ? '' : 's'} waiting for an answer.
 				</p>
 			)}
-			<div>
-				<button type="button" className="btn primary" onClick={() => setOpen(true)}>
-					{lead ? 'Take day leave' : 'Request day leave'}
-				</button>
-			</div>
+			{!viewOnly && (
+				<div>
+					<button type="button" className="btn primary" onClick={() => setOpen(true)}>
+						{lead ? 'Take day leave' : 'Request day leave'}
+					</button>
+				</div>
+			)}
 			<LeaveDialog open={open} onClose={() => setOpen(false)} />
 		</section>
 	);

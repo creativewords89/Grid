@@ -375,3 +375,10 @@ dialog.cs-dlg{width:min(760px,96vw)}
 .as-nav button[aria-current="page"]{background:var(--ink);color:var(--panel);font-weight:700}
 .as-pane{flex:1;min-width:0}
 @media (max-width:760px){.as-wrap{flex-direction:column}.as-nav{width:100%;flex-direction:row;flex-wrap:wrap;position:static}}
+/* Viewing someone's My day (SPEC.md 7.0): a bar on top; nothing can be changed. */
+.va-bar{position:sticky;top:0;z-index:20;box-shadow:0 4px 14px rgba(10,20,35,.18);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#6B3FB5;color:#fff;border-radius:12px;padding:10px 16px;margin-bottom:14px;font-size:.9rem}
+.va-bar .role{background:rgba(255,255,255,.2);color:#fff}
+.va-bar .btn{background:#fff;color:#6B3FB5;border-color:#fff}
+.view-only .ap-acts,.view-only .cs-btns,.view-only .md-strip-x{display:none}
+.mp-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.mp-top .linkbtn.back{margin:0}
