@@ -358,7 +358,6 @@ function ActivityFeed({ pid }) {
 	);
 }
 
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 // Your page's header: photo, name, role, title, city, phone and birthday.
 function ProfileHead({ person }) {

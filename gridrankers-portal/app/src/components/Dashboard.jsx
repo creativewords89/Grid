@@ -13,9 +13,9 @@ import { Notices, WhosOut } from './day/Side.jsx';
 const TAB_KEY = 'grp:dash-tab';
 
 // Dashboard (SPEC.md 7.0): the landing page after sign-in. Everyone gets My day; the Super
-// Admin and Team Leaders also get the Projects tab and Send notice.
+// Admin and Team Leaders also get the Projects tab, Team (the team area) and Send notice.
 export default function Dashboard({ onSignOut }) {
-	const { me } = usePortal();
+	const { me, setView, setTeamPerson } = usePortal();
 	const manager = isManager(me);
 	const [tab, setTabState] = useState(() => {
 		try {
@@ -50,6 +50,9 @@ export default function Dashboard({ onSignOut }) {
 						</button>
 					</div>
 					<div className="md-acts">
+						<button type="button" className="btn small ghost" onClick={() => (setTeamPerson('all'), setView('team'))}>
+							Team
+						</button>
 						<button type="button" className="btn small" onClick={() => setDialog('notice')}>
 							Send notice
 						</button>

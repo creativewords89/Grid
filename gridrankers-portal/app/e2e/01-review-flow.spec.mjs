@@ -69,8 +69,11 @@ test('completion review round trip', async ({ page }) => {
 	// highlighted in the sidebar.
 	await page.locator('.me-btn').click();
 	await expect(page.locator('.ph-card')).toContainText('Max Member');
+	await expect(page.locator('.top h1')).toHaveText('My page');
+	await expect(page.getByRole('tab', { name: 'Meeting Minutes' })).toHaveCount(0);
 	await expect(page.locator('nav.ttabs').getByRole('tab')).toHaveText(['My leave', 'Calendar', 'Settings', 'Recent Activities']);
 	await expect(page.locator('aside .pick[aria-current="true"]')).toHaveCount(0);
-	await expect(page.locator('aside').getByRole('button', { name: 'Team', exact: true })).toHaveCount(0);
+	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/mypage.png' });
+	await expect(page.getByRole('button', { name: 'Team', exact: true })).toHaveCount(0);
 	noErrors();
 });

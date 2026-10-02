@@ -72,7 +72,14 @@ export const card = (page, title) => page.locator('article.mcard', { hasText: ti
 
 // Sidebar project → its Meeting Minutes (everyone lands on the Dashboard after signing in).
 export async function openProject(page, name) {
-	await page.locator('button.pick', { hasText: name }).click();
+	const pick = page.locator('button.pick', { hasText: name });
+	// Paused and Inactive projects are folded in the sidebar until opened.
+	for (const group of ['Paused projects', 'Inactive projects']) {
+		if (await pick.isVisible()) break;
+		const fold = page.locator('aside button.fold', { hasText: group });
+		if ((await fold.getAttribute('aria-expanded')) === 'false') await fold.click();
+	}
+	await pick.click();
 	await expect(page.locator('.top h1')).toHaveText(new RegExp(`^${name}`));
 }
 
@@ -116,7 +123,8 @@ export async function showStrip(page, text) {
 	return strip;
 }
 
-// Leaders and the Super Admin: the Team area, from Team in the sidebar (SPEC.md 7.5).
+// Leaders and the Super Admin: the Team area, from Team on My day (SPEC.md 7.5).
 export async function openTeam(page) {
-	await page.locator('aside').getByRole('button', { name: 'Team', exact: true }).click();
+	await page.locator('aside .side-link', { hasText: 'My day' }).click();
+	await page.locator('.md-acts').getByRole('button', { name: 'Team', exact: true }).click();
 }

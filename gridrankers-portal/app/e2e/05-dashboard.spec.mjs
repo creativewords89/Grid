@@ -15,7 +15,16 @@ test('dashboard, project lifecycle and per-project Recent Activities', async ({ 
 
 	// Team Leader lands on My day; the Projects tab (Active) adds a paused project starting on day 15.
 	await signIn(page, LEAD);
-	await expect(page.locator('.md-top h1')).toHaveText(/^Good (morning|afternoon|evening), Lee$/);
+	await expect(page.locator('.md-top h1')).toHaveText(/^Good (morning|afternoon|evening), Lee Lead$/);
+	// Sidebar (SPEC.md 7.1): Active projects always open; Paused and Inactive folded until opened.
+	const paused = page.locator('aside button.fold', { hasText: 'Paused projects' });
+	await expect(paused).toHaveAttribute('aria-expanded', 'false');
+	await expect(page.locator('aside ul.paused')).toBeHidden();
+	await paused.click();
+	await expect(paused).toHaveAttribute('aria-expanded', 'true');
+	await expect(page.locator('aside ul.paused')).toBeVisible();
+	await expect(page.locator('aside button.fold', { hasText: 'Inactive projects' })).toHaveAttribute('aria-expanded', 'false');
+	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/side.png' });
 	await openProjectsTab(page);
 	await expect(tab('Active')).toHaveAttribute('aria-selected', 'true');
 	await expect(page.getByLabel('New project name')).toHaveCount(0);
@@ -74,7 +83,7 @@ test('dashboard, project lifecycle and per-project Recent Activities', async ({ 
 
 	// Team Members land on My day, with no Projects tab, and cannot add projects (UI and server).
 	await signIn(page, MAX);
-	await expect(page.locator('.md-top h1')).toHaveText(/, Max$/);
+	await expect(page.locator('.md-top h1')).toHaveText(/, Max Member$/);
 	await expect(page.locator('.md-tabs')).toHaveCount(0);
 	await expect(page.getByRole('button', { name: '+ New project' })).toHaveCount(0);
 	await expect(page.getByRole('button', { name: 'Options for Harbor Hotel' })).toHaveCount(0);

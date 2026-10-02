@@ -4,7 +4,7 @@ import { isManager } from '../lib/roles.js';
 import MemberPage from './team/MemberPage.jsx';
 import TeamArea from './team/TeamArea.jsx';
 
-// Team area (admin/lead, from Team in the sidebar) and member pages (SPEC.md 7.5, 7.6). Members
+// Team area (admin/lead, from Team on My day) and member pages (SPEC.md 7.5, 7.6). Members
 // only see their own page; the name chip opens your own page for everyone.
 export default function TeamView() {
 	const { me, today, teamPerson, setTeamPerson } = usePortal();

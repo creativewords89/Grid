@@ -702,8 +702,6 @@ select:disabled{opacity:.7;cursor:not-allowed}
 .shn{font-size:.76rem;color:var(--ink-2);font-weight:600;margin-left:4px}
 .me-btn{display:inline-flex;align-items:center;gap:6px;border:0;background:none;padding:2px 4px;border-radius:9px;cursor:pointer;font:inherit}
 .me-btn:hover{background:var(--panel-2)}
-.clients.paused .pick .nm{color:var(--doing)}
-.clients.paused li{border-left:3px solid var(--doing-bg)}
 .ra-bar{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}
 .ra-chip{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--panel);border-radius:99px;padding:6px 8px 6px 14px;font-weight:700;font-size:.84rem;color:var(--ink-2);cursor:pointer}
 .ra-chip span{background:var(--panel-2);color:var(--ink);border-radius:99px;padding:1px 8px;font-size:.74rem}

@@ -239,7 +239,7 @@ Every project (new and existing) has these six monthly tasks (Monthly deadline, 
 **Send notice** dialog: Kind (**Notice** · **Shout-out ★**), To (**Everyone** · **Choose people**; shout-outs: chosen Team Members only), Title (optional), Message, Show for (7 days · 30 days · Until I remove it).
 
 ### 7.1 Layout
-- Left sidebar: **GridRankers** / Team portal (click → Dashboard, 7.0), groups **Active / Paused / Inactive projects** with counts for quick switching. No "Add a project", no drag & drop, no move or delete buttons: those live on the Dashboard.
+- Left sidebar (design A, no search): the **GR** mark with **GridRankers** / Team portal and a **My day** link (both → Dashboard, 7.0), then the projects for quick switching, each with a coloured initials badge, its name on one line (full name on hover) and its open-task count only when it has open work (red when something is urgent). **Active projects** are always open; **Paused** and **Inactive projects** are folded (with their count) until opened, and open by themselves while one of their projects is on screen. A project is highlighted only on its own screens. At the bottom: the live sync status with a green dot. No "Add a project", no drag & drop, no move or delete buttons: those live on the Dashboard.
 - Top bar on a project's screens (the Dashboard has its own, 7.0): project title (+ "(paused)/(inactive)"), task search, tabs **Meeting Minutes · Monthly Tasks · Recent Activities**, user chip (avatar → Team area; admin/lead → Team dashboard, member → own page), Sign out.
 
 ### 7.2 Meeting Minutes
@@ -262,7 +262,7 @@ Banner, project cycle bar, stats, filters (All / Weekly / Bi-weekly / Monthly) +
 (The Recent Activities tab of a person's page, 7.5, stays across all projects: it is that person's history.)
 
 ### 7.5 Team area (admin/lead)
-Opened from **Team** at the top of the sidebar (leaders and the Super Admin). The sidebar highlights a project only on that project's own screens, never on My day, the Team area or a person's page.
+Opened from the **Team** button on My day, next to Send notice (leaders and the Super Admin).
 Tabs **Dashboard · Activity · Team · Leave · Settings**, Daily/Weekly/Monthly period selector.
 - Dashboard: notifications (6.9), greeting with counts (done / assigned / unassigned), Workload (open tasks per person), completed-tasks chart (per day; per person in Daily view), team list.
 - Activity: completed + logged work grouped by day, person filter, Copy report.
@@ -271,7 +271,7 @@ Tabs **Dashboard · Activity · Team · Leave · Settings**, Daily/Weekly/Monthl
 - Settings: Members & access table (role, contact, open tasks, sign-in status, **Set code**, Open, Remove), **Deleted projects** (Restore — brings back the tasks deleted with it — / Delete forever; kept 30 days), Export all data. Super Admin only (*new*): **Days off** (team weekly day off as weekday chips; a person's own weekly day off; list of event and seasonal days off with **+ Add day off** and remove) and **Automatic messages** (birthday, signed in on a day off, leave approved).
 
 ### 7.6 Member page (own page for members; any member for admin/lead)
-**Your own page** (everyone; the name chip opens it): "← My day", a profile header (photo, name, role, job title, city, phone, birthday day and month), then tabs **My leave · Calendar · Settings · Recent Activities**, opening on My leave (no My leave for the Super Admin, whose page opens on Calendar). No dashboard or task list here: they are on My day.
+**Your own page** (everyone; the name chip opens it): the top bar reads **My page** (no project name, search or project tabs; the Team area reads **Team**), "← My day", a profile header (photo, name, role, job title, city, phone, birthday day and month), then tabs **My leave · Calendar · Settings · Recent Activities**, opening on My leave (no My leave for the Super Admin, whose page opens on Calendar). No dashboard or task list here: they are on My day.
 **Someone else's page** (admin/lead, from Team): tabs **Overview · Tasks · Calendar · Leave · Recent Activities · Profile** as below.
 - My dashboard: greeting + counts, next tasks, completed chart.
 - My tasks: Reviews of your work; filters All / To start / In progress / Completed + Project; groups To start, In progress, Completed this period; + Log work; ⬇ Download PDF report.
@@ -363,6 +363,8 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 
 23. Messages on top (7.0, design C): the message band across the top of the header card, one at a time with "1 of N ‹ ›". Playwright: one message shows at a time and the others are reached with ›.
 
-24. Your own page (7.6): the name chip opens your page — profile header and My leave · Calendar · Settings · Recent Activities; Team in the sidebar for leaders and the Super Admin; no project highlighted off project screens; greetings and messages use the full name. Playwright: the chip opens your page with those tabs and no project is highlighted; a leader reaches the team area from Team.
+24. Your own page (7.6): the name chip opens your page — profile header and My leave · Calendar · Settings · Recent Activities; Team button on My day for leaders and the Super Admin; no project highlighted off project screens; greetings and messages use the full name. Playwright: the chip opens your page with those tabs and no project is highlighted; a leader reaches the team area from Team.
+
+25. Sidebar redesign (7.1, design A): GR mark, My day, project badges, counts only when there is work, Active always open, Paused / Inactive folded. Playwright: folded groups open on click and the project opens.
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).
