@@ -203,7 +203,14 @@ function NoticeCard({ n }) {
 			<div className="so-head">
 				<Avatar person={n.from} small />
 				<span>
-					<b>{n.from ? n.from.name : 'Team Leader'}</b> → <b>{n.to}</b>
+					<b>{n.from ? n.from.name : 'Team Leader'}</b>
+					{/* The tag already says To you / Everyone; a shout-out still names who it praises. */}
+					{n.tag === 'shout' && (
+						<>
+							{' '}
+							→ <b>{n.to}</b>
+						</>
+					)}
 				</span>
 				<span className={'mp-flag ' + cls}>{label}</span>
 			</div>

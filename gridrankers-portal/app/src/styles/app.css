@@ -303,3 +303,4 @@ aside .side-h.fold:hover{background:var(--panel-2);color:var(--ink)}
 aside .sync{display:flex;align-items:center;gap:8px;padding:8px 6px 0}
 aside .sync::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--done);flex-shrink:0}
 @media (max-width:600px){.ph-card{padding:16px;gap:12px}.ph-card .av.big{width:52px;height:52px}}
+.md-h .mp-log{margin-left:auto;align-self:center}

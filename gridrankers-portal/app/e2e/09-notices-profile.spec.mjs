@@ -35,7 +35,8 @@ test('private notices and the profile lock', async ({ page }) => {
 	await signIn(page, MAX);
 	const mine = box('Notices').locator('.nc-card', { hasText: 'Acme report' });
 	await expect(mine).toContainText('To you');
-	await expect(mine).toContainText('Lee Lead → you');
+	// The tag says who it is for; the card names only the sender.
+	await expect(mine.locator('.so-head')).toHaveText(/^Lee Lead\s*To you$/);
 
 	await page.locator('.me-btn').click();
 	await page.locator('nav.ttabs').getByRole('tab', { name: 'Settings' }).click();
@@ -63,6 +64,15 @@ test('private notices and the profile lock', async ({ page }) => {
 	await expect(page.locator('.md-strip', { hasText: 'Finish your profile' })).toHaveCount(0);
 	await expect(box('My projects')).not.toContainText('Your tasks are waiting');
 	expect((await apiCall(page, 'POST', 'meeting-tasks', { project_id: project, title: 'Unlocked task' })).status).toBe(201);
+
+	// Log work from My projects (SPEC.md 7.0): custom work for yourself.
+	await box('My projects').getByRole('button', { name: '+ Log work' }).click();
+	await dlg.getByLabel('What was done').fill('Client call about new service pages');
+	await dlg.getByLabel('Time spent (minutes)').fill('30');
+	await dlg.getByRole('button', { name: 'Add task' }).click();
+	await page.getByText('Manual task added').waitFor();
+	const logged = (await apiCall(page, 'GET', 'sync')).json.changes.activity.find((a) => a.title === 'Client call about new service pages');
+	expect(logged).toMatchObject({ member_id: 'tm_max' });
 	await signOut(page);
 	noErrors();
 });
