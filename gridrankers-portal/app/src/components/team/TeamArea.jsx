@@ -3,12 +3,11 @@ import { usePortal } from '../../context.js';
 import { short, toDate } from '../../lib/format.js';
 import { assignedFor, daysIn, fmtDur, inRange, perfRange, perfShift, perfStats, periodWord } from '../../lib/perf.js';
 import { mayDecide, pendingReviews } from '../../lib/reviews.js';
-import { ROLE, canViewDay, isAdmin } from '../../lib/roles.js';
+import { isAdmin } from '../../lib/roles.js';
 import { rowsOf } from '../../lib/store.js';
 import Avatar from '../Avatar.jsx';
 import { Trash } from '../RecentActivities.jsx';
 import LeaveTab from './LeaveTab.jsx';
-import { trend } from './MemberPage.jsx';
 import Notifications, { attentionItems } from './Notifications.jsx';
 import MembersAccess from './MembersAccess.jsx';
 import { AutoMessages, DaysOff } from './PeopleSettings.jsx';
@@ -22,21 +21,13 @@ const greeting = () => {
 // Team sections for the Super Admin / Team Leader (SPEC.md 7.5). With `section` it renders just
 // that section inside My page (team, leave, activity or settings); otherwise its own tabs.
 export default function TeamArea({ perf, setPerf, onPerson, section }) {
-	const { api, data, dispatch, toast, confirm, me, today, setTeamPerson, setViewAs } = usePortal();
+	const { api, data, dispatch, toast, confirm, me, today } = usePortal();
 	const admin = isAdmin(me);
-	// A card opens that person's My day, view only (SPEC.md 7.0); Back returns to this Team tab.
-	// Someone whose My day you can't view (the Super Admin, yourself) opens their page instead.
-	const openCard = (p) => {
-		if (!canViewDay(me, p)) return onPerson(p.id);
-		setTeamPerson('all');
-		setViewAs(p.id);
-	};
 	const [ownTab, setTab] = useState('dash');
 	const tab = section || ownTab;
 	const [audit, setAudit] = useState([]);
 	const [dialog, setDialog] = useState(null);
 	const [who, setWho] = useState('');
-	const [q, setQ] = useState('');
 
 	useEffect(() => {
 		api.get('audit').then(setAudit).catch(() => setAudit([]));
@@ -331,72 +322,8 @@ export default function TeamArea({ perf, setPerf, onPerson, section }) {
 	} else if (tab === 'leave') {
 		body = <LeaveTab />;
 	} else if (tab === 'team') {
-		const shown = people.filter((p) => !q || p.name.toLowerCase().includes(q.trim().toLowerCase()));
-		body = (
-			<>
-				<div className="tm-bar">
-					<label className="dw-search tm-search">
-						<span aria-hidden="true">⌕</span>
-						<input type="search" placeholder="Search people…" aria-label="Search people" value={q} onChange={(e) => setQ(e.target.value)} />
-					</label>
-					<span className="muted">
-						{people.length} {people.length === 1 ? 'member' : 'members'} · click someone to see their My day · Members &amp; access below
-					</span>
-				</div>
-				<div className="mcards emp-grid">
-					{shown.map((p) => {
-						const ml = acts.filter((x) => x.member_id === p.id);
-						const s2 = perfStats(ml);
-						const pv = perfStats(prevActs.filter((x) => x.member_id === p.id));
-						const open = openOf(p.id);
-						const urg = open.filter((x) => x.priority === 'urgent').length;
-						const last = [...ml].sort((a, b) => String(b.at).localeCompare(String(a.at)))[0];
-						return (
-							<article key={p.id} className="card emp-card ec2" tabIndex={0} role="button" aria-label={`Open ${p.name}`} onClick={() => openCard(p)} onKeyDown={(e) => e.key === 'Enter' && openCard(p)}>
-								<div className="ec-head">
-									<span className="ec-av">
-										<Avatar person={p} small />
-									</span>
-									<div className="ec-id">
-										<b>{p.name}</b>
-										<span>{p.title || ROLE[p.role]}</span>
-									</div>
-								</div>
-								<div className="ec-status">
-									<span className={'ec-pill ' + (urg ? 'lv-sick' : 'pl-week')}>
-										{open.length} to do{urg ? ` · ${urg} urgent` : ''}
-									</span>
-								</div>
-								<div className="ec-hrs">
-									<div className="ec-hrow">
-										<b>{s2.total}</b>
-										<span>done {word}</span>
-										{trend(s2.total, pv.total)}
-									</div>
-									<div className="ec-sub">
-										<span>
-											{s2.done} from boards · {s2.manual} logged
-										</span>
-										<span>{new Set(ml.map((x) => x.project_id || 'custom')).size} projects</span>
-									</div>
-								</div>
-								<div className="ec-foot2">
-									<span className="ec-last">{last ? `Last: ${last.title}` : 'No tasks yet'}</span>
-								</div>
-							</article>
-						);
-					})}
-					<button type="button" className="card add-card" aria-label="Add member" onClick={() => setDialog({ type: 'add' })}>
-						<span className="plus" aria-hidden="true">
-							+
-						</span>
-						<b>Add member</b>
-						<small>Add someone, their role and sign-in code</small>
-					</button>
-				</div>
-			{membersAccess}
-			</>
-		);
+		// Team (SPEC.md 7.6): just Members & access; its ⋯ menu opens someone's My day or page.
+		body = membersAccess;
 	} else {
 		const panes = {
 			daysoff: <DaysOff />,
@@ -452,7 +379,7 @@ export default function TeamArea({ perf, setPerf, onPerson, section }) {
 					))}
 				</nav>
 			)}
-			{tab !== 'settings' && tab !== 'leave' && <PeriodHead perf={perf} setPerf={setPerf} />}
+			{tab !== 'settings' && tab !== 'leave' && tab !== 'team' && <PeriodHead perf={perf} setPerf={setPerf} />}
 			{body}
 			{dialog && dialog.type === 'add' && <AddMemberDialog onClose={() => setDialog(null)} />}
 			{dialog && dialog.type === 'code' && <SetCodeDialog member={dialog.member} onClose={() => setDialog(null)} />}

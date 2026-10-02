@@ -41,7 +41,7 @@ test('completion review round trip', async ({ page }) => {
 	const stack = page.locator('.as-stack');
 	for (const title of ['Days off', 'Automatic messages', 'Deleted projects', 'Export data']) await expect(stack).toContainText(title);
 	await expect(stack.locator('.ma-card')).toHaveCount(0);
-	// Members & access is on the Team tab, under the cards: search, filters and a ⋯ menu.
+	// Members & access is all the Team tab has: search, filters and a ⋯ menu.
 	await page.locator('nav.ttabs').getByRole('tab', { name: 'Team', exact: true }).click();
 	const access = page.locator('.ma-card');
 	await access.getByLabel('Search people').fill('max');
@@ -55,7 +55,8 @@ test('completion review round trip', async ({ page }) => {
 	if (process.env.SHOTS) await access.screenshot({ path: process.env.SHOTS + '/team-access.png' });
 	// Team → someone's My day → their page → back to the Team tab.
 	await page.locator('nav.ttabs').getByRole('tab', { name: 'Team' }).click();
-	await page.getByRole('button', { name: 'Open Max Member' }).click();
+	await access.getByRole('button', { name: 'More for Max Member' }).click();
+	await access.getByRole('menuitem', { name: 'View their My day' }).click();
 	await page.locator('.va-bar').getByRole('button', { name: 'Open Max Member’s page' }).click();
 	await expect(page.locator('nav.ttabs').getByRole('tab', { name: 'Overview' })).toBeVisible();
 	await page.getByRole('button', { name: '← All team members' }).click();
