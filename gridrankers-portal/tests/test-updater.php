@@ -282,4 +282,39 @@ class Test_GRP_Updater extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'you are up to date', $html );
 		$this->assertStringNotContainsString( 'Update now', $html );
 	}
+
+	public function test_plugins_screen_has_a_check_for_updates_link() {
+		$file = GRP_Updater::basename();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		$links = GRP_Admin_Settings::row_meta( array( 'Version 0.1.0' ), $file );
+		$this->assertCount( 2, $links );
+		$this->assertStringContainsString( 'Check for updates', $links[1] );
+		$this->assertStringContainsString( 'action=grp_update_check', $links[1] );
+		$this->assertStringContainsString( 'from=plugins', $links[1] );
+		$this->assertStringContainsString( '_wpnonce=', $links[1] );
+		$this->assertSame( array( 'x' ), GRP_Admin_Settings::row_meta( array( 'x' ), 'akismet/akismet.php' ), 'other plugins are left alone' );
+
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+		$this->assertSame( array( 'x' ), GRP_Admin_Settings::row_meta( array( 'x' ), $file ), 'only for people who can update plugins' );
+	}
+
+	public function test_plugins_screen_shows_the_check_result() {
+		update_option(
+			GRP_Updater::STATUS,
+			array(
+				'ok'      => true,
+				'version' => '99.0.0',
+				'message' => 'Found 99.0.0',
+				'at'      => time(),
+			)
+		);
+		set_current_screen( 'plugins' );
+		$_GET['grp_checked'] = '1';
+		ob_start();
+		GRP_Admin_Settings::plugins_notice();
+		$html = ob_get_clean();
+		unset( $_GET['grp_checked'] );
+		set_current_screen( 'front' );
+		$this->assertStringContainsString( 'version 99.0.0 is available', $html );
+	}
 }

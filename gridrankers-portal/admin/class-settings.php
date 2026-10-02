@@ -23,10 +23,63 @@ class GRP_Admin_Settings {
 	public static function init() {
 		add_action( 'admin_menu', array( __CLASS__, 'register_menu' ) );
 		add_action( 'admin_post_grp_update_check', array( __CLASS__, 'handle_update_check' ) );
+		add_filter( 'plugin_row_meta', array( __CLASS__, 'row_meta' ), 10, 2 );
+		add_action( 'admin_notices', array( __CLASS__, 'plugins_notice' ) );
 	}
 
 	/**
-	 * "Check now" on the Updates box: asks GitHub and comes back to the settings page.
+	 * Check-now URL. From the Plugins screen it comes back there.
+	 *
+	 * @param string $from `plugins` or `settings`.
+	 * @return string
+	 */
+	public static function check_url( $from = 'settings' ) {
+		return wp_nonce_url( admin_url( 'admin-post.php?action=grp_update_check&from=' . rawurlencode( $from ) ), 'grp_update_check' );
+	}
+
+	/**
+	 * "Check for updates" link in this plugin's row on the Plugins screen.
+	 *
+	 * @param string[] $links Row meta links.
+	 * @param string   $file  Plugin basename.
+	 * @return string[]
+	 */
+	public static function row_meta( $links, $file ) {
+		if ( GRP_Updater::basename() === $file && current_user_can( 'update_plugins' ) ) {
+			$links[] = sprintf( '<a href="%s">%s</a>', esc_url( self::check_url( 'plugins' ) ), esc_html__( 'Check for updates', 'gridrankers-portal' ) );
+		}
+
+		return $links;
+	}
+
+	/**
+	 * The result of "Check for updates" on the Plugins screen.
+	 */
+	public static function plugins_notice() {
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- display flag only.
+		if ( empty( $_GET['grp_checked'] ) || ! $screen || 'plugins' !== $screen->id ) {
+			return;
+		}
+		$status = GRP_Updater::status();
+		if ( ! $status ) {
+			return;
+		}
+		$newer = ! empty( $status['version'] ) && version_compare( $status['version'], GRP_VERSION, '>' );
+		$text  = $newer
+			/* translators: %s: version number. */
+			? sprintf( __( 'version %s is available. Use “update now” in the plugin’s row below.', 'gridrankers-portal' ), $status['version'] )
+			: $status['message'];
+		printf(
+			'<div class="notice notice-%1$s is-dismissible"><p><strong>GridRankers Portal:</strong> %2$s</p></div>',
+			esc_attr( $status['ok'] ? ( $newer ? 'warning' : 'success' ) : 'error' ),
+			esc_html( $text )
+		);
+	}
+
+	/**
+	 * "Check now" on the Updates box (or "Check for updates" on the Plugins screen): asks
+	 * GitHub and comes back to where it was clicked.
 	 */
 	public static function handle_update_check() {
 		if ( ! current_user_can( 'update_plugins' ) ) {
@@ -35,7 +88,9 @@ class GRP_Admin_Settings {
 		check_admin_referer( 'grp_update_check' );
 
 		GRP_Updater::run_check();
-		wp_safe_redirect( admin_url( 'admin.php?page=' . self::PAGE_SLUG . '&grp_checked=1' ) );
+		$from = isset( $_GET['from'] ) ? sanitize_key( wp_unslash( $_GET['from'] ) ) : ''; // Nonce checked above.
+		$back = 'plugins' === $from ? 'plugins.php?grp_checked=1' : 'admin.php?page=' . self::PAGE_SLUG . '&grp_checked=1';
+		wp_safe_redirect( admin_url( $back ) );
 		exit;
 	}
 
