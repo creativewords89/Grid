@@ -14,6 +14,9 @@ export const DEFAULT_MESSAGES = {
 	leave_approved: 'Your leave was approved. Enjoy your time off, {name}!',
 };
 
+// Session key: the member page tab to open next (the Day leave box's My leave link).
+export const MEMBER_TAB_KEY = 'grp:member-tab';
+
 export const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export const weekday = (date) => {

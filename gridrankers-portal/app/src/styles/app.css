@@ -188,3 +188,27 @@ dialog label.chk{flex-direction:row;align-items:center;gap:8px;align-self:end;mi
   .na-list li .na-task{grid-column:1 / -1;white-space:normal}
 }
 @media (max-width:600px){.md-top{padding:14px}.md-hello h1{font-size:1.4rem}.md-me b{display:none}}
+
+/* Leave, days off, automatic messages, birthday (SPEC.md 6.10, 7.5, 7.6). */
+.mp-flag.f-green{background:var(--done-bg);color:var(--done)}
+.lv-grid{grid-template-columns:1fr}
+.lr-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.lr-tools select,.do-row select,.do-form select,.do-form input,.bd-field select{border:1px solid var(--line);background:var(--panel-2);border-radius:8px;padding:6px 10px;font:inherit;font-size:.85rem;color:var(--ink)}
+.do-sec{display:flex;flex-direction:column;gap:8px;padding:10px 0;border-top:1px solid var(--line)}
+.dc-head + .do-sec{border-top:0}
+.do-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.do-list{list-style:none;margin:0;padding:0}
+.do-list li{display:grid;grid-template-columns:130px minmax(0,1fr) auto auto;gap:12px;align-items:center;padding:8px 0;border-top:1px solid var(--line);font-size:.88rem}
+.do-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.do-form input:not([type=date]){flex:1 1 160px}
+.am-field{display:flex;flex-direction:column;gap:4px;font-size:.85rem;font-weight:600}
+.am-field textarea{border:1px solid var(--line);background:var(--panel-2);border-radius:8px;padding:8px 10px;font:inherit;font-weight:400;resize:vertical;color:var(--ink)}
+.bd-field{border:0;padding:0;margin:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bd-field legend{font-size:.85rem;font-weight:600;padding:0;margin-bottom:4px;width:100%}
+@media (max-width:600px){.do-list li{grid-template-columns:1fr auto}}
+@media print{
+  body.printing *{visibility:hidden}
+  body.printing .print-me,body.printing .print-me *{visibility:visible}
+  body.printing .print-me{position:absolute;left:0;top:0;width:100%;border:0;box-shadow:none}
+  body.printing .print-me .lr-tools{display:none}
+}

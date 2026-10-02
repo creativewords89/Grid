@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { usePortal } from '../../context.js';
 import { short } from '../../lib/format.js';
 import { addDays } from '../../lib/cycles.js';
-import { dayOffKind, daysLeft, leaveDays, monthName, takenInMonth, teamWeekly } from '../../lib/people.js';
+import { MEMBER_TAB_KEY, dayOffKind, daysLeft, leaveDays, monthName, takenInMonth, teamWeekly } from '../../lib/people.js';
 import { rowsOf } from '../../lib/store.js';
 import Modal from '../Modal.jsx';
 
@@ -122,12 +122,21 @@ export default function DayLeave() {
 		.filter((l) => l.member_id === me.id && l.status === 'approved' && l.to_date >= today && l.decided_by !== me.id)
 		.sort((a, b) => a.from_date.localeCompare(b.from_date))[0];
 	const pending = leaves.filter((l) => l.member_id === me.id && l.status === 'pending').length;
+	const openMine = () => {
+		try {
+			window.sessionStorage.setItem(MEMBER_TAB_KEY, 'leave');
+		} catch (e) {
+			/* opens on the first tab */
+		}
+		setTeamPerson(me.id);
+		setView('team');
+	};
 
 	return (
 		<section className="md-card" aria-labelledby="dlTitle">
 			<div className="md-h">
 				<h2 id="dlTitle">Day leave</h2>
-				<button type="button" className="linkbtn" onClick={() => (setTeamPerson(me.id), setView('team'))}>
+				<button type="button" className="linkbtn" onClick={openMine}>
 					My leave
 				</button>
 			</div>

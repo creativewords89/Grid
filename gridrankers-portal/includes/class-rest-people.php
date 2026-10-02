@@ -233,14 +233,20 @@ class GRP_REST_People extends GRP_REST_Controller {
 		if ( null === $days ) {
 			return self::invalid( __( 'Pick the weekdays.', 'gridrankers-portal' ) );
 		}
-		GRP_Store::transaction(
+		$row = GRP_Store::transaction(
 			static function () use ( $days ) {
 				$row = self::set_setting( self::WEEKLY_KEY, array( 'days' => $days ) );
 				GRP_Activity::audit( 'edit', 'settings', array( 'id' => $row['id'] ), self::actor(), 'Team weekly day off' );
+				return $row;
 			}
 		);
 
-		return rest_ensure_response( array( 'weekly' => $days ) );
+		return rest_ensure_response(
+			array(
+				'weekly'  => $days,
+				'setting' => $row,
+			)
+		);
 	}
 
 	/**
@@ -254,6 +260,7 @@ class GRP_REST_People extends GRP_REST_Controller {
 
 	/**
 	 * PUT /settings/messages `{birthday?, day_off?, leave_approved?}` (empty = back to the default).
+	 * Returns the texts and the stored `setting` row.
 	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response|WP_Error
@@ -268,13 +275,14 @@ class GRP_REST_People extends GRP_REST_Controller {
 				$stored[ $key ] = self::textarea( $request[ $key ], 500 );
 			}
 		}
-		GRP_Store::transaction(
+		$row = GRP_Store::transaction(
 			static function () use ( $stored ) {
 				$row = self::set_setting( self::MESSAGES_KEY, $stored );
 				GRP_Activity::audit( 'edit', 'settings', array( 'id' => $row['id'] ), self::actor(), 'Automatic messages' );
+				return $row;
 			}
 		);
 
-		return rest_ensure_response( self::message_texts() );
+		return rest_ensure_response( self::message_texts() + array( 'setting' => $row ) );
 	}
 }

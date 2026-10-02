@@ -7,8 +7,10 @@ import { ROLE, isAdmin } from '../../lib/roles.js';
 import { rowsOf } from '../../lib/store.js';
 import Avatar from '../Avatar.jsx';
 import { Trash } from '../RecentActivities.jsx';
+import LeaveTab from './LeaveTab.jsx';
 import { trend } from './MemberPage.jsx';
 import Notifications, { attentionItems } from './Notifications.jsx';
+import { AutoMessages, DaysOff } from './PeopleSettings.jsx';
 import { AddMemberDialog, BarChart, LogWorkDialog, PeriodHead, SetCodeDialog, dayLabel } from './parts.jsx';
 
 const greeting = () => {
@@ -45,7 +47,8 @@ export default function TeamArea({ perf, setPerf, onPerson }) {
 	const prevTeam = perfStats(prevActs);
 	const notes = attentionItems(data, me, audit, today).length + pendingReviews(data).filter((r) => mayDecide(r, me)).length;
 
-	const tabsList = [['dash', 'Dashboard', notes || ''], ['activity', 'Activity'], ['team', 'Team', people.length], ...(admin ? [['settings', 'Settings']] : [])];
+	const waiting = rowsOf(data, 'leave').filter((l) => l.status === 'pending' && data.members[l.member_id] && data.members[l.member_id].role === 'member').length;
+	const tabsList = [['dash', 'Dashboard', notes || ''], ['activity', 'Activity'], ['team', 'Team', people.length], ['leave', 'Leave', waiting || ''], ...(admin ? [['settings', 'Settings']] : [])];
 
 	const removePerson = async (p) => {
 		const ok = await confirm({ title: `Remove ${p.name}?`, message: 'They leave the team and are signed out. Past activity stays.', ok: 'Remove', danger: true });
@@ -302,6 +305,8 @@ export default function TeamArea({ perf, setPerf, onPerson }) {
 				</section>
 			</>
 		);
+	} else if (tab === 'leave') {
+		body = <LeaveTab />;
 	} else if (tab === 'team') {
 		const shown = people.filter((p) => !q || p.name.toLowerCase().includes(q.trim().toLowerCase()));
 		body = (
@@ -443,6 +448,8 @@ export default function TeamArea({ perf, setPerf, onPerson }) {
 					hint="Kept 30 days · restoring a project brings back the tasks deleted with it"
 					empty="No deleted projects."
 				/>
+				<DaysOff />
+				<AutoMessages />
 				<section className="dcard">
 					<div className="dc-head">
 						<span className="s-k">Export all data</span>
@@ -466,7 +473,7 @@ export default function TeamArea({ perf, setPerf, onPerson }) {
 					</button>
 				))}
 			</nav>
-			{tab !== 'settings' && <PeriodHead perf={perf} setPerf={setPerf} />}
+			{tab !== 'settings' && tab !== 'leave' && <PeriodHead perf={perf} setPerf={setPerf} />}
 			{body}
 			{dialog && dialog.type === 'add' && <AddMemberDialog onClose={() => setDialog(null)} />}
 			{dialog && dialog.type === 'code' && <SetCodeDialog member={dialog.member} onClose={() => setDialog(null)} />}

@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { usePortal } from '../../context.js';
 import { short, toDate } from '../../lib/format.js';
 import { assignedFor, daysIn, fmtDur, inRange, perfRange, perfShift, perfStats, periodWord, personEvents } from '../../lib/perf.js';
+import { MEMBER_TAB_KEY } from '../../lib/people.js';
 import { ROLE, initials, isAdmin, isManager } from '../../lib/roles.js';
 import { rowsOf } from '../../lib/store.js';
 import Avatar from '../Avatar.jsx';
 import { ReviewsOfWork } from '../review/ReviewLists.jsx';
 import Calendar from './Calendar.jsx';
+import MyLeave from './MyLeave.jsx';
 import { AssignedList, BarChart, LogWorkDialog, PeriodHead, ProjectMix, SetCodeDialog, dayLabel } from './parts.jsx';
 import { downloadReport } from './pdf.js';
 
@@ -40,11 +42,46 @@ function cropPhoto(file) {
 	});
 }
 
+const MONTHS = Array.from({ length: 12 }, (_, i) => new Date(2024, i, 1).toLocaleDateString(undefined, { month: 'long' }));
+
+// Birthday: day and month only (SPEC.md 6.10); everyone sees whose birthday it is.
+function Birthday({ value, onChange, disabled }) {
+	const [mm, dd] = value ? value.split('-') : ['', ''];
+	const set = (m, d) => onChange(m && d ? `${m}-${d}` : m || d ? `${m || '01'}-${d || '01'}` : '');
+	const days = mm ? new Date(2024, +mm, 0).getDate() : 31;
+	return (
+		<fieldset className="bd-field" disabled={disabled}>
+			<legend>Birthday</legend>
+			<select value={dd} onChange={(e) => set(mm, e.target.value)} aria-label="Birthday day">
+				<option value="">Day</option>
+				{Array.from({ length: days }, (_, i) => String(i + 1).padStart(2, '0')).map((d) => (
+					<option key={d} value={d}>
+						{+d}
+					</option>
+				))}
+			</select>
+			<select value={mm} onChange={(e) => set(e.target.value, dd && +dd > new Date(2024, +e.target.value, 0).getDate() ? '01' : dd)} aria-label="Birthday month">
+				<option value="">Month</option>
+				{MONTHS.map((m, i) => (
+					<option key={m} value={String(i + 1).padStart(2, '0')}>
+						{m}
+					</option>
+				))}
+			</select>
+			{value && (
+				<button type="button" className="linkbtn" onClick={() => onChange('')}>
+					Clear
+				</button>
+			)}
+		</fieldset>
+	);
+}
+
 function Profile({ person, self }) {
 	const { api, dispatch, toast, confirm, me, setView } = usePortal();
 	const admin = isAdmin(me);
 	const canEdit = self || admin;
-	const [f, setF] = useState({ name: person.name, title: person.title || '', email: person.email || '', phone: person.phone || '', address: person.address || '', drive_url: person.drive_url || '', notes: person.notes || '', role: person.role });
+	const [f, setF] = useState({ name: person.name, title: person.title || '', email: person.email || '', phone: person.phone || '', address: person.address || '', drive_url: person.drive_url || '', notes: person.notes || '', role: person.role, birthday: person.birthday || '' });
 	const [codeFor, setCodeFor] = useState(null);
 	const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
@@ -59,7 +96,8 @@ function Profile({ person, self }) {
 	};
 	const submit = (e) => {
 		e.preventDefault();
-		const { role, ...profile } = f;
+		const { role, birthday, ...profile } = f;
+		if (birthday !== (person.birthday || '')) profile.birthday = birthday;
 		save(admin && role !== person.role ? { ...profile, role } : profile);
 	};
 	const pick = () => {
@@ -131,6 +169,7 @@ function Profile({ person, self }) {
 						{field('phone', 'Phone', 'tel')}
 						{field('address', 'Address')}
 						{field('drive_url', 'Google Drive link', 'url', 'https://drive.google.com/…')}
+						<Birthday value={f.birthday} onChange={(v) => setF({ ...f, birthday: v })} disabled={!canEdit} />
 						<label className="wide">
 							Notes
 							<textarea value={f.notes} onChange={set('notes')} maxLength={500} disabled={!canEdit} placeholder="Anything useful for the team" />
@@ -299,7 +338,16 @@ function ActivityFeed({ pid }) {
 // Member page (SPEC.md 7.6): own page for members, any member's page for admin/lead.
 export default function MemberPage({ pid, perf, setPerf, onBack }) {
 	const { api, data, dispatch, toast, me, today } = usePortal();
-	const [tab, setTab] = useState('dash');
+	const [tab, setTab] = useState(() => {
+		// The Day leave box's My leave link opens this page on that tab.
+		try {
+			const t = window.sessionStorage.getItem(MEMBER_TAB_KEY);
+			window.sessionStorage.removeItem(MEMBER_TAB_KEY);
+			return t || 'dash';
+		} catch (e) {
+			return 'dash';
+		}
+	});
 	const [filter, setFilter] = useState('all');
 	const [proj, setProj] = useState('');
 	const [logOpen, setLogOpen] = useState(false);
@@ -339,6 +387,7 @@ export default function MemberPage({ pid, perf, setPerf, onBack }) {
 		['dash', self ? 'My dashboard' : 'Overview'],
 		['assigned', self ? 'My tasks' : 'Tasks', open.length || ''],
 		['calendar', 'Calendar'],
+		...(person.role !== 'admin' ? [['leave', self ? 'My leave' : 'Leave']] : []),
 		['activity', 'Recent Activities'],
 		['profile', self ? 'Settings' : 'Profile'],
 	];
@@ -507,6 +556,8 @@ export default function MemberPage({ pid, perf, setPerf, onBack }) {
 		body = <Calendar pid={pid} />;
 	} else if (tab === 'activity') {
 		body = <ActivityFeed pid={pid} />;
+	} else if (tab === 'leave') {
+		body = <MyLeave pid={pid} />;
 	} else {
 		body = <Profile key={pid + (person.updated_at || '')} person={person} self={self} />;
 	}
