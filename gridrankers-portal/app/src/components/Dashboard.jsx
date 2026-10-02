@@ -16,7 +16,7 @@ const TAB_KEY = 'grp:dash-tab';
 // Dashboard (SPEC.md 7.0): the landing page after sign-in. Everyone gets My day; the Super
 // Admin and Team Leaders also get the Projects tab and Send notice (the team is on My page).
 export default function Dashboard({ onSignOut }) {
-	const { me } = usePortal();
+	const { me, viewOnly } = usePortal();
 	const manager = isManager(me);
 	const [tab, setTabState] = useState(() => {
 		try {
@@ -62,11 +62,13 @@ export default function Dashboard({ onSignOut }) {
 							Projects {items.length > 0 && <span className="md-n">{items.length}</span>}
 						</button>
 					</div>
-					<div className="md-acts">
-						<button type="button" className="btn small" onClick={() => setDialog('notice')}>
-							Send notice
-						</button>
-					</div>
+					{!viewOnly && (
+						<div className="md-acts">
+							<button type="button" className="btn small" onClick={() => setDialog('notice')}>
+								Send notice
+							</button>
+						</div>
+					)}
 				</div>
 			)}
 			{current === 'day' ? (

@@ -59,7 +59,7 @@ function ProjectBox({ group, today }) {
 
 // My projects (SPEC.md 7.0): the person's open work by project, most urgent first, 5 per page.
 export default function MyProjects() {
-	const { data, me, today, setTeamPerson, setView } = usePortal();
+	const { data, me, today, setTeamPerson, setView, viewOnly } = usePortal();
 	const [filter, setFilter] = useState('all');
 	const [page, setPage] = useState(0);
 	const [logging, setLogging] = useState(false);
@@ -71,7 +71,7 @@ export default function MyProjects() {
 	const shown = list.slice(at * PAGE_SIZE, at * PAGE_SIZE + PAGE_SIZE);
 	const tasks = groups.reduce((n, g) => n + g.tasks.length, 0);
 	// Log work (SPEC.md 7.0): custom work that isn't a task, for yourself.
-	const logBtn = (
+	const logBtn = viewOnly ? null : (
 		<>
 			<button type="button" className="btn small mp-log" onClick={() => setLogging(true)}>
 				+ Log work

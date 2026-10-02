@@ -16,6 +16,7 @@ import TeamView from './components/TeamView.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import RecentActivities from './components/RecentActivities.jsx';
 import { todayYmd } from './lib/cycles.js';
+import { ROLE, canViewDay } from './lib/roles.js';
 
 const VIEW_KEY = 'grp:view';
 const PROJECT_KEY = 'grp:project';
@@ -100,6 +101,8 @@ export default function App({ config }) {
 	const [search, setSearch] = useState('');
 	const [cycleOff, setCycleOff] = useState(0);
 	const [teamPerson, setTeamPerson] = useState('all');
+	// Someone else's My day, view only (SPEC.md 7.0).
+	const [viewAs, setViewAs] = useState(null);
 	const [toast, toastView] = useToasts();
 	const [confirm, confirmView] = useConfirm();
 	const [completion, setCompletion] = useState(null);
@@ -141,10 +144,12 @@ export default function App({ config }) {
 	const me = auth.me && data.members[auth.me.id] ? { ...auth.me, ...data.members[auth.me.id], role: auth.me.role } : auth.me;
 
 	const setView = (v) => {
+		setViewAs(null);
 		setViewState(v);
 		remember(VIEW_KEY, v, 'sessionStorage');
 	};
 	const setProject = (id) => {
+		setViewAs(null);
 		setProjectState(id);
 		setCycleOff(0);
 		remember(PROJECT_KEY, id);
@@ -182,16 +187,52 @@ export default function App({ config }) {
 	}
 
 	const today = todayYmd();
-	const ctx = { api, data, dispatch, me, view, setView, project, setProject, search, setSearch, toast, confirm, config, cycleOff, setCycleOff, today, askCompletion, teamPerson, setTeamPerson };
+	const ctx = { api, data, dispatch, me, view, setView, project, setProject, search, setSearch, toast, confirm, config, cycleOff, setCycleOff, today, askCompletion, teamPerson, setTeamPerson: (id) => (setViewAs(null), setTeamPerson(id)), setViewAs };
+
+	// Viewing someone's My day: their "me", nothing can be changed, and going anywhere else ends it.
+	const target = viewAs && data.members[viewAs];
+	const viewing = canViewDay(me, target) ? target : null;
+	let asCtx = null;
+	if (viewing) {
+		const refuse = () => Promise.reject(new Error(`View only — this is ${viewing.name}’s My day.`));
+		const leave = (fn) => (...args) => (setViewAs(null), fn(...args));
+		asCtx = {
+			...ctx,
+			me: { ...viewing },
+			viewer: me,
+			viewOnly: true,
+			api: { ...api, post: refuse, patch: refuse, put: refuse, del: refuse },
+			setView: leave(setView),
+			setProject: leave(setProject),
+			setTeamPerson: leave(setTeamPerson),
+		};
+	}
 
 	return (
 		<PortalContext.Provider value={ctx}>
 			<div className="app">
 				<Sidebar syncStatus={syncStatus} />
 				<main>
-					{view !== 'dash' && <TopBar onSignOut={signOut} />}
+					{viewing ? (
+						<div className="va-bar" role="status">
+							<span>
+								Viewing <b>{viewing.name}</b>’s My day · <span className={'role r-' + viewing.role}>{ROLE[viewing.role]}</span> · view only
+							</span>
+							<button type="button" className="btn small" onClick={() => setViewAs(null)}>
+								← Back to {viewing.name}’s page
+							</button>
+						</div>
+					) : (
+						view !== 'dash' && <TopBar onSignOut={signOut} />
+					)}
 					<section className="grp-view" aria-label="Content">
-						{view === 'dash' ? (
+						{viewing ? (
+							<PortalContext.Provider value={asCtx}>
+								<div className="view-only">
+									<Dashboard onSignOut={signOut} />
+								</div>
+							</PortalContext.Provider>
+						) : view === 'dash' ? (
 							<Dashboard onSignOut={signOut} />
 						) : view === 'team' ? (
 							<TeamView />
