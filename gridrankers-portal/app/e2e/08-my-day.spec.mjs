@@ -2,7 +2,7 @@
 // a leader's own leave, Who's out today, a day off, birthdays, shout-outs and a review request.
 // Dates are relative to today; the team's weekly day off is moved away from them first.
 import { test, expect } from '@playwright/test';
-import { LEAD, MAX, apiCall, openProject, signIn, signInOwner, signOut, signOutOwner, watchErrors } from './helpers.mjs';
+import { LEAD, MAX, apiCall, openProject, signIn, signInOwner, signOut, showStrip, signOutOwner, watchErrors, openTeam } from './helpers.mjs';
 
 const pad = (n) => String(n).padStart(2, '0');
 const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -38,7 +38,7 @@ test('my day: leave, days off, birthdays, shout-outs and review requests', async
 	await page.getByText('Profile saved').waitFor();
 
 	await page.getByRole('button', { name: /GridRankers/ }).click();
-	await expect(strip('Happy birthday, Max!')).toBeVisible();
+	await showStrip(page, 'Happy birthday, Max Member!');
 	await box('Day leave').getByRole('button', { name: 'Request day leave' }).click();
 	await dlg.getByLabel('Leave type').selectOption('day');
 	await dlg.getByLabel('From').fill(TODAY);
@@ -53,7 +53,7 @@ test('my day: leave, days off, birthdays, shout-outs and review requests', async
 	// Team Leader: sees the birthday and the request, approves it with a message, takes their own
 	// leave (approved straight away) and sends Max a shout-out.
 	await signIn(page, LEAD);
-	await expect(strip('Today is Max Member’s birthday.')).toBeVisible();
+	await showStrip(page, 'Today is Max Member’s birthday.');
 	const asks = box('Needs your approval');
 	await expect(asks).toContainText('Max Member');
 	await expect(asks).toContainText('Day leave');
@@ -104,7 +104,7 @@ test('my day: leave, days off, birthdays, shout-outs and review requests', async
 	await signInOwner(page);
 	await expect(box('Who’s out today').locator('li', { hasText: 'Lee Lead' })).toContainText('On leave');
 	await expect(box('Needs your approval')).toContainText('Approve content plan', { timeout: 15000 });
-	await page.locator('.me-btn').click();
+	await openTeam(page);
 	await page.locator('nav.ttabs').getByRole('tab', { name: 'Settings' }).click();
 	await page.getByLabel('Day off name').fill('Founders Day');
 	await page.getByLabel('Date', { exact: true }).fill(TODAY);
@@ -120,12 +120,17 @@ test('my day: leave, days off, birthdays, shout-outs and review requests', async
 	// Team Member: the answer, the day off, the shout-out and the review request.
 	await signIn(page, MAX);
 	await expect(strip('Your leave for')).toContainText('Enjoy the wedding!');
-	await expect(strip('Founders Day')).toBeVisible();
+	await showStrip(page, 'Founders Day');
+	// One message at a time, with "N of M" to step through the rest.
+	await expect(page.locator('.md-strip:visible')).toHaveCount(1);
+	await expect(page.locator('.md-strip:visible .md-pager')).toContainText(/\d of \d/);
+	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/band.png' });
 	await expect(box('Day leave')).toContainText(`0 days left in ${MONTH}`);
 	await expect(box('Notices')).toContainText('Great work on the Acme H1 fixes');
 	await expect(box('Notices')).toContainText('Lee Lead → you');
 	const review = strip('Lee Lead asked you to review “Approve content plan”.');
 	await expect(review).toContainText('Please check the October topics');
+	await showStrip(page, 'asked you to review');
 	await review.getByRole('button', { name: 'Review now' }).click();
 	await page.locator('article.mcard', { hasText: 'Approve content plan' }).getByRole('button', { name: 'Details' }).click();
 	await dlg.getByRole('button', { name: 'Approve' }).click();
@@ -135,7 +140,7 @@ test('my day: leave, days off, birthdays, shout-outs and review requests', async
 	await expect(strip('asked you to review')).toHaveCount(0);
 
 	// Dismissed strips stay dismissed.
-	await strip('Founders Day').getByRole('button', { name: 'Thanks' }).click();
+	await (await showStrip(page, 'Founders Day')).getByRole('button', { name: 'Thanks' }).click();
 	await expect(strip('Founders Day')).toHaveCount(0);
 	await page.reload();
 	await expect(page.locator('.md-top h1')).toBeVisible();

@@ -56,6 +56,7 @@ Three portal roles, stored on the team member (`role`): `admin` (Super Admin), `
 | See all projects / tasks | ✔ | ✔ | ✔ |
 | Add a project | ✔ | ✔ | ✘ |
 | Move project Active/Paused/Inactive | ✔ | ✔ | ✘ |
+| Review last cycle and send feedback (6.11) | ✔ | ✔ | ✘ |
 | Delete project | ✔ | ✘ | ✘ |
 | Change project cycle (after first lock) | ✔ (with confirmation + reason) | ✘ | ✘ |
 | Add a task (meeting or monthly) | ✔ | ✔ | ✔ |
@@ -112,7 +113,7 @@ All tables: `id` CHAR(26) ULID (or keep imported string ids, VARCHAR(64)), `crea
 |---|---|
 | `grp_members` | id, name, role ENUM(admin,lead,member), color, photo (media id/url), title, email, phone, address, drive_url, notes, code_hash, code_salt (legacy), code_set_at, wp_user_id NULL, active TINYINT, birthday CHAR(5) NULL (`MM-DD`), birth_year SMALLINT NULL (managers and self only), location VARCHAR(191) NULL (city, for the weather), weekly_off JSON NULL (own weekly day off, weekdays 0–6; NULL = the team's) |
 | `grp_sessions` | id, member_id, token_hash, expires_at, ip, user_agent |
-| `grp_projects` | id, name UNIQUE, state ENUM(active,paused,inactive), cycle_day TINYINT 1–28, cycle_set TINYINT, cycle_changes JSON, cycle_log JSON, std_cycle VARCHAR (last cycle key the standard tasks were checked) |
+| `grp_projects` | id, name UNIQUE, state ENUM(active,paused,inactive), cycle_day TINYINT 1–28, cycle_set TINYINT, cycle_changes JSON, cycle_log JSON, std_cycle VARCHAR (last cycle key the standard tasks were checked), cycle_reviews JSON `{cycleKey: {taskId: {ok, note, to, by, at}}}` (last 3 cycles, 6.11) |
 | `grp_meeting_tasks` | id, project_id, title, notes, url, priority ENUM(urgent,high,normal,low), status ENUM(todo,doing,done), meeting_date DATE, done_at, target INT (quantity, default 1), assignees JSON `[{id,n}]`, team TINYINT, progress JSON `{memberId: count}`, deadline JSON (6.3), review JSON (6.6), completion JSON (6.6), created_by |
 | `grp_monthly_tasks` | id, project_id, title, notes, freq ENUM(monthly,weekly), due_mode ENUM(none,weekly,date,dates,monthly), due_day, due_from_day, target INT, assignees JSON, team TINYINT, parts JSON `[{id,name,n,people:[{id,n}]}]`, std TINYINT (standard task), created_by |
 | `grp_cycle_records` | id = `{taskId}__{periodKey}` (weekly: periodKey = `YYYY-MM-wN`), task_id, project_id, period_key, week TINYINT NULL, count, status ENUM(todo,doing,done,skipped), by_person JSON `{memberId: n}`, parts JSON `{partId: n, "partId|memberId": n}`, review JSON, completion JSON, done_at, cleared_by NULL |
@@ -148,13 +149,14 @@ All tables: `id` CHAR(26) ULID (or keep imported string ids, VARCHAR(64)), `crea
 `{type: none|weekly|biweekly|date|dates|monthly, weeks: ['YYYY-MM-DD' (Mondays)], date, from, to, month: 'YYYY-MM'}`
 - **Weekly**: pick one or more Mon–Sun weeks (grid of this week + next 11). Card: "Due week of Oct 5 – Oct 11" / "Due 3 weeks · this one …".
 - **Bi-weekly**: a two-week window — pick the starting Monday (this week by default); due the Sunday of the second week (`from` Monday, `to` = from + 13 days). Card "Due Oct 5 – Oct 18 · 2 weeks". *Not in the reference portal.*
-- **Specific date**: one date. Card "Due Oct 5".
-- **Certain dates**: From / To range. Card "Due Oct 12 – Oct 20 (9 days)".
+- Options in this order: **No deadline · Weekly · Bi-weekly · Monthly · Specific date · Range**.
+- **Specific date**: one date, picked on a calendar that opens when the option is chosen (month view, Mon–Sun weeks, ‹ › months, Today, Clear). Card "Due Oct 5".
+- **Range** (stored as `dates`; was "Certain dates"): the same calendar — first click the start, then the end (the days between are shaded). Card "Due Oct 12 – Oct 20 (9 days)".
 - **Monthly**: automatically the **last day of the current calendar month** (locked to the month it was set). Card "Due Sep 30 · end of month".
 - Overdue (end < today, not done): card red "Overdue · …"; due within 2 days: amber.
 
 ### 6.4 Monthly task deadlines (repeat every cycle)
-`due_mode`: **monthly** (default, end of each cycle), **weekly** (freq weekly), **biweekly** (freq biweekly: due at the end of each two-week period of the cycle, 6.2; quantity is per 2 weeks; *not in the reference portal*), **date** (day N of each cycle), **dates** (days A–B of each cycle), **none** (never late during the cycle; missed only if the cycle ends undone).
+`due_mode`: **monthly** (default, end of each cycle), **weekly** (freq weekly), **biweekly** (freq biweekly: due at the end of each two-week period of the cycle, 6.2; quantity is per 2 weeks; *not in the reference portal*), **date** ("Specific date": day N of each cycle), **dates** ("Range": days A–B of each cycle) — both picked on a grid of cycle days 1–31 (a day past the end of a short cycle falls on its last day); options in the same order as 6.3, **none** (never late during the cycle; missed only if the cycle ends undone).
 
 ### 6.5 Quantities, people and breakdowns
 - **Meeting tasks**: `target` (default 1). With target > 1 and several assignees, each has a share `n` (auto even split; editing one share rebalances the others so the total never exceeds target; each ≥ 1). Each person ticks only their own share; status auto-moves: first tick → In progress, total = target → Fixed (→ review).
@@ -183,7 +185,9 @@ All tables: `id` CHAR(26) ULID (or keep imported string ids, VARCHAR(64)), `crea
 - **PDF report** (member page → My tasks → Download PDF report) for the selected Daily/Weekly/Monthly period: header band, summary boxes (Completed, Missed, Still open, Projects), tables Completed / By project / Missed / Still open, page footer "GridRankers · name · period · Page x of y".
 
 ### 6.8 Standard monthly tasks
-Every project (new and existing) has these six monthly tasks (Monthly deadline, unassigned, `std=1`, quantities start at 1 per type):
+**Active projects only.** A paused or inactive project gets no monthly tasks automatically: a new paused / inactive project starts without the standard tasks, `grp_daily` skips it, and its existing monthly tasks do not reach anyone (not on My day, a person's tasks, calendar, missed work or notifications; the project's own Monthly Tasks screen still lists them). Moving it back to **Active** adds this cycle's missing standard tasks straight away. Its project card shows "Start when active" instead of 0/0.
+
+Every active project (new and existing) has these six monthly tasks (Monthly deadline, unassigned, `std=1`, quantities start at 1 per type):
 1. GBP Posts
 2. Social Posts
 3. Pages — Service Pages, Location Pages
@@ -191,7 +195,7 @@ Every project (new and existing) has these six monthly tasks (Monthly deadline, 
 5. Free Backlinks — Citations, Cloud Stack, Google Stack, Batch GEO, Map Citation / Map Pin, Driving Direction, Profile Backlinks, Web 2.0, Brand Mentions, PDF / Image / Video Submission, Directory Submission
 6. Paid Backlinks — Guest Post, Memberships (e.g. Chamber of Commerce), Press Release
 
-`grp_daily`: for each project whose current cycle key ≠ `std_cycle`, add any missing standard task (matched by title, deterministic id `std_{projectId}_{slug}`), then set `std_cycle`. New projects get them on creation. Deleted standard tasks stay gone until the next cycle.
+`grp_daily`: for each **active** project whose current cycle key ≠ `std_cycle`, add any missing standard task (matched by title, deterministic id `std_{projectId}_{slug}`), then set `std_cycle`. New projects get them on creation. Deleted standard tasks stay gone until the next cycle.
 
 ### 6.9 Trash, audit, notifications
 - Delete = soft delete into `grp_trash` (30 days) + toast "Task deleted · Undo" (9 s). Recently deleted tasks are behind the **Recently deleted** button of the project's **Recent Activities** (admin/lead), deleted projects in **Team → Settings** (Super Admin): Restore / Delete forever.
@@ -208,26 +212,34 @@ Every project (new and existing) has these six monthly tasks (Monthly deadline, 
   - The Super Admin can cancel anyone's leave; a Team Leader can cancel a Team Member's leave and their own.
   - Taking more than the month's day is allowed (the dialog warns "N days over, deducted from {Month}'s salary").
 - **Monthly settlement** (computed from approved leave, never stored): per person per calendar month, taken = approved leave days in that month. 0 → **1 day paid** with that month's salary; 1 → even; more → **taken − 1 days deducted**. Nothing carries over; each month starts again at 1. The **year-end report** only counts, per person: day leave, sick leave, total, and the company days off in the year.
-- **Who's out today**: everyone else whose day off is today (weekly, own, event, seasonal) or who has approved leave today, with "Day off" / "On leave" and when they are back (the next date that is neither). Never shows day vs sick leave or a reason. The box never lists everyone: up to 8 faces then "+N", and the counts "N on leave · N day off"; **See all N** opens a searchable list (filters All / On leave / Day off, 20 per page). When the whole team is off (an event or seasonal day off today, or nobody else is in) it shows one line: "Everyone is off today · {name} · back on {date}".
+- **Who's out today**: everyone else whose day off is today (weekly, own, event, seasonal) or who has approved leave today, with "Day off" / "On leave" and when they are back (the next date that is neither). Never shows day vs sick leave or a reason. The box never lists everyone: up to 8 faces then "+N", and the counts "N on leave · N day off"; **See all N** opens a list pop-up: title with the count and a close ✕, a search field, the filter All / On leave / Day off (only when people are out for both reasons), one row per person (photo, name, "Back tomorrow" / "Back {day date}", Day off / On leave tag), 10 per page, and a footer with "N people" (or "1–10 of N" with ‹ › page buttons) and Close. The Notices and Needs-your-approval "View all" pop-ups use the same frame. When the whole team is off (an event or seasonal day off today, or nobody else is in) it shows one line: "Everyone is off today · {name} · back on {date}".
 - **Birthdays**: everyone sets their date of birth in their own Settings (7.6); everyone sees the day and month, only managers and the person see the year. On the day, that person sees the birthday message and everyone else sees "Today is {name}'s birthday."
-- **Automatic messages** (Super Admin edits the texts; `{name}` = first name): **birthday**, **signed in on a day off** (shown when today is the person's day off), **leave approved** (used when the approver types no message).
+- **Automatic messages** (Super Admin edits the texts; `{name}` = full name): **birthday**, **signed in on a day off** (shown when today is the person's day off), **leave approved** (used when the approver types no message).
 - **Notices** (*replaces the shout-out box and the announcement strips*): Super Admin and Team Leaders send a **Notice** to **everyone** (kind `announcement`) or to **chosen people** (kind `notice`), or a **Shout-out** to chosen Team Members (kind `shoutout`); optional title, message, **show for** 7 days / 30 days / until removed (`show_until`). A notice to chosen people is private: only they, its author and the Super Admin receive it (enforced in `/sync` and `/posts`). Shout-outs are seen by everyone for 30 days. Recipients get a bell item.
 - **Required profile**: full name, **location** (city), **date of birth** (day, month, year), **phone number** and **photo**. Missing fields show a red strip on My day — "Finish your profile to keep working. Missing: …" with **Complete profile** — and, for Team Leaders and Team Members, lock task work (section 3, Profile lock): My projects shows "Your tasks are waiting … Complete profile". The Super Admin only gets the reminder.
 - **Weather**: the date row shows today's weather for the person's city ("☀ 31° Sunny in Rangpur · 31° / 24°"). The server asks **Open-Meteo** (free, no account): the city name to its geocoding API (cached 30 days), the coordinates to its forecast API (cached 1 hour per city). Nothing about the person is sent. No city, or the service unreachable → just the date. `GRP_WEATHER` set to false turns it off.
+
+### 6.11 New cycle setup (Team Leaders and the Super Admin)
+When an **active** project starts a new cycle, a Team Leader or the Super Admin must, **within 3 days** (by the end of day 3 of the cycle):
+1. **Assign monthly tasks**: every monthly task of the project has someone responsible (Responsible people or a breakdown row with people). The system keeps adding the standard tasks unassigned (6.8).
+2. **Review last cycle**: every monthly task that existed at the end of the previous cycle gets **Looks good** or **Send feedback** (a note, required). Feedback goes to the task's responsible people as a private notice "Feedback: {task}" (Notices box and bell, shown 14 days). Stored in `grp_projects.cycle_reviews` under the previous cycle's key. A project that did not exist last cycle only has step 1.
+- Applies to cycles that start on or after the day the rule was installed (setting `cycle_setup_since` `{date}`, set by schema 7), so projects part-way through a cycle are not overdue on the day of the update. Paused and inactive projects are left out.
+- **Reminders, nothing blocked**: days 1–3, an amber message in the band ("New cycle for {project}. Assign the monthly tasks and review last cycle by {date}.") and a **New cycle setup** box at the top of My day's left column; after day 3, red ("{project}: new cycle setup is N days overdue."), "Setup N days overdue" on the project card, and the bell. Messages are not dismissable; **Open setup** goes to the box. The Super Admin sees every late project the same way. A finished project shows **Done** until the end of day 3.
+- **New cycle setup box**: one row per project — name, flag (Due {date} / Overdue · N days / Done), the two steps with counts ("4 of 6 have people", "2 of 6 reviewed"), **Assign people** (→ the project's Monthly Tasks) and **Review last cycle** (→ dialog: each task with its people, deadline type and last cycle's done / target in green or red; Looks good / Send feedback; "N of M reviewed" bar).
 
 ## 7. Screens (match the reference file)
 
 ### 7.0 Dashboard (everyone)
 *Not in the reference portal.* The landing page after sign-in, and what **GridRankers** in the sidebar opens. Design reference: the "Employee dashboard" boards H–U of the design canvas. No statistics (days worked, percentages) anywhere on it.
 
-**Top bar** (everyone): "Good morning / afternoon / evening, {first name}" (before 12:00 / until 17:00 / after), today's date, the **bell** (6.9), user chip and Sign out. Below them, slim message strips, each with Dismiss (per person, 6.9): the day-off message (6.10), birthday ("Happy birthday, {name}!" for that person — button Thanks — and "Today is {name}'s birthday. Wish them a happy birthday!" for everyone else), leave approved / rejected with the approver's message, "{name} asked you to review '{task}'" with **Review now**, and the profile reminder (6.10). Announcements are in the Notices box. No strips → just the greeting row. Under the greeting: the date and the weather (6.10).
+**Top bar** (everyone): "Good morning / afternoon / evening, {full name}" (before 12:00 / until 17:00 / after), today's date, the **bell** (6.9), user chip and Sign out. **Above them**, a coloured **message band** across the top edge of the header card, in the message's colour (amber day off, pink birthday, green approved / review asked, red rejected / profile), showing **one message at a time** with "1 of N ‹ ›" to step through the rest; each has its button (Dismiss / Thanks / Review now / Complete profile; dismissing is per person, 6.9). The messages, in order: the profile reminder (6.10, first), the day-off message (6.10), birthday ("Happy birthday, {name}!" for that person — button Thanks — and "Today is {name}'s birthday. Wish them a happy birthday!" for everyone else), leave approved / rejected with the approver's message, "{name} asked you to review '{task}'" with **Review now**. Announcements are in the Notices box. No messages → no band, just the greeting row. Under the greeting: the date and the weather (6.10).
 
 **Tabs** (Super Admin, Team Leader only): **My day · Projects** (with the number of attention items), and on the right **Send notice**. Team Members have no tabs: they only have My day.
 
 **My day** — two columns that start and end level (the stretching box fills the gap):
 - **Left: My projects.** Every project in which this person has open work: meeting tasks assigned to them and not done, and recurring tasks of the current period where they are responsible and their share is not done (unassigned work is not listed: every project has unassigned standard tasks, and it would bury their own work). Most urgent first: red edge = something overdue or urgent; amber = something due within the next 3 days; then by the next deadline; projects with no deadline last. Each project box: name, "N tasks", one flag ("Overdue", "Urgent", "Due today", "Due in 3 days", "Due Oct 8", "Next due Oct 20"), up to 2 tasks (checkbox look, title · kind, due chip), "+N more tasks" (expands in place). Filter chips **All · Urgent · Overdue · Due this week** with counts. **5 projects per page** with "Showing 1–5 of 8 projects" and ‹ Previous · 1 · 2 · Next ›. Click a task → its Details; click the project name → its Meeting Minutes. Empty: green tick, **You're all caught up**, "No open tasks. New tasks assigned to you will show here, most urgent first."
 - **Right column:**
-  1. **Notices** (everyone, 6.10; stretches): newest first, the 3 latest as cards — "{from} → you / everyone / {name}", a tag (To you · Everyone · Shout-out, gold with a star), optional title, message, when — and **View all N**. Empty: **No notices yet**.
+  1. **Notices** (everyone, 6.10; stretches): newest first, the 3 latest as cards — the sender (for a shout-out also "→ {who it praises}"; a notice names only the sender, the tag says who it is for), a tag (To you · Everyone · Shout-out, gold with a star), optional title, message, when — and **View all N**. Empty: **No notices yet**.
   2. **Who's out today** (everyone, 6.10): faces + counts, **See all N**; "Everyone is in today." / "Everyone is off today".
   3. Team Leader / Super Admin: **Needs your approval** — the newest items as small cards, with **View all N**: leave requests from Team Members (type, dates, days, "within October's 1 day" or "2 days over, deducted" in red; **Approve** / **Reject**, optional message), finished work waiting for review (6.6: **Approve** / **Send back**), and reviews someone asked them for. Empty: tick, **Nothing waiting for you**, "Leave requests and finished tasks to check will show here."
   4. **Day leave** (Team Member, Team Leader; not the Super Admin): "**N** day left in {Month}" (1 − leave taken this month, never below 0), **My leave** link (member page), and **Request day leave** (Team Member) or **Take day leave** with "Your leave is approved straight away." (Team Leader). The dialog: Type (Day leave / Sick leave), From, To, Reason (optional); it shows the days counted (days off not counted) and, when over, "This request is N days over. Settled at the end of {Month}: N days deducted from {Month}'s salary." After approval the box shows "Approved: 19–21 Oct."
@@ -239,7 +251,7 @@ Every project (new and existing) has these six monthly tasks (Monthly deadline, 
 **Send notice** dialog: Kind (**Notice** · **Shout-out ★**), To (**Everyone** · **Choose people**; shout-outs: chosen Team Members only), Title (optional), Message, Show for (7 days · 30 days · Until I remove it).
 
 ### 7.1 Layout
-- Left sidebar: **GridRankers** / Team portal (click → Dashboard, 7.0), groups **Active / Paused / Inactive projects** with counts for quick switching. No "Add a project", no drag & drop, no move or delete buttons: those live on the Dashboard.
+- Left sidebar (design A, no search): the **GR** mark with **GridRankers** / Team portal and a **My day** link (both → Dashboard, 7.0), then the projects for quick switching, each with a coloured initials badge, its name on one line (full name on hover) and its open-task count only when it has open work (red when something is urgent). **Active projects** are always open; **Paused** and **Inactive projects** are folded (with their count) until opened, and open by themselves while one of their projects is on screen. A project is highlighted only on its own screens. At the bottom: the live sync status with a green dot. No "Add a project", no drag & drop, no move or delete buttons: those live on the Dashboard.
 - Top bar on a project's screens (the Dashboard has its own, 7.0): project title (+ "(paused)/(inactive)"), task search, tabs **Meeting Minutes · Monthly Tasks · Recent Activities**, user chip (avatar → Team area; admin/lead → Team dashboard, member → own page), Sign out.
 
 ### 7.2 Meeting Minutes
@@ -250,8 +262,9 @@ Alert banner (cycle-scoped), project cycle bar, stats (status chips, cycle dates
 
 ### 7.3 Monthly Tasks
 Banner, project cycle bar, stats, filters (All / Weekly / Bi-weekly / Monthly) + week bar, cards, "+ Add monthly task".
+**Deadline colours**: the card tag names the deadline option and has its own colour — Weekly teal, Bi-weekly blue, Monthly purple, Specific date amber, Range pink, No deadline grey (also in Details). A meeting task's deadline chip uses the same colour per option unless it is overdue (red) or due soon (amber).
 **Card**: Monthly/Weekly/Bi-weekly chip, "Qty N per cycle/week/2 weeks"; title; due chip; W1–W4 boxes for weekly, W1–2 / W3–4 for bi-weekly; mini progress "x/n · k types"; status segment; footer as above.
-**Dialog**: Client, Task, Deadline (6.4), Quantity (locked when breakdown exists), Breakdown (6.5), Responsible (people only), Details.
+**Dialog**: Client, Task, Deadline (6.4), Quantity (locked when breakdown exists), Breakdown (6.5), Responsible (people only), Details. No auto-suggestions on Task or the breakdown Type (plain text fields, browser autocomplete off).
 
 ### 7.4 Recent Activities
 **Project-specific**: everything on this tab belongs to the selected project.
@@ -262,6 +275,7 @@ Banner, project cycle bar, stats, filters (All / Weekly / Bi-weekly / Monthly) +
 (The Recent Activities tab of a person's page, 7.5, stays across all projects: it is that person's history.)
 
 ### 7.5 Team area (admin/lead)
+Opened from the **Team** button on My day, next to Send notice (leaders and the Super Admin).
 Tabs **Dashboard · Activity · Team · Leave · Settings**, Daily/Weekly/Monthly period selector.
 - Dashboard: notifications (6.9), greeting with counts (done / assigned / unassigned), Workload (open tasks per person), completed-tasks chart (per day; per person in Daily view), team list.
 - Activity: completed + logged work grouped by day, person filter, Copy report.
@@ -270,7 +284,8 @@ Tabs **Dashboard · Activity · Team · Leave · Settings**, Daily/Weekly/Monthl
 - Settings: Members & access table (role, contact, open tasks, sign-in status, **Set code**, Open, Remove), **Deleted projects** (Restore — brings back the tasks deleted with it — / Delete forever; kept 30 days), Export all data. Super Admin only (*new*): **Days off** (team weekly day off as weekday chips; a person's own weekly day off; list of event and seasonal days off with **+ Add day off** and remove) and **Automatic messages** (birthday, signed in on a day off, leave approved).
 
 ### 7.6 Member page (own page for members; any member for admin/lead)
-Tabs **My dashboard · My tasks · Calendar · My leave · Recent Activities · Settings** (no My leave for the Super Admin).
+**Your own page** (everyone; the name chip opens it): the top bar reads **My page** (no project name, search or project tabs; the Team area reads **Team**), "← My day", a profile header (photo, name, role, job title, city, phone, birthday day and month), then tabs **My leave · Calendar · Settings · Recent Activities**, opening on My leave (no My leave for the Super Admin, whose page opens on Calendar). No dashboard or task list here: they are on My day.
+**Someone else's page** (admin/lead, from Team): tabs **Overview · Tasks · Calendar · Leave · Recent Activities · Profile** as below.
 - My dashboard: greeting + counts, next tasks, completed chart.
 - My tasks: Reviews of your work; filters All / To start / In progress / Completed + Project; groups To start, In progress, Completed this period; + Log work; ⬇ Download PDF report.
 - Calendar: Month / Week / Day. Monthly tasks = bar across the cycle; weekly = bar across the week; meeting deadlines per type; dated items = chips; colours: blue to do, orange urgent, green done (struck), red missed; click a day → Day view.
@@ -284,7 +299,7 @@ Tabs **My dashboard · My tasks · Calendar · My leave · Recent Activities · 
 |---|---|
 | POST `/auth/login` `{code}` · POST `/auth/logout` · GET `/auth/me` | sessions |
 | GET `/sync?since=` | all changed rows across tables since cursor (+ deletions) |
-| GET/POST/PATCH/DELETE `/projects[/id]` | projects; PATCH `/projects/id/state`, POST `/projects/id/cycle` |
+| GET/POST/PATCH/DELETE `/projects[/id]` | projects; PATCH `/projects/id/state`, POST `/projects/id/cycle`, POST `/projects/id/cycle-review` `{task_id, ok, note?}` (6.11) |
 | GET/POST/PATCH/DELETE `/meeting-tasks[/id]` | tasks; POST `/meeting-tasks/id/status`, `/progress` `{memberId,delta}` |
 | GET/POST/PATCH/DELETE `/monthly-tasks[/id]` | tasks |
 | POST `/records/tick` `{taskId, periodKey, partId?, memberId?, delta}` · POST `/records/status` | recurring progress |
@@ -354,5 +369,27 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 
 20. Schema 6 (`location`, `birth_year`, `grp_posts.kind` `notice` + `to_members`); profile lock in `GRP_Permissions`; `/posts` notices with private delivery; `/weather` (Open-Meteo, cached); members accept location and birth year. **Tests:** lock for leaders and members only, private notices never reach others, weather with a stubbed HTTP response.
 21. App: Notices box (top of the right column) and Send notice dialog; Who's out faces + counts with See all and the everyone-off line; weather in the date row; profile strip and locked My projects; Settings with required fields. Playwright: incomplete profile is locked and unlocks once filled; a private notice reaches only its people.
+
+**0.1.8 (one change at a time, released together) — released as 0.1.8 (steps 22–31):**
+
+22. Who's out "See all" pop-up cleaned up (6.10) — padded frame, search with icon, filter only when needed, larger rows, footer; same frame for the Notices and approvals "View all". Playwright: See all lists everyone out and search narrows it.
+
+23. Messages on top (7.0, design C): the message band across the top of the header card, one at a time with "1 of N ‹ ›". Playwright: one message shows at a time and the others are reached with ›.
+
+24. Your own page (7.6): the name chip opens your page — profile header and My leave · Calendar · Settings · Recent Activities; Team button on My day for leaders and the Super Admin; no project highlighted off project screens; greetings and messages use the full name. Playwright: the chip opens your page with those tabs and no project is highlighted; a leader reaches the team area from Team.
+
+25. Sidebar redesign (7.1, design A): GR mark, My day, project badges, counts only when there is work, Active always open, Paused / Inactive folded. Playwright: folded groups open on click and the project opens.
+
+26. My projects gets **+ Log work** (7.0): custom work for yourself (the existing Add manual task dialog; Team Members only for themselves, section 3). Notice cards name only the sender; shout-outs still say who they praise. Playwright: a member logs work from My day; a private notice card shows the sender and the To you tag only.
+
+27. Monthly tasks for active projects only (6.8): no standard tasks for new paused / inactive projects, `grp_daily` skips them, their monthly tasks reach nobody; moving to Active tops up at once. **Tests:** PHPUnit (new paused / inactive project, cron skip, top-up on Active, stop after pausing), Vitest (assigned and missed work skip non-active projects), Playwright (paused card shows "Start when active", 0/6 after Move to Active).
+
+28. Deadline options **No deadline · Weekly · Bi-weekly · Monthly · Specific date · Range** (6.3, 6.4): "Certain dates" becomes Range; Specific date and Range open a calendar (meeting tasks) or a cycle-day grid (monthly tasks). Playwright: pick a date, a range of days 1–5, and a monthly range of cycle days 1–5.
+
+29. No auto-suggestions in the monthly task dialog (7.3): Task and breakdown Type are plain text fields.
+
+30. Deadline colours (7.3): coloured card tags per deadline option (monthly cards) and matching deadline chips (meeting cards). Playwright: a Range task shows a Range tag in its colour; a Monthly task the Monthly colour.
+
+31. New cycle setup (6.11): schema 7 (`cycle_reviews`, `cycle_setup_since`), REVIEW_CYCLE, POST `/projects/id/cycle-review` with feedback notices; New cycle setup box, Review last cycle dialog, band messages, overdue on project cards. **Tests:** PHPUnit (managers only, stored under last cycle, feedback needs a note and reaches only the responsible people, task from another project refused, install date), Vitest (counts, due day 3, overdue, done, exemptions, band for leaders only), Playwright (leader reviews with feedback and Looks good, assigns everything → Done; member refused and receives the feedback).
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).

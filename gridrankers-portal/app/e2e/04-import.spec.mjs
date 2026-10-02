@@ -44,7 +44,7 @@ test('import round trip', async ({ page }, testInfo) => {
 
 	await page.goto('/');
 	await page.getByText('Shared with your team · live').waitFor();
-	await expect(page.locator('button.pick', { hasText: 'Coastal Roofing' })).toBeVisible();
+	await expect(page.locator('button.pick', { hasText: 'Coastal Roofing' })).toHaveCount(1);
 	const tasks = (await apiCall(page, 'GET', 'meeting-tasks')).json;
 	expect(tasks.filter((t) => t.project_id === 'c_coast').map((t) => t.title)).toEqual(['Check roof gallery']);
 	expect(tasks.filter((t) => t.project_id === 'c_acme')).toEqual([]);

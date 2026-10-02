@@ -76,6 +76,8 @@ export function assignedFor(data, pid, today) {
 	rowsOf(data, 'monthly_tasks').forEach((t) => {
 		const c = data.projects[t.project_id];
 		if (!isOn(t, pid) || !c) return;
+		// Monthly tasks reach people only while their project is active (SPEC.md 6.8).
+		if ((c.state || 'active') !== 'active') return;
 		const w = isSplit(t) ? activeSlot(t, c, 0, today) : undefined;
 		const rec = recordOf(data.records, t, c, w, 0, today);
 		const st = stateOf(t, rec);
@@ -109,6 +111,8 @@ export function missedWork(data, pid, r, today) {
 	rowsOf(data, 'monthly_tasks').forEach((t) => {
 		const c = data.projects[t.project_id];
 		if (!isOn(t, pid) || !c) return;
+		// Monthly tasks reach people only while their project is active (SPEC.md 6.8).
+		if ((c.state || 'active') !== 'active') return;
 		const need = isShared(t) ? shareOf(t, pid) : Math.max(1, t.target || 1);
 		const born = bornAt(t, c, today);
 		const check = (w, off, label, end) => {
@@ -142,6 +146,8 @@ export function calEvents(data, pid, from, to, today) {
 	rowsOf(data, 'monthly_tasks').forEach((t) => {
 		const c = data.projects[t.project_id];
 		if (!c || !isOn(t, pid)) return;
+		// Monthly tasks reach people only while their project is active (SPEC.md 6.8).
+		if ((c.state || 'active') !== 'active') return;
 		const need = isShared(t) ? shareOf(t, pid) : Math.max(1, t.target || 1);
 		const born = bornAt(t, c, today);
 		const add = (w, off) => {

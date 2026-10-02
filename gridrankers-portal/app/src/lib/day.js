@@ -6,6 +6,8 @@ import { assignedFor } from './perf.js';
 import { dayOffKind, dayOffName, fill, messages, missingProfile, teamWeekly } from './people.js';
 import { mayDecide, pendingReviews, reviewsOf } from './reviews.js';
 import { rowsOf } from './store.js';
+import { cycleSetup } from './cycleSetup.js';
+import { isManager } from './roles.js';
 
 // My day (SPEC.md 7.0): what each box shows, as pure functions of the synced data.
 
@@ -76,6 +78,21 @@ export function strips(data, me, today, { now = Date.now(), all = false } = {}) 
 	if (missing.length) {
 		const locked = me.role !== 'admin';
 		out.push({ key: 'profile', kind: 'profile', tone: 'red', title: 'Finish your profile to keep working.', text: `Missing: ${missing.join(', ')}.${locked ? ' Your tasks are locked until it’s done.' : ''}`, ok: 'Complete profile', sticky: true });
+	}
+
+	// New cycle setup (SPEC.md 6.11), for Team Leaders and the Super Admin: not dismissable.
+	if (isManager(me)) {
+		cycleSetup(data, today)
+			.filter((c) => !c.done)
+			.forEach((c) => {
+				const by = new Date(c.due + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+				const what = c.prev ? 'Assign the monthly tasks and review last cycle.' : 'Assign the monthly tasks.';
+				out.push(
+					c.late
+						? { key: `cycle:${c.project.id}:${c.cycle.key}`, kind: 'cycle', tone: 'red', title: `${c.project.name}: new cycle setup is ${c.late} day${c.late === 1 ? '' : 's'} overdue.`, text: what, ok: 'Open setup', sticky: true }
+						: { key: `cycle:${c.project.id}:${c.cycle.key}`, kind: 'cycle', tone: 'amber', title: `New cycle for ${c.project.name}.`, text: `${what.replace(/\.$/, '')} by ${by}.`, ok: 'Open setup', sticky: true },
+				);
+			});
 	}
 
 	const off = dayOffKind(today, self, team, daysOff);

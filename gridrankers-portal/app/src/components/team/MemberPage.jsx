@@ -358,17 +358,51 @@ function ActivityFeed({ pid }) {
 	);
 }
 
-// Member page (SPEC.md 7.6): own page for members, any member's page for admin/lead.
+
+// Your page's header: photo, name, role, title, city, phone and birthday.
+function ProfileHead({ person }) {
+	const [mm, dd] = String(person.birthday || '').split('-');
+	const facts = [
+		['M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11zM12 7.5a2.5 2.5 0 1 0 0 5a2.5 2.5 0 1 0 0-5', person.location, 'City'],
+		['M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2', person.phone, 'Phone'],
+		['M4 21h16M5 21v-7a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v7M12 12V8', mm && dd ? `${+dd} ${MONTHS[+mm - 1]}` : '', 'Birthday'],
+	].filter((f) => f[1]);
+	return (
+		<section className="ph-card" aria-label="Profile">
+			<Avatar person={person} big />
+			<div className="ph-who">
+				<h1>
+					{person.name} <span className={'role r-' + person.role}>{ROLE[person.role]}</span>
+				</h1>
+				{person.title && <span className="ph-title">{person.title}</span>}
+				{facts.length > 0 && (
+					<ul className="ph-facts">
+						{facts.map(([d, v, l]) => (
+							<li key={l} title={l}>
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+									<path d={d} />
+								</svg>
+								{v}
+							</li>
+						))}
+					</ul>
+				)}
+			</div>
+		</section>
+	);
+}
+
+// Member page (SPEC.md 7.6): your own page for everyone, any member's page for admin/lead.
 export default function MemberPage({ pid, perf, setPerf, onBack }) {
-	const { api, data, dispatch, toast, me, today } = usePortal();
-	const [tab, setTab] = useState(() => {
+	const { api, data, dispatch, toast, me, today, setView } = usePortal();
+	const [picked, setTab] = useState(() => {
 		// The Day leave box's My leave link opens this page on that tab.
 		try {
 			const t = window.sessionStorage.getItem(MEMBER_TAB_KEY);
 			window.sessionStorage.removeItem(MEMBER_TAB_KEY);
-			return t || 'dash';
+			return t || '';
 		} catch (e) {
-			return 'dash';
+			return '';
 		}
 	});
 	const [filter, setFilter] = useState('all');
@@ -406,14 +440,18 @@ export default function MemberPage({ pid, perf, setPerf, onBack }) {
 		}
 	};
 
-	const tabs = [
-		['dash', self ? 'My dashboard' : 'Overview'],
-		['assigned', self ? 'My tasks' : 'Tasks', open.length || ''],
-		['calendar', 'Calendar'],
-		...(person.role !== 'admin' ? [['leave', self ? 'My leave' : 'Leave']] : []),
-		['activity', 'Recent Activities'],
-		['profile', self ? 'Settings' : 'Profile'],
-	];
+	// Your own page (SPEC.md 7.6): no dashboard or task list (they are on My day).
+	const tabs = self
+		? [...(person.role !== 'admin' ? [['leave', 'My leave']] : []), ['calendar', 'Calendar'], ['profile', 'Settings'], ['activity', 'Recent Activities']]
+		: [
+				['dash', 'Overview'],
+				['assigned', 'Tasks', open.length || ''],
+				['calendar', 'Calendar'],
+				...(person.role !== 'admin' ? [['leave', 'Leave']] : []),
+				['activity', 'Recent Activities'],
+				['profile', 'Profile'],
+			];
+	const tab = tabs.some(([k]) => k === picked) ? picked : tabs[0][0];
 
 	let body;
 	if (tab === 'dash') {
@@ -587,11 +625,19 @@ export default function MemberPage({ pid, perf, setPerf, onBack }) {
 
 	return (
 		<div className="grp-member">
-			{isManager(me) && onBack && (
-				<button type="button" className="linkbtn back" onClick={onBack}>
-					← All team members
+			{self ? (
+				<button type="button" className="linkbtn back" onClick={() => setView('dash')}>
+					← My day
 				</button>
+			) : (
+				isManager(me) &&
+				onBack && (
+					<button type="button" className="linkbtn back" onClick={onBack}>
+						← All team members
+					</button>
+				)
 			)}
+			{self && <ProfileHead person={person} />}
 			<nav className="ttabs etabs" role="tablist" aria-label="Sections">
 				{tabs.map(([k, l, n]) => (
 					<button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>

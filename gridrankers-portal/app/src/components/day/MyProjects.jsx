@@ -3,6 +3,7 @@ import { usePortal } from '../../context.js';
 import { daysBetween } from '../../lib/cycles.js';
 import { PAGE_SIZE, PROJECT_FILTERS, SOON_DAYS, myProjects } from '../../lib/day.js';
 import { MEMBER_TAB_KEY, profileLocked } from '../../lib/people.js';
+import { LogWorkDialog } from '../team/parts.jsx';
 
 const FILTERS = [
 	['all', 'All'],
@@ -61,6 +62,7 @@ export default function MyProjects() {
 	const { data, me, today, setTeamPerson, setView } = usePortal();
 	const [filter, setFilter] = useState('all');
 	const [page, setPage] = useState(0);
+	const [logging, setLogging] = useState(false);
 	const groups = useMemo(() => myProjects(data, me, today), [data, me, today]);
 	const counts = Object.fromEntries(FILTERS.map(([k]) => [k, groups.filter((g) => PROJECT_FILTERS[k](g, today)).length]));
 	const list = groups.filter((g) => PROJECT_FILTERS[filter](g, today));
@@ -68,6 +70,15 @@ export default function MyProjects() {
 	const at = Math.min(page, pages - 1);
 	const shown = list.slice(at * PAGE_SIZE, at * PAGE_SIZE + PAGE_SIZE);
 	const tasks = groups.reduce((n, g) => n + g.tasks.length, 0);
+	// Log work (SPEC.md 7.0): custom work that isn't a task, for yourself.
+	const logBtn = (
+		<>
+			<button type="button" className="btn small mp-log" onClick={() => setLogging(true)}>
+				+ Log work
+			</button>
+			{logging && <LogWorkDialog open onClose={() => setLogging(false)} memberId={me.id} date={today} />}
+		</>
+	);
 
 	if (profileLocked(data.members[me.id] || me, me)) {
 		const openSettings = () => {
@@ -105,7 +116,10 @@ export default function MyProjects() {
 	if (!groups.length) {
 		return (
 			<section className="md-card md-grow" aria-labelledby="mpTitle">
-				<h2 id="mpTitle">My projects</h2>
+				<div className="md-h">
+					<h2 id="mpTitle">My projects</h2>
+					{logBtn}
+				</div>
 				<div className="md-empty">
 					<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="var(--done)" strokeWidth="1.8" aria-hidden="true">
 						<circle cx="12" cy="12" r="9" />
@@ -125,6 +139,7 @@ export default function MyProjects() {
 				<span className="muted">
 					Most urgent first · {tasks} open task{tasks === 1 ? '' : 's'} in {groups.length} project{groups.length === 1 ? '' : 's'}
 				</span>
+				{logBtn}
 			</div>
 			<div className="ra-chips" role="group" aria-label="Filter my projects">
 				{FILTERS.map(([k, l]) => (

@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePortal } from '../../context.js';
 import { bellItems, strips } from '../../lib/day.js';
 import { weekdayDate } from '../../lib/format.js';
-import { MEMBER_TAB_KEY, firstName, greeting } from '../../lib/people.js';
-import { ROLE, isManager } from '../../lib/roles.js';
+import { MEMBER_TAB_KEY, greeting } from '../../lib/people.js';
+import { ROLE } from '../../lib/roles.js';
 import Avatar from '../Avatar.jsx';
 
 const ICON = {
@@ -13,6 +13,7 @@ const ICON = {
 	leave: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18M8 12.5l2.5 2.5L16 9.5',
 	review: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18M8 12.5l2.5 2.5L16 9.5',
 	profile: 'M12 4a4 4 0 1 0 0 8a4 4 0 1 0 0-8M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6',
+	cycle: 'M4 5h16v15H4zM4 10h16M9 3v4M15 3v4',
 };
 
 // Weather icons (Open-Meteo kinds, SPEC.md 6.10).
@@ -129,11 +130,12 @@ function Bell() {
 	);
 }
 
-// Greeting, date, bell, user chip and the message strips (SPEC.md 7.0).
+// The message band, greeting, date, bell and user chip (SPEC.md 7.0).
 export default function DayHeader({ onSignOut }) {
 	const { data, me, today, setView, setTeamPerson, setProject, setSearch } = usePortal();
 	const dismiss = useDismiss();
 	const list = useMemo(() => strips(data, me, today), [data, me, today]);
+	const [shown, setShown] = useState(0);
 
 	const act = (s) => {
 		if (s.kind === 'profile') {
@@ -146,6 +148,10 @@ export default function DayHeader({ onSignOut }) {
 			setView('team');
 			return;
 		}
+		if (s.kind === 'cycle') {
+			window.dispatchEvent(new Event('grp:cycle-setup'));
+			return;
+		}
 		if (s.kind === 'review') {
 			setProject(s.review.project_id);
 			setSearch(s.review.title);
@@ -155,12 +161,45 @@ export default function DayHeader({ onSignOut }) {
 		dismiss([s.key]);
 	};
 
+	// One message at a time (SPEC.md 7.0): the others stay in the page, hidden, behind ‹ ›.
+	const at = Math.min(shown, Math.max(0, list.length - 1));
+	const move = (step) => setShown((at + step + list.length) % list.length);
+
 	return (
 		<header className="md-top" aria-label="Today">
+			{list.length > 0 && (
+				<div className="md-band">
+					{list.map((s, i) => (
+						<div key={s.key} className={'md-strip t-' + s.tone} role="status" hidden={i !== at}>
+							<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+								<path d={ICON[s.kind]} />
+							</svg>
+							<p>
+								<b>{s.title}</b> {s.text}
+								{s.meta && <span className="md-meta"> · {s.meta}</span>}
+							</p>
+							{list.length > 1 && (
+								<span className="md-pager">
+									<button type="button" aria-label="Previous message" onClick={() => move(-1)}>
+										‹
+									</button>
+									{i + 1} of {list.length}
+									<button type="button" aria-label="Next message" onClick={() => move(1)}>
+										›
+									</button>
+								</span>
+							)}
+							<button type="button" className="md-strip-x" onClick={() => act(s)}>
+								{s.ok || 'Dismiss'}
+							</button>
+						</div>
+					))}
+				</div>
+			)}
 			<div className="md-row">
 				<div className="md-hello">
 					<h1>
-						{greeting()}, {firstName(me.name)}
+						{greeting()}, {me.name}
 					</h1>
 					<span className="md-date">
 						{weekdayDate(today)}
@@ -169,7 +208,7 @@ export default function DayHeader({ onSignOut }) {
 				</div>
 				<Bell />
 				<div className="md-me">
-					<button type="button" className="me-btn" title={isManager(me) ? 'Open the team page' : 'Open my page'} onClick={() => (setTeamPerson('all'), setView('team'))}>
+					<button type="button" className="me-btn" title="Open my page" onClick={() => (setTeamPerson(me.id), setView('team'))}>
 						<Avatar person={me} />
 						<b>{me.name}</b>
 						<span className={'role r-' + me.role}>{ROLE[me.role]}</span>
@@ -179,20 +218,6 @@ export default function DayHeader({ onSignOut }) {
 					</button>
 				</div>
 			</div>
-			{list.map((s) => (
-				<div key={s.key} className={'md-strip t-' + s.tone} role="status">
-					<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-						<path d={ICON[s.kind]} />
-					</svg>
-					<p>
-						<b>{s.title}</b> {s.text}
-						{s.meta && <span className="md-meta"> · {s.meta}</span>}
-					</p>
-					<button type="button" className="md-strip-x" onClick={() => act(s)}>
-						{s.ok || 'Dismiss'}
-					</button>
-				</div>
-			))}
 		</header>
 	);
 }

@@ -42,6 +42,44 @@ class Test_GRP_Standard_Tasks_Cron extends GRP_REST_TestCase {
 		$this->assertSame( GRP_Cycles::cycle_range( $project, 0, GRP_Cycles::today() )['key'], GRP_Store::get( 'grp_projects', $project['id'] )['std_cycle'] );
 	}
 
+	public function test_paused_and_inactive_projects_get_no_monthly_tasks_until_active() {
+		foreach ( array( 'paused', 'inactive' ) as $state ) {
+			$response = $this->api_as(
+				'admin',
+				'POST',
+				'/projects',
+				array(
+					'name'      => "Waiting $state",
+					'cycle_day' => 1,
+					'state'     => $state,
+				)
+			);
+			$this->assertStatus( 201, $response );
+			$project = $response->get_data();
+			$this->assertSame( array(), $this->tasks_of( $project['id'] ), "A new $state project gets no standard tasks." );
+
+			// grp_daily skips it, in this cycle and the next.
+			GRP_Cron::run( GRP_Cycles::today() );
+			GRP_Cron::run( GRP_Cycles::cycle_range( $project, 1, GRP_Cycles::today() )['start'] );
+			$this->assertSame( array(), $this->tasks_of( $project['id'] ), "grp_daily skips a $state project." );
+
+			// Moved to Active: topped up straight away.
+			$this->assertStatus( 200, $this->api_as( 'lead', 'PATCH', "/projects/{$project['id']}/state", array( 'state' => 'active' ) ) );
+			$this->assertCount( 6, $this->tasks_of( $project['id'] ) );
+		}
+	}
+
+	public function test_moving_a_project_away_from_active_stops_the_top_up() {
+		$project = $this->project( 'Acme', 1 );
+		$blogs   = $this->tasks_of( $project['id'] )['Blogs'];
+		$this->api_as( 'lead', 'DELETE', "/monthly-tasks/{$blogs['id']}" );
+		$this->assertStatus( 200, $this->api_as( 'lead', 'PATCH', "/projects/{$project['id']}/state", array( 'state' => 'paused' ) ) );
+
+		$next = GRP_Cycles::cycle_range( $project, 1, GRP_Cycles::today() )['start'];
+		$this->assertSame( 0, GRP_Cron::run( $next )['standard_tasks'] );
+		$this->assertArrayNotHasKey( 'Blogs', $this->tasks_of( $project['id'] ) );
+	}
+
 	public function test_deleted_standard_task_stays_gone_until_next_cycle() {
 		$project = $this->project( 'Acme', 1 );
 		$blogs   = $this->tasks_of( $project['id'] )['Blogs'];

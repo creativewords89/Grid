@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePortal } from '../../context.js';
+import { cycleSetup } from '../../lib/cycleSetup.js';
 import { activeWeek, cycleRange, daysBetween, isWeekly } from '../../lib/cycles.js';
 import { deadlineInfo } from '../../lib/deadline.js';
 import { computeMissed, isWaived, recordOf, stateOf } from '../../lib/monthly.js';
@@ -178,6 +179,8 @@ function ProjectCard({ p, s }) {
 		try {
 			const row = await api.patch(`projects/${p.id}/state`, { state: to });
 			dispatch({ type: 'upsert', table: 'projects', row });
+			// Back to Active: the server adds this cycle's standard monthly tasks; show them now.
+			if (to === 'active') dispatch({ type: 'sync', changes: { monthly_tasks: await api.get('monthly-tasks', { project: p.id }) } });
 			toast(`${p.name} moved to ${LABEL[to]}`);
 		} catch (err) {
 			dispatch({ type: 'upsert', table: 'projects', row: p });
@@ -207,7 +210,7 @@ function ProjectCard({ p, s }) {
 		}
 	};
 
-	const issues = [s.urgent && `${s.urgent} urgent`, s.overdue && `${s.overdue} overdue`, s.reviews && `${s.reviews} to review`].filter(Boolean);
+	const issues = [s.setupLate && `Setup ${s.setupLate} day${s.setupLate === 1 ? '' : 's'} overdue`, s.urgent && `${s.urgent} urgent`, s.overdue && `${s.overdue} overdue`, s.reviews && `${s.reviews} to review`].filter(Boolean);
 	const pct = s.mTotal ? Math.round((s.mDone / s.mTotal) * 100) : 0;
 
 	return (
@@ -223,9 +226,8 @@ function ProjectCard({ p, s }) {
 				<span className="pd-prog">
 					<span className="pd-prog-l">
 						<span>Monthly tasks</span>
-						<b>
-							{s.mDone}/{s.mTotal}
-						</b>
+						{/* Monthly tasks are added only while a project is active (SPEC.md 6.8). */}
+						<b>{p.state !== 'active' && !s.mTotal ? 'Start when active' : `${s.mDone}/${s.mTotal}`}</b>
 					</span>
 					<span className="pd-bar-t" aria-hidden="true">
 						<span className="pd-bar-f" style={{ width: pct + '%' }} />
@@ -252,6 +254,8 @@ export default function ProjectsBoard() {
 
 	const projects = rowsOf(data, 'projects').sort((a, b) => ORDER[a.state] - ORDER[b.state] || a.name.localeCompare(b.name));
 	const reviews = useMemo(() => pendingReviews(data), [data]);
+	// New cycle setup overdue per project (SPEC.md 6.11).
+	const setupLate = useMemo(() => Object.fromEntries(cycleSetup(data, today).map((c) => [c.project.id, c.late])), [data, today]);
 	const counts = { all: projects.length, ...Object.fromEntries(STATES.map(([k]) => [k, projects.filter((p) => p.state === k).length])) };
 	const query = q.trim().toLowerCase();
 	const list = projects.filter((p) => (filter === 'all' || p.state === filter) && (!query || searchText([p.name]).includes(query)));
@@ -280,7 +284,7 @@ export default function ProjectsBoard() {
 			) : (
 				<div className="pd-grid">
 					{list.map((p) => (
-						<ProjectCard key={p.id} p={p} s={projectSummary(p, data, reviews, today)} />
+						<ProjectCard key={p.id} p={p} s={{ ...projectSummary(p, data, reviews, today), setupLate: setupLate[p.id] || 0 }} />
 					))}
 				</div>
 			)}

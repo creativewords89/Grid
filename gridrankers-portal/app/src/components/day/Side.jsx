@@ -21,12 +21,12 @@ const MEGA = (
 
 const backText = (back, today) => {
 	const days = Math.round((Date.parse(back) - Date.parse(today)) / 86400000);
-	return days === 1 ? 'back tomorrow' : `back ${new Date(back + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short' })} ${short(back)}`;
+	return days === 1 ? 'Back tomorrow' : `Back ${new Date(back + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short' })} ${short(back)}`;
 };
 
 const FACES = 8;
 const NAMES = 3;
-const PAGE = 20;
+const PAGE = 10;
 
 function OutRow({ o, today }) {
 	return (
@@ -41,7 +41,14 @@ function OutRow({ o, today }) {
 	);
 }
 
-// "See all": everyone out today, searchable, 20 per page.
+const SEARCH = (
+	<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+		<path d="M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14M20 20l-4-4" />
+	</svg>
+);
+
+// "See all": everyone out today, searchable, 10 per page. The filter shows only when people
+// are out for both reasons.
 function OutList({ list, today, onClose }) {
 	const [q, setQ] = useState('');
 	const [f, setF] = useState('all');
@@ -56,39 +63,59 @@ function OutList({ list, today, onClose }) {
 		['day_off', 'Day off', list.length - leave],
 	];
 	return (
-		<Modal open onClose={onClose} labelledBy="woAll" className="ap-dlg">
-			<h2 id="woAll">Who’s out today · {list.length}</h2>
-			<input className="search" type="search" placeholder="Search people" aria-label="Search people" value={q} onChange={(e) => (setQ(e.target.value), setPage(0))} />
-			<div className="ra-chips" role="group" aria-label="Filter">
-				{chips.map(([k, l, n]) => (
-					<button key={k} type="button" className="ra-chip" aria-pressed={f === k} onClick={() => (setF(k), setPage(0))}>
-						{l} {n}
-					</button>
-				))}
-			</div>
-			<ul className="wo-list">
-				{shown.slice(at * PAGE, at * PAGE + PAGE).map((o) => (
-					<OutRow key={o.member.id} o={o} today={today} />
-				))}
-			</ul>
-			{shown.length === 0 && <p className="muted">Nobody matches.</p>}
-			<div className="dlg-acts">
-				{pages > 1 && (
-					<span className="mp-pages">
-						<button type="button" className="pg" disabled={at === 0} onClick={() => setPage(at - 1)}>
-							‹ Previous
-						</button>
-						<span className="muted">
-							Page {at + 1} of {pages}
-						</span>
-						<button type="button" className="pg" disabled={at === pages - 1} onClick={() => setPage(at + 1)}>
-							Next ›
-						</button>
-					</span>
-				)}
-				<button type="button" className="btn" onClick={onClose}>
-					Close
+		<Modal open onClose={onClose} labelledBy="woAll" className="list-dlg">
+			<div className="ld-head">
+				<h2 id="woAll">Who’s out today</h2>
+				<span className="ld-count">{list.length}</span>
+				<button type="button" className="ld-x" aria-label="Close" onClick={onClose}>
+					✕
 				</button>
+			</div>
+			<div className="ld-tools">
+				<label className="ld-search">
+					{SEARCH}
+					<input type="search" placeholder="Search people" aria-label="Search people" value={q} onChange={(e) => (setQ(e.target.value), setPage(0))} />
+				</label>
+				{leave > 0 && leave < list.length && (
+					<div className="ld-seg" role="group" aria-label="Filter">
+						{chips.map(([k, l, n]) => (
+							<button key={k} type="button" aria-pressed={f === k} onClick={() => (setF(k), setPage(0))}>
+								{l} <span>{n}</span>
+							</button>
+						))}
+					</div>
+				)}
+			</div>
+			<div className="ld-body">
+				{shown.length === 0 ? (
+					<p className="ld-empty">Nobody matches “{q.trim()}”.</p>
+				) : (
+					<ul className="wo-list ld-list">
+						{shown.slice(at * PAGE, at * PAGE + PAGE).map((o) => (
+							<OutRow key={o.member.id} o={o} today={today} />
+						))}
+					</ul>
+				)}
+			</div>
+			<div className="ld-foot">
+				<span className="muted">
+					{pages > 1 ? `${at * PAGE + 1}–${Math.min(shown.length, at * PAGE + PAGE)} of ${shown.length}` : `${shown.length} ${shown.length === 1 ? 'person' : 'people'}`}
+				</span>
+				<span className="ld-pages">
+					{pages > 1 && (
+						<>
+							<button type="button" className="pg" aria-label="Previous page" disabled={at === 0} onClick={() => setPage(at - 1)}>
+								‹
+							</button>
+							<button type="button" className="pg" aria-label="Next page" disabled={at === pages - 1} onClick={() => setPage(at + 1)}>
+								›
+							</button>
+						</>
+					)}
+					<button type="button" className="btn" onClick={onClose}>
+						Close
+					</button>
+				</span>
 			</div>
 		</Modal>
 	);
@@ -176,7 +203,14 @@ function NoticeCard({ n }) {
 			<div className="so-head">
 				<Avatar person={n.from} small />
 				<span>
-					<b>{n.from ? n.from.name : 'Team Leader'}</b> → <b>{n.to}</b>
+					<b>{n.from ? n.from.name : 'Team Leader'}</b>
+					{/* The tag already says To you / Everyone; a shout-out still names who it praises. */}
+					{n.tag === 'shout' && (
+						<>
+							{' '}
+							→ <b>{n.to}</b>
+						</>
+					)}
 				</span>
 				<span className={'mp-flag ' + cls}>{label}</span>
 			</div>
@@ -219,14 +253,21 @@ export function Notices() {
 					))}
 				</div>
 			)}
-			<Modal open={all} onClose={() => setAll(false)} labelledBy="ncAll" className="ap-dlg">
-				<h2 id="ncAll">Notices</h2>
-				<div className="so-list">
+			<Modal open={all} onClose={() => setAll(false)} labelledBy="ncAll" className="list-dlg">
+				<div className="ld-head">
+					<h2 id="ncAll">Notices</h2>
+					<span className="ld-count">{list.length}</span>
+					<button type="button" className="ld-x" aria-label="Close" onClick={() => setAll(false)}>
+						✕
+					</button>
+				</div>
+				<div className="ld-body so-list">
 					{list.map((n) => (
 						<NoticeCard key={n.post.id} n={n} />
 					))}
 				</div>
-				<div className="dlg-acts">
+				<div className="ld-foot">
+					<span />
 					<button type="button" className="btn" onClick={() => setAll(false)}>
 						Close
 					</button>

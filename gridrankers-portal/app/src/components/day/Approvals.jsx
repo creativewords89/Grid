@@ -130,14 +130,21 @@ export default function Approvals() {
 					))}
 				</div>
 			)}
-			<Modal open={all} onClose={() => setAll(false)} labelledBy="apAll" className="ap-dlg">
-				<h2 id="apAll">Needs your approval</h2>
-				<div className="ap-list">
+			<Modal open={all} onClose={() => setAll(false)} labelledBy="apAll" className="list-dlg">
+				<div className="ld-head">
+					<h2 id="apAll">Needs your approval</h2>
+					<span className="ld-count">{list.length}</span>
+					<button type="button" className="ld-x" aria-label="Close" onClick={() => setAll(false)}>
+						✕
+					</button>
+				</div>
+				<div className="ld-body ap-list">
 					{list.map((i) => (
 						<Item key={i.kind + i.id} item={i} />
 					))}
 				</div>
-				<div className="dlg-acts">
+				<div className="ld-foot">
+					<span />
 					<button type="button" className="btn" onClick={() => setAll(false)}>
 						Close
 					</button>

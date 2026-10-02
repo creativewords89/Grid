@@ -2,7 +2,7 @@
 // (Super Admin / Team Leader only), deleting and restoring a project (Team → Settings);
 // Recent Activities is per project (7.4).
 import { test, expect } from '@playwright/test';
-import { LEAD, MAX, addMeetingTask, apiCall, card, openProject, openProjectsTab, signIn, signInOwner, signOut, signOutOwner, watchErrors } from './helpers.mjs';
+import { LEAD, MAX, addMeetingTask, apiCall, card, openProject, openProjectsTab, signIn, signInOwner, signOut, signOutOwner, watchErrors, openTeam } from './helpers.mjs';
 
 test('dashboard, project lifecycle and per-project Recent Activities', async ({ page }) => {
 	const noErrors = watchErrors(page);
@@ -15,7 +15,16 @@ test('dashboard, project lifecycle and per-project Recent Activities', async ({ 
 
 	// Team Leader lands on My day; the Projects tab (Active) adds a paused project starting on day 15.
 	await signIn(page, LEAD);
-	await expect(page.locator('.md-top h1')).toHaveText(/^Good (morning|afternoon|evening), Lee$/);
+	await expect(page.locator('.md-top h1')).toHaveText(/^Good (morning|afternoon|evening), Lee Lead$/);
+	// Sidebar (SPEC.md 7.1): Active projects always open; Paused and Inactive folded until opened.
+	const paused = page.locator('aside button.fold', { hasText: 'Paused projects' });
+	await expect(paused).toHaveAttribute('aria-expanded', 'false');
+	await expect(page.locator('aside ul.paused')).toBeHidden();
+	await paused.click();
+	await expect(paused).toHaveAttribute('aria-expanded', 'true');
+	await expect(page.locator('aside ul.paused')).toBeVisible();
+	await expect(page.locator('aside button.fold', { hasText: 'Inactive projects' })).toHaveAttribute('aria-expanded', 'false');
+	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/side.png' });
 	await openProjectsTab(page);
 	await expect(tab('Active')).toHaveAttribute('aria-selected', 'true');
 	await expect(page.getByLabel('New project name')).toHaveCount(0);
@@ -30,7 +39,8 @@ test('dashboard, project lifecycle and per-project Recent Activities', async ({ 
 
 	await tab('Paused').click();
 	await expect(pd('Harbor Hotel').locator('.pd-cycle')).toContainText('Day 15');
-	await expect(pd('Harbor Hotel')).toContainText('0/6');
+	// A paused project gets no monthly tasks (SPEC.md 6.8) until it is moved to Active.
+	await expect(pd('Harbor Hotel')).toContainText('Start when active');
 	await expect(pd('Harbor Hotel')).toContainText('On track');
 
 	await menu('Harbor Hotel', 'Move to Active');
@@ -38,6 +48,7 @@ test('dashboard, project lifecycle and per-project Recent Activities', async ({ 
 	await expect(pd('Harbor Hotel')).toHaveCount(0);
 	await tab('Active').click();
 	await expect(pd('Harbor Hotel')).toBeVisible();
+	await expect(pd('Harbor Hotel')).toContainText('0/6');
 
 	// A card opens the project; GridRankers goes back to the Dashboard.
 	await pd('Harbor Hotel').getByRole('button', { name: 'Open Harbor Hotel' }).click();
@@ -74,7 +85,7 @@ test('dashboard, project lifecycle and per-project Recent Activities', async ({ 
 
 	// Team Members land on My day, with no Projects tab, and cannot add projects (UI and server).
 	await signIn(page, MAX);
-	await expect(page.locator('.md-top h1')).toHaveText(/, Max$/);
+	await expect(page.locator('.md-top h1')).toHaveText(/, Max Member$/);
 	await expect(page.locator('.md-tabs')).toHaveCount(0);
 	await expect(page.getByRole('button', { name: '+ New project' })).toHaveCount(0);
 	await expect(page.getByRole('button', { name: 'Options for Harbor Hotel' })).toHaveCount(0);
@@ -90,7 +101,7 @@ test('dashboard, project lifecycle and per-project Recent Activities', async ({ 
 	await expect(pd('Harbor Hotel')).toHaveCount(0);
 	await expect(page.getByText('Deleted projects')).toHaveCount(0);
 
-	await page.locator('.me-btn').click();
+	await openTeam(page);
 	await page.locator('nav.ttabs').getByRole('tab', { name: 'Settings' }).click();
 	const trash = page.locator('.tr-card', { hasText: 'Deleted projects' });
 	await trash.locator('li', { hasText: 'Harbor Hotel' }).getByRole('button', { name: 'Restore' }).click();

@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { usePortal } from '../context.js';
 import { isManager } from '../lib/roles.js';
 import Approvals from './day/Approvals.jsx';
+import CycleSetup from './day/CycleSetup.jsx';
 import DayHeader from './day/DayHeader.jsx';
 import DayLeave from './day/Leave.jsx';
 import MyProjects from './day/MyProjects.jsx';
@@ -13,9 +14,9 @@ import { Notices, WhosOut } from './day/Side.jsx';
 const TAB_KEY = 'grp:dash-tab';
 
 // Dashboard (SPEC.md 7.0): the landing page after sign-in. Everyone gets My day; the Super
-// Admin and Team Leaders also get the Projects tab and Send notice.
+// Admin and Team Leaders also get the Projects tab, Team (the team area) and Send notice.
 export default function Dashboard({ onSignOut }) {
-	const { me } = usePortal();
+	const { me, setView, setTeamPerson } = usePortal();
 	const manager = isManager(me);
 	const [tab, setTabState] = useState(() => {
 		try {
@@ -35,6 +36,18 @@ export default function Dashboard({ onSignOut }) {
 		}
 	};
 	const current = manager ? tab : 'day';
+	// "Open setup" in the message band: back to My day and to the New cycle setup box.
+	useEffect(() => {
+		const open = () => {
+			setTab('day');
+			window.setTimeout(() => {
+				const box = document.getElementById('cycleSetup');
+				if (box) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+			}, 50);
+		};
+		window.addEventListener('grp:cycle-setup', open);
+		return () => window.removeEventListener('grp:cycle-setup', open);
+	});
 
 	return (
 		<div className="md">
@@ -50,6 +63,9 @@ export default function Dashboard({ onSignOut }) {
 						</button>
 					</div>
 					<div className="md-acts">
+						<button type="button" className="btn small ghost" onClick={() => (setTeamPerson('all'), setView('team'))}>
+							Team
+						</button>
 						<button type="button" className="btn small" onClick={() => setDialog('notice')}>
 							Send notice
 						</button>
@@ -59,6 +75,7 @@ export default function Dashboard({ onSignOut }) {
 			{current === 'day' ? (
 				<div className="md-grid">
 					<div className="md-col">
+						{manager && <CycleSetup />}
 						<MyProjects />
 					</div>
 					<div className="md-col">

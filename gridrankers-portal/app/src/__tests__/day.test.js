@@ -52,10 +52,10 @@ describe('people helpers', () => {
 		]);
 	});
 
-	it('automatic messages fill in the first name', () => {
+	it('automatic messages fill in the full name', () => {
 		const d = team();
 		d.settings = { s: { id: 's', setting_key: 'messages', value: { birthday: 'Hi {name}!', day_off: '' } } };
-		expect(fill(messages(d).birthday, d.members.max)).toBe('Hi Max!');
+		expect(fill(messages(d).birthday, d.members.max)).toBe('Hi Max Member!');
 		expect(messages(d).day_off).toContain('{name}');
 	});
 });
@@ -116,7 +116,7 @@ describe('my day', () => {
 		d.leave = { l1: { id: 'l1', member_id: 'max', status: 'approved', from_date: '2026-10-19', to_date: '2026-10-21', decided_by: 'lee', decided_at: '2026-09-30 15:00:00', message: '' } };
 		const s = strips(d, d.members.max, TODAY, { now: NOW }).find((x) => x.kind === 'leave');
 		expect(s.title).toMatch(/approved/);
-		expect(s.text).toContain('Enjoy your time off, Max!');
+		expect(s.text).toContain('Enjoy your time off, Max Member!');
 	});
 
 	it('needs your approval: members’ leave and reviews, requested reviews only for their reviewer', () => {

@@ -8,6 +8,8 @@ import Avatar from '../Avatar.jsx';
 import { MiniReview, People, ReviewBadge } from '../meeting/TaskCard.jsx';
 import useRecordActions from './useRecordActions.js';
 
+export const TAG_LABEL = { none: 'No deadline', weekly: 'Weekly', biweekly: 'Bi-weekly', monthly: 'Monthly', date: 'Specific date', dates: 'Range' };
+
 // Everything the card and the Details window need about a task in the viewed period.
 export function usePeriod(task, selWeek) {
 	const { data, cycleOff, today } = usePortal();
@@ -19,11 +21,13 @@ export function usePeriod(task, selWeek) {
 	const sel = wk ? Math.min(selWeek ?? aw, slots.length - 1) : undefined;
 	const name = (i, short) => (slots[i] ? slotLabel(task, slots[i], i, short) : '');
 	const unit = isBiweekly(task) ? '2 weeks' : 'week';
-	const freqLabel = !wk ? 'Monthly' : isBiweekly(task) ? 'Bi-weekly' : 'Weekly';
+	// The card tag names the deadline option and has its colour (SPEC.md 7.3).
+	const tag = wk ? (isBiweekly(task) ? 'biweekly' : 'weekly') : { date: 'date', dates: 'dates', none: 'none' }[task.due_mode] || 'monthly';
+	const freqLabel = TAG_LABEL[tag];
 	const range = cycleRange(project, cycleOff, today);
 	const periodKey = periodKeyOf(task, project, sel, cycleOff, today);
 	const rec = recordOf(data.records, task, project, sel, cycleOff, today);
-	return { project, wk, aw, sel, slots, name, unit, freqLabel, range, periodKey, rec, st: stateOf(task, rec), n: Math.max(1, task.target || 1), count: rec && rec.status !== 'skipped' ? rec.count || 0 : 0 };
+	return { project, wk, aw, sel, slots, name, unit, freqLabel, tag, range, periodKey, rec, st: stateOf(task, rec), n: Math.max(1, task.target || 1), count: rec && rec.status !== 'skipped' ? rec.count || 0 : 0 };
 }
 
 export function DueChip({ task, period, missed }) {
@@ -243,7 +247,7 @@ export default function MonthlyCard({ task, selWeek, onSelectWeek, missed, onDet
 	const { data, me, cycleOff, today } = usePortal();
 	const { setStatus, remove } = useRecordActions();
 	const period = usePeriod(task, selWeek);
-	const { project, wk, aw, sel, slots, name, unit, freqLabel, range, periodKey, st, n, count } = period;
+	const { project, wk, aw, sel, slots, name, unit, freqLabel, tag, range, periodKey, st, n, count } = period;
 	const members = data.members;
 	const locked = !canWorkOn(task, me);
 	const late = missed.length > 0;
@@ -298,7 +302,7 @@ export default function MonthlyCard({ task, selWeek, onSelectWeek, missed, onDet
 	return (
 		<article className={`card mcard st-${st} ${late ? 'late' : ''} ${wk && sel !== aw ? 'off-wk' : ''}`}>
 			<div className="co-row">
-				<span className={'freq ' + (wk ? 'fw' : 'fm')}>{freqLabel}</span>
+				<span className={'freq dlt-' + tag}>{freqLabel}</span>
 				<span className="qty" title="Quantity">
 					Qty {n} per {wk ? unit : 'cycle'}
 				</span>
