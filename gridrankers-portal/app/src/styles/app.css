@@ -382,3 +382,4 @@ dialog.cs-dlg{width:min(760px,96vw)}
 .view-only .ap-acts,.view-only .cs-btns,.view-only .md-strip-x{display:none}
 .mp-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
 .mp-top .linkbtn.back{margin:0}
+.va-acts{display:flex;gap:8px;flex-wrap:wrap}

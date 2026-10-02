@@ -3,7 +3,7 @@ import { usePortal } from '../../context.js';
 import { short, toDate } from '../../lib/format.js';
 import { assignedFor, daysIn, fmtDur, inRange, perfRange, perfShift, perfStats, periodWord } from '../../lib/perf.js';
 import { mayDecide, pendingReviews } from '../../lib/reviews.js';
-import { ROLE, isAdmin } from '../../lib/roles.js';
+import { ROLE, canViewDay, isAdmin } from '../../lib/roles.js';
 import { rowsOf } from '../../lib/store.js';
 import Avatar from '../Avatar.jsx';
 import { Trash } from '../RecentActivities.jsx';
@@ -30,8 +30,15 @@ export const ADMIN_SECTIONS = [
 // Team sections for the Super Admin / Team Leader (SPEC.md 7.5). With `section` it renders just
 // that section inside My page (team, leave, activity or settings); otherwise its own tabs.
 export default function TeamArea({ perf, setPerf, onPerson, section }) {
-	const { api, data, dispatch, toast, confirm, me, today } = usePortal();
+	const { api, data, dispatch, toast, confirm, me, today, setTeamPerson, setViewAs } = usePortal();
 	const admin = isAdmin(me);
+	// A card opens that person's My day, view only (SPEC.md 7.0); Back returns to this Team tab.
+	// Someone whose My day you can't view (the Super Admin, yourself) opens their page instead.
+	const openCard = (p) => {
+		if (!canViewDay(me, p)) return onPerson(p.id);
+		setTeamPerson('all');
+		setViewAs(p.id);
+	};
 	const [ownTab, setTab] = useState('dash');
 	const tab = section || ownTab;
 	const [sec, setSec] = useState('members');
@@ -329,7 +336,7 @@ export default function TeamArea({ perf, setPerf, onPerson, section }) {
 						<input type="search" placeholder="Search people…" aria-label="Search people" value={q} onChange={(e) => setQ(e.target.value)} />
 					</label>
 					<span className="muted">
-						{people.length} {people.length === 1 ? 'member' : 'members'} · click someone to see their tasks and completed work
+						{people.length} {people.length === 1 ? 'member' : 'members'} · click someone to see their My day
 					</span>
 					<button type="button" className="btn primary" onClick={() => setDialog({ type: 'add' })}>
 						+ Add member
@@ -344,7 +351,7 @@ export default function TeamArea({ perf, setPerf, onPerson, section }) {
 						const urg = open.filter((x) => x.priority === 'urgent').length;
 						const last = [...ml].sort((a, b) => String(b.at).localeCompare(String(a.at)))[0];
 						return (
-							<article key={p.id} className="card emp-card ec2" tabIndex={0} role="button" aria-label={`Open ${p.name}`} onClick={() => onPerson(p.id)} onKeyDown={(e) => e.key === 'Enter' && onPerson(p.id)}>
+							<article key={p.id} className="card emp-card ec2" tabIndex={0} role="button" aria-label={`Open ${p.name}`} onClick={() => openCard(p)} onKeyDown={(e) => e.key === 'Enter' && openCard(p)}>
 								<div className="ec-head">
 									<span className="ec-av">
 										<Avatar person={p} small />

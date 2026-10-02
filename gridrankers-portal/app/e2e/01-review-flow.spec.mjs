@@ -40,9 +40,10 @@ test('completion review round trip', async ({ page }) => {
 	await expect(page.locator('.as-nav button')).toHaveText(['Members & access', 'Days off', 'Automatic messages', 'Deleted projects', 'Export all data']);
 	await expect(page.locator('.as-pane')).toContainText('Members & access');
 	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/mypage-admin.png' });
-	// Team → someone's page → back to the Team tab.
+	// Team → someone's My day → their page → back to the Team tab.
 	await page.locator('nav.ttabs').getByRole('tab', { name: 'Team' }).click();
 	await page.getByRole('button', { name: 'Open Max Member' }).click();
+	await page.locator('.va-bar').getByRole('button', { name: 'Open Max Member’s page' }).click();
 	await expect(page.locator('nav.ttabs').getByRole('tab', { name: 'Overview' })).toBeVisible();
 	await page.getByRole('button', { name: '← All team members' }).click();
 	await expect(page.locator('nav.ttabs').getByRole('tab', { name: 'Team' })).toHaveAttribute('aria-selected', 'true');
