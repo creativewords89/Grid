@@ -143,6 +143,9 @@ class GRP_Permissions {
 	/** Set a birthday. Context: `{member_id}`. Self (or the Super Admin). */
 	const SET_BIRTHDAY = 'set_birthday';
 
+	/** Review last cycle's monthly tasks of a project and send feedback (SPEC.md 6.11). Managers. */
+	const REVIEW_CYCLE = 'review_cycle';
+
 	/**
 	 * Task work that is locked while a Team Leader's or Team Member's required profile is
 	 * incomplete (SPEC.md section 3, Profile lock).
@@ -213,6 +216,7 @@ class GRP_Permissions {
 			case self::VIEW_TEAM_DASHBOARD:
 			case self::VIEW_PROJECTS_TAB:
 			case self::REQUEST_REVIEW:
+			case self::REVIEW_CYCLE:
 				return $manager;
 
 			case self::DELETE_PROJECT:

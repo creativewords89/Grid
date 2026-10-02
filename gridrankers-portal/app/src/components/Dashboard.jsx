@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { usePortal } from '../context.js';
 import { isManager } from '../lib/roles.js';
 import Approvals from './day/Approvals.jsx';
+import CycleSetup from './day/CycleSetup.jsx';
 import DayHeader from './day/DayHeader.jsx';
 import DayLeave from './day/Leave.jsx';
 import MyProjects from './day/MyProjects.jsx';
@@ -35,6 +36,18 @@ export default function Dashboard({ onSignOut }) {
 		}
 	};
 	const current = manager ? tab : 'day';
+	// "Open setup" in the message band: back to My day and to the New cycle setup box.
+	useEffect(() => {
+		const open = () => {
+			setTab('day');
+			window.setTimeout(() => {
+				const box = document.getElementById('cycleSetup');
+				if (box) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+			}, 50);
+		};
+		window.addEventListener('grp:cycle-setup', open);
+		return () => window.removeEventListener('grp:cycle-setup', open);
+	});
 
 	return (
 		<div className="md">
@@ -62,6 +75,7 @@ export default function Dashboard({ onSignOut }) {
 			{current === 'day' ? (
 				<div className="md-grid">
 					<div className="md-col">
+						{manager && <CycleSetup />}
 						<MyProjects />
 					</div>
 					<div className="md-col">

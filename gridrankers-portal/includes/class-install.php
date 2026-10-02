@@ -15,7 +15,7 @@ class GRP_Install {
 	/**
 	 * Current schema version. Bump it whenever get_schema() or migrations() changes.
 	 */
-	const DB_VERSION = 6;
+	const DB_VERSION = 7;
 
 	/**
 	 * Option that stores the installed schema version.
@@ -113,7 +113,25 @@ class GRP_Install {
 	private static function migrations() {
 		return array(
 			3 => array( __CLASS__, 'migrate_weekly_records' ),
+			7 => array( __CLASS__, 'start_cycle_setup' ),
 		);
+	}
+
+	/**
+	 * Schema 7: the new cycle setup (SPEC.md 6.11) applies to cycles that start from today on,
+	 * so projects already part-way through a cycle are not overdue the day it is installed.
+	 */
+	public static function start_cycle_setup() {
+		if ( ! GRP_Store::find( 'grp_settings', array( 'setting_key' => GRP_Cycle_Setup::SINCE_KEY ) ) ) {
+			GRP_Store::insert(
+				'grp_settings',
+				array(
+					'id'          => 's_' . md5( GRP_Cycle_Setup::SINCE_KEY ),
+					'setting_key' => GRP_Cycle_Setup::SINCE_KEY,
+					'value'       => array( 'date' => GRP_Cycles::today() ),
+				)
+			);
+		}
 	}
 
 	/**
@@ -261,6 +279,7 @@ class GRP_Install {
 				cycle_changes json NULL,
 				cycle_log json NULL,
 				std_cycle varchar(32) NULL,
+				cycle_reviews json NULL,
 				created_at datetime NOT NULL,
 				updated_at datetime NOT NULL,
 				PRIMARY KEY  (id),

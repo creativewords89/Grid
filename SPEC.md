@@ -56,6 +56,7 @@ Three portal roles, stored on the team member (`role`): `admin` (Super Admin), `
 | See all projects / tasks | ✔ | ✔ | ✔ |
 | Add a project | ✔ | ✔ | ✘ |
 | Move project Active/Paused/Inactive | ✔ | ✔ | ✘ |
+| Review last cycle and send feedback (6.11) | ✔ | ✔ | ✘ |
 | Delete project | ✔ | ✘ | ✘ |
 | Change project cycle (after first lock) | ✔ (with confirmation + reason) | ✘ | ✘ |
 | Add a task (meeting or monthly) | ✔ | ✔ | ✔ |
@@ -112,7 +113,7 @@ All tables: `id` CHAR(26) ULID (or keep imported string ids, VARCHAR(64)), `crea
 |---|---|
 | `grp_members` | id, name, role ENUM(admin,lead,member), color, photo (media id/url), title, email, phone, address, drive_url, notes, code_hash, code_salt (legacy), code_set_at, wp_user_id NULL, active TINYINT, birthday CHAR(5) NULL (`MM-DD`), birth_year SMALLINT NULL (managers and self only), location VARCHAR(191) NULL (city, for the weather), weekly_off JSON NULL (own weekly day off, weekdays 0–6; NULL = the team's) |
 | `grp_sessions` | id, member_id, token_hash, expires_at, ip, user_agent |
-| `grp_projects` | id, name UNIQUE, state ENUM(active,paused,inactive), cycle_day TINYINT 1–28, cycle_set TINYINT, cycle_changes JSON, cycle_log JSON, std_cycle VARCHAR (last cycle key the standard tasks were checked) |
+| `grp_projects` | id, name UNIQUE, state ENUM(active,paused,inactive), cycle_day TINYINT 1–28, cycle_set TINYINT, cycle_changes JSON, cycle_log JSON, std_cycle VARCHAR (last cycle key the standard tasks were checked), cycle_reviews JSON `{cycleKey: {taskId: {ok, note, to, by, at}}}` (last 3 cycles, 6.11) |
 | `grp_meeting_tasks` | id, project_id, title, notes, url, priority ENUM(urgent,high,normal,low), status ENUM(todo,doing,done), meeting_date DATE, done_at, target INT (quantity, default 1), assignees JSON `[{id,n}]`, team TINYINT, progress JSON `{memberId: count}`, deadline JSON (6.3), review JSON (6.6), completion JSON (6.6), created_by |
 | `grp_monthly_tasks` | id, project_id, title, notes, freq ENUM(monthly,weekly), due_mode ENUM(none,weekly,date,dates,monthly), due_day, due_from_day, target INT, assignees JSON, team TINYINT, parts JSON `[{id,name,n,people:[{id,n}]}]`, std TINYINT (standard task), created_by |
 | `grp_cycle_records` | id = `{taskId}__{periodKey}` (weekly: periodKey = `YYYY-MM-wN`), task_id, project_id, period_key, week TINYINT NULL, count, status ENUM(todo,doing,done,skipped), by_person JSON `{memberId: n}`, parts JSON `{partId: n, "partId|memberId": n}`, review JSON, completion JSON, done_at, cleared_by NULL |
@@ -218,6 +219,14 @@ Every active project (new and existing) has these six monthly tasks (Monthly dea
 - **Required profile**: full name, **location** (city), **date of birth** (day, month, year), **phone number** and **photo**. Missing fields show a red strip on My day — "Finish your profile to keep working. Missing: …" with **Complete profile** — and, for Team Leaders and Team Members, lock task work (section 3, Profile lock): My projects shows "Your tasks are waiting … Complete profile". The Super Admin only gets the reminder.
 - **Weather**: the date row shows today's weather for the person's city ("☀ 31° Sunny in Rangpur · 31° / 24°"). The server asks **Open-Meteo** (free, no account): the city name to its geocoding API (cached 30 days), the coordinates to its forecast API (cached 1 hour per city). Nothing about the person is sent. No city, or the service unreachable → just the date. `GRP_WEATHER` set to false turns it off.
 
+### 6.11 New cycle setup (Team Leaders and the Super Admin)
+When an **active** project starts a new cycle, a Team Leader or the Super Admin must, **within 3 days** (by the end of day 3 of the cycle):
+1. **Assign monthly tasks**: every monthly task of the project has someone responsible (Responsible people or a breakdown row with people). The system keeps adding the standard tasks unassigned (6.8).
+2. **Review last cycle**: every monthly task that existed at the end of the previous cycle gets **Looks good** or **Send feedback** (a note, required). Feedback goes to the task's responsible people as a private notice "Feedback: {task}" (Notices box and bell, shown 14 days). Stored in `grp_projects.cycle_reviews` under the previous cycle's key. A project that did not exist last cycle only has step 1.
+- Applies to cycles that start on or after the day the rule was installed (setting `cycle_setup_since` `{date}`, set by schema 7), so projects part-way through a cycle are not overdue on the day of the update. Paused and inactive projects are left out.
+- **Reminders, nothing blocked**: days 1–3, an amber message in the band ("New cycle for {project}. Assign the monthly tasks and review last cycle by {date}.") and a **New cycle setup** box at the top of My day's left column; after day 3, red ("{project}: new cycle setup is N days overdue."), "Setup N days overdue" on the project card, and the bell. Messages are not dismissable; **Open setup** goes to the box. The Super Admin sees every late project the same way. A finished project shows **Done** until the end of day 3.
+- **New cycle setup box**: one row per project — name, flag (Due {date} / Overdue · N days / Done), the two steps with counts ("4 of 6 have people", "2 of 6 reviewed"), **Assign people** (→ the project's Monthly Tasks) and **Review last cycle** (→ dialog: each task with its people, deadline type and last cycle's done / target in green or red; Looks good / Send feedback; "N of M reviewed" bar).
+
 ## 7. Screens (match the reference file)
 
 ### 7.0 Dashboard (everyone)
@@ -290,7 +299,7 @@ Tabs **Dashboard · Activity · Team · Leave · Settings**, Daily/Weekly/Monthl
 |---|---|
 | POST `/auth/login` `{code}` · POST `/auth/logout` · GET `/auth/me` | sessions |
 | GET `/sync?since=` | all changed rows across tables since cursor (+ deletions) |
-| GET/POST/PATCH/DELETE `/projects[/id]` | projects; PATCH `/projects/id/state`, POST `/projects/id/cycle` |
+| GET/POST/PATCH/DELETE `/projects[/id]` | projects; PATCH `/projects/id/state`, POST `/projects/id/cycle`, POST `/projects/id/cycle-review` `{task_id, ok, note?}` (6.11) |
 | GET/POST/PATCH/DELETE `/meeting-tasks[/id]` | tasks; POST `/meeting-tasks/id/status`, `/progress` `{memberId,delta}` |
 | GET/POST/PATCH/DELETE `/monthly-tasks[/id]` | tasks |
 | POST `/records/tick` `{taskId, periodKey, partId?, memberId?, delta}` · POST `/records/status` | recurring progress |
@@ -380,5 +389,7 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 29. No auto-suggestions in the monthly task dialog (7.3): Task and breakdown Type are plain text fields.
 
 30. Deadline colours (7.3): coloured card tags per deadline option (monthly cards) and matching deadline chips (meeting cards). Playwright: a Range task shows a Range tag in its colour; a Monthly task the Monthly colour.
+
+31. New cycle setup (6.11): schema 7 (`cycle_reviews`, `cycle_setup_since`), REVIEW_CYCLE, POST `/projects/id/cycle-review` with feedback notices; New cycle setup box, Review last cycle dialog, band messages, overdue on project cards. **Tests:** PHPUnit (managers only, stored under last cycle, feedback needs a note and reaches only the responsible people, task from another project refused, install date), Vitest (counts, due day 3, overdue, done, exemptions, band for leaders only), Playwright (leader reviews with feedback and Looks good, assigns everything → Done; member refused and receives the feedback).
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).

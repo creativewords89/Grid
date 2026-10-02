@@ -92,6 +92,7 @@ class GRP_Export {
 				'cycleChanges' => $r['cycle_changes'] ?? array(),
 				'cycleLog'     => $r['cycle_log'] ?? array(),
 				'stdCycle'     => $r['std_cycle'],
+				'cycleReviews' => $r['cycle_reviews'] ?? new stdClass(),
 				'createdAt'    => self::iso( $r['created_at'] ),
 				'updatedAt'    => self::iso( $r['updated_at'] ),
 			)

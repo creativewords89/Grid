@@ -18,7 +18,7 @@ class Test_GRP_Install extends WP_UnitTestCase {
 	const EXPECTED_COLUMNS = array(
 		'grp_members'       => array( 'id', 'name', 'role', 'color', 'photo', 'title', 'email', 'phone', 'address', 'drive_url', 'notes', 'code_hash', 'code_salt', 'code_set_at', 'wp_user_id', 'active', 'birthday', 'birth_year', 'location', 'weekly_off' ),
 		'grp_sessions'      => array( 'id', 'member_id', 'token_hash', 'expires_at', 'ip', 'user_agent' ),
-		'grp_projects'      => array( 'id', 'name', 'state', 'cycle_day', 'cycle_set', 'cycle_changes', 'cycle_log', 'std_cycle' ),
+		'grp_projects'      => array( 'id', 'name', 'state', 'cycle_day', 'cycle_set', 'cycle_changes', 'cycle_log', 'std_cycle', 'cycle_reviews' ),
 		'grp_meeting_tasks' => array( 'id', 'project_id', 'title', 'notes', 'url', 'priority', 'status', 'meeting_date', 'done_at', 'target', 'assignees', 'team', 'progress', 'deadline', 'review', 'completion', 'created_by' ),
 		'grp_monthly_tasks' => array( 'id', 'project_id', 'title', 'notes', 'freq', 'due_mode', 'due_day', 'due_from_day', 'target', 'assignees', 'team', 'parts', 'std', 'created_by' ),
 		'grp_cycle_records' => array( 'id', 'task_id', 'project_id', 'period_key', 'week', 'count', 'status', 'by_person', 'parts', 'review', 'completion', 'done_at', 'cleared_by' ),

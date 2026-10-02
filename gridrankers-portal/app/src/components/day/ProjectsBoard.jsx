@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePortal } from '../../context.js';
+import { cycleSetup } from '../../lib/cycleSetup.js';
 import { activeWeek, cycleRange, daysBetween, isWeekly } from '../../lib/cycles.js';
 import { deadlineInfo } from '../../lib/deadline.js';
 import { computeMissed, isWaived, recordOf, stateOf } from '../../lib/monthly.js';
@@ -209,7 +210,7 @@ function ProjectCard({ p, s }) {
 		}
 	};
 
-	const issues = [s.urgent && `${s.urgent} urgent`, s.overdue && `${s.overdue} overdue`, s.reviews && `${s.reviews} to review`].filter(Boolean);
+	const issues = [s.setupLate && `Setup ${s.setupLate} day${s.setupLate === 1 ? '' : 's'} overdue`, s.urgent && `${s.urgent} urgent`, s.overdue && `${s.overdue} overdue`, s.reviews && `${s.reviews} to review`].filter(Boolean);
 	const pct = s.mTotal ? Math.round((s.mDone / s.mTotal) * 100) : 0;
 
 	return (
@@ -253,6 +254,8 @@ export default function ProjectsBoard() {
 
 	const projects = rowsOf(data, 'projects').sort((a, b) => ORDER[a.state] - ORDER[b.state] || a.name.localeCompare(b.name));
 	const reviews = useMemo(() => pendingReviews(data), [data]);
+	// New cycle setup overdue per project (SPEC.md 6.11).
+	const setupLate = useMemo(() => Object.fromEntries(cycleSetup(data, today).map((c) => [c.project.id, c.late])), [data, today]);
 	const counts = { all: projects.length, ...Object.fromEntries(STATES.map(([k]) => [k, projects.filter((p) => p.state === k).length])) };
 	const query = q.trim().toLowerCase();
 	const list = projects.filter((p) => (filter === 'all' || p.state === filter) && (!query || searchText([p.name]).includes(query)));
@@ -281,7 +284,7 @@ export default function ProjectsBoard() {
 			) : (
 				<div className="pd-grid">
 					{list.map((p) => (
-						<ProjectCard key={p.id} p={p} s={projectSummary(p, data, reviews, today)} />
+						<ProjectCard key={p.id} p={p} s={{ ...projectSummary(p, data, reviews, today), setupLate: setupLate[p.id] || 0 }} />
 					))}
 				</div>
 			)}

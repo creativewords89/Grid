@@ -27,6 +27,7 @@ class GRP_REST_Projects extends GRP_REST_Controller {
 		self::route( '/projects/(?P<id>[\w-]+)', WP_REST_Server::DELETABLE, 'destroy' );
 		self::route( '/projects/(?P<id>[\w-]+)/state', 'PATCH', 'set_state' );
 		self::route( '/projects/(?P<id>[\w-]+)/cycle', WP_REST_Server::CREATABLE, 'set_cycle' );
+		self::route( '/projects/(?P<id>[\w-]+)/cycle-review', WP_REST_Server::CREATABLE, 'review_cycle' );
 	}
 
 	/**
@@ -222,6 +223,41 @@ class GRP_REST_Projects extends GRP_REST_Controller {
 						$updated = GRP_Store::get( 'grp_projects', $project['id'] );
 					}
 					return $updated;
+				}
+			)
+		);
+	}
+
+	/**
+	 * POST /projects/{id}/cycle-review `{task_id, ok, note?}`: review one monthly task of the
+	 * project's last cycle — "Looks good" (`ok` true) or feedback (`ok` false, `note` required),
+	 * sent to the people responsible as a private notice (SPEC.md 6.11). Managers only.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function review_cycle( WP_REST_Request $request ) {
+		$project = GRP_Store::get( 'grp_projects', $request['id'] );
+		if ( ! $project ) {
+			return self::not_found();
+		}
+		if ( ! self::can( GRP_Permissions::REVIEW_CYCLE ) ) {
+			return self::forbidden( __( 'Only a Team Leader or the Super Admin can review a cycle.', 'gridrankers-portal' ) );
+		}
+		$task = GRP_Store::get( 'grp_monthly_tasks', (string) $request['task_id'] );
+		if ( ! $task || (string) $task['project_id'] !== (string) $project['id'] ) {
+			return self::invalid( __( 'That monthly task is not in this project.', 'gridrankers-portal' ) );
+		}
+		$ok   = rest_sanitize_boolean( $request['ok'] ?? false );
+		$note = self::textarea( $request['note'] ?? '', 2000 );
+		if ( ! $ok && '' === $note ) {
+			return self::invalid( __( 'Write the feedback.', 'gridrankers-portal' ) );
+		}
+
+		return rest_ensure_response(
+			GRP_Store::transaction(
+				static function () use ( $project, $task, $ok, $note ) {
+					return GRP_Cycle_Setup::review( $project, $task, $ok, $note, self::actor(), GRP_Cycles::today() );
 				}
 			)
 		);

@@ -335,7 +335,7 @@ class GRP_Import {
 		}
 		$day = (int) ( $d['cycleDay'] ?? 0 );
 
-		return array(
+		$row = array(
 			'id'            => $id,
 			'name'          => mb_substr( $name, 0, 191 ),
 			'state'         => $state,
@@ -346,6 +346,11 @@ class GRP_Import {
 			'std_cycle'     => isset( $d['stdCycle'] ) ? (string) $d['stdCycle'] : null,
 			'created_at'    => self::time( $d['createdAt'] ?? null ),
 		);
+		// Cycle reviews (SPEC.md 6.11) come only from this portal's own export: never blank them.
+		if ( is_array( $d['cycleReviews'] ?? null ) && $d['cycleReviews'] ) {
+			$row['cycle_reviews'] = $d['cycleReviews'];
+		}
+		return $row;
 	}
 
 	/**

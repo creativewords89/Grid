@@ -13,6 +13,7 @@ const ICON = {
 	leave: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18M8 12.5l2.5 2.5L16 9.5',
 	review: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18M8 12.5l2.5 2.5L16 9.5',
 	profile: 'M12 4a4 4 0 1 0 0 8a4 4 0 1 0 0-8M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6',
+	cycle: 'M4 5h16v15H4zM4 10h16M9 3v4M15 3v4',
 };
 
 // Weather icons (Open-Meteo kinds, SPEC.md 6.10).
@@ -145,6 +146,10 @@ export default function DayHeader({ onSignOut }) {
 			}
 			setTeamPerson(me.id);
 			setView('team');
+			return;
+		}
+		if (s.kind === 'cycle') {
+			window.dispatchEvent(new Event('grp:cycle-setup'));
 			return;
 		}
 		if (s.kind === 'review') {

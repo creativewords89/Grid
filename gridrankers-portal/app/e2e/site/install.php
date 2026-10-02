@@ -60,4 +60,48 @@ foreach ( array( array( 'Acme Plumbing', 'active' ), array( 'Bright Dental', 'ac
 	);
 	GRP_Standard_Tasks::ensure( $project, GRP_Cycles::today() );
 }
+// New cycle setup (SPEC.md 6.11): "Cycle Co" started a new cycle today and existed last cycle;
+// the rule began today, so only cycles starting today count.
+$today = GRP_Cycles::today();
+$long  = gmdate( 'Y-m-d H:i:s', strtotime( $today . ' -70 days' ) );
+$cycle = GRP_Store::insert(
+	'grp_projects',
+	array(
+		'name'       => 'Cycle Co',
+		'state'      => 'active',
+		'cycle_day'  => min( 28, (int) substr( $today, 8, 2 ) ),
+		'cycle_set'  => 1,
+		'created_at' => $long,
+	)
+);
+$since = GRP_Cycles::cycle_range( $cycle, 0, $today )['start'];
+foreach ( GRP_Store::find( 'grp_settings', array( 'setting_key' => GRP_Cycle_Setup::SINCE_KEY ) ) as $row ) {
+	GRP_Store::update( 'grp_settings', $row['id'], array( 'value' => array( 'date' => $since ) ) );
+}
+$last = GRP_Cycles::cycle_range( $cycle, -1, $today )['key'];
+foreach ( array( array( 'Cycle blogs', 2, 'tm_max' ), array( 'Cycle pages', 1, null ) ) as $t ) {
+	$task = GRP_Store::insert(
+		'grp_monthly_tasks',
+		array(
+			'project_id' => $cycle['id'],
+			'title'      => $t[0],
+			'target'     => $t[1],
+			'assignees'  => $t[2] ? array( array( 'id' => $t[2], 'n' => $t[1] ) ) : array(),
+			'created_at' => $long,
+		)
+	);
+	if ( $t[2] ) {
+		GRP_Store::insert(
+			'grp_cycle_records',
+			array(
+				'id'         => $task['id'] . '__' . $last,
+				'task_id'    => $task['id'],
+				'project_id' => $cycle['id'],
+				'period_key' => $last,
+				'count'      => 1,
+				'status'     => 'doing',
+			)
+		);
+	}
+}
 echo "e2e site ready\n";
