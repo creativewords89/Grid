@@ -350,7 +350,7 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 18. Team → Leave (list, monthly settlement, year-end report, CSV / Print) and Team → Settings → Days off + Automatic messages; member page My leave tab and Settings → birthday.
 19. Playwright e2e: member requests 3 days → leader sees it in Needs your approval → approves with a message → member sees the strip and "0 days left"; leader takes leave (approved straight away, shows in Who's out today); Super Admin sets a day off → member signing in that day sees the day-off strip; birthday strip; shout-out appears for members; leader asks a member to review → member approves.
 
-**Dashboard update (6.10, 7.0, 7.6):**
+**Dashboard update (6.10, 7.0, 7.6) — released as 0.1.7 (steps 20–21):**
 
 20. Schema 6 (`location`, `birth_year`, `grp_posts.kind` `notice` + `to_members`); profile lock in `GRP_Permissions`; `/posts` notices with private delivery; `/weather` (Open-Meteo, cached); members accept location and birth year. **Tests:** lock for leaders and members only, private notices never reach others, weather with a stubbed HTTP response.
 21. App: Notices box (top of the right column) and Send notice dialog; Who's out faces + counts with See all and the everyone-off line; weather in the date row; profile strip and locked My projects; Settings with required fields. Playwright: incomplete profile is locked and unlocks once filled; a private notice reaches only its people.
