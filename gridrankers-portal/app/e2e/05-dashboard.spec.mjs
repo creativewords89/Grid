@@ -16,6 +16,14 @@ test('dashboard, project lifecycle and per-project Recent Activities', async ({ 
 	// Team Leader lands on My day; the Projects tab (Active) adds a paused project starting on day 15.
 	await signIn(page, LEAD);
 	await expect(page.locator('.md-top h1')).toHaveText(/^Good (morning|afternoon|evening), Lee Lead$/);
+	// A Team Leader's page (SPEC.md 7.6): the team, their own leave, no Admin settings; no Team
+	// button on My day any more.
+	await expect(page.locator('.md-acts').getByRole('button', { name: 'Team', exact: true })).toHaveCount(0);
+	await page.locator('.me-btn').click();
+	await expect(page.locator('nav.ttabs').getByRole('tab')).toHaveText(['Calendar', 'Team', /^Leave/, 'My leave', 'Profile settings', 'Recent Activity']);
+	await page.locator('nav.ttabs').getByRole('tab', { name: 'Recent Activity' }).click();
+	await expect(page.locator('.act-who select')).toBeVisible();
+	await page.locator('aside .side-link', { hasText: 'My day' }).click();
 	// Sidebar (SPEC.md 7.1): Active projects always open; Paused and Inactive folded until opened.
 	const paused = page.locator('aside button.fold', { hasText: 'Paused projects' });
 	await expect(paused).toHaveAttribute('aria-expanded', 'false');
@@ -101,8 +109,7 @@ test('dashboard, project lifecycle and per-project Recent Activities', async ({ 
 	await expect(pd('Harbor Hotel')).toHaveCount(0);
 	await expect(page.getByText('Deleted projects')).toHaveCount(0);
 
-	await openTeam(page);
-	await page.locator('nav.ttabs').getByRole('tab', { name: 'Settings' }).click();
+	await openTeam(page, 'Admin settings', 'Deleted projects');
 	const trash = page.locator('.tr-card', { hasText: 'Deleted projects' });
 	await trash.locator('li', { hasText: 'Harbor Hotel' }).getByRole('button', { name: 'Restore' }).click();
 	await page.getByText('restored with its tasks').waitFor();

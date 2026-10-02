@@ -15,7 +15,7 @@ export default function TopBar({ onSignOut }) {
 	const people = view === 'team';
 	const p = !dash && !people && project ? data.projects[project] : null;
 	const suffix = p && p.state !== 'active' ? ` (${p.state})` : '';
-	const title = people ? (teamPerson === me.id ? 'My page' : 'Team') : dash ? 'Dashboard' : p ? p.name + suffix : 'GridRankers';
+	const title = people ? (teamPerson === me.id || teamPerson === 'all' ? 'My page' : 'Team') : dash ? 'Dashboard' : p ? p.name + suffix : 'GridRankers';
 
 	return (
 		<div className="top">

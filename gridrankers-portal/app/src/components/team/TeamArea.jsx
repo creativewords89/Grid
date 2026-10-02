@@ -18,11 +18,23 @@ const greeting = () => {
 	return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
 };
 
-// Team area for Super Admin / Team Leader (SPEC.md 7.5): Dashboard · Activity · Team · Settings.
-export default function TeamArea({ perf, setPerf, onPerson }) {
+// Admin settings sections (SPEC.md 7.5), each opened from the menu on the left.
+export const ADMIN_SECTIONS = [
+	['members', 'Members & access'],
+	['daysoff', 'Days off'],
+	['messages', 'Automatic messages'],
+	['deleted', 'Deleted projects'],
+	['export', 'Export all data'],
+];
+
+// Team sections for the Super Admin / Team Leader (SPEC.md 7.5). With `section` it renders just
+// that section inside My page (team, leave, activity or settings); otherwise its own tabs.
+export default function TeamArea({ perf, setPerf, onPerson, section }) {
 	const { api, data, dispatch, toast, confirm, me, today } = usePortal();
 	const admin = isAdmin(me);
-	const [tab, setTab] = useState('dash');
+	const [ownTab, setTab] = useState('dash');
+	const tab = section || ownTab;
+	const [sec, setSec] = useState('members');
 	const [audit, setAudit] = useState([]);
 	const [dialog, setDialog] = useState(null);
 	const [who, setWho] = useState('');
@@ -377,8 +389,8 @@ export default function TeamArea({ perf, setPerf, onPerson }) {
 			</>
 		);
 	} else {
-		body = (
-			<div className="set-grid">
+		const panes = {
+			members: (
 				<section className="dcard">
 					<div className="dc-head">
 						<span className="s-k">Members &amp; access</span>
@@ -442,14 +454,18 @@ export default function TeamArea({ perf, setPerf, onPerson }) {
 					</div>
 					<p className="hint">Super Admins sign in with their WordPress account. Team Leaders and Members sign in with the code set here; setting a new code signs them out everywhere.</p>
 				</section>
+			),
+			daysoff: <DaysOff />,
+			messages: <AutoMessages />,
+			deleted: (
 				<Trash
 					entries={rowsOf(data, 'trash').filter((e) => e.type === 'grp_projects')}
 					title="Deleted projects"
 					hint="Kept 30 days · restoring a project brings back the tasks deleted with it"
 					empty="No deleted projects."
 				/>
-				<DaysOff />
-				<AutoMessages />
+			),
+			export: (
 				<section className="dcard">
 					<div className="dc-head">
 						<span className="s-k">Export all data</span>
@@ -459,20 +475,42 @@ export default function TeamArea({ perf, setPerf, onPerson }) {
 						⬇ Export all data
 					</button>
 				</section>
+			),
+		};
+		body = section ? (
+			<div className="as-wrap">
+				<nav className="as-nav" aria-label="Admin settings">
+					{ADMIN_SECTIONS.map(([k, l]) => (
+						<button key={k} type="button" aria-current={sec === k ? 'page' : undefined} onClick={() => setSec(k)}>
+							{l}
+						</button>
+					))}
+				</nav>
+				<div className="as-pane">{panes[sec]}</div>
+			</div>
+		) : (
+			<div className="set-grid">
+				{panes.members}
+				{panes.deleted}
+				{panes.daysoff}
+				{panes.messages}
+				{panes.export}
 			</div>
 		);
 	}
 
 	return (
 		<>
-			<nav className="ttabs" role="tablist" aria-label="Team sections">
-				{tabsList.map(([k, l, n]) => (
-					<button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>
-						{l}
-						{n ? <span className="tt-n">{n}</span> : null}
-					</button>
-				))}
-			</nav>
+			{!section && (
+				<nav className="ttabs" role="tablist" aria-label="Team sections">
+					{tabsList.map(([k, l, n]) => (
+						<button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>
+							{l}
+							{n ? <span className="tt-n">{n}</span> : null}
+						</button>
+					))}
+				</nav>
+			)}
 			{tab !== 'settings' && tab !== 'leave' && <PeriodHead perf={perf} setPerf={setPerf} />}
 			{body}
 			{dialog && dialog.type === 'add' && <AddMemberDialog onClose={() => setDialog(null)} />}
