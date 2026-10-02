@@ -124,9 +124,8 @@ export async function showStrip(page, text) {
 }
 
 // Leaders and the Super Admin: a team section of My page (SPEC.md 7.6) — 'Team', 'Leave',
-// 'Admin settings' (then `sub`, e.g. 'Days off') or 'Recent Activity'.
-export async function openTeam(page, tab = 'Team', sub) {
+// 'Admin settings' or 'Recent Activity'.
+export async function openTeam(page, tab = 'Team') {
 	await page.locator('.me-btn').click();
 	await page.locator('nav.ttabs').getByRole('tab', { name: tab, exact: true }).click();
-	if (sub) await page.locator('.as-nav').getByRole('button', { name: sub }).click();
 }

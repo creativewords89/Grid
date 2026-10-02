@@ -109,7 +109,7 @@ test('dashboard, project lifecycle and per-project Recent Activities', async ({ 
 	await expect(pd('Harbor Hotel')).toHaveCount(0);
 	await expect(page.getByText('Deleted projects')).toHaveCount(0);
 
-	await openTeam(page, 'Admin settings', 'Deleted projects');
+	await openTeam(page, 'Admin settings');
 	const trash = page.locator('.tr-card', { hasText: 'Deleted projects' });
 	await trash.locator('li', { hasText: 'Harbor Hotel' }).getByRole('button', { name: 'Restore' }).click();
 	await page.getByText('restored with its tasks').waitFor();

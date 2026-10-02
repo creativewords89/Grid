@@ -37,8 +37,20 @@ test('completion review round trip', async ({ page }) => {
 	await expect(page.locator('nav.ttabs').getByRole('tab')).toHaveText(['Calendar', 'Team', 'Leave', 'Profile settings', 'Admin settings', 'Recent Activity']);
 	await expect(page.locator('nav.ttabs').getByRole('tab', { name: 'Calendar' })).toHaveAttribute('aria-selected', 'true');
 	await page.locator('nav.ttabs').getByRole('tab', { name: 'Admin settings' }).click();
-	await expect(page.locator('.as-nav button')).toHaveText(['Members & access', 'Days off', 'Automatic messages', 'Deleted projects', 'Export all data']);
-	await expect(page.locator('.as-pane')).toContainText('Members & access');
+	// One page, the sections one below the other (SPEC.md 7.5).
+	const stack = page.locator('.as-stack');
+	await expect(stack).toContainText('Members & access');
+	for (const title of ['Days off', 'Automatic messages', 'Deleted projects', 'Export data']) await expect(stack).toContainText(title);
+	// Members & access: search, filters and a ⋯ menu per person.
+	const access = page.locator('.ma-card');
+	await access.getByLabel('Search people').fill('max');
+	await expect(access.locator('.ma-row:not(.ma-th)')).toHaveCount(1);
+	await access.getByLabel('Search people').fill('');
+	await access.getByRole('button', { name: /^Team Leaders/ }).click();
+	await expect(access.locator('.ma-row:not(.ma-th)').first()).toContainText('Team Leader');
+	await access.getByRole('button', { name: /^All/ }).click();
+	await access.getByRole('button', { name: 'More for Max Member' }).click();
+	await expect(access.locator('.ma-menu button')).toHaveText(['View their My day', 'Open their page', 'Set sign-in code', 'Change role', 'Remove from team']);
 	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/mypage-admin.png' });
 	// Team → someone's My day → their page → back to the Team tab.
 	await page.locator('nav.ttabs').getByRole('tab', { name: 'Team' }).click();

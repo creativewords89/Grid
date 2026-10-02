@@ -367,14 +367,43 @@ dialog.cs-dlg{width:min(760px,96vw)}
 .cs-fbox{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 .cs-fbox-acts{display:flex;justify-content:flex-end;gap:6px}
 .cs-sum .pf-bar{width:100%}
-/* My page → Admin settings (SPEC.md 7.5): a menu on the left, one section at a time. */
-.as-wrap{display:flex;gap:16px;align-items:flex-start}
-.as-nav{width:210px;flex-shrink:0;display:flex;flex-direction:column;gap:2px;position:sticky;top:12px}
-.as-nav button{border:0;background:none;text-align:left;padding:9px 12px;border-radius:9px;font:inherit;font-weight:600;color:var(--ink);cursor:pointer}
-.as-nav button:hover{background:var(--panel-2)}
-.as-nav button[aria-current="page"]{background:var(--ink);color:var(--panel);font-weight:700}
-.as-pane{flex:1;min-width:0}
-@media (max-width:760px){.as-wrap{flex-direction:column}.as-nav{width:100%;flex-direction:row;flex-wrap:wrap;position:static}}
+/* My page → Admin settings (SPEC.md 7.5): one page, the sections one below the other. */
+.as-stack{display:flex;flex-direction:column;gap:16px}
+/* Members & access (design A). */
+.ma-card{padding:0;overflow:visible}
+.ma-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:16px 18px 10px}
+.ma-title{flex:1;min-width:200px;display:flex;flex-direction:column;gap:2px}
+.ma-title h3{margin:0;font-family:var(--display);font-size:1.15rem}
+.ma-title .muted{font-size:.82rem}
+.ma-search{width:240px;max-width:100%;display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2);color:var(--ink-2);font-size:.85rem}
+.ma-search:focus-within{border-color:var(--accent);background:var(--panel)}
+.ma-search input{flex:1;min-width:0;border:0;background:none;outline:none;padding:0;font:inherit;color:var(--ink)}
+.ma-filters{padding:0 18px 12px}
+.ma-row{display:grid;grid-template-columns:minmax(0,2.1fr) minmax(0,1fr) minmax(0,1.9fr) minmax(0,.8fr) minmax(0,1.1fr) 40px;align-items:center;gap:12px;padding:11px 18px;border-top:1px solid var(--line)}
+.ma-th{font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);padding-top:8px;padding-bottom:8px}
+.ma-who{display:flex;align-items:center;gap:10px;min-width:0}
+.ma-who .av{width:36px;height:36px;font-size:.8rem}
+.ma-who>span{display:flex;flex-direction:column;min-width:0}
+.ma-who b{font-size:.92rem}
+.ma-who small,.ma-contact small{color:var(--ink-2);font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ma-contact{display:flex;flex-direction:column;gap:1px;min-width:0;font-size:.85rem}
+.ma-contact>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ma-role{font-size:.72rem;font-weight:700;border-radius:99px;padding:3px 9px;white-space:nowrap;background:var(--panel-2);color:var(--ink-2)}
+.ma-role.r-admin{background:var(--ink);color:var(--panel)}
+.ma-role.r-lead{background:color-mix(in srgb,var(--accent) 12%,var(--panel));color:var(--accent)}
+.ma-urg{margin-left:6px;font-size:.7rem;font-weight:700;color:var(--urgent);background:var(--urgent-bg);border-radius:99px;padding:1px 6px}
+.ma-sign{display:inline-flex;align-items:center;gap:7px;font-size:.84rem;white-space:nowrap}
+.ma-sign::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--done);flex-shrink:0}
+.ma-sign.s-wp::before{background:var(--accent)} .ma-sign.s-no::before{background:var(--doing)}
+.ma-more{position:relative;justify-self:end}
+.ma-dots{width:32px;height:32px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink-2);font-weight:800;cursor:pointer}
+.ma-dots:hover{background:var(--panel-2);color:var(--ink)}
+.ma-menu{position:absolute;right:0;top:38px;z-index:30;min-width:200px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 30px rgba(10,20,35,.16);padding:6px;display:flex;flex-direction:column}
+.ma-menu button{border:0;background:none;text-align:left;padding:9px 10px;border-radius:8px;font:inherit;color:var(--ink);cursor:pointer}
+.ma-menu button:hover{background:var(--panel-2)}
+.ma-menu button.danger{color:var(--urgent)}
+.ma-foot{padding:12px 18px;margin:0;border-top:1px solid var(--line)}
+@media (max-width:860px){.ma-th{display:none}.ma-row{grid-template-columns:minmax(0,1fr) auto;row-gap:6px}.ma-row>span:nth-child(n+2):not(:last-child){grid-column:1}}
 /* Viewing someone's My day (SPEC.md 7.0): a bar on top; nothing can be changed. */
 .va-bar{position:sticky;top:0;z-index:20;box-shadow:0 4px 14px rgba(10,20,35,.18);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#6B3FB5;color:#fff;border-radius:12px;padding:10px 16px;margin-bottom:14px;font-size:.9rem}
 .va-bar .role{background:rgba(255,255,255,.2);color:#fff}

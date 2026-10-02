@@ -10,6 +10,7 @@ import { Trash } from '../RecentActivities.jsx';
 import LeaveTab from './LeaveTab.jsx';
 import { trend } from './MemberPage.jsx';
 import Notifications, { attentionItems } from './Notifications.jsx';
+import MembersAccess from './MembersAccess.jsx';
 import { AutoMessages, DaysOff } from './PeopleSettings.jsx';
 import { AddMemberDialog, BarChart, LogWorkDialog, PeriodHead, SetCodeDialog, dayLabel } from './parts.jsx';
 
@@ -17,15 +18,6 @@ const greeting = () => {
 	const h = new Date().getHours();
 	return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
 };
-
-// Admin settings sections (SPEC.md 7.5), each opened from the menu on the left.
-export const ADMIN_SECTIONS = [
-	['members', 'Members & access'],
-	['daysoff', 'Days off'],
-	['messages', 'Automatic messages'],
-	['deleted', 'Deleted projects'],
-	['export', 'Export all data'],
-];
 
 // Team sections for the Super Admin / Team Leader (SPEC.md 7.5). With `section` it renders just
 // that section inside My page (team, leave, activity or settings); otherwise its own tabs.
@@ -41,7 +33,6 @@ export default function TeamArea({ perf, setPerf, onPerson, section }) {
 	};
 	const [ownTab, setTab] = useState('dash');
 	const tab = section || ownTab;
-	const [sec, setSec] = useState('members');
 	const [audit, setAudit] = useState([]);
 	const [dialog, setDialog] = useState(null);
 	const [who, setWho] = useState('');
@@ -398,69 +389,15 @@ export default function TeamArea({ perf, setPerf, onPerson, section }) {
 	} else {
 		const panes = {
 			members: (
-				<section className="dcard">
-					<div className="dc-head">
-						<span className="s-k">Members &amp; access</span>
-						<button type="button" className="btn small primary" onClick={() => setDialog({ type: 'add' })}>
-							+ Add member
-						</button>
-					</div>
-					<div className="tbl-wrap">
-						<table className="hrs mtable">
-							<thead>
-								<tr>
-									<th>Member</th>
-									<th>Role</th>
-									<th>Contact</th>
-									<th>Open tasks</th>
-									<th>Sign-in</th>
-									<th />
-								</tr>
-							</thead>
-							<tbody>
-								{people.map((p) => (
-									<tr key={p.id}>
-										<td>
-											<span className="mt-who">
-												<Avatar person={p} small />
-												<b>{p.name}</b>
-											</span>
-											{p.title && <div className="muted">{p.title}</div>}
-										</td>
-										<td>
-											<span className={'role r-' + p.role}>{ROLE[p.role]}</span>
-										</td>
-										<td>
-											{[p.email, p.phone].filter(Boolean).join(' · ') || <span className="muted">—</span>}
-										</td>
-										<td>
-											<b>{openCount[p.id]}</b>
-										</td>
-										<td>
-											<span className={'att ' + (p.role === 'admin' || p.has_code ? 'b-work' : 'lv-sick')}>{p.role === 'admin' ? 'WordPress login' : p.has_code ? 'Active' : 'No sign-in yet'}</span>
-											{p.id !== me.id && p.role !== 'admin' && (
-												<button type="button" className="linkbtn" onClick={() => setDialog({ type: 'code', member: p })}>
-													Set code
-												</button>
-											)}
-										</td>
-										<td className="mt-acts">
-											<button type="button" className="linkbtn" onClick={() => onPerson(p.id)}>
-												Open
-											</button>
-											{p.id !== me.id && (
-												<button type="button" className="linkbtn danger" onClick={() => removePerson(p)}>
-													Remove
-												</button>
-											)}
-										</td>
-									</tr>
-								))}
-							</tbody>
-						</table>
-					</div>
-					<p className="hint">Super Admins sign in with their WordPress account. Team Leaders and Members sign in with the code set here; setting a new code signs them out everywhere.</p>
-				</section>
+				<MembersAccess
+					people={people}
+					openCount={openCount}
+					urgentCount={Object.fromEntries(people.map((p) => [p.id, openOf(p.id).filter((x) => x.priority === 'urgent').length]))}
+					onPerson={onPerson}
+					onAdd={() => setDialog({ type: 'add' })}
+					onSetCode={(member) => setDialog({ type: 'code', member })}
+					onRemove={removePerson}
+				/>
 			),
 			daysoff: <DaysOff />,
 			messages: <AutoMessages />,
@@ -475,7 +412,7 @@ export default function TeamArea({ perf, setPerf, onPerson, section }) {
 			export: (
 				<section className="dcard">
 					<div className="dc-head">
-						<span className="s-k">Export all data</span>
+						<span className="s-k">Export data</span>
 					</div>
 					<p className="hint">Downloads every project, task, record, team member, activity and log as one JSON file (same format as the old portal export).</p>
 					<button type="button" className="btn small" onClick={exportAll}>
@@ -484,16 +421,14 @@ export default function TeamArea({ perf, setPerf, onPerson, section }) {
 				</section>
 			),
 		};
+		// Admin settings (SPEC.md 7.5): one page, the sections one below the other.
 		body = section ? (
-			<div className="as-wrap">
-				<nav className="as-nav" aria-label="Admin settings">
-					{ADMIN_SECTIONS.map(([k, l]) => (
-						<button key={k} type="button" aria-current={sec === k ? 'page' : undefined} onClick={() => setSec(k)}>
-							{l}
-						</button>
-					))}
-				</nav>
-				<div className="as-pane">{panes[sec]}</div>
+			<div className="as-stack">
+				{panes.members}
+				{panes.daysoff}
+				{panes.messages}
+				{panes.deleted}
+				{panes.export}
 			</div>
 		) : (
 			<div className="set-grid">
