@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { usePortal } from '../../context.js';
 import { short, toDate } from '../../lib/format.js';
 import { assignedFor, daysIn, fmtDur, inRange, perfRange, perfShift, perfStats, periodWord } from '../../lib/perf.js';
-import { pendingReviews } from '../../lib/reviews.js';
+import { mayDecide, pendingReviews } from '../../lib/reviews.js';
 import { ROLE, isAdmin } from '../../lib/roles.js';
 import { rowsOf } from '../../lib/store.js';
 import Avatar from '../Avatar.jsx';
@@ -43,7 +43,7 @@ export default function TeamArea({ perf, setPerf, onPerson }) {
 	const openCount = Object.fromEntries(people.map((p) => [p.id, openOf(p.id).length]));
 	const teamStats = perfStats(acts);
 	const prevTeam = perfStats(prevActs);
-	const notes = attentionItems(data, me, audit, today).length + pendingReviews(data).length;
+	const notes = attentionItems(data, me, audit, today).length + pendingReviews(data).filter((r) => mayDecide(r, me)).length;
 
 	const tabsList = [['dash', 'Dashboard', notes || ''], ['activity', 'Activity'], ['team', 'Team', people.length], ...(admin ? [['settings', 'Settings']] : [])];
 

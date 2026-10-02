@@ -17,6 +17,10 @@ export function pendingReviews(data) {
 	return out.sort((a, b) => String(a.review.submittedAt).localeCompare(String(b.review.submittedAt)));
 }
 
+// Whether `me` may decide a pending review: work someone asked a particular person to review
+// belongs to that person (and the Super Admin); other pending work to reviewers.
+export const mayDecide = (r, me) => (r.review.reviewer ? r.review.reviewer === me.id || me.role === 'admin' : me.role === 'admin' || me.role === 'lead');
+
 // A member's reviewed work that wasn't simply accepted, in the last 30 days, newest first.
 export function reviewsOf(data, memberId, now = Date.now()) {
 	const since = now - 30 * 86400000;

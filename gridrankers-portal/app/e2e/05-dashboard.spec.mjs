@@ -1,8 +1,8 @@
-// Dashboard (SPEC.md 7.0): landing page, status tabs, clean cards with a ⋯ menu, adding
+// Dashboard (SPEC.md 7.0): lands on My day; the Projects tab has status tabs, clean cards with a ⋯ menu, adding
 // (Super Admin / Team Leader only), deleting and restoring a project (Team → Settings);
 // Recent Activities is per project (7.4).
 import { test, expect } from '@playwright/test';
-import { LEAD, MAX, addMeetingTask, apiCall, card, openProject, signIn, signInOwner, signOut, signOutOwner, watchErrors } from './helpers.mjs';
+import { LEAD, MAX, addMeetingTask, apiCall, card, openProject, openProjectsTab, signIn, signInOwner, signOut, signOutOwner, watchErrors } from './helpers.mjs';
 
 test('dashboard, project lifecycle and per-project Recent Activities', async ({ page }) => {
 	const noErrors = watchErrors(page);
@@ -13,9 +13,10 @@ test('dashboard, project lifecycle and per-project Recent Activities', async ({ 
 		await page.getByRole('menuitem', { name: item }).click();
 	};
 
-	// Team Leader lands on the Dashboard (Active tab) and adds a paused project starting on day 15.
+	// Team Leader lands on My day; the Projects tab (Active) adds a paused project starting on day 15.
 	await signIn(page, LEAD);
-	await expect(page.locator('.top h1')).toHaveText('Dashboard');
+	await expect(page.locator('.md-top h1')).toHaveText(/^Good (morning|afternoon|evening), Lee$/);
+	await openProjectsTab(page);
 	await expect(tab('Active')).toHaveAttribute('aria-selected', 'true');
 	await expect(page.getByLabel('New project name')).toHaveCount(0);
 	await page.getByRole('button', { name: '+ New project' }).click();
@@ -43,7 +44,6 @@ test('dashboard, project lifecycle and per-project Recent Activities', async ({ 
 	await expect(page.locator('.top h1')).toHaveText('Harbor Hotel');
 	await addMeetingTask(page, 'Fix booking widget', 'Max Member');
 	await page.getByRole('button', { name: /GridRankers/ }).click();
-	await expect(page.locator('.top h1')).toHaveText('Dashboard');
 	await expect(pd('Harbor Hotel')).toContainText('1 open task');
 
 	// Recent Activities: a table for the selected project, its deleted tasks behind a button.
@@ -72,9 +72,10 @@ test('dashboard, project lifecycle and per-project Recent Activities', async ({ 
 	await page.locator('dialog[open]').getByRole('button', { name: 'Close' }).click();
 	await signOut(page);
 
-	// Team Members land on the Dashboard but cannot add projects (UI and server).
+	// Team Members land on My day, with no Projects tab, and cannot add projects (UI and server).
 	await signIn(page, MAX);
-	await expect(page.locator('.top h1')).toHaveText('Dashboard');
+	await expect(page.locator('.md-top h1')).toHaveText(/, Max$/);
+	await expect(page.locator('.md-tabs')).toHaveCount(0);
 	await expect(page.getByRole('button', { name: '+ New project' })).toHaveCount(0);
 	await expect(page.getByRole('button', { name: 'Options for Harbor Hotel' })).toHaveCount(0);
 	expect((await apiCall(page, 'POST', 'projects', { name: 'Sneaky Co' })).status).toBe(403);
@@ -82,7 +83,7 @@ test('dashboard, project lifecycle and per-project Recent Activities', async ({ 
 
 	// Super Admin deletes the project; it is restorable (with its task) from Team → Settings.
 	await signInOwner(page);
-	await expect(page.locator('.top h1')).toHaveText('Dashboard');
+	await openProjectsTab(page);
 	await menu('Harbor Hotel', 'Delete project');
 	await page.locator('dialog[open]').getByRole('button', { name: 'Delete project' }).click();
 	await page.getByText('Harbor Hotel deleted').waitFor();
@@ -95,6 +96,7 @@ test('dashboard, project lifecycle and per-project Recent Activities', async ({ 
 	await trash.locator('li', { hasText: 'Harbor Hotel' }).getByRole('button', { name: 'Restore' }).click();
 	await page.getByText('restored with its tasks').waitFor();
 	await page.getByRole('button', { name: /GridRankers/ }).click();
+	await openProjectsTab(page);
 	await expect(pd('Harbor Hotel')).toBeVisible();
 	await expect(pd('Harbor Hotel')).toContainText('1 open task');
 	await openProject(page, 'Harbor Hotel');

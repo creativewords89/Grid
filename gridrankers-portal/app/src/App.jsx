@@ -189,10 +189,10 @@ export default function App({ config }) {
 			<div className="app">
 				<Sidebar syncStatus={syncStatus} />
 				<main>
-					<TopBar onSignOut={signOut} />
+					{view !== 'dash' && <TopBar onSignOut={signOut} />}
 					<section className="grp-view" aria-label="Content">
 						{view === 'dash' ? (
-							<Dashboard />
+							<Dashboard onSignOut={signOut} />
 						) : view === 'team' ? (
 							<TeamView />
 						) : projects.length === 0 ? (
