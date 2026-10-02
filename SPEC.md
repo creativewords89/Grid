@@ -370,7 +370,7 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 20. Schema 6 (`location`, `birth_year`, `grp_posts.kind` `notice` + `to_members`); profile lock in `GRP_Permissions`; `/posts` notices with private delivery; `/weather` (Open-Meteo, cached); members accept location and birth year. **Tests:** lock for leaders and members only, private notices never reach others, weather with a stubbed HTTP response.
 21. App: Notices box (top of the right column) and Send notice dialog; Who's out faces + counts with See all and the everyone-off line; weather in the date row; profile strip and locked My projects; Settings with required fields. Playwright: incomplete profile is locked and unlocks once filled; a private notice reaches only its people.
 
-**0.1.8 (one change at a time, released together):**
+**0.1.8 (one change at a time, released together) — released as 0.1.8 (steps 22–31):**
 
 22. Who's out "See all" pop-up cleaned up (6.10) — padded frame, search with icon, filter only when needed, larger rows, footer; same frame for the Notices and approvals "View all". Playwright: See all lists everyone out and search narrows it.
 
