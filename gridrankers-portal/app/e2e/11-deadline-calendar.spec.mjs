@@ -62,5 +62,12 @@ test('pick deadlines on a calendar', async ({ page }) => {
 	await dlg.getByRole('button', { name: 'Save task' }).click();
 	const monthly = (await apiCall(page, 'GET', 'monthly-tasks')).json.find((t) => t.title === 'Early-cycle audit');
 	expect(monthly).toMatchObject({ due_mode: 'dates', due_from_day: 1, due_day: 5 });
+
+	// Each deadline option has its own coloured tag on the cards (SPEC.md 7.3).
+	const tag = page.locator('article.mcard', { hasText: 'Early-cycle audit' }).locator('.freq');
+	await expect(tag).toHaveText('Range');
+	await expect(tag).toHaveClass(/dlt-dates/);
+	await expect(page.locator('article.mcard', { hasText: 'GBP Posts' }).locator('.freq')).toHaveClass(/dlt-monthly/);
+	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/tags.png' });
 	noErrors();
 });

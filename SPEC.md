@@ -253,6 +253,7 @@ Alert banner (cycle-scoped), project cycle bar, stats (status chips, cycle dates
 
 ### 7.3 Monthly Tasks
 Banner, project cycle bar, stats, filters (All / Weekly / Bi-weekly / Monthly) + week bar, cards, "+ Add monthly task".
+**Deadline colours**: the card tag names the deadline option and has its own colour — Weekly teal, Bi-weekly blue, Monthly purple, Specific date amber, Range pink, No deadline grey (also in Details). A meeting task's deadline chip uses the same colour per option unless it is overdue (red) or due soon (amber).
 **Card**: Monthly/Weekly/Bi-weekly chip, "Qty N per cycle/week/2 weeks"; title; due chip; W1–W4 boxes for weekly, W1–2 / W3–4 for bi-weekly; mini progress "x/n · k types"; status segment; footer as above.
 **Dialog**: Client, Task, Deadline (6.4), Quantity (locked when breakdown exists), Breakdown (6.5), Responsible (people only), Details. No auto-suggestions on Task or the breakdown Type (plain text fields, browser autocomplete off).
 
@@ -377,5 +378,7 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 28. Deadline options **No deadline · Weekly · Bi-weekly · Monthly · Specific date · Range** (6.3, 6.4): "Certain dates" becomes Range; Specific date and Range open a calendar (meeting tasks) or a cycle-day grid (monthly tasks). Playwright: pick a date, a range of days 1–5, and a monthly range of cycle days 1–5.
 
 29. No auto-suggestions in the monthly task dialog (7.3): Task and breakdown Type are plain text fields.
+
+30. Deadline colours (7.3): coloured card tags per deadline option (monthly cards) and matching deadline chips (meeting cards). Playwright: a Range task shows a Range tag in its colour; a Monthly task the Monthly colour.
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).

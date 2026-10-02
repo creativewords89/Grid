@@ -325,3 +325,14 @@ aside .sync::before{content:"";width:8px;height:8px;border-radius:50%;background
 .dp-days{grid-template-columns:repeat(7,1fr)}
 .dp-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;flex-wrap:wrap}
 .dp-acts{display:flex;gap:12px}
+/* Deadline colours (SPEC.md 7.2, 7.3): one colour per deadline option, on the monthly card tag
+   and on a meeting task's deadline chip (late / due soon keep their red / amber). */
+.freq[class*="dlt-"],.due[class*="dl-"]:not(.late):not(.soon){--dl:#4A5A70;background:color-mix(in srgb,var(--dl) 13%,var(--panel));color:var(--dl);border:1px solid color-mix(in srgb,var(--dl) 28%,var(--panel))}
+.freq.dlt-weekly,.due.dl-weekly{--dl:#0F6E77}
+.freq.dlt-biweekly,.due.dl-biweekly{--dl:#2753C9}
+.freq.dlt-monthly,.due.dl-monthly{--dl:#6B3FB5}
+.freq.dlt-date,.due.dl-date{--dl:#B45309}
+.freq.dlt-dates,.due.dl-dates{--dl:#B4316E}
+.freq.dlt-none,.due.dl-none{--dl:#4A5A70}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .freq[class*="dlt-"],:root:not([data-theme="light"]) .due[class*="dl-"]:not(.late):not(.soon){color:color-mix(in srgb,var(--dl) 55%,#fff)}}
+:root[data-theme="dark"] .freq[class*="dlt-"],:root[data-theme="dark"] .due[class*="dl-"]:not(.late):not(.soon){color:color-mix(in srgb,var(--dl) 55%,#fff)}
