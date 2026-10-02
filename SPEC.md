@@ -403,10 +403,10 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 
 33. (Released as 0.1.11.) View someone's My day, view only (7.0). Vitest (who may view whom), Playwright (Super Admin views a member and a leader, nothing to act with, Back and leaving end it; a leader can view a member but not the Super Admin).
 
-34. Team cards open that person's My day (view only); the bar gets Open {name}'s page and ← Back. Playwright updated.
+34. (Released as 0.1.12.) Team cards open that person's My day (view only); the bar gets Open {name}'s page and ← Back. Playwright updated.
 
-35. Admin settings on one page (no left menu) and Members & access redesign (design A). Playwright: the sections on one page; search, a role filter and the ⋯ menu.
+35. (Released as 0.1.12.) Admin settings on one page (no left menu) and Members & access redesign (design A). Playwright: the sections on one page; search, a role filter and the ⋯ menu.
 
-36. Members & access moves from Admin settings to the Team tab, under the cards; the ⋯ menu follows the role rules. Playwright: Admin settings without it; a leader's menu has no Change role or Remove.
+36. (Released as 0.1.12.) Members & access moves from Admin settings to the Team tab, under the cards; the ⋯ menu follows the role rules. Playwright: Admin settings without it; a leader's menu has no Change role or Remove.
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).
