@@ -47,6 +47,11 @@ class GRP_Import {
 	const SKIPPED_SETTINGS = array( 'admin', 'gdrive' );
 
 	/**
+	 * Member fields an import fills in but never empties.
+	 */
+	const KEEP_PROFILE = array( 'photo', 'phone', 'email', 'address', 'title', 'drive_url', 'notes', 'birthday', 'birth_year', 'location', 'weekly_off' );
+
+	/**
 	 * Trash types in the export => tables.
 	 */
 	const TRASH_TYPES = array(
@@ -672,6 +677,13 @@ class GRP_Import {
 				}
 				if ( ! empty( $existing['wp_user_id'] ) && empty( $row['wp_user_id'] ) ) {
 					unset( $row['wp_user_id'] );
+				}
+				// An export without a profile field (e.g. from the old portal) never blanks one
+				// filled in here: the required profile (SPEC.md 6.10) would lock the person.
+				foreach ( self::KEEP_PROFILE as $field ) {
+					if ( array_key_exists( $field, $row ) && ( null === $row[ $field ] || '' === $row[ $field ] ) && ! empty( $existing[ $field ] ) ) {
+						unset( $row[ $field ] );
+					}
 				}
 			}
 			GRP_Store::update( $table, $row['id'], $row );

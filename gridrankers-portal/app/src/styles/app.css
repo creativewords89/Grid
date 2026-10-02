@@ -212,3 +212,34 @@ dialog label.chk{flex-direction:row;align-items:center;gap:8px;align-self:end;mi
   body.printing .print-me{position:absolute;left:0;top:0;width:100%;border:0;box-shadow:none}
   body.printing .print-me .lr-tools{display:none}
 }
+
+/* Dashboard update (SPEC.md 6.10): weather, Notices, Who's out faces, Send notice, required profile. */
+.md-date{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.md-wx{display:inline-flex;align-items:center;gap:6px;background:color-mix(in srgb,#B77F00 9%,var(--panel));border:1px solid color-mix(in srgb,#B77F00 28%,var(--line));border-radius:99px;padding:2px 10px 2px 7px;color:var(--ink);font-size:.85rem}
+.md-wx svg{color:#B77F00}
+.mp-flag.f-blue{background:color-mix(in srgb,var(--accent) 12%,var(--panel));color:var(--accent)}
+.nc-card{flex:1;display:flex;flex-direction:column;justify-content:center;gap:6px;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.nc-card.nc-shout{background:color-mix(in srgb,#B77F00 8%,var(--panel));border-color:color-mix(in srgb,#B77F00 25%,var(--line))}
+.nc-card .so-head .mp-flag{margin-left:auto}
+.nc-card p{margin:0;display:flex;gap:8px;font-size:.9rem;overflow-wrap:anywhere}
+.nc-title{font-size:.92rem}
+.nc-ico{color:var(--accent);display:inline-flex;flex-shrink:0;margin-top:2px}
+.wo-faces{display:flex;align-items:center}
+.wo-faces .av{border:2px solid var(--panel);margin-left:-8px}
+.wo-faces .av:first-child{margin-left:0}
+.wo-more{margin-left:8px;font-weight:700;font-size:.85rem;color:var(--ink-2)}
+.wo-counts{display:flex;gap:8px;flex-wrap:wrap}
+.wo-all{display:flex;flex-direction:column;gap:2px;background:var(--doing-bg);border-radius:12px;padding:12px 14px;font-size:.85rem;color:var(--ink-2)}
+.wo-all b{font-size:.95rem;color:var(--ink)}
+.nd-row{border:0;padding:0;margin:0;display:flex;flex-direction:column;gap:6px}
+.nd-row legend{font-size:.85rem;font-weight:600;padding:0;margin-bottom:6px}
+.nd-people{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.nd-people select{border:1px solid var(--line);background:var(--panel-2);border-radius:8px;padding:6px 10px;font:inherit;font-size:.85rem;color:var(--ink)}
+.nd-chip{border:0;background:color-mix(in srgb,var(--accent) 12%,var(--panel));color:var(--accent);border-radius:99px;padding:4px 10px;font-size:.82rem;font-weight:600}
+.pf-meter{display:flex;align-items:center;gap:10px;margin-left:auto}
+.pf-bar{width:120px;height:8px;border-radius:99px;background:var(--panel-2);overflow:hidden}
+.pf-bar span{display:block;height:8px;background:var(--doing);border-radius:99px}
+.pf-bar span.ok{background:var(--done)}
+.pf-warn{margin:0;background:var(--urgent-bg);color:var(--urgent);border-radius:10px;padding:8px 12px;font-size:.85rem}
+.pf-missing input{border-color:var(--urgent) !important;box-shadow:0 0 0 1px var(--urgent)}
+.pf-req{color:var(--urgent);font-size:.75rem;font-weight:700}

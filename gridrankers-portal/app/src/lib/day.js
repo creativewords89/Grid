@@ -3,7 +3,7 @@ import { deadlineInfo } from './deadline.js';
 import { short } from './format.js';
 import { computeMissed, recordOf, stateOf } from './monthly.js';
 import { assignedFor } from './perf.js';
-import { dayOffKind, dayOffName, fill, messages, teamWeekly } from './people.js';
+import { dayOffKind, dayOffName, fill, messages, missingProfile, teamWeekly } from './people.js';
 import { mayDecide, pendingReviews, reviewsOf } from './reviews.js';
 import { rowsOf } from './store.js';
 
@@ -71,6 +71,13 @@ export function strips(data, me, today, { now = Date.now(), all = false } = {}) 
 	const mmdd = today.slice(5);
 	const self = data.members[me.id] || me;
 
+	// Not dismissable: it stays until the profile is complete.
+	const missing = missingProfile(self);
+	if (missing.length) {
+		const locked = me.role !== 'admin';
+		out.push({ key: 'profile', kind: 'profile', tone: 'red', title: 'Finish your profile to keep working.', text: `Missing: ${missing.join(', ')}.${locked ? ' Your tasks are locked until it’s done.' : ''}`, ok: 'Complete profile', sticky: true });
+	}
+
 	const off = dayOffKind(today, self, team, daysOff);
 	if (off) {
 		out.push({ key: `dayoff:${today}`, kind: 'dayoff', tone: 'amber', title: fill(text.day_off, self), text: off === 'weekly' ? '' : dayOffName(today, daysOff), ok: 'Thanks' });
@@ -111,34 +118,44 @@ export function strips(data, me, today, { now = Date.now(), all = false } = {}) 
 			});
 		});
 
-	rowsOf(data, 'posts')
-		.filter((p) => p.kind === 'announcement' && !p.deleted_at && (!p.show_until || p.show_until >= today))
-		.sort((a, b) => (b.pinned || 0) - (a.pinned || 0) || String(b.created_at).localeCompare(String(a.created_at)))
-		.forEach((p) => {
-			const by = data.members[p.created_by];
-			out.push({ key: `post:${p.id}`, kind: 'announcement', tone: 'blue', title: p.title, text: p.body, meta: by ? by.name : '', pinned: !!p.pinned });
-		});
-
 	if (all) return out;
 	const gone = dismissedKeys(data, me);
-	return out.filter((s) => !gone.has(s.key));
+	return out.filter((s) => s.sticky || !gone.has(s.key));
 }
 
-// Shout-outs of the last 30 days, newest first.
-export function shoutouts(data, now = Date.now()) {
+export const recipientsOf = (p) => (Array.isArray(p.to_members) ? p.to_members : p.to_member ? [p.to_member] : null);
+
+// Notices box (SPEC.md 6.10): notices to everyone, notices to me, and shout-outs (seen by everyone
+// for 30 days), newest first. `tag`: all | you | shout; `to`: "everyone", "you" or names.
+export function notices(data, me, today, now = Date.now()) {
 	return rowsOf(data, 'posts')
-		.filter((p) => p.kind === 'shoutout' && !p.deleted_at && ago(p.created_at, SHOUTOUT_DAYS, now))
-		.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+		.filter((p) => !p.deleted_at && (!p.show_until || p.show_until >= today))
+		.filter((p) => (p.kind === 'shoutout' ? ago(p.created_at, SHOUTOUT_DAYS, now) : true))
+		.map((p) => {
+			const to = recipientsOf(p);
+			const mine = !!to && to.includes(me.id);
+			if (p.kind !== 'shoutout' && to && !mine) return null;
+			const names = (to || []).filter((id) => id !== me.id).map((id) => (data.members[id] || {}).name).filter(Boolean);
+			return {
+				post: p,
+				tag: p.kind === 'shoutout' ? 'shout' : to ? 'you' : 'all',
+				to: !to ? 'everyone' : mine ? (names.length ? ['you', ...names].join(', ') : 'you') : names.join(', '),
+				from: data.members[p.created_by],
+			};
+		})
+		.filter(Boolean)
+		.sort((a, b) => String(b.post.created_at).localeCompare(String(a.post.created_at)));
 }
 
-// Everything for the bell: strips (dismissed or not), shout-outs to me, results of my reviewed work.
+// Everything for the bell: strips (dismissed or not), notices and shout-outs for me, results of my reviewed work.
 export function bellItems(data, me, today, now = Date.now()) {
 	const items = strips(data, me, today, { now, all: true }).map((s) => ({ key: s.key, text: s.title, sub: s.text }));
-	shoutouts(data, now)
-		.filter((p) => p.to_member === me.id)
-		.forEach((p) => {
-			const by = data.members[p.created_by];
-			items.push({ key: `shout:${p.id}`, text: `${by ? by.name : 'A Team Leader'} sent you a shout-out.`, sub: p.body });
+	notices(data, me, today, now)
+		.filter((n) => n.tag !== 'shout' || (recipientsOf(n.post) || []).includes(me.id))
+		.forEach((n) => {
+			const by = n.from ? n.from.name : 'A Team Leader';
+			const text = n.tag === 'shout' ? `${by} sent you a shout-out.` : n.tag === 'all' ? `${by} posted a notice${n.post.title ? `: ${n.post.title}` : '.'}` : `${by} sent you a notice${n.post.title ? `: ${n.post.title}` : '.'}`;
+			items.push({ key: `${n.tag === 'shout' ? 'shout' : 'notice'}:${n.post.id}`, text, sub: n.post.body });
 		});
 	reviewsOf(data, me.id, now).forEach((r) => {
 		const by = data.members[r.review.by];

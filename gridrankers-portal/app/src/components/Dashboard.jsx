@@ -6,14 +6,14 @@ import DayHeader from './day/DayHeader.jsx';
 import DayLeave from './day/Leave.jsx';
 import MyProjects from './day/MyProjects.jsx';
 import NeedsAttention, { useAttention } from './day/NeedsAttention.jsx';
-import { AnnouncementDialog, ShoutoutDialog } from './day/PostDialogs.jsx';
+import { NoticeDialog } from './day/PostDialogs.jsx';
 import ProjectsBoard from './day/ProjectsBoard.jsx';
-import { Shoutouts, WhosOut } from './day/Side.jsx';
+import { Notices, WhosOut } from './day/Side.jsx';
 
 const TAB_KEY = 'grp:dash-tab';
 
 // Dashboard (SPEC.md 7.0): the landing page after sign-in. Everyone gets My day; the Super
-// Admin and Team Leaders also get the Projects tab, Send shout-out and Post announcement.
+// Admin and Team Leaders also get the Projects tab and Send notice.
 export default function Dashboard({ onSignOut }) {
 	const { me } = usePortal();
 	const manager = isManager(me);
@@ -50,11 +50,8 @@ export default function Dashboard({ onSignOut }) {
 						</button>
 					</div>
 					<div className="md-acts">
-						<button type="button" className="btn small" onClick={() => setDialog('shout')}>
-							Send shout-out
-						</button>
-						<button type="button" className="btn small" onClick={() => setDialog('announce')}>
-							Post announcement
+						<button type="button" className="btn small" onClick={() => setDialog('notice')}>
+							Send notice
 						</button>
 					</div>
 				</div>
@@ -65,8 +62,9 @@ export default function Dashboard({ onSignOut }) {
 						<MyProjects />
 					</div>
 					<div className="md-col">
+						<Notices />
 						<WhosOut />
-						{manager ? <Approvals /> : <Shoutouts />}
+						{manager && <Approvals />}
 						{me.role !== 'admin' && <DayLeave />}
 					</div>
 				</div>
@@ -76,12 +74,7 @@ export default function Dashboard({ onSignOut }) {
 					<ProjectsBoard />
 				</div>
 			)}
-			{manager && (
-				<>
-					<ShoutoutDialog open={dialog === 'shout'} onClose={() => setDialog(null)} />
-					<AnnouncementDialog open={dialog === 'announce'} onClose={() => setDialog(null)} />
-				</>
-			)}
+			{manager && <NoticeDialog open={dialog === 'notice'} onClose={() => setDialog(null)} />}
 		</div>
 	);
 }

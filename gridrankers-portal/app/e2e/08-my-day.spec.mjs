@@ -29,7 +29,7 @@ test('my day: leave, days off, birthdays, shout-outs and review requests', async
 	// Team Member: sets a birthday (today) and asks for 3 days of leave starting today.
 	await signIn(page, MAX);
 	await expect(box('Day leave')).toContainText(`1 day left in ${MONTH}`);
-	await expect(box('Shout-outs')).toContainText('No shout-outs yet');
+	await expect(box('Notices')).toContainText('No notices yet');
 	await page.locator('.me-btn').click();
 	await page.locator('nav.ttabs').getByRole('tab', { name: 'Settings' }).click();
 	await page.getByLabel('Birthday day').selectOption(pad(new Date().getDate()));
@@ -72,11 +72,12 @@ test('my day: leave, days off, birthdays, shout-outs and review requests', async
 	await page.getByText('approved straight away').first().waitFor();
 	await expect(box('Day leave')).toContainText(`0 days left in ${MONTH}`);
 
-	await page.getByRole('button', { name: 'Send shout-out' }).click();
-	await dlg.getByLabel('To').selectOption({ label: 'Max Member' });
+	await page.getByRole('button', { name: 'Send notice' }).click();
+	await dlg.getByRole('button', { name: 'Shout-out ★' }).click();
+	await dlg.getByLabel('Add a person').selectOption({ label: 'Max Member · Team Member' });
 	await dlg.getByLabel('Message').fill('Great work on the Acme H1 fixes, the client loved it.');
-	await dlg.getByRole('button', { name: 'Send' }).click();
-	await page.getByText('Shout-out sent to Max Member').waitFor();
+	await dlg.getByRole('button', { name: 'Send', exact: true }).click();
+	await page.getByText('Shout-out sent').waitFor();
 
 	// A leader's own finished task: done straight away, then sent to Max for a review.
 	await openProject(page, 'Bright Dental');
@@ -121,8 +122,8 @@ test('my day: leave, days off, birthdays, shout-outs and review requests', async
 	await expect(strip('Your leave for')).toContainText('Enjoy the wedding!');
 	await expect(strip('Founders Day')).toBeVisible();
 	await expect(box('Day leave')).toContainText(`0 days left in ${MONTH}`);
-	await expect(box('Shout-outs')).toContainText('Great work on the Acme H1 fixes');
-	await expect(box('Shout-outs')).toContainText('Lee Lead → you');
+	await expect(box('Notices')).toContainText('Great work on the Acme H1 fixes');
+	await expect(box('Notices')).toContainText('Lee Lead → you');
 	const review = strip('Lee Lead asked you to review “Approve content plan”.');
 	await expect(review).toContainText('Please check the October topics');
 	await review.getByRole('button', { name: 'Review now' }).click();
