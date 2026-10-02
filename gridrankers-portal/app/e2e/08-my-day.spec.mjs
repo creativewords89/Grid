@@ -111,7 +111,8 @@ test('my day: leave, days off, birthdays, shout-outs and review requests', async
 	await page.getByText('Founders Day added').waitFor();
 	// The reviewer was asked by name: the Super Admin may decide it, but leaves it to Max here.
 	await page.locator('nav.ttabs').getByRole('tab', { name: /^Leave/ }).click();
-	await expect(page.locator('tr', { hasText: 'Max Member' })).toContainText('Approved');
+	// The leave list (the settlement report below it loads a moment later and has its own rows).
+	await expect(page.locator('.lv-grid > .dcard').first().locator('tr', { hasText: 'Max Member' })).toContainText('Approved');
 	await expect(page.locator('#leaveReport')).toContainText('Max Member');
 	await signOutOwner(page);
 
