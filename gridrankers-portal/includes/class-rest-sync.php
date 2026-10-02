@@ -89,6 +89,16 @@ class GRP_REST_Sync extends GRP_REST_Controller {
 			if ( 'grp_members' === $table ) {
 				$rows = array_map( array( 'GRP_REST_Members', 'visible' ), $rows );
 			}
+			if ( 'grp_posts' === $table ) {
+				$rows = array_values(
+					array_filter(
+						$rows,
+						static function ( $row ) use ( $actor ) {
+							return GRP_REST_Posts::visible_to( $row, $actor );
+						}
+					)
+				);
+			}
 			if ( 'grp_leave' === $table && ! $manager ) {
 				$rows = self::leave_for_member( $rows, $actor, $hidden );
 			}

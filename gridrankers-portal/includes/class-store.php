@@ -20,6 +20,7 @@ class GRP_Store {
 	 */
 	const JSON_COLUMNS = array(
 		'grp_members'       => array( 'weekly_off' ),
+		'grp_posts'         => array( 'to_members' ),
 		'grp_projects'      => array( 'cycle_changes', 'cycle_log' ),
 		'grp_meeting_tasks' => array( 'assignees', 'progress', 'deadline', 'review', 'completion' ),
 		'grp_monthly_tasks' => array( 'assignees', 'parts' ),
@@ -48,6 +49,7 @@ class GRP_Store {
 		'qty',
 		'minutes',
 		'days',
+		'birth_year',
 		'pinned',
 	);
 

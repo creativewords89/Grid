@@ -74,8 +74,20 @@ abstract class GRP_REST_Controller {
 	 * @return bool
 	 */
 	protected static function can( $action, $context = null ) {
-		return GRP_Permissions::can( self::actor(), $action, $context );
+		$ok = GRP_Permissions::can( self::actor(), $action, $context );
+		if ( ! $ok ) {
+			self::$denied = $action;
+		}
+
+		return $ok;
 	}
+
+	/**
+	 * The last action can() refused in this request (for a clearer 403).
+	 *
+	 * @var string|null
+	 */
+	private static $denied = null;
 
 	/**
 	 * Whether the actor is a Super Admin or Team Leader.
@@ -93,6 +105,21 @@ abstract class GRP_REST_Controller {
 	 * @return WP_Error
 	 */
 	protected static function forbidden( $message = '' ) {
+		// Refused because the profile is incomplete (SPEC.md section 3, Profile lock): say so.
+		$actor   = self::actor();
+		$missing = GRP_Permissions::missing_profile( $actor );
+		if ( $missing && in_array( self::$denied, GRP_Permissions::PROFILE_LOCKED, true ) && GRP_Permissions::ROLE_ADMIN !== GRP_Permissions::effective_role( $actor ) ) {
+			return new WP_Error(
+				'grp_profile_incomplete',
+				/* translators: %s: missing profile fields, e.g. "Location, Phone number". */
+				sprintf( __( 'Finish your profile first (Settings). Missing: %s.', 'gridrankers-portal' ), implode( ', ', $missing ) ),
+				array(
+					'status'  => 403,
+					'missing' => $missing,
+				)
+			);
+		}
+
 		return new WP_Error( 'grp_forbidden', $message ? $message : __( "You don't have permission to do that.", 'gridrankers-portal' ), array( 'status' => 403 ) );
 	}
 

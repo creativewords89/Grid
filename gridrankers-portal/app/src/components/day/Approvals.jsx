@@ -105,7 +105,7 @@ export default function Approvals() {
 	const list = useMemo(() => approvals(data, me), [data, me]);
 
 	return (
-		<section className="md-card md-grow" aria-labelledby="apTitle">
+		<section className="md-card" aria-labelledby="apTitle">
 			<div className="md-h">
 				<h2 id="apTitle">Needs your approval</h2>
 				{list.length > SHOWN && (

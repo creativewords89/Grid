@@ -368,6 +368,177 @@ class Test_GRP_REST_People extends GRP_REST_TestCase {
 		$this->assertSame( '03-02', $members[ $this->team['lead']['id'] ]['birthday'] );
 	}
 
+	public function test_notices_to_chosen_people_are_private() {
+		$notice = array(
+			'kind'       => 'notice',
+			'to'         => array( $this->team['member']['id'] ),
+			'title'      => 'Acme report',
+			'body'       => 'Please send the Acme ranking report by 3 PM.',
+			'show_until' => $this->day( 6 ),
+		);
+		$this->assertStatus( 403, $this->api_as( 'member', 'POST', '/posts', $notice ) );
+		$this->assertStatus( 400, $this->api_as( 'lead', 'POST', '/posts', array_merge( $notice, array( 'to' => array() ) ) ) );
+		$this->assertStatus( 400, $this->api_as( 'lead', 'POST', '/posts', array_merge( $notice, array( 'to' => array( 'nobody' ) ) ) ) );
+		$sent = $this->api_as( 'lead', 'POST', '/posts', $notice );
+		$this->assertStatus( 201, $sent );
+		$id = $sent->get_data()['id'];
+		$this->assertSame( array( $this->team['member']['id'] ), $sent->get_data()['to_members'] );
+
+		$ids = fn ( $who, $path ) => array_column( 'sync' === $path ? $this->api_as( $who, 'GET', '/sync' )->get_data()['changes']['posts'] : $this->api_as( $who, 'GET', '/posts' )->get_data(), 'id' );
+		foreach ( array( 'member', 'lead', 'admin' ) as $who ) {
+			$this->assertContains( $id, $ids( $who, 'posts' ), "$who should see it" );
+			$this->assertContains( $id, $ids( $who, 'sync' ), "$who should sync it" );
+		}
+		$this->assertNotContains( $id, $ids( 'other', 'posts' ), 'not for other people' );
+		$this->assertNotContains( $id, $ids( 'other', 'sync' ), 'not even over /sync' );
+
+		// A notice to everyone needs no title; shout-outs go to several Team Members at once.
+		$all = $this->api_as(
+			'admin',
+			'POST',
+			'/posts',
+			array(
+				'kind' => 'announcement',
+				'body' => 'Office closes at 4 PM on Thursday.',
+			)
+		);
+		$this->assertStatus( 201, $all );
+		$this->assertContains( $all->get_data()['id'], $ids( 'other', 'posts' ) );
+		$shout = array(
+			'kind' => 'shoutout',
+			'to'   => array( $this->team['member']['id'], $this->team['other']['id'] ),
+			'body' => 'Great teamwork on Acme!',
+		);
+		$this->assertStatus( 201, $this->api_as( 'lead', 'POST', '/posts', $shout ) );
+		$this->assertStatus( 403, $this->api_as( 'admin', 'POST', '/posts', array_merge( $shout, array( 'to' => array( $this->team['member']['id'], $this->team['lead']['id'] ) ) ) ), 'shout-outs are for Team Members' );
+	}
+
+	public function test_incomplete_profile_locks_task_work_with_a_clear_message() {
+		$project = $this->project();
+		$task    = $this->api_as(
+			'lead',
+			'POST',
+			'/meeting-tasks',
+			array(
+				'project_id' => $project['id'],
+				'title'      => 'Fix the H1',
+			)
+		)->get_data();
+		GRP_Store::update(
+			'grp_members',
+			$this->team['member']['id'],
+			array(
+				'location' => null,
+				'phone'    => '',
+			)
+		);
+		GRP_Store::update( 'grp_members', $this->team['admin']['id'], array( 'location' => null ) );
+
+		$res = $this->api_as( 'member', 'POST', "/meeting-tasks/{$task['id']}/status", array( 'status' => 'doing' ) );
+		$this->assertStatus( 403, $res );
+		$this->assertSame( 'grp_profile_incomplete', $res->get_data()['code'] );
+		$this->assertStringContainsString( 'Location, Phone number', $res->get_data()['message'] );
+		$this->assertStatus( 201, $this->ask( 'member', 0, 0 ), 'leave still works' );
+		$this->assertStatus( 200, $this->api_as( 'admin', 'POST', "/meeting-tasks/{$task['id']}/status", array( 'status' => 'doing' ) ), 'the Super Admin is only reminded' );
+
+		$this->assertStatus(
+			200,
+			$this->api_as(
+				'member',
+				'PATCH',
+				'/members/' . $this->team['member']['id'],
+				array(
+					'location' => 'Rangpur',
+					'phone'    => '+8801711111111',
+				)
+			)
+		);
+		$done = array(
+			'status' => 'done',
+			'note'   => 'Fixed the H1',
+		);
+		$this->assertStatus( 200, $this->api_as( 'member', 'POST', "/meeting-tasks/{$task['id']}/status", $done ) );
+	}
+
+	public function test_birth_year_is_private_and_validated() {
+		$me = '/members/' . $this->team['member']['id'];
+		$this->assertStatus( 400, $this->api_as( 'member', 'PATCH', $me, array( 'birth_year' => '1850' ) ) );
+		$this->assertStatus( 403, $this->api_as( 'other', 'PATCH', $me, array( 'birth_year' => '1995' ) ) );
+		$this->assertStatus( 200, $this->api_as( 'member', 'PATCH', $me, array( 'birth_year' => '1996' ) ) );
+
+		$seen = fn ( $who ) => array_column( $this->api_as( $who, 'GET', '/members' )->get_data(), null, 'id' )[ $this->team['member']['id'] ];
+		$this->assertSame( 1996, $seen( 'member' )['birth_year'] );
+		$this->assertSame( 1996, $seen( 'lead' )['birth_year'] );
+		$this->assertArrayNotHasKey( 'birth_year', $seen( 'other' ), 'the year is for managers and the person' );
+		$this->assertSame( '01-15', $seen( 'other' )['birthday'], 'day and month are for everyone' );
+		$this->assertSame( 'Rangpur', $seen( 'other' )['location'] );
+	}
+
+	public function test_weather_for_the_persons_city() {
+		$asked = array();
+		$fake  = static function ( $pre, $args, $url ) use ( &$asked ) {
+			$asked[] = $url;
+			$body    = str_contains( $url, 'geocoding-api' )
+				? array(
+					'results' => array(
+						array(
+							'name'      => 'Rangpur',
+							'latitude'  => 25.74,
+							'longitude' => 89.27,
+						),
+					),
+				)
+				: array(
+					'current' => array(
+						'temperature_2m' => 30.6,
+						'weather_code'   => 1,
+					),
+					'daily'   => array(
+						'temperature_2m_max' => array( 31.2 ),
+						'temperature_2m_min' => array( 24.4 ),
+					),
+				);
+			return array(
+				'response' => array( 'code' => 200 ),
+				'body'     => wp_json_encode( $body ),
+				'headers'  => array(),
+				'cookies'  => array(),
+			);
+		};
+		add_filter( 'pre_http_request', $fake, 10, 3 );
+
+		$res = $this->api_as( 'member', 'GET', '/weather' )->get_data();
+		$this->assertSame(
+			array(
+				'available' => true,
+				'city'      => 'Rangpur',
+				'temp'      => 31,
+				'max'       => 31,
+				'min'       => 24,
+				'code'      => 1,
+				'text'      => 'Mostly sunny',
+				'icon'      => 'sun',
+			),
+			$res
+		);
+		$this->assertCount( 2, $asked );
+		$this->assertStringContainsString( 'name=Rangpur', $asked[0] );
+		$this->assertStringNotContainsString( 'Max', implode( ' ', $asked ), 'nothing about the person is sent' );
+
+		$this->api_as( 'other', 'GET', '/weather' );
+		$this->assertCount( 2, $asked, 'cached per city' );
+
+		GRP_Store::update( 'grp_members', $this->team['lead']['id'], array( 'location' => '' ) );
+		$this->assertSame(
+			array(
+				'available' => false,
+				'city'      => '',
+			),
+			$this->api_as( 'lead', 'GET', '/weather' )->get_data()
+		);
+		remove_filter( 'pre_http_request', $fake, 10 );
+	}
+
 	/**
 	 * Keys of an array, sorted.
 	 *

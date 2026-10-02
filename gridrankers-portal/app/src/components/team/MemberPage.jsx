@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { usePortal } from '../../context.js';
 import { short, toDate } from '../../lib/format.js';
 import { assignedFor, daysIn, fmtDur, inRange, perfRange, perfShift, perfStats, periodWord, personEvents } from '../../lib/perf.js';
-import { MEMBER_TAB_KEY } from '../../lib/people.js';
+import { MEMBER_TAB_KEY, REQUIRED_PROFILE, missingProfile } from '../../lib/people.js';
 import { ROLE, initials, isAdmin, isManager } from '../../lib/roles.js';
 import { rowsOf } from '../../lib/store.js';
 import Avatar from '../Avatar.jsx';
@@ -44,15 +44,16 @@ function cropPhoto(file) {
 
 const MONTHS = Array.from({ length: 12 }, (_, i) => new Date(2024, i, 1).toLocaleDateString(undefined, { month: 'long' }));
 
-// Birthday: day and month only (SPEC.md 6.10); everyone sees whose birthday it is.
-function Birthday({ value, onChange, disabled }) {
+// Date of birth (SPEC.md 6.10): everyone sees the day and month; only managers and the person see the year.
+function Birthday({ value, year, onChange, disabled }) {
 	const [mm, dd] = value ? value.split('-') : ['', ''];
-	const set = (m, d) => onChange(m && d ? `${m}-${d}` : m || d ? `${m || '01'}-${d || '01'}` : '');
+	const set = (m, d, y) => onChange(m && d ? `${m}-${d}` : m || d ? `${m || '01'}-${d || '01'}` : '', y);
 	const days = mm ? new Date(2024, +mm, 0).getDate() : 31;
+	const now = new Date().getFullYear();
 	return (
 		<fieldset className="bd-field" disabled={disabled}>
-			<legend>Birthday</legend>
-			<select value={dd} onChange={(e) => set(mm, e.target.value)} aria-label="Birthday day">
+			<legend>Date of birth *</legend>
+			<select value={dd} onChange={(e) => set(mm, e.target.value, year)} aria-label="Birthday day">
 				<option value="">Day</option>
 				{Array.from({ length: days }, (_, i) => String(i + 1).padStart(2, '0')).map((d) => (
 					<option key={d} value={d}>
@@ -60,7 +61,7 @@ function Birthday({ value, onChange, disabled }) {
 					</option>
 				))}
 			</select>
-			<select value={mm} onChange={(e) => set(e.target.value, dd && +dd > new Date(2024, +e.target.value, 0).getDate() ? '01' : dd)} aria-label="Birthday month">
+			<select value={mm} onChange={(e) => set(e.target.value, dd && +dd > new Date(2024, +e.target.value, 0).getDate() ? '01' : dd, year)} aria-label="Birthday month">
 				<option value="">Month</option>
 				{MONTHS.map((m, i) => (
 					<option key={m} value={String(i + 1).padStart(2, '0')}>
@@ -68,11 +69,14 @@ function Birthday({ value, onChange, disabled }) {
 					</option>
 				))}
 			</select>
-			{value && (
-				<button type="button" className="linkbtn" onClick={() => onChange('')}>
-					Clear
-				</button>
-			)}
+			<select value={year || ''} onChange={(e) => set(mm, dd, e.target.value)} aria-label="Birthday year">
+				<option value="">Year</option>
+				{Array.from({ length: 80 }, (_, i) => now - 14 - i).map((y) => (
+					<option key={y} value={y}>
+						{y}
+					</option>
+				))}
+			</select>
 		</fieldset>
 	);
 }
@@ -81,7 +85,7 @@ function Profile({ person, self }) {
 	const { api, dispatch, toast, confirm, me, setView } = usePortal();
 	const admin = isAdmin(me);
 	const canEdit = self || admin;
-	const [f, setF] = useState({ name: person.name, title: person.title || '', email: person.email || '', phone: person.phone || '', address: person.address || '', drive_url: person.drive_url || '', notes: person.notes || '', role: person.role, birthday: person.birthday || '' });
+	const [f, setF] = useState({ name: person.name, title: person.title || '', email: person.email || '', phone: person.phone || '', address: person.address || '', drive_url: person.drive_url || '', notes: person.notes || '', role: person.role, birthday: person.birthday || '', birth_year: person.birth_year ? String(person.birth_year) : '', location: person.location || '' });
 	const [codeFor, setCodeFor] = useState(null);
 	const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
@@ -96,8 +100,9 @@ function Profile({ person, self }) {
 	};
 	const submit = (e) => {
 		e.preventDefault();
-		const { role, birthday, ...profile } = f;
+		const { role, birthday, birth_year: year, ...profile } = f;
 		if (birthday !== (person.birthday || '')) profile.birthday = birthday;
+		if (year !== (person.birth_year ? String(person.birth_year) : '')) profile.birth_year = year;
 		save(admin && role !== person.role ? { ...profile, role } : profile);
 	};
 	const pick = () => {
@@ -127,10 +132,13 @@ function Profile({ person, self }) {
 			toast(err.message);
 		}
 	};
+	const required = Object.fromEntries(REQUIRED_PROFILE);
+	const missing = missingProfile(person);
 	const field = (k, label, type, ph) => (
-		<label>
+		<label className={required[k] && !String(person[k] || '').trim() ? 'pf-missing' : undefined}>
 			{label}
-			<input type={type || 'text'} value={f[k]} onChange={set(k)} placeholder={ph || ''} disabled={!canEdit} />
+			{required[k] ? ' *' : ''}
+			<input type={type || 'text'} value={f[k]} onChange={set(k)} placeholder={ph || ''} disabled={!canEdit} aria-required={!!required[k]} />
 		</label>
 	);
 
@@ -139,7 +147,20 @@ function Profile({ person, self }) {
 			<form className="dcard" onSubmit={submit}>
 				<div className="dc-head">
 					<span className="s-k">{self ? 'My profile' : 'Profile'}</span>
+					<span className="pf-meter">
+						<span className="muted">
+							Profile {REQUIRED_PROFILE.length - missing.length} of {REQUIRED_PROFILE.length} complete
+						</span>
+						<span className="pf-bar" aria-hidden="true">
+							<span style={{ width: `${((REQUIRED_PROFILE.length - missing.length) / REQUIRED_PROFILE.length) * 100}%` }} className={missing.length ? '' : 'ok'} />
+						</span>
+					</span>
 				</div>
+				{missing.length > 0 && (
+					<p className="pf-warn" role="status">
+						Missing: {missing.join(', ')}.{person.role !== 'admin' ? ' Tasks are locked until the profile is complete.' : ''}
+					</p>
+				)}
 				<div className="pf-top">
 					<div className="pf-photo">
 						{person.photo ? (
@@ -149,6 +170,7 @@ function Profile({ person, self }) {
 								{initials(person.name)}
 							</span>
 						)}
+						{!person.photo && <span className="pf-req">Photo required *</span>}
 						{canEdit && (
 							<div className="pf-pbtns">
 								<button type="button" className="btn small" onClick={pick}>
@@ -164,12 +186,13 @@ function Profile({ person, self }) {
 					</div>
 					<div className="pf-fields">
 						{field('name', 'Full name')}
+						{field('location', 'Location (city)', 'text', 'e.g. Rangpur')}
 						{field('title', 'Job title', 'text', 'e.g. SEO specialist')}
 						{field('email', 'Email', 'email')}
-						{field('phone', 'Phone', 'tel')}
+						{field('phone', 'Phone number', 'tel')}
 						{field('address', 'Address')}
 						{field('drive_url', 'Google Drive link', 'url', 'https://drive.google.com/…')}
-						<Birthday value={f.birthday} onChange={(v) => setF({ ...f, birthday: v })} disabled={!canEdit} />
+						<Birthday value={f.birthday} year={f.birth_year} onChange={(v, y) => setF({ ...f, birthday: v, birth_year: y || '' })} disabled={!canEdit} />
 						<label className="wide">
 							Notes
 							<textarea value={f.notes} onChange={set('notes')} maxLength={500} disabled={!canEdit} placeholder="Anything useful for the team" />

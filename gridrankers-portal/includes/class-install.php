@@ -15,7 +15,7 @@ class GRP_Install {
 	/**
 	 * Current schema version. Bump it whenever get_schema() or migrations() changes.
 	 */
-	const DB_VERSION = 5;
+	const DB_VERSION = 6;
 
 	/**
 	 * Option that stores the installed schema version.
@@ -28,7 +28,8 @@ class GRP_Install {
 	 * The optional `grp_requests` table from SPEC.md section 5 is not created:
 	 * there is no public access-request flow. `grp_deletions` (schema 2) is an addition:
 	 * tombstones for hard-deleted rows so GET /sync can report deletions. Schema 5 adds
-	 * leave, days off and posts (announcements, shout-outs) for SPEC.md 6.10.
+	 * leave, days off and posts (announcements, shout-outs) for SPEC.md 6.10; schema 6
+	 * adds member location and birth year, and private notices.
 	 *
 	 * @var string[]
 	 */
@@ -225,6 +226,8 @@ class GRP_Install {
 				wp_user_id bigint(20) unsigned NULL,
 				active tinyint(1) NOT NULL DEFAULT 1,
 				birthday char(5) NULL,
+				birth_year smallint(4) unsigned NULL,
+				location varchar(191) NULL,
 				weekly_off json NULL,
 				created_at datetime NOT NULL,
 				updated_at datetime NOT NULL,
@@ -478,10 +481,11 @@ class GRP_Install {
 
 			"CREATE TABLE {$t['grp_posts']} (
 				id varchar(64) NOT NULL,
-				kind enum('announcement','shoutout') NOT NULL DEFAULT 'announcement',
+				kind enum('announcement','shoutout','notice') NOT NULL DEFAULT 'announcement',
 				title varchar(191) NULL,
 				body text NOT NULL,
 				to_member varchar(64) NULL,
+				to_members json NULL,
 				pinned tinyint(1) NOT NULL DEFAULT 0,
 				show_until date NULL,
 				created_by varchar(64) NULL,

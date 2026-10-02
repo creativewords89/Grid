@@ -36,6 +36,12 @@ foreach ( $team as $m ) {
 			'role'       => $m[2],
 			'wp_user_id' => $m[3],
 			'active'     => 1,
+			// A complete required profile (SPEC.md 6.10), so task work is not locked.
+			'location'   => 'Rangpur',
+			'birthday'   => '01-15',
+			'birth_year' => 1990,
+			'phone'      => '+8801700000000',
+			'photo'      => 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
 		)
 	);
 	if ( $m[4] ) {

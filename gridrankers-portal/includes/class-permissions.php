@@ -144,6 +144,36 @@ class GRP_Permissions {
 	const SET_BIRTHDAY = 'set_birthday';
 
 	/**
+	 * Task work that is locked while a Team Leader's or Team Member's required profile is
+	 * incomplete (SPEC.md section 3, Profile lock).
+	 */
+	const PROFILE_LOCKED = array(
+		self::ADD_TASK,
+		self::EDIT_TASK,
+		self::CHANGE_TASK_SCHEDULE,
+		self::DELETE_TASK,
+		self::CHANGE_STATUS,
+		self::TICK_PROGRESS,
+		self::REVIEW,
+		self::AUTO_ACCEPT,
+		self::REQUEST_REVIEW,
+		self::ANSWER_REVIEW_REQUEST,
+		self::LOG_WORK,
+		self::SKIP_PERIOD,
+	);
+
+	/**
+	 * Required profile fields (SPEC.md 6.10): field => label.
+	 */
+	const REQUIRED_PROFILE = array(
+		'name'     => 'Full name',
+		'location' => 'Location',
+		'birthday' => 'Date of birth',
+		'phone'    => 'Phone number',
+		'photo'    => 'Photo',
+	);
+
+	/**
 	 * Whether `$user` may perform `$action` on `$context`.
 	 *
 	 * @param array|object|null $user    Acting team member.
@@ -159,6 +189,9 @@ class GRP_Permissions {
 
 		$user    = (array) $user;
 		$context = null === $context ? array() : (array) $context;
+		if ( self::ROLE_ADMIN !== $role && in_array( $action, self::PROFILE_LOCKED, true ) && self::missing_profile( $user ) ) {
+			return false;
+		}
 		$manager = self::ROLE_ADMIN === $role || self::ROLE_LEAD === $role;
 		$admin   = self::ROLE_ADMIN === $role;
 
@@ -263,6 +296,28 @@ class GRP_Permissions {
 		}
 
 		return false;
+	}
+
+	/**
+	 * Labels of the required profile fields a member has not filled in (date of birth needs the year).
+	 *
+	 * @param array|object $member Member row.
+	 * @return string[]
+	 */
+	public static function missing_profile( $member ) {
+		$member  = (array) $member;
+		$missing = array();
+		foreach ( self::REQUIRED_PROFILE as $field => $label ) {
+			$empty = '' === trim( (string) ( $member[ $field ] ?? '' ) );
+			if ( 'birthday' === $field ) {
+				$empty = $empty || empty( $member['birth_year'] );
+			}
+			if ( $empty ) {
+				$missing[] = $label;
+			}
+		}
+
+		return $missing;
 	}
 
 	/**

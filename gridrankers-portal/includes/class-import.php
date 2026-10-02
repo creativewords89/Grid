@@ -47,6 +47,11 @@ class GRP_Import {
 	const SKIPPED_SETTINGS = array( 'admin', 'gdrive' );
 
 	/**
+	 * Member fields an import fills in but never empties.
+	 */
+	const KEEP_PROFILE = array( 'photo', 'phone', 'email', 'address', 'title', 'drive_url', 'notes', 'birthday', 'birth_year', 'location', 'weekly_off' );
+
+	/**
 	 * Trash types in the export => tables.
 	 */
 	const TRASH_TYPES = array(
@@ -206,6 +211,8 @@ class GRP_Import {
 			'wp_user_id'  => ! empty( $d['wpUserId'] ) ? (int) $d['wpUserId'] : null,
 			'active'      => isset( $d['active'] ) ? ( $d['active'] ? 1 : 0 ) : 1,
 			'birthday'    => self::birthday( $d['birthday'] ?? null ),
+			'birth_year'  => ! empty( $d['birthYear'] ) ? (int) $d['birthYear'] : null,
+			'location'    => isset( $d['location'] ) ? mb_substr( (string) $d['location'], 0, 191 ) : null,
 			'weekly_off'  => GRP_People::weekdays( $d['weeklyOff'] ?? null ),
 			'created_at'  => self::time( $d['createdAt'] ?? null ),
 		);
@@ -296,10 +303,11 @@ class GRP_Import {
 
 		return array(
 			'id'         => $id,
-			'kind'       => 'shoutout' === ( $d['kind'] ?? '' ) ? 'shoutout' : 'announcement',
+			'kind'       => in_array( $d['kind'] ?? '', array( 'shoutout', 'notice' ), true ) ? $d['kind'] : 'announcement',
 			'title'      => isset( $d['title'] ) ? mb_substr( (string) $d['title'], 0, 191 ) : null,
 			'body'       => $body,
 			'to_member'  => ! empty( $d['toId'] ) ? (string) $d['toId'] : null,
+			'to_members' => is_array( $d['toIds'] ?? null ) ? array_values( array_map( 'strval', $d['toIds'] ) ) : null,
 			'pinned'     => ! empty( $d['pinned'] ) ? 1 : 0,
 			'show_until' => self::ymd( $d['showUntil'] ?? null ),
 			'created_by' => ! empty( $d['by'] ) ? (string) $d['by'] : null,
@@ -669,6 +677,13 @@ class GRP_Import {
 				}
 				if ( ! empty( $existing['wp_user_id'] ) && empty( $row['wp_user_id'] ) ) {
 					unset( $row['wp_user_id'] );
+				}
+				// An export without a profile field (e.g. from the old portal) never blanks one
+				// filled in here: the required profile (SPEC.md 6.10) would lock the person.
+				foreach ( self::KEEP_PROFILE as $field ) {
+					if ( array_key_exists( $field, $row ) && ( null === $row[ $field ] || '' === $row[ $field ] ) && ! empty( $existing[ $field ] ) ) {
+						unset( $row[ $field ] );
+					}
 				}
 			}
 			GRP_Store::update( $table, $row['id'], $row );

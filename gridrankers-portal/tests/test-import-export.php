@@ -363,6 +363,23 @@ class Test_GRP_Import_Export extends GRP_REST_TestCase {
 		$this->assertEquals( $first['data']['leave'], GRP_Export::build()['data']['leave'] );
 	}
 
+	public function test_import_never_blanks_a_profile_filled_in_here() {
+		GRP_Import::run( $this->fixture() );
+		GRP_Store::update(
+			'grp_members',
+			'tm_lee',
+			array(
+				'location'   => 'Rangpur',
+				'birthday'   => '01-15',
+				'birth_year' => 1990,
+				'photo'      => 'https://example.com/lee.png',
+			)
+		);
+		GRP_Import::run( $this->fixture() );
+		$lee = GRP_Store::get( 'grp_members', 'tm_lee' );
+		$this->assertSame( array( 'Rangpur', '01-15', 1990, 'https://example.com/lee.png', '+1 555 0100' ), array( $lee['location'], $lee['birthday'], $lee['birth_year'], $lee['photo'], $lee['phone'] ) );
+	}
+
 	public function test_rest_export_and_import_super_admin_only() {
 		$this->assertStatus( 403, $this->api_as( 'lead', 'GET', '/export' ) );
 		$this->assertStatus( 403, $this->api_as( 'member', 'GET', '/export' ) );

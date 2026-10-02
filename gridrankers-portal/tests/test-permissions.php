@@ -43,7 +43,8 @@ class Test_GRP_Permissions extends WP_UnitTestCase {
 			'role'       => $role,
 			'wp_user_id' => $wp_user_id,
 			'active'     => 1,
-		);
+			'name'       => $id,
+		) + GRP_REST_TestCase::FULL_PROFILE;
 	}
 
 	/**
@@ -1079,5 +1080,57 @@ class Test_GRP_Permissions extends WP_UnitTestCase {
 				'member' => false,
 			)
 		);
+	}
+
+	/**
+	 * Profile lock: Team Leaders and Members with an incomplete profile can't work on tasks;
+	 * the Super Admin is only reminded.
+	 */
+	public function test_incomplete_profile_locks_task_work() {
+		foreach ( $this->users as $role => $user ) {
+			$this->users[ $role ] = array_merge(
+				$user,
+				array(
+					'location'   => '',
+					'birth_year' => null,
+				)
+			);
+		}
+		$locked = array(
+			'admin'  => true,
+			'lead'   => false,
+			'member' => false,
+		);
+		$this->assert_matrix( GRP_Permissions::ADD_TASK, null, $locked );
+		$this->assert_matrix(
+			GRP_Permissions::CHANGE_STATUS,
+			array(
+				'task' => $this->task( 'todo' ),
+				'to'   => 'doing',
+			),
+			$locked
+		);
+		$this->assert_matrix( GRP_Permissions::LOG_WORK, fn ( $role ) => array( 'member_id' => $this->users[ $role ]['id'] ), $locked );
+		// Not task work: leave and the profile itself stay open.
+		$this->assert_matrix(
+			GRP_Permissions::TAKE_LEAVE,
+			fn ( $role ) => array( 'member_id' => $this->users[ $role ]['id'] ),
+			array(
+				'admin'  => false,
+				'lead'   => true,
+				'member' => true,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::EDIT_MEMBER_PROFILE,
+			fn ( $role ) => array( 'member_id' => $this->users[ $role ]['id'] ),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => true,
+			)
+		);
+		$this->assertSame( array( 'Location', 'Date of birth' ), GRP_Permissions::missing_profile( $this->users['member'] ) );
+		$this->assertSame( array( 'Full name', 'Location', 'Date of birth', 'Phone number', 'Photo' ), GRP_Permissions::missing_profile( array() ) );
 	}
 }

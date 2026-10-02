@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { approvals, attention, bellItems, myProjects, PROJECT_FILTERS, shoutouts, strips } from '../lib/day.js';
-import { dayOffKind, daysLeft, fill, leaveDays, messages, takenInMonth, teamWeekly, weekday, whosOut } from '../lib/people.js';
+import { approvals, attention, bellItems, myProjects, notices, PROJECT_FILTERS, strips } from '../lib/day.js';
+import { dayOffKind, daysLeft, fill, leaveDays, messages, missingProfile, profileLocked, takenInMonth, teamWeekly, weekday, whosOut } from '../lib/people.js';
 import { emptyData } from '../lib/store.js';
 
 const TODAY = '2026-10-01'; // a Thursday
 const NOW = Date.parse('2026-10-01T09:00:00Z');
+
+const FULL = { location: 'Rangpur', birth_year: 1990, phone: '+880', photo: 'p.png' };
 
 function team() {
 	const d = emptyData();
@@ -15,6 +17,7 @@ function team() {
 		lee: { id: 'lee', name: 'Lee Lead', role: 'lead', active: 1, weekly_off: null },
 		grid: { id: 'grid', name: 'Grid Owner', role: 'admin', active: 1, weekly_off: null },
 	};
+	Object.values(d.members).forEach((m) => Object.assign(m, FULL, { birthday: m.birthday || '03-03' }));
 	d.days_off = { o1: { id: 'o1', kind: 'event', name: 'Durga Puja', from_date: '2026-10-06', to_date: '2026-10-06' } };
 	return d;
 }
@@ -97,15 +100,14 @@ describe('my day', () => {
 		};
 		const max = d.members.max;
 		const keys = strips(d, max, TODAY, { now: NOW }).map((s) => s.key);
-		expect(keys).toEqual(['bday:2026', 'bday:sara:2026', 'post:p1']);
+		expect(keys).toEqual(['bday:2026', 'bday:sara:2026']);
 		expect(strips(d, d.members.rafi, TODAY, { now: NOW })[0]).toMatchObject({ kind: 'dayoff', ok: 'Thanks', title: expect.stringContaining('Today is your day off, Rafi') });
 
-		d.dismissals = { x: { id: 'x', member_id: 'max', notice_key: 'post:p1' } };
-		expect(strips(d, max, TODAY, { now: NOW }).map((s) => s.key)).not.toContain('post:p1');
-		expect(shoutouts(d, NOW).map((p) => p.id)).toEqual(['p3']);
+		d.dismissals = { x: { id: 'x', member_id: 'max', notice_key: 'bday:sara:2026' } };
+		expect(strips(d, max, TODAY, { now: NOW }).map((s) => s.key)).not.toContain('bday:sara:2026');
 
 		const bell = bellItems(d, max, TODAY, NOW);
-		expect(bell.map((b) => b.key)).toEqual(['bday:2026', 'bday:sara:2026', 'post:p1', 'shout:p3']);
+		expect(bell.map((b) => b.key)).toEqual(['bday:2026', 'bday:sara:2026', 'shout:p3', 'notice:p1']);
 		expect(bell.every((b) => b.unread)).toBe(true);
 	});
 
@@ -140,5 +142,39 @@ describe('my day', () => {
 			['unassigned', 't4'],
 		]);
 		expect(items[2].reason).toBe('Urgent · unassigned');
+	});
+
+	it('notices: to everyone, to me, shout-outs; private notices to others stay out', () => {
+		const d = work();
+		d.posts = {
+			all: { id: 'all', kind: 'announcement', title: 'Team dinner', body: 'Thursday', created_by: 'grid', created_at: '2026-09-28 10:00:00' },
+			mine: { id: 'mine', kind: 'notice', body: 'Send the Acme report', to_members: ['max'], created_by: 'lee', created_at: '2026-10-01 08:00:00' },
+			hers: { id: 'hers', kind: 'notice', body: 'For Sara only', to_members: ['sara'], created_by: 'lee', created_at: '2026-10-01 07:00:00' },
+			shout: { id: 'shout', kind: 'shoutout', body: 'Great work', to_members: ['sara'], created_by: 'lee', created_at: '2026-09-30 10:00:00' },
+			old: { id: 'old', kind: 'shoutout', body: 'Old', to_member: 'max', created_by: 'lee', created_at: '2026-08-01 10:00:00' },
+			gone: { id: 'gone', kind: 'announcement', body: 'Expired', show_until: '2026-09-30', created_by: 'grid', created_at: '2026-09-20 10:00:00' },
+		};
+		const list = notices(d, d.members.max, TODAY, NOW);
+		expect(list.map((n) => [n.post.id, n.tag, n.to])).toEqual([
+			['mine', 'you', 'you'],
+			['shout', 'shout', 'Sara Ahmed'],
+			['all', 'all', 'everyone'],
+		]);
+		expect(bellItems(d, d.members.max, TODAY, NOW).map((b) => b.key)).toEqual(['bday:2026', 'bday:sara:2026', 'notice:mine', 'notice:all']);
+	});
+
+	it('required profile: reminder for everyone, lock for leaders and members', () => {
+		const d = work();
+		d.members.max = { ...d.members.max, location: '', birth_year: null };
+		expect(missingProfile(d.members.max)).toEqual(['Location', 'Date of birth']);
+		expect(missingProfile({})).toEqual(['Full name', 'Location', 'Date of birth', 'Phone number', 'Photo']);
+		expect(profileLocked(d.members.max, d.members.max)).toBe(true);
+		const s = strips(d, d.members.max, TODAY, { now: NOW })[0];
+		expect(s).toMatchObject({ key: 'profile', ok: 'Complete profile', text: 'Missing: Location, Date of birth. Your tasks are locked until it’s done.' });
+		d.dismissals = { x: { id: 'x', member_id: 'max', notice_key: 'profile' } };
+		expect(strips(d, d.members.max, TODAY, { now: NOW })[0].key).toBe('profile');
+		d.members.grid = { ...d.members.grid, phone: '' };
+		expect(profileLocked(d.members.grid, d.members.grid)).toBe(false);
+		expect(strips(d, d.members.grid, TODAY, { now: NOW })[0].text).toBe('Missing: Phone number.');
 	});
 });

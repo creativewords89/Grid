@@ -1,30 +1,58 @@
 import { useState } from 'react';
 import { usePortal } from '../../context.js';
-import { firstName } from '../../lib/people.js';
+import { addDays } from '../../lib/cycles.js';
+import { ROLE } from '../../lib/roles.js';
 import { rowsOf } from '../../lib/store.js';
 import Modal from '../Modal.jsx';
 
-// Send shout-out (to a Team Member) and Post announcement (SPEC.md 7.0). Team Leaders and the Super Admin.
-export function ShoutoutDialog({ open, onClose }) {
-	const { api, data, dispatch, toast } = usePortal();
-	const people = rowsOf(data, 'members')
-		.filter((m) => m.active && m.role === 'member')
-		.sort((a, b) => a.name.localeCompare(b.name));
-	const [to, setTo] = useState('');
-	const [body, setBody] = useState('');
-	const [error, setError] = useState('');
-	const who = data.members[to];
+const SHOW_FOR = [
+	['7', '7 days'],
+	['30', '30 days'],
+	['', 'Until I remove it'],
+];
 
+// Send notice (SPEC.md 7.0): a notice to everyone or to chosen people, or a shout-out to chosen
+// Team Members. Team Leaders and the Super Admin.
+export function NoticeDialog({ open, onClose }) {
+	const { api, data, dispatch, me, toast, today } = usePortal();
+	const [kind, setKind] = useState('notice');
+	const [everyone, setEveryone] = useState(true);
+	const [to, setTo] = useState([]);
+	const [title, setTitle] = useState('');
+	const [body, setBody] = useState('');
+	const [days, setDays] = useState('7');
+	const [error, setError] = useState('');
+	const shout = kind === 'shoutout';
+	const toAll = everyone && !shout;
+	const people = rowsOf(data, 'members')
+		.filter((m) => m.active && m.id !== me.id && (!shout || m.role === 'member'))
+		.sort((a, b) => a.name.localeCompare(b.name));
+	const chosen = to.filter((id) => people.some((p) => p.id === id));
+
+	const reset = () => {
+		setKind('notice');
+		setEveryone(true);
+		setTo([]);
+		setTitle('');
+		setBody('');
+		setDays('7');
+		setError('');
+	};
 	const submit = async (e) => {
 		e.preventDefault();
-		if (!to) return setError('Pick who the shout-out is for.');
+		if (!toAll && !chosen.length) return setError('Pick who it is for.');
 		if (!body.trim()) return setError('Write a message.');
 		try {
-			dispatch({ type: 'upsert', table: 'posts', row: await api.post('posts', { kind: 'shoutout', to, body: body.trim() }) });
-			toast(`Shout-out sent to ${who ? who.name : 'them'}`);
-			setTo('');
-			setBody('');
-			setError('');
+			const row = await api.post('posts', {
+				kind: shout ? 'shoutout' : toAll ? 'announcement' : 'notice',
+				to: toAll ? undefined : chosen,
+				title: title.trim(),
+				body: body.trim(),
+				show_until: days ? addDays(today, +days) : '',
+			});
+			dispatch({ type: 'upsert', table: 'posts', row });
+			toast(shout ? 'Shout-out sent' : 'Notice sent');
+			reset();
 			onClose();
 		} catch (err) {
 			setError(err.message);
@@ -32,25 +60,71 @@ export function ShoutoutDialog({ open, onClose }) {
 	};
 
 	return (
-		<Modal open={open} onClose={onClose} labelledBy="grpShout">
+		<Modal open={open} onClose={onClose} labelledBy="grpNotice">
 			<form onSubmit={submit} noValidate>
-				<h2 id="grpShout">Send a shout-out</h2>
+				<h2 id="grpNotice">Send a notice</h2>
+				<fieldset className="nd-row">
+					<legend>Kind</legend>
+					<div className="ra-chips">
+						<button type="button" className="ra-chip" aria-pressed={!shout} onClick={() => setKind('notice')}>
+							Notice
+						</button>
+						<button type="button" className="ra-chip" aria-pressed={shout} onClick={() => setKind('shoutout')}>
+							Shout-out ★
+						</button>
+					</div>
+				</fieldset>
+				<fieldset className="nd-row">
+					<legend>To</legend>
+					{!shout && (
+						<div className="ra-chips">
+							<button type="button" className="ra-chip" aria-pressed={everyone} onClick={() => setEveryone(true)}>
+								Everyone
+							</button>
+							<button type="button" className="ra-chip" aria-pressed={!everyone} onClick={() => setEveryone(false)}>
+								Choose people
+							</button>
+						</div>
+					)}
+					{!toAll && (
+						<div className="nd-people">
+							{chosen.map((id) => (
+								<button key={id} type="button" className="nd-chip" onClick={() => setTo(to.filter((x) => x !== id))} aria-label={`Remove ${data.members[id].name}`}>
+									{data.members[id].name} ✕
+								</button>
+							))}
+							<select value="" onChange={(e) => e.target.value && setTo([...to, e.target.value])} aria-label="Add a person">
+								<option value="">{shout ? 'Add a Team Member…' : 'Add a person…'}</option>
+								{people
+									.filter((p) => !chosen.includes(p.id))
+									.map((p) => (
+										<option key={p.id} value={p.id}>
+											{p.name} · {ROLE[p.role]}
+										</option>
+									))}
+							</select>
+						</div>
+					)}
+				</fieldset>
 				<label>
-					To
-					<select value={to} onChange={(e) => setTo(e.target.value)} aria-label="To">
-						<option value="">Pick a Team Member</option>
-						{people.map((m) => (
-							<option key={m.id} value={m.id}>
-								{m.name}
+					Title (optional)
+					<input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={191} />
+				</label>
+				<label>
+					Message
+					<textarea rows={3} value={body} onChange={(e) => setBody(e.target.value)} maxLength={2000} />
+				</label>
+				<label>
+					Show for
+					<select value={days} onChange={(e) => setDays(e.target.value)} aria-label="Show for">
+						{SHOW_FOR.map(([v, l]) => (
+							<option key={l} value={v}>
+								{l}
 							</option>
 						))}
 					</select>
 				</label>
-				<label>
-					Message
-					<textarea rows={3} value={body} onChange={(e) => setBody(e.target.value)} maxLength={2000} placeholder="e.g. Great work on the Acme H1 fixes, the client loved it." />
-				</label>
-				<p className="hint">Shown on everyone’s My day for 30 days{who ? `, with a notification to ${firstName(who.name)}` : ''}.</p>
+				<p className="hint">{toAll ? 'Everyone sees it at the top of their Notices box.' : 'Only the people you choose see it, at the top of their Notices box, with a bell notification.'}{shout ? ' Shout-outs show a star and everyone can see them for 30 days.' : ''}</p>
 				<p className="err" role="alert">
 					{error}
 				</p>
@@ -60,70 +134,6 @@ export function ShoutoutDialog({ open, onClose }) {
 					</button>
 					<button type="submit" className="btn primary">
 						Send
-					</button>
-				</div>
-			</form>
-		</Modal>
-	);
-}
-
-export function AnnouncementDialog({ open, onClose }) {
-	const { api, dispatch, toast, today } = usePortal();
-	const [title, setTitle] = useState('');
-	const [body, setBody] = useState('');
-	const [until, setUntil] = useState('');
-	const [pinned, setPinned] = useState(false);
-	const [error, setError] = useState('');
-
-	const submit = async (e) => {
-		e.preventDefault();
-		if (!title.trim()) return setError('Give the announcement a title.');
-		if (!body.trim()) return setError('Write a message.');
-		try {
-			dispatch({ type: 'upsert', table: 'posts', row: await api.post('posts', { kind: 'announcement', title: title.trim(), body: body.trim(), show_until: until, pinned }) });
-			toast('Announcement posted');
-			setTitle('');
-			setBody('');
-			setUntil('');
-			setPinned(false);
-			setError('');
-			onClose();
-		} catch (err) {
-			setError(err.message);
-		}
-	};
-
-	return (
-		<Modal open={open} onClose={onClose} labelledBy="grpAnnounce">
-			<form onSubmit={submit} noValidate>
-				<h2 id="grpAnnounce">Post an announcement</h2>
-				<label>
-					Title
-					<input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={191} placeholder="e.g. Office closed on Tuesday 6 October" />
-				</label>
-				<label>
-					Message
-					<textarea rows={3} value={body} onChange={(e) => setBody(e.target.value)} maxLength={2000} />
-				</label>
-				<div className="row">
-					<label>
-						Show until (optional)
-						<input type="date" value={until} min={today} onChange={(e) => setUntil(e.target.value)} aria-label="Show until" />
-					</label>
-					<label className="chk">
-						<input type="checkbox" checked={pinned} onChange={(e) => setPinned(e.target.checked)} /> Pin to the top
-					</label>
-				</div>
-				<p className="hint">Everyone sees it at the top of My day until they dismiss it or the date passes.</p>
-				<p className="err" role="alert">
-					{error}
-				</p>
-				<div className="dlg-acts">
-					<button type="button" className="btn" onClick={onClose}>
-						Cancel
-					</button>
-					<button type="submit" className="btn primary">
-						Post
 					</button>
 				</div>
 			</form>

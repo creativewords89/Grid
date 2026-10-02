@@ -42,6 +42,7 @@ class GRP_REST_People extends GRP_REST_Controller {
 		self::route( '/days-off', WP_REST_Server::CREATABLE, 'create' );
 		self::route( '/days-off/weekly', WP_REST_Server::EDITABLE, 'set_weekly' );
 		self::route( '/days-off/(?P<id>[\w-]+)', WP_REST_Server::DELETABLE, 'destroy' );
+		self::route( '/weather', WP_REST_Server::READABLE, 'weather' );
 		self::route( '/settings/messages', WP_REST_Server::READABLE, 'messages' );
 		self::route( '/settings/messages', WP_REST_Server::EDITABLE, 'set_messages' );
 	}
@@ -284,5 +285,23 @@ class GRP_REST_People extends GRP_REST_Controller {
 		);
 
 		return rest_ensure_response( self::message_texts() + array( 'setting' => $row ) );
+	}
+
+	/**
+	 * GET /weather: today's weather for the signed-in person's city (SPEC.md 6.10), or
+	 * `{available: false}` when there is no city or the service can't be reached.
+	 *
+	 * @return WP_REST_Response
+	 */
+	public static function weather() {
+		$city    = trim( (string) ( self::actor()['location'] ?? '' ) );
+		$weather = GRP_Weather::for_city( $city );
+
+		return rest_ensure_response(
+			$weather ? array( 'available' => true ) + $weather : array(
+				'available' => false,
+				'city'      => $city,
+			)
+		);
 	}
 }

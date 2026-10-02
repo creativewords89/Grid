@@ -25,6 +25,17 @@ abstract class GRP_REST_TestCase extends WP_UnitTestCase {
 	 */
 	private $tokens = array();
 
+	/**
+	 * A complete required profile (SPEC.md 6.10): without it task work is locked.
+	 */
+	const FULL_PROFILE = array(
+		'location'   => 'Rangpur',
+		'birthday'   => '01-15',
+		'birth_year' => 1990,
+		'phone'      => '+8801700000000',
+		'photo'      => 'https://example.com/photo.png',
+	);
+
 	public function set_up() {
 		parent::set_up();
 
@@ -76,7 +87,7 @@ abstract class GRP_REST_TestCase extends WP_UnitTestCase {
 				'role'       => $role,
 				'wp_user_id' => $wp_user_id,
 				'active'     => 1,
-			)
+			) + self::FULL_PROFILE
 		);
 	}
 

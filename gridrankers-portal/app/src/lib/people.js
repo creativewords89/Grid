@@ -122,3 +122,21 @@ export const monthName = (month) => {
 
 // Everyone who can take leave (not the Super Admin), active.
 export const leavePeople = (data) => rowsOf(data, 'members').filter((m) => m.active && m.role !== 'admin');
+
+// Required profile (SPEC.md 6.10): labels of what a member has not filled in. While anything is
+// missing, Team Leaders and Members can't work on tasks (the server refuses; the Super Admin is
+// only reminded).
+export const REQUIRED_PROFILE = [
+	['name', 'Full name'],
+	['location', 'Location'],
+	['birthday', 'Date of birth'],
+	['phone', 'Phone number'],
+	['photo', 'Photo'],
+];
+
+export function missingProfile(member) {
+	const m = member || {};
+	return REQUIRED_PROFILE.filter(([k]) => !String(m[k] || '').trim() || (k === 'birthday' && !m.birth_year)).map(([, label]) => label);
+}
+
+export const profileLocked = (member, me) => me.role !== 'admin' && missingProfile(member).length > 0;

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { usePortal } from '../../context.js';
 import { daysBetween } from '../../lib/cycles.js';
 import { PAGE_SIZE, PROJECT_FILTERS, SOON_DAYS, myProjects } from '../../lib/day.js';
+import { MEMBER_TAB_KEY, profileLocked } from '../../lib/people.js';
 
 const FILTERS = [
 	['all', 'All'],
@@ -57,7 +58,7 @@ function ProjectBox({ group, today }) {
 
 // My projects (SPEC.md 7.0): the person's open work by project, most urgent first, 5 per page.
 export default function MyProjects() {
-	const { data, me, today } = usePortal();
+	const { data, me, today, setTeamPerson, setView } = usePortal();
 	const [filter, setFilter] = useState('all');
 	const [page, setPage] = useState(0);
 	const groups = useMemo(() => myProjects(data, me, today), [data, me, today]);
@@ -67,6 +68,39 @@ export default function MyProjects() {
 	const at = Math.min(page, pages - 1);
 	const shown = list.slice(at * PAGE_SIZE, at * PAGE_SIZE + PAGE_SIZE);
 	const tasks = groups.reduce((n, g) => n + g.tasks.length, 0);
+
+	if (profileLocked(data.members[me.id] || me, me)) {
+		const openSettings = () => {
+			try {
+				window.sessionStorage.setItem(MEMBER_TAB_KEY, 'profile');
+			} catch (e) {
+				/* opens on the first tab */
+			}
+			setTeamPerson(me.id);
+			setView('team');
+		};
+		return (
+			<section className="md-card md-grow" aria-labelledby="mpTitle">
+				<div className="md-h">
+					<h2 id="mpTitle">My projects</h2>
+					<span className="muted">Locked until your profile is complete</span>
+				</div>
+				<div className="md-empty">
+					<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+						<rect x="5" y="11" width="14" height="10" rx="2" />
+						<path d="M8 11V7a4 4 0 0 1 8 0v4" />
+					</svg>
+					<b className="md-empty-big">Your tasks are waiting</b>
+					<span>
+						You have {tasks} open task{tasks === 1 ? '' : 's'}. Finish your profile in Settings to start working on them.
+					</span>
+					<button type="button" className="btn primary" onClick={openSettings}>
+						Complete profile
+					</button>
+				</div>
+			</section>
+		);
+	}
 
 	if (!groups.length) {
 		return (
