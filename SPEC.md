@@ -220,7 +220,7 @@ Every project (new and existing) has these six monthly tasks (Monthly deadline, 
 ### 7.0 Dashboard (everyone)
 *Not in the reference portal.* The landing page after sign-in, and what **GridRankers** in the sidebar opens. Design reference: the "Employee dashboard" boards H–U of the design canvas. No statistics (days worked, percentages) anywhere on it.
 
-**Top bar** (everyone): "Good morning / afternoon / evening, {first name}" (before 12:00 / until 17:00 / after), today's date, the **bell** (6.9), user chip and Sign out. Below them, slim message strips, each with Dismiss (per person, 6.9): the day-off message (6.10), birthday ("Happy birthday, {name}!" for that person — button Thanks — and "Today is {name}'s birthday. Wish them a happy birthday!" for everyone else), leave approved / rejected with the approver's message, "{name} asked you to review '{task}'" with **Review now**, and the profile reminder (6.10). Announcements are in the Notices box. No strips → just the greeting row. Under the greeting: the date and the weather (6.10).
+**Top bar** (everyone): "Good morning / afternoon / evening, {first name}" (before 12:00 / until 17:00 / after), today's date, the **bell** (6.9), user chip and Sign out. **Above them**, a coloured **message band** across the top edge of the header card, in the message's colour (amber day off, pink birthday, green approved / review asked, red rejected / profile), showing **one message at a time** with "1 of N ‹ ›" to step through the rest; each has its button (Dismiss / Thanks / Review now / Complete profile; dismissing is per person, 6.9). The messages, in order: the profile reminder (6.10, first), the day-off message (6.10), birthday ("Happy birthday, {name}!" for that person — button Thanks — and "Today is {name}'s birthday. Wish them a happy birthday!" for everyone else), leave approved / rejected with the approver's message, "{name} asked you to review '{task}'" with **Review now**. Announcements are in the Notices box. No messages → no band, just the greeting row. Under the greeting: the date and the weather (6.10).
 
 **Tabs** (Super Admin, Team Leader only): **My day · Projects** (with the number of attention items), and on the right **Send notice**. Team Members have no tabs: they only have My day.
 
@@ -358,5 +358,7 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 **0.1.8 (one change at a time, released together):**
 
 22. Who's out "See all" pop-up cleaned up (6.10) — padded frame, search with icon, filter only when needed, larger rows, footer; same frame for the Notices and approvals "View all". Playwright: See all lists everyone out and search narrows it.
+
+23. Messages on top (7.0, design C): the message band across the top of the header card, one at a time with "1 of N ‹ ›". Playwright: one message shows at a time and the others are reached with ›.
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).

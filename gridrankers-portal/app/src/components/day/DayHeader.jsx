@@ -129,11 +129,12 @@ function Bell() {
 	);
 }
 
-// Greeting, date, bell, user chip and the message strips (SPEC.md 7.0).
+// The message band, greeting, date, bell and user chip (SPEC.md 7.0).
 export default function DayHeader({ onSignOut }) {
 	const { data, me, today, setView, setTeamPerson, setProject, setSearch } = usePortal();
 	const dismiss = useDismiss();
 	const list = useMemo(() => strips(data, me, today), [data, me, today]);
+	const [shown, setShown] = useState(0);
 
 	const act = (s) => {
 		if (s.kind === 'profile') {
@@ -155,8 +156,41 @@ export default function DayHeader({ onSignOut }) {
 		dismiss([s.key]);
 	};
 
+	// One message at a time (SPEC.md 7.0): the others stay in the page, hidden, behind ‹ ›.
+	const at = Math.min(shown, Math.max(0, list.length - 1));
+	const move = (step) => setShown((at + step + list.length) % list.length);
+
 	return (
 		<header className="md-top" aria-label="Today">
+			{list.length > 0 && (
+				<div className="md-band">
+					{list.map((s, i) => (
+						<div key={s.key} className={'md-strip t-' + s.tone} role="status" hidden={i !== at}>
+							<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+								<path d={ICON[s.kind]} />
+							</svg>
+							<p>
+								<b>{s.title}</b> {s.text}
+								{s.meta && <span className="md-meta"> · {s.meta}</span>}
+							</p>
+							{list.length > 1 && (
+								<span className="md-pager">
+									<button type="button" aria-label="Previous message" onClick={() => move(-1)}>
+										‹
+									</button>
+									{i + 1} of {list.length}
+									<button type="button" aria-label="Next message" onClick={() => move(1)}>
+										›
+									</button>
+								</span>
+							)}
+							<button type="button" className="md-strip-x" onClick={() => act(s)}>
+								{s.ok || 'Dismiss'}
+							</button>
+						</div>
+					))}
+				</div>
+			)}
 			<div className="md-row">
 				<div className="md-hello">
 					<h1>
@@ -179,20 +213,6 @@ export default function DayHeader({ onSignOut }) {
 					</button>
 				</div>
 			</div>
-			{list.map((s) => (
-				<div key={s.key} className={'md-strip t-' + s.tone} role="status">
-					<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-						<path d={ICON[s.kind]} />
-					</svg>
-					<p>
-						<b>{s.title}</b> {s.text}
-						{s.meta && <span className="md-meta"> · {s.meta}</span>}
-					</p>
-					<button type="button" className="md-strip-x" onClick={() => act(s)}>
-						{s.ok || 'Dismiss'}
-					</button>
-				</div>
-			))}
 		</header>
 	);
 }

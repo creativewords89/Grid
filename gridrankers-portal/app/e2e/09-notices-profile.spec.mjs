@@ -1,7 +1,7 @@
 // Notices and the required profile (SPEC.md 6.10, section 3 Profile lock): a notice to chosen
 // people reaches only them; an incomplete profile locks task work until it is filled in.
 import { test, expect } from '@playwright/test';
-import { LEAD, MAX, apiCall, signIn, signOut, watchErrors } from './helpers.mjs';
+import { LEAD, MAX, apiCall, showStrip, signIn, signOut, watchErrors } from './helpers.mjs';
 
 test('private notices and the profile lock', async ({ page }) => {
 	const noErrors = watchErrors(page);
@@ -55,7 +55,7 @@ test('private notices and the profile lock', async ({ page }) => {
 	expect(refused.json.message).toContain('Location');
 
 	// Complete profile → Settings → back to work.
-	await reminder.getByRole('button', { name: 'Complete profile' }).click();
+	await (await showStrip(page, 'Finish your profile')).getByRole('button', { name: 'Complete profile' }).click();
 	await page.getByLabel('Location (city) *').fill('Rangpur');
 	await page.getByRole('button', { name: 'Save profile' }).click();
 	await page.getByText('Profile saved').waitFor();

@@ -84,7 +84,8 @@ button.brand:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* My day (SPEC.md 7.0): top bar with strips, tabs, two columns that end level. */
 .md{display:flex;flex-direction:column;gap:16px}
-.md-top{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px 20px;display:flex;flex-direction:column;gap:10px}
+.md-top{background:var(--panel);border:1px solid var(--line);border-radius:16px;display:flex;flex-direction:column;overflow:hidden}
+.md-top>.md-row{padding:16px 20px}
 .md-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .md-hello{flex:1 1 260px;display:flex;flex-direction:column;gap:2px;min-width:0}
 .md-hello h1{margin:0;font-family:var(--display);font-size:1.75rem;font-weight:800;line-height:1.15}
@@ -100,21 +101,22 @@ button.brand:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .md-pop li{display:flex;flex-direction:column;gap:2px;padding:8px 0;border-top:1px solid var(--line);font-size:.85rem}
 .md-pop li span{color:var(--ink-2);overflow-wrap:anywhere}
 .md-pop li.new b::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-right:6px;vertical-align:middle}
-.md-strip{display:flex;align-items:center;gap:12px;border:1px solid;border-radius:12px;padding:10px 14px}
+/* Message band across the top of the header (SPEC.md 7.0): one message at a time, in its colour. */
+.md-strip{display:flex;align-items:center;gap:12px;padding:9px 20px;color:#fff;background:var(--strip,var(--ink))}
+.md-strip[hidden]{display:none}
 .md-strip p{flex:1;margin:0;font-size:.9rem;overflow-wrap:anywhere}
 .md-strip svg{flex-shrink:0}
-.md-meta{color:var(--ink-2)}
-.md-strip-x{border:0;background:none;font-weight:700;font-size:.82rem;color:var(--ink-2);white-space:nowrap}
-.md-strip.t-blue{background:color-mix(in srgb,var(--accent) 10%,var(--panel));border-color:color-mix(in srgb,var(--accent) 30%,var(--line));color:var(--ink)}
-.md-strip.t-blue svg{color:var(--accent)}
-.md-strip.t-amber{background:var(--doing-bg);border-color:color-mix(in srgb,var(--doing) 35%,var(--line))}
-.md-strip.t-amber svg{color:var(--doing)}
-.md-strip.t-pink{background:color-mix(in srgb,#B4316E 9%,var(--panel));border-color:color-mix(in srgb,#B4316E 30%,var(--line))}
-.md-strip.t-pink svg{color:#B4316E}
-.md-strip.t-green{background:var(--done-bg);border-color:color-mix(in srgb,var(--done) 35%,var(--line))}
-.md-strip.t-green svg{color:var(--done)}
-.md-strip.t-red{background:var(--urgent-bg);border-color:color-mix(in srgb,var(--urgent) 35%,var(--line))}
-.md-strip.t-red svg{color:var(--urgent)}
+.md-meta{opacity:.85}
+.md-pager{display:inline-flex;align-items:center;gap:2px;font-size:.78rem;font-weight:700;white-space:nowrap}
+.md-pager button{width:26px;height:26px;border:0;border-radius:8px;background:none;color:inherit;font:inherit;font-size:1rem;cursor:pointer}
+.md-pager button:hover{background:rgba(255,255,255,.18)}
+.md-strip-x{border:0;border-radius:8px;padding:5px 12px;background:rgba(255,255,255,.2);color:inherit;font-weight:700;font-size:.82rem;white-space:nowrap;cursor:pointer}
+.md-strip-x:hover{background:rgba(255,255,255,.32)}
+.md-strip.t-blue{--strip:#2753C9}
+.md-strip.t-amber{--strip:#8A5F00}
+.md-strip.t-pink{--strip:#A3245E}
+.md-strip.t-green{--strip:#2A7A4B}
+.md-strip.t-red{--strip:#B42318}
 .md-tabs{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
 .md-tabs [role=tablist]{display:flex;gap:24px}
 .md-tabs [role=tab]{border:0;background:none;padding:10px 2px;font-size:.95rem;font-weight:600;color:var(--ink-2);border-bottom:2px solid transparent;margin-bottom:-1px}
@@ -211,7 +213,7 @@ dialog label.chk{flex-direction:row;align-items:center;gap:8px;align-self:end;mi
   .na-list li{grid-template-columns:1fr auto;gap:4px 10px}
   .na-list li .na-task{grid-column:1 / -1;white-space:normal}
 }
-@media (max-width:600px){.md-top{padding:14px}.md-hello h1{font-size:1.4rem}.md-me b{display:none}}
+@media (max-width:600px){.md-top>.md-row{padding:14px}.md-strip{padding:9px 14px;flex-wrap:wrap}.md-hello h1{font-size:1.4rem}.md-me b{display:none}}
 
 /* Leave, days off, automatic messages, birthday (SPEC.md 6.10, 7.5, 7.6). */
 .mp-flag.f-green{background:var(--done-bg);color:var(--done)}

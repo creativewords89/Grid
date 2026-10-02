@@ -103,3 +103,15 @@ export function apiCall(page, method, path, body) {
 		{ method, path, body }
 	);
 }
+
+// The header shows one message at a time (SPEC.md 7.0): steps through them with › until the one
+// containing `text` is showing, and returns it.
+export async function showStrip(page, text) {
+	const strip = page.locator('.md-strip', { hasText: text });
+	await expect(strip).toHaveCount(1);
+	for (let i = 0; i < 10 && !(await strip.isVisible()); i++) {
+		await page.locator('.md-strip:visible').getByRole('button', { name: 'Next message' }).click();
+	}
+	await expect(strip).toBeVisible();
+	return strip;
+}
