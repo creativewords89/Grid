@@ -104,7 +104,7 @@ test('my day: leave, days off, birthdays, shout-outs and review requests', async
 	await signInOwner(page);
 	await expect(box('Who’s out today').locator('li', { hasText: 'Lee Lead' })).toContainText('On leave');
 	await expect(box('Needs your approval')).toContainText('Approve content plan', { timeout: 15000 });
-	await openTeam(page, 'Admin settings', 'Days off');
+	await openTeam(page, 'Admin settings');
 	await page.getByLabel('Day off name').fill('Founders Day');
 	await page.getByLabel('Date', { exact: true }).fill(TODAY);
 	await page.getByRole('button', { name: '+ Add day off' }).click();

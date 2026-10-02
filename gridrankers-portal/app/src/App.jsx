@@ -218,9 +218,14 @@ export default function App({ config }) {
 							<span>
 								Viewing <b>{viewing.name}</b>’s My day · <span className={'role r-' + viewing.role}>{ROLE[viewing.role]}</span> · view only
 							</span>
-							<button type="button" className="btn small" onClick={() => setViewAs(null)}>
-								← Back to {viewing.name}’s page
-							</button>
+							<span className="va-acts">
+								<button type="button" className="btn small" onClick={() => (setViewAs(null), setTeamPerson(viewing.id))}>
+									Open {viewing.name}’s page
+								</button>
+								<button type="button" className="btn small" onClick={() => setViewAs(null)}>
+									← Back
+								</button>
+							</span>
 						</div>
 					) : (
 						view !== 'dash' && <TopBar onSignOut={signOut} />
