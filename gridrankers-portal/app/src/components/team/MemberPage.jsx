@@ -11,6 +11,7 @@ import Calendar from './Calendar.jsx';
 import MyLeave from './MyLeave.jsx';
 import { AssignedList, BarChart, LogWorkDialog, PeriodHead, ProjectMix, SetCodeDialog, dayLabel } from './parts.jsx';
 import { downloadReport } from './pdf.js';
+import TeamArea from './TeamArea.jsx';
 
 export const trend = (a, b) =>
 	a === b ? <span className="tr eq">same as previous</span> : a > b ? <span className="tr up">▲ {a - b} vs previous</span> : <span className="tr down">▼ {b - a} vs previous</span>;
@@ -393,16 +394,16 @@ function ProfileHead({ person }) {
 }
 
 // Member page (SPEC.md 7.6): your own page for everyone, any member's page for admin/lead.
-export default function MemberPage({ pid, perf, setPerf, onBack }) {
-	const { api, data, dispatch, toast, me, today, setView } = usePortal();
+export default function MemberPage({ pid, perf, setPerf, onBack, initialTab }) {
+	const { api, data, dispatch, toast, me, today, setView, setTeamPerson } = usePortal();
 	const [picked, setTab] = useState(() => {
 		// The Day leave box's My leave link opens this page on that tab.
 		try {
 			const t = window.sessionStorage.getItem(MEMBER_TAB_KEY);
 			window.sessionStorage.removeItem(MEMBER_TAB_KEY);
-			return t || '';
+			return t || initialTab || '';
 		} catch (e) {
-			return '';
+			return initialTab || '';
 		}
 	});
 	const [filter, setFilter] = useState('all');
@@ -440,8 +441,21 @@ export default function MemberPage({ pid, perf, setPerf, onBack }) {
 		}
 	};
 
-	// Your own page (SPEC.md 7.6): no dashboard or task list (they are on My day).
-	const tabs = self
+	// Your own page (SPEC.md 7.6): no dashboard or task list (they are on My day). The Super Admin
+	// and Team Leaders also run the team from here: Team, Leave, Admin settings, Recent Activity.
+	const managerSelf = self && isManager(person);
+	const waiting = rowsOf(data, 'leave').filter((l) => l.status === 'pending' && data.members[l.member_id] && data.members[l.member_id].role === 'member').length;
+	const tabs = managerSelf
+		? [
+				['calendar', 'Calendar'],
+				['team', 'Team'],
+				['teamleave', 'Leave', waiting || ''],
+				...(person.role !== 'admin' ? [['leave', 'My leave']] : []),
+				['profile', 'Profile settings'],
+				...(isAdmin(person) ? [['admin', 'Admin settings']] : []),
+				['activity', 'Recent Activity'],
+			]
+		: self
 		? [...(person.role !== 'admin' ? [['leave', 'My leave']] : []), ['calendar', 'Calendar'], ['profile', 'Settings'], ['activity', 'Recent Activities']]
 		: [
 				['dash', 'Overview'],
@@ -453,8 +467,11 @@ export default function MemberPage({ pid, perf, setPerf, onBack }) {
 			];
 	const tab = tabs.some(([k]) => k === picked) ? picked : tabs[0][0];
 
+	const teamSection = managerSelf && { team: 'team', teamleave: 'leave', admin: 'settings', activity: 'activity' }[tab];
 	let body;
-	if (tab === 'dash') {
+	if (teamSection) {
+		body = <TeamArea key={teamSection} section={teamSection} perf={perf} setPerf={setPerf} onPerson={setTeamPerson} />;
+	} else if (tab === 'dash') {
 		const urgent = open.filter((x) => x.priority === 'urgent').length;
 		body = (
 			<div className="dash one-col">

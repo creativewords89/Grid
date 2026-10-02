@@ -367,3 +367,11 @@ dialog.cs-dlg{width:min(760px,96vw)}
 .cs-fbox{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 .cs-fbox-acts{display:flex;justify-content:flex-end;gap:6px}
 .cs-sum .pf-bar{width:100%}
+/* My page → Admin settings (SPEC.md 7.5): a menu on the left, one section at a time. */
+.as-wrap{display:flex;gap:16px;align-items:flex-start}
+.as-nav{width:210px;flex-shrink:0;display:flex;flex-direction:column;gap:2px;position:sticky;top:12px}
+.as-nav button{border:0;background:none;text-align:left;padding:9px 12px;border-radius:9px;font:inherit;font-weight:600;color:var(--ink);cursor:pointer}
+.as-nav button:hover{background:var(--panel-2)}
+.as-nav button[aria-current="page"]{background:var(--ink);color:var(--panel);font-weight:700}
+.as-pane{flex:1;min-width:0}
+@media (max-width:760px){.as-wrap{flex-direction:column}.as-nav{width:100%;flex-direction:row;flex-wrap:wrap;position:static}}

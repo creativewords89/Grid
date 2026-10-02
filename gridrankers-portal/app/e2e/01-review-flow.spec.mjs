@@ -1,6 +1,6 @@
 // Member completes → admin asks for a revision → member completes again → admin accepts (SPEC.md 6.4).
 import { test, expect } from '@playwright/test';
-import { LEAD, MAX, addMeetingTask, card, openProject, signIn, signInOwner, signOut, signOutOwner, watchErrors, openTeam } from './helpers.mjs';
+import { LEAD, MAX, addMeetingTask, card, openProject, signIn, signInOwner, signOut, signOutOwner, watchErrors } from './helpers.mjs';
 
 test('completion review round trip', async ({ page }) => {
 	const noErrors = watchErrors(page);
@@ -22,20 +22,30 @@ test('completion review round trip', async ({ page }) => {
 	await page.getByText('Sent for review').waitFor();
 	await signOut(page);
 
-	// Super Admin asks for a revision from their review list.
+	// Super Admin asks for a revision from Needs your approval on My day.
 	await signInOwner(page);
-	await openTeam(page);
-	await expect(page.getByText('Waiting for your review')).toBeVisible();
-	const pending = page.locator('.rv-card', { hasText: title });
-	await pending.getByRole('button', { name: 'Revise' }).click();
+	const asks = page.locator('.md-card', { has: page.getByRole('heading', { name: 'Needs your approval' }) });
+	const pending = asks.locator('.ap-item', { hasText: title });
+	await pending.getByRole('button', { name: 'Send back' }).click();
 	await page.getByLabel('What needs changing').fill('Add the city to the meta title too');
 	await page.getByRole('button', { name: 'Request revision' }).click();
 	await page.getByText('Revision requested').first().waitFor();
-	await expect(page.locator('.rv-card', { hasText: title })).toHaveCount(0);
-	// The Super Admin's own page: no My leave, so it opens on Calendar.
+	await expect(asks.locator('.ap-item', { hasText: title })).toHaveCount(0);
+	// The Super Admin's page (SPEC.md 7.6): the team and the admin settings, no own leave.
 	await page.locator('.me-btn').click();
-	await expect(page.locator('nav.ttabs').getByRole('tab')).toHaveText(['Calendar', 'Settings', 'Recent Activities']);
+	await expect(page.locator('.top h1')).toHaveText('My page');
+	await expect(page.locator('nav.ttabs').getByRole('tab')).toHaveText(['Calendar', 'Team', 'Leave', 'Profile settings', 'Admin settings', 'Recent Activity']);
 	await expect(page.locator('nav.ttabs').getByRole('tab', { name: 'Calendar' })).toHaveAttribute('aria-selected', 'true');
+	await page.locator('nav.ttabs').getByRole('tab', { name: 'Admin settings' }).click();
+	await expect(page.locator('.as-nav button')).toHaveText(['Members & access', 'Days off', 'Automatic messages', 'Deleted projects', 'Export all data']);
+	await expect(page.locator('.as-pane')).toContainText('Members & access');
+	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/mypage-admin.png' });
+	// Team → someone's page → back to the Team tab.
+	await page.locator('nav.ttabs').getByRole('tab', { name: 'Team' }).click();
+	await page.getByRole('button', { name: 'Open Max Member' }).click();
+	await expect(page.locator('nav.ttabs').getByRole('tab', { name: 'Overview' })).toBeVisible();
+	await page.getByRole('button', { name: '← All team members' }).click();
+	await expect(page.locator('nav.ttabs').getByRole('tab', { name: 'Team' })).toHaveAttribute('aria-selected', 'true');
 	await signOutOwner(page);
 
 	// Member sees the revision and completes again.

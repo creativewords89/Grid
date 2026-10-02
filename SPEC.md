@@ -275,8 +275,7 @@ Banner, project cycle bar, stats, filters (All / Weekly / Bi-weekly / Monthly) +
 (The Recent Activities tab of a person's page, 7.5, stays across all projects: it is that person's history.)
 
 ### 7.5 Team area (admin/lead)
-Opened from the **Team** button on My day, next to Send notice (leaders and the Super Admin).
-Tabs **Dashboard · Activity · Team · Leave · Settings**, Daily/Weekly/Monthly period selector.
+The team sections are tabs of **My page** for leaders and the Super Admin (7.6) — Team, Leave, Admin settings (Super Admin), Recent Activity (the Activity section below) — with the Daily/Weekly/Monthly period selector on Team and Recent Activity. There is no separate team area, Team button or team Dashboard tab any more.
 - Dashboard: notifications (6.9), greeting with counts (done / assigned / unassigned), Workload (open tasks per person), completed-tasks chart (per day; per person in Daily view), team list.
 - Activity: completed + logged work grouped by day, person filter, Copy report.
 - Team: member cards (open, urgent, done this period, projects), search, + Add member.
@@ -391,5 +390,7 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 30. Deadline colours (7.3): coloured card tags per deadline option (monthly cards) and matching deadline chips (meeting cards). Playwright: a Range task shows a Range tag in its colour; a Monthly task the Monthly colour.
 
 31. New cycle setup (6.11): schema 7 (`cycle_reviews`, `cycle_setup_since`), REVIEW_CYCLE, POST `/projects/id/cycle-review` with feedback notices; New cycle setup box, Review last cycle dialog, band messages, overdue on project cards. **Tests:** PHPUnit (managers only, stored under last cycle, feedback needs a note and reaches only the responsible people, task from another project refused, install date), Vitest (counts, due day 3, overdue, done, exemptions, band for leaders only), Playwright (leader reviews with feedback and Looks good, assigns everything → Done; member refused and receives the feedback).
+
+32. My page for the Super Admin and Team Leaders (7.5, 7.6): the team sections become tabs of My page; Admin settings with its own menu; Team button and team Dashboard removed. Playwright: Super Admin tabs and Admin settings menu, Team → a person → back to Team; Team Leader tabs and Recent Activity; review from Needs your approval.
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).
