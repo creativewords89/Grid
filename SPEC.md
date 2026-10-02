@@ -254,7 +254,7 @@ Alert banner (cycle-scoped), project cycle bar, stats (status chips, cycle dates
 ### 7.3 Monthly Tasks
 Banner, project cycle bar, stats, filters (All / Weekly / Bi-weekly / Monthly) + week bar, cards, "+ Add monthly task".
 **Card**: Monthly/Weekly/Bi-weekly chip, "Qty N per cycle/week/2 weeks"; title; due chip; W1–W4 boxes for weekly, W1–2 / W3–4 for bi-weekly; mini progress "x/n · k types"; status segment; footer as above.
-**Dialog**: Client, Task, Deadline (6.4), Quantity (locked when breakdown exists), Breakdown (6.5), Responsible (people only), Details.
+**Dialog**: Client, Task, Deadline (6.4), Quantity (locked when breakdown exists), Breakdown (6.5), Responsible (people only), Details. No auto-suggestions on Task or the breakdown Type (plain text fields, browser autocomplete off).
 
 ### 7.4 Recent Activities
 **Project-specific**: everything on this tab belongs to the selected project.
@@ -375,5 +375,7 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 27. Monthly tasks for active projects only (6.8): no standard tasks for new paused / inactive projects, `grp_daily` skips them, their monthly tasks reach nobody; moving to Active tops up at once. **Tests:** PHPUnit (new paused / inactive project, cron skip, top-up on Active, stop after pausing), Vitest (assigned and missed work skip non-active projects), Playwright (paused card shows "Start when active", 0/6 after Move to Active).
 
 28. Deadline options **No deadline · Weekly · Bi-weekly · Monthly · Specific date · Range** (6.3, 6.4): "Certain dates" becomes Range; Specific date and Range open a calendar (meeting tasks) or a cycle-day grid (monthly tasks). Playwright: pick a date, a range of days 1–5, and a monthly range of cycle days 1–5.
+
+29. No auto-suggestions in the monthly task dialog (7.3): Task and breakdown Type are plain text fields.
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).

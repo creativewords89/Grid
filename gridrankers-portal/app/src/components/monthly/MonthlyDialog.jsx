@@ -15,8 +15,6 @@ const MODES = [
 	['date', 'Specific date'],
 	['dates', 'Range'],
 ];
-const SUGGEST = ['Google Business Profile posts', 'Blog post', 'Reply to new reviews', 'Citation / NAP check', 'Rank tracking check', 'Technical health check', 'Backlink building', 'Monthly client report'];
-const PART_SUGGEST = ['Profile backlink', 'Citation', 'Guest post', 'Web 2.0', 'Forum post', 'Social bookmark', 'Directory listing', 'Blog comment', 'Press release'];
 
 let seq = 0;
 const newPartId = () => 'p' + Date.now().toString(36) + (seq++).toString(36);
@@ -214,12 +212,7 @@ export default function MonthlyDialog({ taskId, onClose }) {
 				</label>
 				<label>
 					Task
-					<input list="grpMSuggest" value={f.title} onChange={set('title')} required maxLength={200} placeholder="e.g. Google Business Profile posts" autoFocus />
-					<datalist id="grpMSuggest">
-						{SUGGEST.map((s) => (
-							<option key={s} value={s} />
-						))}
-					</datalist>
+					<input value={f.title} onChange={set('title')} required maxLength={200} placeholder="e.g. Google Business Profile posts" autoComplete="off" autoFocus />
 				</label>
 				<div className="dl-wrap">
 					<span className="pk-label">
@@ -303,7 +296,7 @@ export default function MonthlyDialog({ taskId, onClose }) {
 					</div>
 					<div className="bd-add">
 						<input
-							list="grpPartSuggest"
+							autoComplete="off"
 							maxLength={60}
 							placeholder="Type, e.g. Profile backlink"
 							aria-label="Type"
@@ -327,11 +320,6 @@ export default function MonthlyDialog({ taskId, onClose }) {
 							+ Add
 						</button>
 					</div>
-					<datalist id="grpPartSuggest">
-						{PART_SUGGEST.map((s) => (
-							<option key={s} value={s} />
-						))}
-					</datalist>
 					<span className="pk-total">{f.parts.length ? `Total ${total} — quantity is set from the breakdown` : ''}</span>
 				</div>
 				<div className="pk-wrap">
