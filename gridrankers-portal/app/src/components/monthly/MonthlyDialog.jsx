@@ -3,6 +3,7 @@ import { usePortal } from '../../context.js';
 import { rowsOf } from '../../lib/store.js';
 import { typePeople } from '../../lib/monthly.js';
 import Avatar from '../Avatar.jsx';
+import { CycleDayPicker } from '../DatePicker.jsx';
 import Modal from '../Modal.jsx';
 import PeoplePicker, { evenSplit } from '../PeoplePicker.jsx';
 
@@ -10,9 +11,9 @@ const MODES = [
 	['none', 'No deadline'],
 	['weekly', 'Weekly'],
 	['biweekly', 'Bi-weekly'],
-	['date', 'Specific date'],
-	['dates', 'Certain dates'],
 	['monthly', 'Monthly'],
+	['date', 'Specific date'],
+	['dates', 'Range'],
 ];
 const SUGGEST = ['Google Business Profile posts', 'Blog post', 'Reply to new reviews', 'Citation / NAP check', 'Rank tracking check', 'Technical health check', 'Backlink building', 'Monthly client report'];
 const PART_SUGGEST = ['Profile backlink', 'Citation', 'Guest post', 'Web 2.0', 'Forum post', 'Social bookmark', 'Directory listing', 'Blog comment', 'Press release'];
@@ -249,23 +250,12 @@ export default function MonthlyDialog({ taskId, onClose }) {
 					)}
 					{f.due_mode === 'date' && (
 						<div className="dl-f">
-							<label>
-								Due on day
-								<input type="number" min={1} max={31} value={f.due_day} onChange={set('due_day')} placeholder="e.g. 5" />
-							</label>
-							<span className="dl-note">{f.due_day ? `Due on day ${f.due_day} of each cycle.` : ''}</span>
+							<CycleDayPicker day={+f.due_day || 0} onChange={(v) => setF({ ...f, due_day: v.day })} />
 						</div>
 					)}
 					{f.due_mode === 'dates' && (
 						<div className="dl-f">
-							<label>
-								From day
-								<input type="number" min={1} max={31} value={f.from_day} onChange={set('from_day')} placeholder="e.g. 10" />
-							</label>
-							<label>
-								To day
-								<input type="number" min={1} max={31} value={f.to_day} onChange={set('to_day')} placeholder="e.g. 20" />
-							</label>
+							<CycleDayPicker range from={+f.from_day || 0} to={+f.to_day || 0} onChange={(v) => setF({ ...f, from_day: v.from || '', to_day: v.to || '' })} />
 						</div>
 					)}
 					{f.due_mode === 'monthly' && (

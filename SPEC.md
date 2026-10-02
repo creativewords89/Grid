@@ -148,13 +148,14 @@ All tables: `id` CHAR(26) ULID (or keep imported string ids, VARCHAR(64)), `crea
 `{type: none|weekly|biweekly|date|dates|monthly, weeks: ['YYYY-MM-DD' (Mondays)], date, from, to, month: 'YYYY-MM'}`
 - **Weekly**: pick one or more Mon–Sun weeks (grid of this week + next 11). Card: "Due week of Oct 5 – Oct 11" / "Due 3 weeks · this one …".
 - **Bi-weekly**: a two-week window — pick the starting Monday (this week by default); due the Sunday of the second week (`from` Monday, `to` = from + 13 days). Card "Due Oct 5 – Oct 18 · 2 weeks". *Not in the reference portal.*
-- **Specific date**: one date. Card "Due Oct 5".
-- **Certain dates**: From / To range. Card "Due Oct 12 – Oct 20 (9 days)".
+- Options in this order: **No deadline · Weekly · Bi-weekly · Monthly · Specific date · Range**.
+- **Specific date**: one date, picked on a calendar that opens when the option is chosen (month view, Mon–Sun weeks, ‹ › months, Today, Clear). Card "Due Oct 5".
+- **Range** (stored as `dates`; was "Certain dates"): the same calendar — first click the start, then the end (the days between are shaded). Card "Due Oct 12 – Oct 20 (9 days)".
 - **Monthly**: automatically the **last day of the current calendar month** (locked to the month it was set). Card "Due Sep 30 · end of month".
 - Overdue (end < today, not done): card red "Overdue · …"; due within 2 days: amber.
 
 ### 6.4 Monthly task deadlines (repeat every cycle)
-`due_mode`: **monthly** (default, end of each cycle), **weekly** (freq weekly), **biweekly** (freq biweekly: due at the end of each two-week period of the cycle, 6.2; quantity is per 2 weeks; *not in the reference portal*), **date** (day N of each cycle), **dates** (days A–B of each cycle), **none** (never late during the cycle; missed only if the cycle ends undone).
+`due_mode`: **monthly** (default, end of each cycle), **weekly** (freq weekly), **biweekly** (freq biweekly: due at the end of each two-week period of the cycle, 6.2; quantity is per 2 weeks; *not in the reference portal*), **date** ("Specific date": day N of each cycle), **dates** ("Range": days A–B of each cycle) — both picked on a grid of cycle days 1–31 (a day past the end of a short cycle falls on its last day); options in the same order as 6.3, **none** (never late during the cycle; missed only if the cycle ends undone).
 
 ### 6.5 Quantities, people and breakdowns
 - **Meeting tasks**: `target` (default 1). With target > 1 and several assignees, each has a share `n` (auto even split; editing one share rebalances the others so the total never exceeds target; each ≥ 1). Each person ticks only their own share; status auto-moves: first tick → In progress, total = target → Fixed (→ review).
@@ -372,5 +373,7 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 26. My projects gets **+ Log work** (7.0): custom work for yourself (the existing Add manual task dialog; Team Members only for themselves, section 3). Notice cards name only the sender; shout-outs still say who they praise. Playwright: a member logs work from My day; a private notice card shows the sender and the To you tag only.
 
 27. Monthly tasks for active projects only (6.8): no standard tasks for new paused / inactive projects, `grp_daily` skips them, their monthly tasks reach nobody; moving to Active tops up at once. **Tests:** PHPUnit (new paused / inactive project, cron skip, top-up on Active, stop after pausing), Vitest (assigned and missed work skip non-active projects), Playwright (paused card shows "Start when active", 0/6 after Move to Active).
+
+28. Deadline options **No deadline · Weekly · Bi-weekly · Monthly · Specific date · Range** (6.3, 6.4): "Certain dates" becomes Range; Specific date and Range open a calendar (meeting tasks) or a cycle-day grid (monthly tasks). Playwright: pick a date, a range of days 1–5, and a monthly range of cycle days 1–5.
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).

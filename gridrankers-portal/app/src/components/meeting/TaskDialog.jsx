@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { usePortal } from '../../context.js';
-import { addDays, daysBetween } from '../../lib/cycles.js';
+import { addDays } from '../../lib/cycles.js';
 import { monthEnd, mondayOf, short, toDate, weekNo } from '../../lib/format.js';
 import { isManager } from '../../lib/roles.js';
 import { assigneesOf } from '../../lib/tasks.js';
 import { rowsOf } from '../../lib/store.js';
+import { CalendarPicker } from '../DatePicker.jsx';
 import Modal from '../Modal.jsx';
 import PeoplePicker, { evenSplit } from '../PeoplePicker.jsx';
 
@@ -12,9 +13,9 @@ const TYPES = [
 	['none', 'No deadline'],
 	['weekly', 'Weekly'],
 	['biweekly', 'Bi-weekly'],
-	['date', 'Specific date'],
-	['dates', 'Certain dates'],
 	['monthly', 'Monthly'],
+	['date', 'Specific date'],
+	['dates', 'Range'],
 ];
 
 function DeadlineField({ value, onChange, today }) {
@@ -98,23 +99,12 @@ function DeadlineField({ value, onChange, today }) {
 			)}
 			{type === 'date' && (
 				<div className="dl-f">
-					<label>
-						Due on
-						<input type="date" value={value.date || ''} onChange={(e) => onChange({ type: 'date', date: e.target.value })} />
-					</label>
+					<CalendarPicker value={{ date: value.date || '' }} onChange={(v) => onChange({ type: 'date', date: v.date })} today={today} />
 				</div>
 			)}
 			{type === 'dates' && (
 				<div className="dl-f">
-					<label>
-						From
-						<input type="date" value={value.from || ''} onChange={(e) => onChange({ type: 'dates', from: e.target.value, to: value.to || e.target.value })} />
-					</label>
-					<label>
-						To
-						<input type="date" value={value.to || ''} onChange={(e) => onChange({ type: 'dates', from: value.from, to: e.target.value })} />
-					</label>
-					<span className="dl-note">{value.from && value.to ? (value.to < value.from ? '“To” is before “From”.' : `${daysBetween(value.from, value.to) + 1} days`) : ''}</span>
+					<CalendarPicker range value={{ from: value.from || '', to: value.to || '' }} onChange={(v) => onChange({ type: 'dates', from: v.from, to: v.to })} today={today} />
 				</div>
 			)}
 			{type === 'monthly' && (

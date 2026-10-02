@@ -304,3 +304,24 @@ aside .sync{display:flex;align-items:center;gap:8px;padding:8px 6px 0}
 aside .sync::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--done);flex-shrink:0}
 @media (max-width:600px){.ph-card{padding:16px;gap:12px}.ph-card .av.big{width:52px;height:52px}}
 .md-h .mp-log{margin-left:auto;align-self:center}
+/* Deadline calendar (SPEC.md 6.3, 6.4): Specific date and Range. */
+.dp{display:flex;flex-direction:column;width:100%;max-width:320px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;box-shadow:0 6px 18px rgba(10,20,35,.08)}
+.dp-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+.dp-head b{font-family:var(--display);font-size:.98rem}
+.dp-nav{width:30px;height:30px;border:0;border-radius:8px;background:none;color:var(--ink);font-size:1.1rem;cursor:pointer}
+.dp-nav:hover{background:var(--panel-2)}
+.dp-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px 0}
+.dp-wd{text-align:center;font-size:.68rem;font-weight:700;color:var(--ink-2);padding:4px 0;text-transform:uppercase;letter-spacing:.04em}
+.dp-day{height:34px;border:0;background:none;font:inherit;font-size:.85rem;font-weight:600;color:var(--ink);cursor:pointer;border-radius:8px;position:relative}
+.dp-day:hover{background:var(--panel-2)}
+.dp-day.out{color:var(--ink-2);opacity:.45}
+.dp-day.past{color:var(--ink-2)}
+.dp-day.today::after{content:"";position:absolute;left:50%;bottom:4px;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:var(--accent)}
+.dp-day.in{background:color-mix(in srgb,var(--accent) 12%,var(--panel));border-radius:0;color:var(--ink)}
+.dp-day.lo:not(.hi){border-radius:8px 0 0 8px}
+.dp-day.hi:not(.lo){border-radius:0 8px 8px 0}
+.dp-day.lo,.dp-day.hi,.dp-day.on{background:var(--accent);color:#fff;opacity:1}
+.dp-day.lo.today::after,.dp-day.hi.today::after,.dp-day.on.today::after{background:#fff}
+.dp-days{grid-template-columns:repeat(7,1fr)}
+.dp-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;flex-wrap:wrap}
+.dp-acts{display:flex;gap:12px}
