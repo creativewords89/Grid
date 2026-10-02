@@ -39,9 +39,10 @@ test('completion review round trip', async ({ page }) => {
 	await page.locator('nav.ttabs').getByRole('tab', { name: 'Admin settings' }).click();
 	// One page, the sections one below the other (SPEC.md 7.5).
 	const stack = page.locator('.as-stack');
-	await expect(stack).toContainText('Members & access');
 	for (const title of ['Days off', 'Automatic messages', 'Deleted projects', 'Export data']) await expect(stack).toContainText(title);
-	// Members & access: search, filters and a ⋯ menu per person.
+	await expect(stack.locator('.ma-card')).toHaveCount(0);
+	// Members & access is on the Team tab, under the cards: search, filters and a ⋯ menu.
+	await page.locator('nav.ttabs').getByRole('tab', { name: 'Team', exact: true }).click();
 	const access = page.locator('.ma-card');
 	await access.getByLabel('Search people').fill('max');
 	await expect(access.locator('.ma-row:not(.ma-th)')).toHaveCount(1);
@@ -51,7 +52,7 @@ test('completion review round trip', async ({ page }) => {
 	await access.getByRole('button', { name: /^All/ }).click();
 	await access.getByRole('button', { name: 'More for Max Member' }).click();
 	await expect(access.locator('.ma-menu button')).toHaveText(['View their My day', 'Open their page', 'Set sign-in code', 'Change role', 'Remove from team']);
-	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/mypage-admin.png' });
+	if (process.env.SHOTS) await access.screenshot({ path: process.env.SHOTS + '/team-access.png' });
 	// Team → someone's My day → their page → back to the Team tab.
 	await page.locator('nav.ttabs').getByRole('tab', { name: 'Team' }).click();
 	await page.getByRole('button', { name: 'Open Max Member' }).click();

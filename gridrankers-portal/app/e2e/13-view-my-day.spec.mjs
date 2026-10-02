@@ -49,6 +49,10 @@ test('view someone’s My day, view only', async ({ page }) => {
 	await page.getByRole('button', { name: 'Open Max Member' }).click();
 	await expect(bar).toContainText('Viewing Max Member’s My day');
 	await bar.getByRole('button', { name: '← Back' }).click();
+	// Members & access on the Team tab: a leader can set a member's code, not change roles or remove.
+	await page.locator('.ma-card').getByRole('button', { name: 'More for Max Member' }).click();
+	await expect(page.locator('.ma-menu button')).toHaveText(['View their My day', 'Open their page', 'Set sign-in code']);
+	await page.keyboard.press('Escape');
 	await page.getByRole('button', { name: 'Open Grid Owner' }).first().click();
 	await expect(bar).toHaveCount(0);
 	await expect(page.getByRole('button', { name: 'View their My day' })).toHaveCount(0);

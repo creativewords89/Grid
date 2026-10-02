@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePortal } from '../../context.js';
-import { ROLE, canViewDay } from '../../lib/roles.js';
+import { ROLE, canViewDay, isAdmin } from '../../lib/roles.js';
 import Avatar from '../Avatar.jsx';
 import Modal from '../Modal.jsx';
 
@@ -85,7 +85,7 @@ function RowMenu({ person, items }) {
 	);
 }
 
-// Admin settings → Members & access (SPEC.md 7.5, design A): search, role filters, one row per
+// My page → Team → Members & access (SPEC.md 7.6, design A): search, role filters, one row per
 // person, every action in a ⋯ menu.
 export default function MembersAccess({ people, openCount, urgentCount, onPerson, onAdd, onSetCode, onRemove }) {
 	const { me, setTeamPerson, setViewAs } = usePortal();
@@ -135,7 +135,10 @@ export default function MembersAccess({ people, openCount, urgentCount, onPerson
 					const items = [
 						...(canViewDay(me, p) ? [['View their My day', () => (setTeamPerson('all'), setViewAs(p.id))]] : []),
 						['Open their page', () => onPerson(p.id)],
-						...(p.id !== me.id && p.role !== 'admin' ? [['Set sign-in code', () => onSetCode(p)], ['Change role', () => setRoleFor(p)], ['Remove from team', () => onRemove(p), true]] : []),
+						// What each role may do (section 3): codes for Team Members (leaders) or anyone but the
+						// Super Admin (Super Admin); roles and removing: Super Admin only.
+						...(p.id !== me.id && p.role !== 'admin' && (isAdmin(me) || p.role === 'member') ? [['Set sign-in code', () => onSetCode(p)]] : []),
+						...(isAdmin(me) && p.id !== me.id && p.role !== 'admin' ? [['Change role', () => setRoleFor(p)], ['Remove from team', () => onRemove(p), true]] : []),
 					];
 					return (
 						<div key={p.id} className="ma-row" role="row">

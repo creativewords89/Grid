@@ -3,8 +3,8 @@
     "file": "assets/_commonjsHelpers-_d1bhYXs.js",
     "name": "_commonjsHelpers"
   },
-  "_jspdf.es.min-DosLL-V6.js": {
-    "file": "assets/jspdf.es.min-DosLL-V6.js",
+  "_jspdf.es.min-DjgG_mtD.js": {
+    "file": "assets/jspdf.es.min-DjgG_mtD.js",
     "name": "jspdf.es.min",
     "isDynamicEntry": true,
     "imports": [
@@ -16,13 +16,13 @@
       "node_modules/canvg/lib/index.es.js"
     ]
   },
-  "_jspdf.plugin.autotable-B7cBAOnV.js": {
-    "file": "assets/jspdf.plugin.autotable-B7cBAOnV.js",
+  "_jspdf.plugin.autotable-D02if1Ty.js": {
+    "file": "assets/jspdf.plugin.autotable-D02if1Ty.js",
     "name": "jspdf.plugin.autotable",
     "isDynamicEntry": true,
     "imports": [
       "__commonjsHelpers-_d1bhYXs.js",
-      "_jspdf.es.min-DosLL-V6.js"
+      "_jspdf.es.min-DjgG_mtD.js"
     ]
   },
   "node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-500-normal.woff": {
@@ -146,13 +146,13 @@
     "src": "node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-ext-600-normal.woff2"
   },
   "node_modules/canvg/lib/index.es.js": {
-    "file": "assets/index.es-7jmxlXnK.js",
+    "file": "assets/index.es-Con4mCST.js",
     "name": "index.es",
     "src": "node_modules/canvg/lib/index.es.js",
     "isDynamicEntry": true,
     "imports": [
       "__commonjsHelpers-_d1bhYXs.js",
-      "_jspdf.es.min-DosLL-V6.js",
+      "_jspdf.es.min-DjgG_mtD.js",
       "src/main.jsx"
     ]
   },
@@ -169,13 +169,13 @@
     "isDynamicEntry": true
   },
   "src/main.jsx": {
-    "file": "assets/main-CLHd_4h9.js",
+    "file": "assets/main-BEp167uv.js",
     "name": "main",
     "src": "src/main.jsx",
     "isEntry": true,
     "dynamicImports": [
-      "_jspdf.es.min-DosLL-V6.js",
-      "_jspdf.plugin.autotable-B7cBAOnV.js"
+      "_jspdf.es.min-DjgG_mtD.js",
+      "_jspdf.plugin.autotable-D02if1Ty.js"
     ],
     "css": [
       "assets/main-DJQcAwtH.css"

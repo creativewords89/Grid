@@ -108,6 +108,19 @@ export default function TeamArea({ perf, setPerf, onPerson, section }) {
 		}
 	};
 
+	// Members & access (SPEC.md 7.6): on the Team tab, under the cards.
+	const membersAccess = (
+		<MembersAccess
+			people={people}
+			openCount={openCount}
+			urgentCount={Object.fromEntries(people.map((p) => [p.id, openOf(p.id).filter((x) => x.priority === 'urgent').length]))}
+			onPerson={onPerson}
+			onAdd={() => setDialog({ type: 'add' })}
+			onSetCode={(member) => setDialog({ type: 'code', member })}
+			onRemove={removePerson}
+		/>
+	);
+
 	let body;
 	if (tab === 'dash') {
 		const unassigned = rowsOf(data, 'meeting_tasks').filter((i) => i.status !== 'done' && !(i.assignees || []).some((a) => data.members[a.id]) && data.projects[i.project_id]).length;
@@ -327,11 +340,8 @@ export default function TeamArea({ perf, setPerf, onPerson, section }) {
 						<input type="search" placeholder="Search people…" aria-label="Search people" value={q} onChange={(e) => setQ(e.target.value)} />
 					</label>
 					<span className="muted">
-						{people.length} {people.length === 1 ? 'member' : 'members'} · click someone to see their My day
+						{people.length} {people.length === 1 ? 'member' : 'members'} · click someone to see their My day · Members &amp; access below
 					</span>
-					<button type="button" className="btn primary" onClick={() => setDialog({ type: 'add' })}>
-						+ Add member
-					</button>
 				</div>
 				<div className="mcards emp-grid">
 					{shown.map((p) => {
@@ -384,21 +394,11 @@ export default function TeamArea({ perf, setPerf, onPerson, section }) {
 						<small>Add someone, their role and sign-in code</small>
 					</button>
 				</div>
+			{membersAccess}
 			</>
 		);
 	} else {
 		const panes = {
-			members: (
-				<MembersAccess
-					people={people}
-					openCount={openCount}
-					urgentCount={Object.fromEntries(people.map((p) => [p.id, openOf(p.id).filter((x) => x.priority === 'urgent').length]))}
-					onPerson={onPerson}
-					onAdd={() => setDialog({ type: 'add' })}
-					onSetCode={(member) => setDialog({ type: 'code', member })}
-					onRemove={removePerson}
-				/>
-			),
 			daysoff: <DaysOff />,
 			messages: <AutoMessages />,
 			deleted: (
@@ -424,7 +424,6 @@ export default function TeamArea({ perf, setPerf, onPerson, section }) {
 		// Admin settings (SPEC.md 7.5): one page, the sections one below the other.
 		body = section ? (
 			<div className="as-stack">
-				{panes.members}
 				{panes.daysoff}
 				{panes.messages}
 				{panes.deleted}
@@ -432,7 +431,7 @@ export default function TeamArea({ perf, setPerf, onPerson, section }) {
 			</div>
 		) : (
 			<div className="set-grid">
-				{panes.members}
+				{membersAccess}
 				{panes.deleted}
 				{panes.daysoff}
 				{panes.messages}
