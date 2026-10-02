@@ -33,4 +33,20 @@ describe('perf helpers', () => {
 		const missed = missedWork(d, 'm1', perfRange('month', '2026-09-10'), '2026-10-15');
 		expect(missed).toEqual([{ title: 'GBP Posts', project_id: 'p1', label: expect.stringContaining('Cycle'), got: 1, need: 2, end: '2026-09-30' }]);
 	});
+
+	it('monthly tasks reach people only while their project is active', () => {
+		const d = emptyData();
+		d.projects = { p1: { id: 'p1', name: 'Acme', state: 'paused', cycle_day: 1, cycle_set: 1 } };
+		d.meeting_tasks = { t1: { id: 't1', project_id: 'p1', title: 'Fix H1', status: 'todo', target: 1, assignees: [{ id: 'm1', n: 1 }], deadline: { type: 'none' } } };
+		d.monthly_tasks = { m: { id: 'm', project_id: 'p1', title: 'GBP Posts', freq: 'monthly', due_mode: 'monthly', target: 2, team: 1, assignees: [{ id: 'm1', n: 2 }], created_at: '2026-08-02 10:00:00' } };
+
+		for (const state of ['paused', 'inactive']) {
+			d.projects.p1.state = state;
+			// Meeting tasks still show (they were given by hand); monthly tasks do not.
+			expect(assignedFor(d, 'm1', '2026-10-15').map((x) => x.title)).toEqual(['Fix H1']);
+			expect(missedWork(d, 'm1', perfRange('month', '2026-09-10'), '2026-10-15')).toEqual([]);
+		}
+		d.projects.p1.state = 'active';
+		expect(assignedFor(d, 'm1', '2026-10-15').map((x) => x.title).sort()).toEqual(['Fix H1', 'GBP Posts']);
+	});
 });

@@ -183,7 +183,9 @@ All tables: `id` CHAR(26) ULID (or keep imported string ids, VARCHAR(64)), `crea
 - **PDF report** (member page → My tasks → Download PDF report) for the selected Daily/Weekly/Monthly period: header band, summary boxes (Completed, Missed, Still open, Projects), tables Completed / By project / Missed / Still open, page footer "GridRankers · name · period · Page x of y".
 
 ### 6.8 Standard monthly tasks
-Every project (new and existing) has these six monthly tasks (Monthly deadline, unassigned, `std=1`, quantities start at 1 per type):
+**Active projects only.** A paused or inactive project gets no monthly tasks automatically: a new paused / inactive project starts without the standard tasks, `grp_daily` skips it, and its existing monthly tasks do not reach anyone (not on My day, a person's tasks, calendar, missed work or notifications; the project's own Monthly Tasks screen still lists them). Moving it back to **Active** adds this cycle's missing standard tasks straight away. Its project card shows "Start when active" instead of 0/0.
+
+Every active project (new and existing) has these six monthly tasks (Monthly deadline, unassigned, `std=1`, quantities start at 1 per type):
 1. GBP Posts
 2. Social Posts
 3. Pages — Service Pages, Location Pages
@@ -191,7 +193,7 @@ Every project (new and existing) has these six monthly tasks (Monthly deadline, 
 5. Free Backlinks — Citations, Cloud Stack, Google Stack, Batch GEO, Map Citation / Map Pin, Driving Direction, Profile Backlinks, Web 2.0, Brand Mentions, PDF / Image / Video Submission, Directory Submission
 6. Paid Backlinks — Guest Post, Memberships (e.g. Chamber of Commerce), Press Release
 
-`grp_daily`: for each project whose current cycle key ≠ `std_cycle`, add any missing standard task (matched by title, deterministic id `std_{projectId}_{slug}`), then set `std_cycle`. New projects get them on creation. Deleted standard tasks stay gone until the next cycle.
+`grp_daily`: for each **active** project whose current cycle key ≠ `std_cycle`, add any missing standard task (matched by title, deterministic id `std_{projectId}_{slug}`), then set `std_cycle`. New projects get them on creation. Deleted standard tasks stay gone until the next cycle.
 
 ### 6.9 Trash, audit, notifications
 - Delete = soft delete into `grp_trash` (30 days) + toast "Task deleted · Undo" (9 s). Recently deleted tasks are behind the **Recently deleted** button of the project's **Recent Activities** (admin/lead), deleted projects in **Team → Settings** (Super Admin): Restore / Delete forever.
@@ -368,5 +370,7 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 25. Sidebar redesign (7.1, design A): GR mark, My day, project badges, counts only when there is work, Active always open, Paused / Inactive folded. Playwright: folded groups open on click and the project opens.
 
 26. My projects gets **+ Log work** (7.0): custom work for yourself (the existing Add manual task dialog; Team Members only for themselves, section 3). Notice cards name only the sender; shout-outs still say who they praise. Playwright: a member logs work from My day; a private notice card shows the sender and the To you tag only.
+
+27. Monthly tasks for active projects only (6.8): no standard tasks for new paused / inactive projects, `grp_daily` skips them, their monthly tasks reach nobody; moving to Active tops up at once. **Tests:** PHPUnit (new paused / inactive project, cron skip, top-up on Active, stop after pausing), Vitest (assigned and missed work skip non-active projects), Playwright (paused card shows "Start when active", 0/6 after Move to Active).
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).

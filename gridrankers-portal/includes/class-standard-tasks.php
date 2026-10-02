@@ -97,14 +97,20 @@ class GRP_Standard_Tasks {
 	}
 
 	/**
-	 * Tops up a project once per cycle: when its current cycle key differs from
-	 * `std_cycle`, add missing standard tasks and record the key.
+	 * Tops up an active project once per cycle: when its current cycle key differs from
+	 * `std_cycle`, add missing standard tasks and record the key. Paused and inactive
+	 * projects are skipped.
 	 *
 	 * @param array  $project Project row.
 	 * @param string $today   `Y-m-d`.
 	 * @return int Number of tasks added (0 when already checked this cycle).
 	 */
 	public static function ensure( array $project, $today ) {
+		// Only active projects get monthly tasks automatically (SPEC.md 6.8); a paused or inactive
+		// project is topped up when it is moved back to Active.
+		if ( 'active' !== ( $project['state'] ?? 'active' ) ) {
+			return 0;
+		}
 		$key = GRP_Cycles::cycle_range( $project, 0, $today )['key'];
 		if ( $key === $project['std_cycle'] ) {
 			return 0;

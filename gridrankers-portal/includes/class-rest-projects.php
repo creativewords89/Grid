@@ -90,7 +90,7 @@ class GRP_REST_Projects extends GRP_REST_Controller {
 			static function () use ( $row ) {
 				$project = GRP_Store::insert( 'grp_projects', $row );
 				GRP_Activity::audit( 'project', 'client', $project, self::actor(), 'project added' );
-				// New projects start with the standard monthly tasks for this cycle.
+				// New active projects start with the standard monthly tasks for this cycle.
 				GRP_Standard_Tasks::ensure( $project, GRP_Cycles::today() );
 				return GRP_Store::get( 'grp_projects', $project['id'] );
 			}
@@ -216,6 +216,11 @@ class GRP_REST_Projects extends GRP_REST_Controller {
 				static function () use ( $project, $state ) {
 					$updated = GRP_Store::update( 'grp_projects', $project['id'], array( 'state' => $state ) );
 					GRP_Activity::audit( 'project', 'client', $updated, self::actor(), "moved to $state projects" );
+					// Back to Active: it gets this cycle's standard monthly tasks it missed while paused.
+					if ( 'active' === $state ) {
+						GRP_Standard_Tasks::ensure( $updated, GRP_Cycles::today() );
+						$updated = GRP_Store::get( 'grp_projects', $project['id'] );
+					}
 					return $updated;
 				}
 			)

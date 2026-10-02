@@ -178,6 +178,8 @@ function ProjectCard({ p, s }) {
 		try {
 			const row = await api.patch(`projects/${p.id}/state`, { state: to });
 			dispatch({ type: 'upsert', table: 'projects', row });
+			// Back to Active: the server adds this cycle's standard monthly tasks; show them now.
+			if (to === 'active') dispatch({ type: 'sync', changes: { monthly_tasks: await api.get('monthly-tasks', { project: p.id }) } });
 			toast(`${p.name} moved to ${LABEL[to]}`);
 		} catch (err) {
 			dispatch({ type: 'upsert', table: 'projects', row: p });
@@ -223,9 +225,8 @@ function ProjectCard({ p, s }) {
 				<span className="pd-prog">
 					<span className="pd-prog-l">
 						<span>Monthly tasks</span>
-						<b>
-							{s.mDone}/{s.mTotal}
-						</b>
+						{/* Monthly tasks are added only while a project is active (SPEC.md 6.8). */}
+						<b>{p.state !== 'active' && !s.mTotal ? 'Start when active' : `${s.mDone}/${s.mTotal}`}</b>
 					</span>
 					<span className="pd-bar-t" aria-hidden="true">
 						<span className="pd-bar-f" style={{ width: pct + '%' }} />

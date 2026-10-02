@@ -39,7 +39,8 @@ test('dashboard, project lifecycle and per-project Recent Activities', async ({ 
 
 	await tab('Paused').click();
 	await expect(pd('Harbor Hotel').locator('.pd-cycle')).toContainText('Day 15');
-	await expect(pd('Harbor Hotel')).toContainText('0/6');
+	// A paused project gets no monthly tasks (SPEC.md 6.8) until it is moved to Active.
+	await expect(pd('Harbor Hotel')).toContainText('Start when active');
 	await expect(pd('Harbor Hotel')).toContainText('On track');
 
 	await menu('Harbor Hotel', 'Move to Active');
@@ -47,6 +48,7 @@ test('dashboard, project lifecycle and per-project Recent Activities', async ({ 
 	await expect(pd('Harbor Hotel')).toHaveCount(0);
 	await tab('Active').click();
 	await expect(pd('Harbor Hotel')).toBeVisible();
+	await expect(pd('Harbor Hotel')).toContainText('0/6');
 
 	// A card opens the project; GridRankers goes back to the Dashboard.
 	await pd('Harbor Hotel').getByRole('button', { name: 'Open Harbor Hotel' }).click();
