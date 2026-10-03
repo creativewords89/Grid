@@ -35,6 +35,7 @@ class GRP_Export {
 			'leave'       => array_map( array( __CLASS__, 'leave' ), GRP_Store::find( 'grp_leave', array(), array( 'order_by' => 'created_at' ) ) ),
 			'daysOff'     => array_map( array( __CLASS__, 'day_off' ), GRP_Store::find( 'grp_days_off', array(), array( 'order_by' => 'from_date' ) ) ),
 			'posts'       => array_map( array( __CLASS__, 'post' ), GRP_Store::find( 'grp_posts', array(), array( 'order_by' => 'created_at' ) ) ),
+			'keywords'    => array_map( array( __CLASS__, 'keyword' ), GRP_Store::find( 'grp_keywords', array(), array( 'order_by' => 'created_at' ) ) ),
 			'visitors'    => array(),
 		);
 
@@ -93,6 +94,8 @@ class GRP_Export {
 				'cycleLog'     => $r['cycle_log'] ?? array(),
 				'stdCycle'     => $r['std_cycle'],
 				'cycleReviews' => $r['cycle_reviews'] ?? new stdClass(),
+				'details'      => $r['details'],
+				'kwColumns'    => $r['kw_columns'],
 				'createdAt'    => self::iso( $r['created_at'] ),
 				'updatedAt'    => self::iso( $r['updated_at'] ),
 			)
@@ -417,6 +420,28 @@ class GRP_Export {
 				'showUntil' => $r['show_until'],
 				'by'        => $r['created_by'],
 				'deletedAt' => self::iso( $r['deleted_at'] ),
+				'createdAt' => self::iso( $r['created_at'] ),
+			)
+		);
+	}
+
+	/**
+	 * Keyword checklist row (SPEC.md 6.12).
+	 *
+	 * @param array $r Row.
+	 * @return array
+	 */
+	public static function keyword( array $r ) {
+		return self::clean(
+			array(
+				'id'        => $r['id'],
+				'projectId' => $r['project_id'],
+				'keyword'   => $r['keyword'],
+				'checks'    => $r['checks'] ? $r['checks'] : new stdClass(),
+				'note'      => $r['note'],
+				'deadline'  => $r['deadline'],
+				'position'  => (int) $r['position'],
+				'by'        => $r['created_by'],
 				'createdAt' => self::iso( $r['created_at'] ),
 			)
 		);

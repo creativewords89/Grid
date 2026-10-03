@@ -149,6 +149,15 @@ class GRP_Permissions {
 	/** Review last cycle's monthly tasks of a project and send feedback (SPEC.md 6.11). Managers. */
 	const REVIEW_CYCLE = 'review_cycle';
 
+	/** Edit a project's Details tab: descriptions and links (SPEC.md 6.12). Managers. */
+	const EDIT_PROJECT_DETAILS = 'edit_project_details';
+
+	/** Keyword checklist: add, rename, remove keywords, set deadlines and the columns (SPEC.md 6.12). Managers. */
+	const MANAGE_KEYWORDS = 'manage_keywords';
+
+	/** Keyword checklist: tick a box and write the note (SPEC.md 6.12). Everyone. */
+	const TICK_KEYWORD = 'tick_keyword';
+
 	/**
 	 * Task work that is locked while a Team Leader's or Team Member's required profile is
 	 * incomplete (SPEC.md section 3, Profile lock).
@@ -166,6 +175,7 @@ class GRP_Permissions {
 		self::ANSWER_REVIEW_REQUEST,
 		self::LOG_WORK,
 		self::SKIP_PERIOD,
+		self::TICK_KEYWORD,
 	);
 
 	/**
@@ -220,7 +230,12 @@ class GRP_Permissions {
 			case self::VIEW_PROJECTS_TAB:
 			case self::REQUEST_REVIEW:
 			case self::REVIEW_CYCLE:
+			case self::EDIT_PROJECT_DETAILS:
+			case self::MANAGE_KEYWORDS:
 				return $manager;
+
+			case self::TICK_KEYWORD:
+				return in_array( $role, array( self::ROLE_ADMIN, self::ROLE_LEAD, self::ROLE_MEMBER ), true );
 
 			case self::DELETE_PROJECT:
 			case self::REMOVE_MEMBER:

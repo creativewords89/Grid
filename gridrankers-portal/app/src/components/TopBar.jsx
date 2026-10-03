@@ -5,6 +5,8 @@ import Avatar from './Avatar.jsx';
 export const TABS = [
 	{ view: 'board', label: 'Meeting Minutes' },
 	{ view: 'monthly', label: 'Monthly Tasks' },
+	{ view: 'plan', label: 'Plan' },
+	{ view: 'details', label: 'Details' },
 	{ view: 'log', label: 'Recent Activities' },
 ];
 
@@ -20,7 +22,7 @@ export default function TopBar({ onSignOut }) {
 	return (
 		<div className="top">
 			<h1>{title}</h1>
-			{!dash && !people && <input className="search" type="search" placeholder="Search tasks" aria-label="Search tasks" value={search} onChange={(e) => setSearch(e.target.value)} />}
+			{!dash && !people && view !== 'plan' && view !== 'details' && <input className="search" type="search" placeholder="Search tasks" aria-label="Search tasks" value={search} onChange={(e) => setSearch(e.target.value)} />}
 			{!people && (
 				<div className="tabs" role="tablist" aria-label={dash ? 'Open the selected project' : undefined}>
 					{TABS.map((t) => (

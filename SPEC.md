@@ -57,6 +57,9 @@ Three portal roles, stored on the team member (`role`): `admin` (Super Admin), `
 | Add a project | ✔ | ✔ | ✘ |
 | Move project Active/Paused/Inactive | ✔ | ✔ | ✘ |
 | Review last cycle and send feedback (6.11) | ✔ | ✔ | ✘ |
+| Edit a project's Details: descriptions and links (6.12) | ✔ | ✔ | ✘ (reads them) |
+| Keyword checklist: add / rename / remove keywords, set deadlines, change the columns (6.12) | ✔ | ✔ | ✘ |
+| Keyword checklist: tick a box, write the note (6.12; locked while the profile is incomplete) | ✔ | ✔ | ✔ |
 | View someone's My day, view only (7.0) | Team Leaders and Team Members | Team Members and other Team Leaders | ✘ |
 | Delete project | ✔ | ✘ | ✘ |
 | Change project cycle (after first lock) | ✔ (with confirmation + reason) | ✘ | ✘ |
@@ -115,7 +118,7 @@ All tables: `id` CHAR(26) ULID (or keep imported string ids, VARCHAR(64)), `crea
 |---|---|
 | `grp_members` | id, name, role ENUM(admin,lead,member), color, photo (media id/url), title, email, phone, address, drive_url, notes, code_hash, code_salt (legacy), code_set_at, wp_user_id NULL, active TINYINT, birthday CHAR(5) NULL (`MM-DD`), birth_year SMALLINT NULL (managers and self only), location VARCHAR(191) NULL (city, for the weather), weekly_off JSON NULL (own weekly day off, weekdays 0–6; NULL = the team's) |
 | `grp_sessions` | id, member_id, token_hash, expires_at, ip, user_agent |
-| `grp_projects` | id, name UNIQUE, state ENUM(active,paused,inactive), cycle_day TINYINT 1–28, cycle_set TINYINT, cycle_changes JSON, cycle_log JSON, std_cycle VARCHAR (last cycle key the standard tasks were checked), cycle_reviews JSON `{cycleKey: {taskId: {ok, note, to, by, at}}}` (last 3 cycles, 6.11) |
+| `grp_projects` | id, name UNIQUE, state ENUM(active,paused,inactive), cycle_day TINYINT 1–28, cycle_set TINYINT, cycle_changes JSON, cycle_log JSON, std_cycle VARCHAR (last cycle key the standard tasks were checked), cycle_reviews JSON `{cycleKey: {taskId: {ok, note, to, by, at}}}` (last 3 cycles, 6.11), details JSON NULL `{sections: [{id, title, text, links: [{id, title, url, kind: sheet|doc|drive|other}]}]}` and kw_columns JSON NULL `[{id, name}]` (6.12, schema 8) |
 | `grp_meeting_tasks` | id, project_id, title, notes, url, priority ENUM(urgent,high,normal,low), status ENUM(todo,doing,done), meeting_date DATE, done_at, target INT (quantity, default 1), assignees JSON `[{id,n}]`, team TINYINT, progress JSON `{memberId: count}`, deadline JSON (6.3), review JSON (6.6), completion JSON (6.6), created_by |
 | `grp_monthly_tasks` | id, project_id, title, notes, freq ENUM(monthly,weekly), due_mode ENUM(none,weekly,date,dates,monthly), due_day, due_from_day, target INT, assignees JSON, team TINYINT, parts JSON `[{id,name,n,people:[{id,n}]}]`, std TINYINT (standard task), created_by |
 | `grp_cycle_records` | id = `{taskId}__{periodKey}` (weekly: periodKey = `YYYY-MM-wN`), task_id, project_id, period_key, week TINYINT NULL, count, status ENUM(todo,doing,done,skipped), by_person JSON `{memberId: n}`, parts JSON `{partId: n, "partId|memberId": n}`, review JSON, completion JSON, done_at, cleared_by NULL |
@@ -127,6 +130,7 @@ All tables: `id` CHAR(26) ULID (or keep imported string ids, VARCHAR(64)), `crea
 | `grp_settings` | key, value JSON (e.g. `workweek`; `weekly_off` = team weekly day off `{days: [0–6]}`, default `{days: [5]}` (Friday); `messages` = `{birthday, day_off, leave_approved}` texts with `{name}`) |
 | `grp_leave` | id, member_id, type ENUM(day,sick), from_date DATE, to_date DATE, days TINYINT (working days in the range, 6.10), reason, status ENUM(pending,approved,rejected,cancelled), decided_by NULL, decided_at NULL, message (approver's note), created_by — *new* |
 | `grp_days_off` | id, kind ENUM(event,seasonal), name, from_date DATE, to_date DATE (= from_date for an event), created_by — whole team — *new* |
+| `grp_keywords` | id, project_id, keyword VARCHAR(191), checks JSON `{columnId: {by, at}}`, note TEXT NULL, deadline DATE NULL, position INT, created_by — *new* (6.12, schema 8) |
 | `grp_posts` | id, kind ENUM(announcement,shoutout,notice), title NULL, body, to_member NULL (first shout-outs), to_members JSON NULL (chosen people; NULL = everyone), pinned TINYINT, show_until DATE NULL, created_by, soft delete — *new* |
 
 ## 6. Domain logic
@@ -230,6 +234,14 @@ When an **active** project starts a new cycle, a Team Leader or the Super Admin 
 - **Reminders, nothing blocked**: days 1–3, an amber message in the band ("New cycle for {project}. Assign the monthly tasks and review last cycle by {date}.") and a **New cycle setup** box at the top of My day's left column; after day 3, red ("{project}: new cycle setup is N days overdue."), "Setup N days overdue" on the project card, and the bell. Messages are not dismissable; **Open setup** goes to the box. The Super Admin sees every late project the same way. A finished project shows **Done** until the end of day 3.
 - **New cycle setup box**: one row per project — name, flag (Due {date} / Overdue · N days / Done), the two steps with counts ("4 of 6 have people", "2 of 6 reviewed"), **Assign people** (→ the project's Monthly Tasks) and **Review last cycle** (→ dialog: each task with its people, deadline type and last cycle's done / target in green or red; Looks good / Send feedback; "N of M reviewed" bar).
 
+### 6.12 Project details and keyword checklist (*new*)
+- **Details** (project tab, design PD-D): a few **sections**, each a card with a title (the first defaults to **About**), a short text and its **links as chips** (Google Sheet ▦, Doc ≣, Drive folder ▲, other ↗; the kind is detected from the address and opens in a new tab). Team Leaders and the Super Admin: **Edit** (title, text, × on each chip, drag chips to reorder, Save / Cancel, Remove section), **+ Add link** on a card (paste the link — "✓ Google Sheet" — and a name; saved at once) and **+ Add a section**. Everyone else reads and opens the links. Only http(s) links; the portal stores the link, the file must be shared in Google. Limits: 12 sections, 30 links each.
+- **Plan** (project tab, design KP-C): the **keyword checklist** — one row per keyword with the project's **checkbox columns** (default On-page · Content · Internal links · Backlinks; **⚙ Columns** renames, reorders, adds or removes them, 1–8; ticks stay with a column's id), a **progress** bar (ticked / columns, green when all), a **Deadline** and a **Note**.
+  - Rows are grouped **This cycle** (deadline up to the end of the current cycle, including past ones) · **Next cycle** (up to the end of the next cycle) · **Later** (no deadline or further away). **Drag a row** into a group → its deadline becomes the end of that cycle (Later = none). The **Deadline** pill also has a menu: This cycle · Next cycle · Pick a date… · No deadline. Past the deadline with boxes still empty → red "· late". Nothing moves on its own.
+  - **+ Add keywords**: one per line (paste a column from a sheet), with a deadline (This cycle / Next cycle / No deadline); blanks and repeats (any case) are skipped; up to 200 at a time. ⋯ on a row: **Rename**, **Remove**.
+  - Everyone ticks boxes (hover: "Ticked by {name} · {when}") and writes the note (saved on Enter or leaving the field). Team Leaders and the Super Admin add, rename and remove keywords, set deadlines and change the columns. The footer counts each column and how many keywords are fully done.
+- Keywords stay while their project is in the trash and are deleted with it forever. Both are in the export / import (`clients[].details`, `clients[].kwColumns`, `keywords`).
+
 ## 7. Screens (match the reference file)
 
 ### 7.0 Dashboard (everyone)
@@ -257,7 +269,7 @@ When an **active** project starts a new cycle, a Team Leader or the Super Admin 
 
 ### 7.1 Layout
 - Left sidebar (design A, no search): the **GR** mark with **GridRankers** / Team portal and a **My day** link (both → Dashboard, 7.0), then the projects for quick switching, each with a coloured initials badge, its name on one line (full name on hover) and its open-task count only when it has open work (red when something is urgent). **Active projects** are always open; **Paused** and **Inactive projects** are folded (with their count) until opened, and open by themselves while one of their projects is on screen. A project is highlighted only on its own screens. At the bottom: the live sync status with a green dot. No "Add a project", no drag & drop, no move or delete buttons: those live on the Dashboard.
-- Top bar on a project's screens (the Dashboard has its own, 7.0): project title (+ "(paused)/(inactive)"), task search, tabs **Meeting Minutes · Monthly Tasks · Recent Activities**, user chip (avatar → Team area; admin/lead → Team dashboard, member → own page), Sign out.
+- Top bar on a project's screens (the Dashboard has its own, 7.0): project title (+ "(paused)/(inactive)"), task search, tabs **Meeting Minutes · Monthly Tasks · Plan · Details · Recent Activities** (6.12; no task search on Plan and Details), user chip (avatar → Team area; admin/lead → Team dashboard, member → own page), Sign out.
 
 ### 7.2 Meeting Minutes
 Alert banner (cycle-scoped), project cycle bar, stats (status chips, cycle dates, cycle progress, days left / ended / starts in), cards, "+ Add task" tile.
@@ -312,6 +324,7 @@ The team sections are tabs of **My page** for leaders and the Super Admin (7.6) 
 | POST `/auth/login` `{code}` · POST `/auth/logout` · GET `/auth/me` | sessions |
 | GET `/sync?since=` | all changed rows across tables since cursor (+ deletions) |
 | GET/POST/PATCH/DELETE `/projects[/id]` | projects; PATCH `/projects/id/state`, POST `/projects/id/cycle`, POST `/projects/id/cycle-review` `{task_id, ok, note?}` (6.11) |
+| PUT `/projects/id/details` `{sections}` · PUT `/projects/id/keyword-columns` `{columns}` · POST `/projects/id/keywords` `{keywords: [..], deadline?}` · PATCH `/keywords/id` `{check: {column, on}}` / `{note}` / `{keyword}` / `{deadline}` / `{position}` · DELETE `/keywords/id` | project details and keyword checklist (6.12) |
 | GET/POST/PATCH/DELETE `/meeting-tasks[/id]` | tasks; POST `/meeting-tasks/id/status`, `/progress` `{memberId,delta}` |
 | GET/POST/PATCH/DELETE `/monthly-tasks[/id]` | tasks |
 | POST `/records/tick` `{taskId, periodKey, partId?, memberId?, delta}` · POST `/records/status` | recurring progress |
@@ -421,5 +434,7 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 39. Issue a day off (6.10, design LV-C): ISSUE_LEAVE permission; POST `/leave` with `member_id` and `note` for someone else (approved day leave, counted); a Team Leader may cancel a day off they issued; **+ Issue day off** dialog, **Issued** tag, the person's message. **Tests:** PHPUnit (permission matrix, issue to a member and to another leader, not to the Super Admin, members refused, overlap and all-days-off checks, counted in the settlement, the issuer cancels), Vitest (who may get one, the message), Playwright (leader issues a day off; the member sees the message; the row says Issued).
 
 40. Team tab: a person's photo and name in Members & access open their My day (or their page when it can't be viewed). Playwright: clicking the name opens the view-only My day.
+
+41. Project Details and keyword checklist (6.12, designs PD-D and KP-C): schema 8 (`grp_projects.details`, `kw_columns`, `grp_keywords`, synced), EDIT_PROJECT_DETAILS / MANAGE_KEYWORDS / TICK_KEYWORD, the routes in section 8, export / import, trash; Plan and Details tabs. **Tests:** PHPUnit (permission matrix, details saved and synced, link kinds, only http(s), keywords added with repeats skipped, deadlines / rename / remove for managers only, everyone ticks with who and when, profile lock, per-project columns, export round trip, deleted forever with the project), Vitest (link kinds, groups by cycle, drop deadlines, late, progress, pasted lists), Playwright (leader writes About with a Sheet and a Drive link, adds keywords, moves one by the menu and one by drag, renames a column; member opens links, ticks and writes a note, manages nothing).
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).

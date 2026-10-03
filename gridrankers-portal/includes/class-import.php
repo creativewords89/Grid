@@ -34,12 +34,13 @@ class GRP_Import {
 		'leave'       => 'grp_leave',
 		'daysOff'     => 'grp_days_off',
 		'posts'       => 'grp_posts',
+		'keywords'    => 'grp_keywords',
 	);
 
 	/**
 	 * Tables whose rows belong to one project and are skipped with it.
 	 */
-	const PROJECT_CHILDREN = array( 'grp_meeting_tasks', 'grp_monthly_tasks', 'grp_cycle_records' );
+	const PROJECT_CHILDREN = array( 'grp_meeting_tasks', 'grp_monthly_tasks', 'grp_cycle_records', 'grp_keywords' );
 
 	/**
 	 * Settings documents that are not imported (old in-browser admin code, Google Drive secret).
@@ -174,6 +175,8 @@ class GRP_Import {
 				return self::wrap( self::day_off( $doc ) );
 			case 'posts':
 				return self::wrap( self::post( $doc ) );
+			case 'keywords':
+				return self::wrap( self::keyword( $doc ) );
 		}
 
 		return array();
@@ -317,6 +320,32 @@ class GRP_Import {
 	}
 
 	/**
+	 * `keywords` → grp_keywords (SPEC.md 6.12).
+	 *
+	 * @param array $d Document.
+	 * @return array|null
+	 */
+	public static function keyword( array $d ) {
+		$id      = self::id( $d['id'] ?? '' );
+		$keyword = trim( (string) ( $d['keyword'] ?? '' ) );
+		if ( ! $id || '' === $keyword || empty( $d['projectId'] ) ) {
+			return null;
+		}
+
+		return array(
+			'id'         => $id,
+			'project_id' => (string) $d['projectId'],
+			'keyword'    => mb_substr( $keyword, 0, 191 ),
+			'checks'     => is_array( $d['checks'] ?? null ) && $d['checks'] ? $d['checks'] : new stdClass(),
+			'note'       => isset( $d['note'] ) ? mb_substr( (string) $d['note'], 0, 500 ) : null,
+			'deadline'   => self::ymd( $d['deadline'] ?? null ),
+			'position'   => (int) ( $d['position'] ?? 0 ),
+			'created_by' => ! empty( $d['by'] ) ? (string) $d['by'] : null,
+			'created_at' => self::time( $d['createdAt'] ?? null ),
+		);
+	}
+
+	/**
 	 * `clients` → grp_projects (`pstate` / `active` → state).
 	 *
 	 * @param array $d Document.
@@ -346,6 +375,13 @@ class GRP_Import {
 			'std_cycle'     => isset( $d['stdCycle'] ) ? (string) $d['stdCycle'] : null,
 			'created_at'    => self::time( $d['createdAt'] ?? null ),
 		);
+		// Details and checklist columns (SPEC.md 6.12) come only from this portal's own export.
+		if ( is_array( $d['details'] ?? null ) && $d['details'] ) {
+			$row['details'] = $d['details'];
+		}
+		if ( is_array( $d['kwColumns'] ?? null ) && $d['kwColumns'] ) {
+			$row['kw_columns'] = array_values( $d['kwColumns'] );
+		}
 		// Cycle reviews (SPEC.md 6.11) come only from this portal's own export: never blank them.
 		if ( is_array( $d['cycleReviews'] ?? null ) && $d['cycleReviews'] ) {
 			$row['cycle_reviews'] = $d['cycleReviews'];

@@ -176,6 +176,10 @@ class GRP_REST_Trash extends GRP_REST_Controller {
 					foreach ( GRP_Store::find( self::TABLE, array( 'project_id' => $entry['doc_id'] ) ) as $task_entry ) {
 						GRP_Store::delete( self::TABLE, $task_entry['id'] );
 					}
+					// Its keyword checklist (SPEC.md 6.12) stays while the project is in the trash.
+					foreach ( GRP_Store::find( 'grp_keywords', array( 'project_id' => $entry['doc_id'] ) ) as $keyword ) {
+						GRP_Store::delete( 'grp_keywords', $keyword['id'] );
+					}
 				}
 			}
 		);

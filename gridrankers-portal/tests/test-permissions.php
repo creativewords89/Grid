@@ -921,6 +921,34 @@ class Test_GRP_Permissions extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Rows: project details and the keyword checklist (SPEC.md 6.12) — leaders and the Super Admin
+	 * edit details and manage keywords; everyone ticks and writes notes.
+	 */
+	public function test_project_details_and_keywords() {
+		foreach ( array( GRP_Permissions::EDIT_PROJECT_DETAILS, GRP_Permissions::MANAGE_KEYWORDS ) as $action ) {
+			$this->assert_matrix(
+				$action,
+				null,
+				array(
+					'admin'  => true,
+					'lead'   => true,
+					'member' => false,
+				)
+			);
+		}
+		$this->assert_matrix(
+			GRP_Permissions::TICK_KEYWORD,
+			null,
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => true,
+			)
+		);
+		$this->assertContains( GRP_Permissions::TICK_KEYWORD, GRP_Permissions::PROFILE_LOCKED, 'ticking is work: locked while the profile is incomplete' );
+	}
+
+	/**
 	 * Row: Approve / reject a Team Member's leave request (Team Leaders' leave never waits).
 	 */
 	public function test_decide_leave() {

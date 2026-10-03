@@ -32,7 +32,7 @@ export default function Sidebar({ syncStatus }) {
 	const tasks = rowsOf(data, 'meeting_tasks');
 	const monthly = rowsOf(data, 'monthly_tasks');
 	// A project is highlighted only on its own screens, never on My day or a person's page.
-	const onProject = ['board', 'monthly', 'log'].includes(view);
+	const onProject = ['board', 'monthly', 'plan', 'details', 'log'].includes(view);
 	const current = onProject && data.projects[project];
 
 	const counts = (id) => {
