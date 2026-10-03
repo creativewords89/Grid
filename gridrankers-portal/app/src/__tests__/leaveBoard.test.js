@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { leaveSummary, mayDecideLeave, overBy, sortLeave } from '../lib/leaveBoard.js';
+import { strips } from '../lib/day.js';
+import { isIssued, leaveSummary, mayDecideLeave, mayIssueLeave, overBy, sortLeave } from '../lib/leaveBoard.js';
 import { emptyData } from '../lib/store.js';
 
 const OWNER = { id: 'own', name: 'Grid Owner', role: 'admin', active: 1 };
@@ -59,5 +60,28 @@ describe('Leave tab numbers (SPEC.md 7.5, LV-A)', () => {
 
 	it('lists waiting requests first, then newest first', () => {
 		expect(sortLeave(Object.values(fixture().leave)).map((l) => l.id)).toEqual(['e', 'b', 'c', 'd', 'a', 'f']);
+	});
+
+	it('Team Leaders and the Super Admin issue a day off to Team Members and Team Leaders, not themselves', () => {
+		const SECOND = { id: 'lia', name: 'Lia Lead', role: 'lead', active: 1 };
+		expect(mayIssueLeave(LEAD, MAX)).toBe(true);
+		expect(mayIssueLeave(LEAD, SECOND)).toBe(true);
+		expect(mayIssueLeave(LEAD, LEAD)).toBe(false);
+		expect(mayIssueLeave(LEAD, OWNER)).toBe(false);
+		expect(mayIssueLeave(OWNER, LEAD)).toBe(true);
+		expect(mayIssueLeave(OWNER, OWNER)).toBe(false);
+		expect(mayIssueLeave(MAX, NIA)).toBe(false);
+		expect(mayIssueLeave(LEAD, { ...NIA, active: 0 })).toBe(false);
+	});
+
+	it('an issued day off is marked and tells the person who gave it', () => {
+		const d = fixture();
+		const issued = { ...leave('i', 'max', '2026-10-19', '2026-10-20', 'approved', 2), created_by: 'lee', decided_by: 'lee', decided_at: '2026-10-14 08:00:00', message: 'Thanks for the launch' };
+		d.leave.i = issued;
+		expect(isIssued(issued)).toBe(true);
+		expect(isIssued({ ...d.leave.a, created_by: 'max' })).toBe(false);
+		const band = strips(d, MAX, TODAY, { now: Date.parse('2026-10-14T09:00:00Z'), all: true }).find((x) => x.key === 'leave:i:issued');
+		expect(band.title).toMatch(/^Lee Lead gave you a day off · .+ \(2 days, day leave\)\.$/);
+		expect(band.text).toBe('“Thanks for the launch”');
 	});
 });

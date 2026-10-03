@@ -96,6 +96,8 @@ export default function MembersAccess({ people, openCount, urgentCount, onPerson
 	const query = q.trim().toLowerCase();
 	const shown = people.filter((p) => (f === 'all' || (f === 'nosign' ? noSignIn(p) : p.role === f)) && (!query || [p.name, p.title, p.email, p.phone].join(' ').toLowerCase().includes(query)));
 	const admins = people.filter((p) => p.role === 'admin').length;
+	const viewDay = (p) => (setTeamPerson('all'), setViewAs(p.id));
+	const open = (p) => (canViewDay(me, p) ? viewDay(p) : onPerson(p.id));
 
 	return (
 		<section className="dcard ma-card" aria-labelledby="maTitle">
@@ -133,7 +135,7 @@ export default function MembersAccess({ people, openCount, urgentCount, onPerson
 				{shown.map((p) => {
 					const [sk, st] = SIGN(p);
 					const items = [
-						...(canViewDay(me, p) ? [['View their My day', () => (setTeamPerson('all'), setViewAs(p.id))]] : []),
+						...(canViewDay(me, p) ? [['View their My day', () => viewDay(p)]] : []),
 						['Open their page', () => onPerson(p.id)],
 						// What each role may do (section 3): codes for Team Members (leaders) or anyone but the
 						// Super Admin (Super Admin); roles and removing: Super Admin only.
@@ -143,11 +145,14 @@ export default function MembersAccess({ people, openCount, urgentCount, onPerson
 					return (
 						<div key={p.id} className="ma-row" role="row">
 							<span className="ma-who" role="cell">
-								<Avatar person={p} />
-								<span>
-									<b>{p.name}</b>
-									<small>{p.title || ROLE[p.role]}</small>
-								</span>
+								{/* Photo and name open their My day (view only) or, for someone whose My day can't be viewed, their page. */}
+								<button type="button" className="ma-open" aria-label={`Open ${p.name}`} title={canViewDay(me, p) ? 'View their My day' : 'Open their page'} onClick={() => open(p)}>
+									<Avatar person={p} />
+									<span>
+										<b>{p.name}</b>
+										<small>{p.title || ROLE[p.role]}</small>
+									</span>
+								</button>
 							</span>
 							<span role="cell">
 								<span className={'ma-role r-' + p.role}>{ROLE[p.role]}</span>

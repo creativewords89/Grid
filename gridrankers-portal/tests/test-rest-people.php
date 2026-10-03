@@ -95,6 +95,53 @@ class Test_GRP_REST_People extends GRP_REST_TestCase {
 		$this->assertStatus( 403, $this->ask( 'member', 1, 1, array( 'member_id' => $this->team['other']['id'] ) ), 'only for yourself' );
 	}
 
+	public function test_leaders_and_the_super_admin_issue_a_day_off() {
+		$issue = fn ( $who, $handle, $from, $to, array $more = array() ) => $this->api_as(
+			$who,
+			'POST',
+			'/leave',
+			$more + array(
+				'member_id' => $this->team[ $handle ]['id'],
+				'from'      => $this->day( $from ),
+				'to'        => $this->day( $to ),
+				'note'      => 'Thanks for the launch',
+				'type'      => 'sick',
+				'reason'    => 'ignored',
+			)
+		);
+
+		// A Team Leader to a Team Member: approved day leave, decided by them, the note as the message.
+		$response = $issue( 'lead', 'member', 0, 1 );
+		$this->assertStatus( 201, $response );
+		$leave = $response->get_data();
+		$this->assertSame( 'approved', $leave['status'] );
+		$this->assertSame( 'day', $leave['type'], 'an issued day off is day leave' );
+		$this->assertSame( 2, (int) $leave['days'] );
+		$this->assertSame( $this->team['lead']['id'], $leave['decided_by'] );
+		$this->assertSame( $this->team['lead']['id'], $leave['created_by'] );
+		$this->assertSame( 'Thanks for the launch', $leave['message'] );
+		$this->assertSame( '', (string) $leave['reason'] );
+		// It counts: Max took 2 days in that month (1 over the allowance).
+		$month = substr( $this->day( 0 ), 0, 7 );
+		if ( substr( $this->day( 1 ), 0, 7 ) === $month ) {
+			$report = array_column( $this->api_as( 'admin', 'GET', '/leave/report', array( 'month' => $month ) )->get_data()['rows'], null, 'member_id' );
+			$this->assertSame( 2, (int) $report[ $this->team['member']['id'] ]['taken'] );
+		}
+		$this->assertSame( 'grp_leave_overlap', $issue( 'admin', 'member', 1, 1 )->get_data()['code'] );
+
+		// The Super Admin to a Team Leader; a Team Leader to another Team Leader.
+		$this->assertStatus( 201, $issue( 'admin', 'lead', 2, 2 ) );
+		$second = $this->add_member( 'Lia Lead', 'lead' );
+		$this->assertStatus( 201, $issue( 'lead', 'lead', 3, 3, array( 'member_id' => $second['id'] ) ) );
+		$this->assertStatus( 403, $issue( 'lead', 'admin', 3, 3 ), 'never to the Super Admin' );
+		$this->assertStatus( 403, $issue( 'member', 'other', 3, 3 ), 'Team Members cannot issue' );
+		$this->assertStatus( 400, $issue( 'admin', 'other', 4, 4 ), 'a Friday only' );
+
+		// The leader who issued it may cancel it; the member may not.
+		$this->assertStatus( 403, $this->api_as( 'member', 'PATCH', "/leave/{$leave['id']}", array( 'action' => 'cancel' ) ) );
+		$this->assertStatus( 200, $this->api_as( 'lead', 'PATCH', "/leave/{$leave['id']}", array( 'action' => 'cancel' ) ) );
+	}
+
 	public function test_leave_validation() {
 		$this->assertStatus( 201, $this->ask( 'member', 0, 1 ) );
 		$this->assertSame( 'grp_leave_overlap', $this->ask( 'member', 1, 2 )->get_data()['code'] );

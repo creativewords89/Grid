@@ -110,6 +110,18 @@ export function strips(data, me, today, { now = Date.now(), all = false } = {}) 
 			const by = data.members[l.decided_by];
 			const range = l.from_date === l.to_date ? short(l.from_date) : `${short(l.from_date)} – ${short(l.to_date)}`;
 			const approved = l.status === 'approved';
+			// A day off a Team Leader or the Super Admin issued (SPEC.md 6.10).
+			if (approved && l.created_by && l.created_by !== l.member_id) {
+				out.push({
+					key: `leave:${l.id}:issued`,
+					kind: 'leave',
+					tone: 'green',
+					title: `${by ? by.name : 'Your Team Leader'} gave you a day off · ${range} (${l.days} day${l.days === 1 ? '' : 's'}, day leave).`,
+					text: l.message ? `“${l.message}”` : '',
+					ok: 'Thanks',
+				});
+				return;
+			}
 			out.push({
 				key: `leave:${l.id}:${l.status}`,
 				kind: 'leave',

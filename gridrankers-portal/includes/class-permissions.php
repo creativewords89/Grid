@@ -113,10 +113,13 @@ class GRP_Permissions {
 	/** Take (lead) or request (member) day leave. Context: `{member_id}` the leave is for. Never the Super Admin. */
 	const TAKE_LEAVE = 'take_leave';
 
+	/** Issue a day off to someone: approved day leave for them. Context: `{member_id, role}` of that person. Team Leaders and the Super Admin; never to themselves or the Super Admin. */
+	const ISSUE_LEAVE = 'issue_leave';
+
 	/** Approve or reject a leave request. Context: `{role}` of the person asking (Team Members only). */
 	const DECIDE_LEAVE = 'decide_leave';
 
-	/** Cancel leave. Context: `{member_id, role, status}` of the leave and its owner. */
+	/** Cancel leave. Context: `{member_id, role, status, created_by?}` of the leave and its owner. */
 	const CANCEL_LEAVE = 'cancel_leave';
 
 	/** See the type, reason and message of a person's leave. Context: `{member_id}`. Managers or self. */
@@ -261,6 +264,10 @@ class GRP_Permissions {
 				// Team Leaders' leave is approved straight away: only Team Members' requests wait.
 				return $manager && self::ROLE_MEMBER === ( $context['role'] ?? '' );
 
+			case self::ISSUE_LEAVE:
+				// A day off for a Team Member or Team Leader (SPEC.md 6.10); not for yourself.
+				return $manager && ! self::is_self( $user, $context['member_id'] ?? null ) && in_array( $context['role'] ?? '', array( self::ROLE_LEAD, self::ROLE_MEMBER ), true );
+
 			case self::CANCEL_LEAVE:
 				return self::can_cancel_leave( $user, $role, $context );
 
@@ -401,12 +408,12 @@ class GRP_Permissions {
 	}
 
 	/**
-	 * Cancelling leave: the Super Admin anyone's; a Team Leader their own and any Team
-	 * Member's; a Team Member only their own request while it is pending.
+	 * Cancelling leave: the Super Admin anyone's; a Team Leader their own, any Team Member's
+	 * and a day off they issued; a Team Member only their own request while it is pending.
 	 *
 	 * @param array  $user    Acting member.
 	 * @param string $role    Actor's effective role.
-	 * @param array  $context `{member_id, role, status}`.
+	 * @param array  $context `{member_id, role, status, created_by?}`.
 	 * @return bool
 	 */
 	private static function can_cancel_leave( array $user, $role, array $context ) {
@@ -418,7 +425,7 @@ class GRP_Permissions {
 		}
 		$own = self::is_self( $user, $context['member_id'] ?? null );
 		if ( self::ROLE_LEAD === $role ) {
-			return $own || self::ROLE_MEMBER === ( $context['role'] ?? '' );
+			return $own || self::ROLE_MEMBER === ( $context['role'] ?? '' ) || self::is_self( $user, $context['created_by'] ?? null );
 		}
 
 		return $own && 'pending' === $context['status'];

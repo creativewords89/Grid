@@ -21,8 +21,8 @@ test('view someone’s My day, view only', async ({ page }) => {
 	await expect(page.locator('.emp-card')).toHaveCount(0);
 	await expect(page.getByRole('button', { name: 'Add member', exact: true })).toHaveCount(0);
 	await expect(page.getByRole('button', { name: 'Monthly', exact: true })).toHaveCount(0);
-	// ⋯ → View their My day.
-	await rowMenu(page, 'Max Member', 'View their My day');
+	// Clicking a person's photo or name opens their My day (SPEC.md 7.6).
+	await page.locator('.ma-card').getByRole('button', { name: 'Open Max Member', exact: true }).click();
 	await expect(bar).toContainText('Viewing Max Member’s My day');
 	await expect(bar).toContainText('view only');
 	await expect(page.locator('.md-top h1')).toHaveText(/, Max Member$/);

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { usePortal } from '../../context.js';
-import { leaveSummary, mayDecideLeave, overBy, sortLeave } from '../../lib/leaveBoard.js';
+import { isIssued, leaveSummary, mayDecideLeave, overBy, sortLeave } from '../../lib/leaveBoard.js';
 import { LEAVE_PER_MONTH, monthName } from '../../lib/people.js';
-import { isAdmin } from '../../lib/roles.js';
+import { isAdmin, isManager } from '../../lib/roles.js';
 import { rowsOf } from '../../lib/store.js';
 import Avatar from '../Avatar.jsx';
+import IssueDayOff from './IssueDayOff.jsx';
 import { STATUS, TYPE, downloadCsv, leaveActions, printOnly, rangeText, useLeaveAction } from './leaveParts.jsx';
 
 const RESULT = { paid: (r) => `${r.paid} day paid`, even: () => 'Even', deducted: (r) => `${r.deducted} day${r.deducted === 1 ? '' : 's'} deducted` };
@@ -92,6 +93,7 @@ function Row({ l }) {
 				) : (
 					<>
 						<span>
+							{isIssued(l) && <span className="lv-issued">Issued</span>}
 							{by && l.decided_by !== l.member_id ? (
 								<>
 									by <b>{by.name}</b>
@@ -251,6 +253,7 @@ export default function LeaveTab() {
 	const admin = isAdmin(me);
 	const [who, setWho] = useState('');
 	const [status, setStatus] = useState('');
+	const [issuing, setIssuing] = useState(false);
 	const sum = leaveSummary(data, me, today);
 	const people = rowsOf(data, 'members')
 		.filter((m) => m.active && m.role !== 'admin')
@@ -287,6 +290,11 @@ export default function LeaveTab() {
 							</option>
 						))}
 					</select>
+					{isManager(me) && (
+						<button type="button" className="btn primary" onClick={() => setIssuing(true)}>
+							+ Issue day off
+						</button>
+					)}
 				</div>
 				{rows.length ? (
 					<div className="lv-table lv-req" role="table" aria-label="Leave requests">
@@ -308,6 +316,7 @@ export default function LeaveTab() {
 				<p className="lv-foot">Waiting requests stay on top. Team Members’ requests wait for a Team Leader or the Super Admin; a Team Leader’s leave is approved straight away.</p>
 			</section>
 			{admin && <Settlement />}
+			{issuing && <IssueDayOff onClose={() => setIssuing(false)} />}
 		</div>
 	);
 }

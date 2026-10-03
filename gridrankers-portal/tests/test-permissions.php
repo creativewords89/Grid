@@ -866,6 +866,61 @@ class Test_GRP_Permissions extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Row: Issue a day off — Team Leaders and the Super Admin, to Team Members and Team Leaders,
+	 * never to themselves or the Super Admin.
+	 */
+	public function test_issue_leave() {
+		$this->assert_matrix(
+			GRP_Permissions::ISSUE_LEAVE,
+			array(
+				'member_id' => 'm-other',
+				'role'      => 'member',
+			),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => false,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::ISSUE_LEAVE,
+			array(
+				'member_id' => 'm-other-lead',
+				'role'      => 'lead',
+			),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => false,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::ISSUE_LEAVE,
+			array(
+				'member_id' => 'm-owner',
+				'role'      => 'admin',
+			),
+			array(
+				'admin'  => false,
+				'lead'   => false,
+				'member' => false,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::ISSUE_LEAVE,
+			fn ( $role ) => array(
+				'member_id' => $this->users[ $role ]['id'],
+				'role'      => $role,
+			),
+			array(
+				'admin'  => false,
+				'lead'   => false,
+				'member' => false,
+			)
+		);
+	}
+
+	/**
 	 * Row: Approve / reject a Team Member's leave request (Team Leaders' leave never waits).
 	 */
 	public function test_decide_leave() {
@@ -928,6 +983,16 @@ class Test_GRP_Permissions extends WP_UnitTestCase {
 		$this->assert_matrix(
 			GRP_Permissions::CANCEL_LEAVE,
 			fn ( $role ) => $leave( $this->users[ $role ]['id'], $role, 'approved' ),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => false,
+			)
+		);
+		// A day off a Team Leader issued to another leader: theirs to cancel.
+		$this->assert_matrix(
+			GRP_Permissions::CANCEL_LEAVE,
+			fn ( $role ) => $leave( 'm-other-lead', 'lead', 'approved' ) + array( 'created_by' => $this->users[ $role ]['id'] ),
 			array(
 				'admin'  => true,
 				'lead'   => true,
