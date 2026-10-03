@@ -46,3 +46,10 @@ export function leaveSummary(data, me, today) {
 		over: taken.filter((t) => t.taken > LEAVE_PER_MONTH),
 	};
 }
+
+// Issue a day off (SPEC.md 6.10): Team Leaders and the Super Admin, to active Team Members and
+// Team Leaders, never to themselves. Mirrors GRP_Permissions::ISSUE_LEAVE.
+export const mayIssueLeave = (me, p) => isManager(me) && !!p && +p.active !== 0 && p.id !== me.id && (p.role === 'member' || p.role === 'lead');
+
+// A day off someone else issued: approved leave created by another person.
+export const isIssued = (l) => !!l.created_by && l.created_by !== l.member_id;

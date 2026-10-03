@@ -10,6 +10,8 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Day leave: Team Members request it (pending until a Team Leader or the Super Admin
  * decides), Team Leaders take it (approved straight away), the Super Admin has none.
+ * Team Leaders and the Super Admin may also issue a day off to someone else: approved day
+ * leave for that person, counted like any other.
  * Settlement and year-end counts are for the Super Admin.
  */
 class GRP_REST_Leave extends GRP_REST_Controller {
@@ -74,7 +76,8 @@ class GRP_REST_Leave extends GRP_REST_Controller {
 	}
 
 	/**
-	 * POST /leave `{type: day|sick, from, to, reason?, member_id?}` — for oneself.
+	 * POST /leave `{type: day|sick, from, to, reason?}` for oneself, or `{member_id, from, to,
+	 * note?}` to issue a day off to someone else (Team Leaders and the Super Admin).
 	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response|WP_Error
@@ -85,10 +88,23 @@ class GRP_REST_Leave extends GRP_REST_Controller {
 		if ( '' === $member_id ) {
 			$member_id = $actor['id'];
 		}
-		if ( ! self::can( GRP_Permissions::TAKE_LEAVE, array( 'member_id' => $member_id ) ) ) {
-			return GRP_Permissions::ROLE_ADMIN === GRP_Permissions::effective_role( $actor )
-				? self::forbidden( __( 'The Super Admin has no leave in the portal.', 'gridrankers-portal' ) )
-				: self::forbidden( __( 'You can only ask for your own leave.', 'gridrankers-portal' ) );
+		$issue  = $member_id !== $actor['id'];
+		$person = $issue ? GRP_Store::get( 'grp_members', $member_id ) : $actor;
+		if ( $issue ) {
+			if ( ! $person || ! (int) $person['active'] ) {
+				return self::invalid( __( 'Pick someone on the team.', 'gridrankers-portal' ) );
+			}
+			$context = array(
+				'member_id' => $member_id,
+				'role'      => GRP_Permissions::effective_role( $person ),
+			);
+			if ( ! self::can( GRP_Permissions::ISSUE_LEAVE, $context ) ) {
+				return self::is_manager()
+					? self::forbidden( __( "You can't give a day off to this person.", 'gridrankers-portal' ) )
+					: self::forbidden( __( 'You can only ask for your own leave.', 'gridrankers-portal' ) );
+			}
+		} elseif ( ! self::can( GRP_Permissions::TAKE_LEAVE, array( 'member_id' => $member_id ) ) ) {
+			return self::forbidden( __( 'The Super Admin has no leave in the portal.', 'gridrankers-portal' ) );
 		}
 
 		$from = self::date( $request['from'] ?? '', 'start date' );
@@ -110,9 +126,11 @@ class GRP_REST_Leave extends GRP_REST_Controller {
 
 		$leaves = GRP_Store::find( self::TABLE, array( 'member_id' => $member_id ) );
 		if ( GRP_People::overlaps( $member_id, $from, $to, $leaves ) ) {
-			return self::conflict( __( 'You already have leave on some of those days.', 'gridrankers-portal' ), 'grp_leave_overlap' );
+			return $issue
+				? self::conflict( __( 'They already have leave on some of those days.', 'gridrankers-portal' ), 'grp_leave_overlap' )
+				: self::conflict( __( 'You already have leave on some of those days.', 'gridrankers-portal' ), 'grp_leave_overlap' );
 		}
-		$days = array_sum( GRP_People::leave_days( $from, $to, $actor, GRP_REST_People::team_weekly(), GRP_REST_People::days_off() ) );
+		$days = array_sum( GRP_People::leave_days( $from, $to, $person, GRP_REST_People::team_weekly(), GRP_REST_People::days_off() ) );
 		if ( ! $days ) {
 			return self::invalid( __( 'Those days are all days off already.', 'gridrankers-portal' ), 'grp_leave_no_days' );
 		}
@@ -120,18 +138,24 @@ class GRP_REST_Leave extends GRP_REST_Controller {
 		$lead = GRP_Permissions::ROLE_LEAD === GRP_Permissions::effective_role( $actor );
 		$row  = array(
 			'member_id'  => $member_id,
-			'type'       => 'sick' === $request['type'] ? 'sick' : 'day',
+			// An issued day off is day leave.
+			'type'       => ! $issue && 'sick' === $request['type'] ? 'sick' : 'day',
 			'from_date'  => $from,
 			'to_date'    => $to,
 			'days'       => min( 255, $days ),
-			'reason'     => self::textarea( $request['reason'] ?? '', 500 ),
-			'status'     => $lead ? 'approved' : 'pending',
+			'reason'     => $issue ? '' : self::textarea( $request['reason'] ?? '', 500 ),
+			'status'     => $lead || $issue ? 'approved' : 'pending',
 			'created_by' => $actor['id'],
 		);
-		if ( $lead ) {
-			// Team Leaders' leave is approved straight away (SPEC.md 6.10).
+		if ( $lead || $issue ) {
+			// Team Leaders' leave and an issued day off are approved straight away (SPEC.md 6.10).
 			$row['decided_by'] = $actor['id'];
 			$row['decided_at'] = GRP_Ids::now();
+		}
+		if ( $issue ) {
+			// The note for them: shown with the message they get.
+			$note           = self::textarea( $request['note'] ?? '', 500 );
+			$row['message'] = '' !== $note ? $note : null;
 		}
 
 		$saved = GRP_Store::transaction(
@@ -165,9 +189,10 @@ class GRP_REST_Leave extends GRP_REST_Controller {
 
 		if ( 'cancel' === $action ) {
 			$context = array(
-				'member_id' => $leave['member_id'],
-				'role'      => $role,
-				'status'    => $leave['status'],
+				'member_id'  => $leave['member_id'],
+				'role'       => $role,
+				'status'     => $leave['status'],
+				'created_by' => $leave['created_by'],
 			);
 			if ( ! self::can( GRP_Permissions::CANCEL_LEAVE, $context ) ) {
 				return self::forbidden( __( "You can't cancel this leave.", 'gridrankers-portal' ) );

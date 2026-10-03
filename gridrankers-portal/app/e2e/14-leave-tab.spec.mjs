@@ -1,7 +1,7 @@
 // My page → Leave (SPEC.md 7.5, design LV-A): the numbers on top, Leave requests with status chips
 // and Approve / Reject, and the Super Admin's settlement. Runs after 08 (Max is on leave today).
 import { test, expect } from '@playwright/test';
-import { LEAD, MAX, openTeam, signIn, signInOwner, signOut, signOutOwner, watchErrors } from './helpers.mjs';
+import { LEAD, MAX, openTeam, showStrip, signIn, signInOwner, signOut, signOutOwner, watchErrors } from './helpers.mjs';
 
 const pad = (n) => String(n).padStart(2, '0');
 const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -12,6 +12,8 @@ const plus = (n) => {
 };
 // A week from today: the same weekday as today, so not the weekly day off 08 moved to +3.
 const DAY = ymd(plus(7));
+// The day after: issued as a day off (again not the weekly day off).
+const NEXT = ymd(plus(8));
 
 test('leave tab: numbers, requests and settlement', async ({ page }) => {
 	const noErrors = watchErrors(page);
@@ -58,6 +60,30 @@ test('leave tab: numbers, requests and settlement', async ({ page }) => {
 	await expect(done).toContainText('by Lee Lead');
 	await expect(done).toContainText('“Get well soon”');
 	await expect(stat('Waiting for you')).toContainText('Nothing to decide');
+
+	// Issue a day off to Max (SPEC.md 6.10, LV-C): approved day leave, marked Issued.
+	await page.getByRole('button', { name: '+ Issue day off' }).click();
+	await expect(dlg.getByRole('heading', { name: 'Issue a day off' })).toBeVisible();
+	await expect(dlg.getByRole('radio', { name: /Lee Lead/ })).toHaveCount(0);
+	await expect(dlg.getByRole('radio', { name: /Grid Owner/ })).toHaveCount(0);
+	await dlg.getByRole('radio', { name: /Max Member/ }).click();
+	await dlg.getByLabel('From').fill(NEXT);
+	await dlg.getByLabel('To').fill(NEXT);
+	await dlg.getByLabel('Note for them (optional)').fill('Thanks for the launch');
+	await expect(dlg.locator('.io-sum')).toContainText('1 working day');
+	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/issue-day-off.png' });
+	await dlg.getByRole('button', { name: 'Issue day off' }).click();
+	await page.getByText('Day off issued to Max Member').waitFor();
+	const issued = list.locator('.lv-row', { hasText: 'Thanks for the launch' });
+	await expect(issued).toContainText('Issued');
+	await expect(issued).toContainText('Approved');
+	await expect(issued).toContainText('by Lee Lead');
+	await signOut(page);
+
+	// Max is told on My day.
+	await signIn(page, MAX);
+	await showStrip(page, 'Lee Lead gave you a day off');
+	await expect(page.locator('.md-strip:visible')).toContainText('Thanks for the launch');
 	await signOut(page);
 
 	// Super Admin: four numbers and the settlement with the switch and the stepper.

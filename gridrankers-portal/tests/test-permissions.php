@@ -866,6 +866,89 @@ class Test_GRP_Permissions extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Row: Issue a day off — Team Leaders and the Super Admin, to Team Members and Team Leaders,
+	 * never to themselves or the Super Admin.
+	 */
+	public function test_issue_leave() {
+		$this->assert_matrix(
+			GRP_Permissions::ISSUE_LEAVE,
+			array(
+				'member_id' => 'm-other',
+				'role'      => 'member',
+			),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => false,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::ISSUE_LEAVE,
+			array(
+				'member_id' => 'm-other-lead',
+				'role'      => 'lead',
+			),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => false,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::ISSUE_LEAVE,
+			array(
+				'member_id' => 'm-owner',
+				'role'      => 'admin',
+			),
+			array(
+				'admin'  => false,
+				'lead'   => false,
+				'member' => false,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::ISSUE_LEAVE,
+			fn ( $role ) => array(
+				'member_id' => $this->users[ $role ]['id'],
+				'role'      => $role,
+			),
+			array(
+				'admin'  => false,
+				'lead'   => false,
+				'member' => false,
+			)
+		);
+	}
+
+	/**
+	 * Rows: project details and the keyword checklist (SPEC.md 6.12) — leaders and the Super Admin
+	 * edit details and manage keywords; everyone ticks and writes notes.
+	 */
+	public function test_project_details_and_keywords() {
+		foreach ( array( GRP_Permissions::EDIT_PROJECT_DETAILS, GRP_Permissions::MANAGE_KEYWORDS ) as $action ) {
+			$this->assert_matrix(
+				$action,
+				null,
+				array(
+					'admin'  => true,
+					'lead'   => true,
+					'member' => false,
+				)
+			);
+		}
+		$this->assert_matrix(
+			GRP_Permissions::TICK_KEYWORD,
+			null,
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => true,
+			)
+		);
+		$this->assertContains( GRP_Permissions::TICK_KEYWORD, GRP_Permissions::PROFILE_LOCKED, 'ticking is work: locked while the profile is incomplete' );
+	}
+
+	/**
 	 * Row: Approve / reject a Team Member's leave request (Team Leaders' leave never waits).
 	 */
 	public function test_decide_leave() {
@@ -928,6 +1011,16 @@ class Test_GRP_Permissions extends WP_UnitTestCase {
 		$this->assert_matrix(
 			GRP_Permissions::CANCEL_LEAVE,
 			fn ( $role ) => $leave( $this->users[ $role ]['id'], $role, 'approved' ),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => false,
+			)
+		);
+		// A day off a Team Leader issued to another leader: theirs to cancel.
+		$this->assert_matrix(
+			GRP_Permissions::CANCEL_LEAVE,
+			fn ( $role ) => $leave( 'm-other-lead', 'lead', 'approved' ) + array( 'created_by' => $this->users[ $role ]['id'] ),
 			array(
 				'admin'  => true,
 				'lead'   => true,

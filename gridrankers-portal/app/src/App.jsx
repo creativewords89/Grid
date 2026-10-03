@@ -15,6 +15,8 @@ import MonthlyTasks from './components/monthly/MonthlyTasks.jsx';
 import TeamView from './components/TeamView.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import RecentActivities from './components/RecentActivities.jsx';
+import KeywordPlan from './components/plan/KeywordPlan.jsx';
+import ProjectDetails from './components/plan/ProjectDetails.jsx';
 import { todayYmd } from './lib/cycles.js';
 import { ROLE, canViewDay } from './lib/roles.js';
 
@@ -250,6 +252,10 @@ export default function App({ config }) {
 							<MeetingMinutes />
 						) : view === 'monthly' ? (
 							<MonthlyTasks />
+						) : view === 'plan' ? (
+							<KeywordPlan />
+						) : view === 'details' ? (
+							<ProjectDetails />
 						) : view === 'log' ? (
 							<RecentActivities />
 						) : (

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 // Promise-based confirm / prompt in a native <dialog> (showModal keeps focus inside).
-// confirm({title, message, ok, danger, input, placeholder}) resolves to
+// confirm({title, message, ok, danger, input, placeholder, value}) resolves to
 // true / the typed text, or null when cancelled.
 export function useConfirm() {
 	const [req, setReq] = useState(null);
@@ -11,7 +11,7 @@ export function useConfirm() {
 	const confirm = useCallback(
 		(options) =>
 			new Promise((resolve) => {
-				setText('');
+				setText(options.value || '');
 				setReq({ ...options, resolve });
 			}),
 		[]

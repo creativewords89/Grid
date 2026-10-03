@@ -15,7 +15,7 @@ class GRP_Install {
 	/**
 	 * Current schema version. Bump it whenever get_schema() or migrations() changes.
 	 */
-	const DB_VERSION = 7;
+	const DB_VERSION = 8;
 
 	/**
 	 * Option that stores the installed schema version.
@@ -29,7 +29,8 @@ class GRP_Install {
 	 * there is no public access-request flow. `grp_deletions` (schema 2) is an addition:
 	 * tombstones for hard-deleted rows so GET /sync can report deletions. Schema 5 adds
 	 * leave, days off and posts (announcements, shout-outs) for SPEC.md 6.10; schema 6
-	 * adds member location and birth year, and private notices.
+	 * adds member location and birth year, and private notices. Schema 8 adds project details,
+ * the keyword checklist columns and `grp_keywords` (SPEC.md 6.12).
 	 *
 	 * @var string[]
 	 */
@@ -49,6 +50,7 @@ class GRP_Install {
 		'grp_leave',
 		'grp_days_off',
 		'grp_posts',
+		'grp_keywords',
 	);
 
 	/**
@@ -280,6 +282,8 @@ class GRP_Install {
 				cycle_log json NULL,
 				std_cycle varchar(32) NULL,
 				cycle_reviews json NULL,
+				details json NULL,
+				kw_columns json NULL,
 				created_at datetime NOT NULL,
 				updated_at datetime NOT NULL,
 				PRIMARY KEY  (id),
@@ -515,6 +519,22 @@ class GRP_Install {
 				KEY kind (kind),
 				KEY to_member (to_member),
 				KEY created_at (created_at),
+				KEY updated_at (updated_at)
+			) $collate;",
+
+			"CREATE TABLE {$t['grp_keywords']} (
+				id varchar(64) NOT NULL,
+				project_id varchar(64) NOT NULL,
+				keyword varchar(191) NOT NULL,
+				checks json NULL,
+				note text NULL,
+				deadline date NULL,
+				position int(11) NOT NULL DEFAULT 0,
+				created_by varchar(64) NULL,
+				created_at datetime NOT NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				KEY project_id (project_id),
 				KEY updated_at (updated_at)
 			) $collate;",
 		);

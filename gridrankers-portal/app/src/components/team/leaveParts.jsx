@@ -14,7 +14,8 @@ export function leaveActions(l, me, owner) {
 	const own = l.member_id === me.id;
 	const out = [];
 	if (l.status === 'pending' && isManager(me) && role === 'member') out.push('approve', 'reject');
-	const cancel = isAdmin(me) || (me.role === 'lead' ? own || role === 'member' : own && l.status === 'pending');
+	// A Team Leader may also cancel a day off they issued (SPEC.md 6.10).
+	const cancel = isAdmin(me) || (me.role === 'lead' ? own || role === 'member' || l.created_by === me.id : own && l.status === 'pending');
 	if ((l.status === 'pending' || l.status === 'approved') && cancel) out.push('cancel');
 	return out;
 }
