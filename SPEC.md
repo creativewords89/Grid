@@ -412,8 +412,8 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 
 36. (Released as 0.1.12.) Members & access moves from Admin settings to the Team tab, under the cards; the ⋯ menu follows the role rules. Playwright: Admin settings without it; a leader's menu has no Change role or Remove.
 
-37. The Team tab keeps only Members & access: the period bar (Daily / Weekly / Monthly), the card search and hint, and the member cards (with the Add member tile) go; the ⋯ menu opens someone's My day or page. Playwright: no cards or period bar on the Team tab; My day and page opened from the ⋯ menu.
+37. (Released as 0.1.13.) The Team tab keeps only Members & access: the period bar (Daily / Weekly / Monthly), the card search and hint, and the member cards (with the Add member tile) go; the ⋯ menu opens someone's My day or page. Playwright: no cards or period bar on the Team tab; My day and page opened from the ⋯ menu.
 
-38. Leave tab redesign (7.5, design LV-A): the four numbers, Leave requests with status chips and person picker, Approve / Reject buttons, the over-allowance warning, Settlement with the Monthly / Year-end switch, month stepper and allowance bar. **Tests:** Vitest (the numbers, over-allowance per request, sorting), Playwright (leader approves from the list; chips filter; Super Admin sees Over the allowance and the settlement, a leader neither).
+38. (Released as 0.1.13.) Leave tab redesign (7.5, design LV-A): the four numbers, Leave requests with status chips and person picker, Approve / Reject buttons, the over-allowance warning, Settlement with the Monthly / Year-end switch, month stepper and allowance bar. **Tests:** Vitest (the numbers, over-allowance per request, sorting), Playwright (leader approves from the list; chips filter; Super Admin sees Over the allowance and the settlement, a leader neither).
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).
