@@ -27,6 +27,43 @@ function Item({ item }) {
 	const { api, data, dispatch, toast, confirm, setProject, setSearch, setView } = usePortal();
 	const decide = useReview();
 
+	// Someone asked to untick a keyword box (SPEC.md 6.12): Untick, or Keep ticked.
+	if (item.kind === 'untick') {
+		const { kw, col, project, ask } = item;
+		const answer = async (body, done) => {
+			try {
+				dispatch({ type: 'upsert', table: 'keywords', row: await api.patch(`keywords/${kw.id}`, body) });
+				toast(done);
+			} catch (err) {
+				toast(err.message);
+			}
+		};
+		return (
+			<div className="ap-item">
+				<div className="ap-head">
+					<Avatar person={item.who} small />
+					<b>{item.who ? item.who.name : '—'}</b>
+					<span className="mp-flag f-amber">Untick asked</span>
+				</div>
+				<p>
+					<button type="button" className="linkbtn" onClick={() => (setProject(project.id), setView('plan'))}>
+						{col.name} · {kw.keyword}
+					</button>
+					{` · ${project.name}`}
+					{ask.note ? <span className="muted"> · “{ask.note}”</span> : null}
+				</p>
+				<div className="ap-acts">
+					<button type="button" className="btn small danger-soft" onClick={() => answer({ check: { column: col.id, on: false } }, 'Unticked')}>
+						Untick
+					</button>
+					<button type="button" className="btn small" onClick={() => answer({ keep: { column: col.id } }, 'Kept ticked')}>
+						Keep ticked
+					</button>
+				</div>
+			</div>
+		);
+	}
+
 	if (item.kind === 'leave') {
 		const l = item.leave;
 		const range = l.from_date === l.to_date ? short(l.from_date) : `${short(l.from_date)} – ${short(l.to_date)}`;

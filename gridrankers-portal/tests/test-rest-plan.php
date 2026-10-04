@@ -137,17 +137,44 @@ class Test_GRP_REST_Plan extends GRP_REST_TestCase {
 		);
 
 		$this->assertSame( 'Need 3 backlinks', $this->api_as( 'other', 'PATCH', $path, array( 'note' => 'Need 3 backlinks' ) )->get_data()['note'] );
-		$cleared = $this->api_as(
-			'member',
+		// Only Team Leaders and the Super Admin untick; a Team Member asks them to.
+		$untick = array(
+			'check' => array(
+				'column' => 'c2',
+				'on'     => false,
+			),
+		);
+		$this->assertStatus( 403, $this->api_as( 'member', 'PATCH', $path, $untick ) );
+		$this->assertArrayHasKey( 'c2', (array) GRP_Store::get( 'grp_keywords', $row['id'] )['checks'] );
+		$ask   = array(
+			'ask_untick' => array(
+				'column' => 'c2',
+				'note'   => 'Ticked by mistake',
+			),
+		);
+		$asked = $this->api_as( 'other', 'PATCH', $path, $ask )->get_data()['checks']['c2'];
+		$this->assertSame( $this->team['member']['id'], $asked['by'], 'still ticked by the first person' );
+		$this->assertSame( $this->team['other']['id'], $asked['ask']['by'] );
+		$this->assertSame( 'Ticked by mistake', $asked['ask']['note'] );
+		$this->assertSame( 'grp_not_ticked', $this->api_as( 'member', 'PATCH', $path, array( 'ask_untick' => array( 'column' => 'c3' ) ) )->get_data()['code'] );
+		// Ticking a ticked box changes nothing.
+		$again = $this->api_as(
+			'other',
 			'PATCH',
 			$path,
 			array(
 				'check' => array(
 					'column' => 'c2',
-					'on'     => false,
+					'on'     => true,
 				),
 			)
-		)->get_data();
+		)->get_data()['checks']['c2'];
+		$this->assertSame( $this->team['member']['id'], $again['by'] );
+		// Keep it ticked (the request is answered), or untick it.
+		$this->assertStatus( 403, $this->api_as( 'member', 'PATCH', $path, array( 'keep' => array( 'column' => 'c2' ) ) ) );
+		$kept = $this->api_as( 'lead', 'PATCH', $path, array( 'keep' => array( 'column' => 'c2' ) ) )->get_data()['checks']['c2'];
+		$this->assertArrayNotHasKey( 'ask', $kept );
+		$cleared = $this->api_as( 'lead', 'PATCH', $path, $untick )->get_data();
 		$this->assertArrayNotHasKey( 'c2', (array) $cleared['checks'] );
 
 		// A Team Member with an incomplete profile can't tick (section 3, Profile lock).

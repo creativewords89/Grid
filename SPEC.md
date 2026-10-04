@@ -59,7 +59,8 @@ Three portal roles, stored on the team member (`role`): `admin` (Super Admin), `
 | Review last cycle and send feedback (6.11) | ✔ | ✔ | ✘ |
 | Edit a project's Details: descriptions and links (6.12) | ✔ | ✔ | ✘ (reads them) |
 | Keyword checklist: add / rename / remove keywords, set deadlines, change the columns (6.12) | ✔ | ✔ | ✘ |
-| Keyword checklist: tick a box, write the note (6.12; locked while the profile is incomplete) | ✔ | ✔ | ✔ |
+| Keyword checklist: tick a box, write the note, ask to untick a box (6.12; locked while the profile is incomplete) | ✔ | ✔ | ✔ |
+| Keyword checklist: untick a box, or keep it ticked after someone asked (6.12) | ✔ | ✔ | ✘ (asks instead) |
 | View someone's My day, view only (7.0) | Team Leaders and Team Members | Team Members and other Team Leaders | ✘ |
 | Delete project | ✔ | ✘ | ✘ |
 | Change project cycle (after first lock) | ✔ (with confirmation + reason) | ✘ | ✘ |
@@ -239,6 +240,7 @@ When an **active** project starts a new cycle, a Team Leader or the Super Admin 
 - **Plan** (project tab, design KP-C): the **keyword checklist** — one row per keyword with the project's **checkbox columns** (default On-page · Content · Internal links · Backlinks; **⚙ Columns** renames, reorders, adds or removes them, 1–8; ticks stay with a column's id), a **progress** bar (ticked / columns, green when all), a **Deadline** and a **Note**.
   - Rows are grouped **This cycle** (deadline up to the end of the current cycle, including past ones) · **Next cycle** (up to the end of the next cycle) · **Later** (no deadline or further away). **Drag a row** into a group → its deadline becomes the end of that cycle (Later = none). The **Deadline** pill also has a menu: This cycle · Next cycle · Pick a date… · No deadline. Past the deadline with boxes still empty → red "· late". Nothing moves on its own.
   - **+ Add keywords**: one per line (paste a column from a sheet), with a deadline (This cycle / Next cycle / No deadline); blanks and repeats (any case) are skipped; up to 200 at a time. ⋯ on a row: **Rename**, **Remove**.
+  - **Unticking** (*new*): only Team Leaders and the Super Admin untick a box. A Team Member who clicks a ticked box gets **Ask to untick?** (optional reason) instead; the box keeps its tick with an amber dot (hover: "untick asked by {name}") and the request appears in the leaders' **Needs your approval** ("Untick asked" · column · keyword · project · reason) with **Untick** / **Keep ticked**. A leader clicking an asked box sees the request before unticking. Ticking a ticked box keeps who ticked it first.
   - Everyone ticks boxes (hover: "Ticked by {name} · {when}") and writes the note (saved on Enter or leaving the field). Team Leaders and the Super Admin add, rename and remove keywords, set deadlines and change the columns. The footer counts each column and how many keywords are fully done.
 - Keywords stay while their project is in the trash and are deleted with it forever. Both are in the export / import (`clients[].details`, `clients[].kwColumns`, `keywords`).
 
@@ -324,7 +326,7 @@ The team sections are tabs of **My page** for leaders and the Super Admin (7.6) 
 | POST `/auth/login` `{code}` · POST `/auth/logout` · GET `/auth/me` | sessions |
 | GET `/sync?since=` | all changed rows across tables since cursor (+ deletions) |
 | GET/POST/PATCH/DELETE `/projects[/id]` | projects; PATCH `/projects/id/state`, POST `/projects/id/cycle`, POST `/projects/id/cycle-review` `{task_id, ok, note?}` (6.11) |
-| PUT `/projects/id/details` `{sections}` · PUT `/projects/id/keyword-columns` `{columns}` · POST `/projects/id/keywords` `{keywords: [..], deadline?}` · PATCH `/keywords/id` `{check: {column, on}}` / `{note}` / `{keyword}` / `{deadline}` / `{position}` · DELETE `/keywords/id` | project details and keyword checklist (6.12) |
+| PUT `/projects/id/details` `{sections}` · PUT `/projects/id/keyword-columns` `{columns}` · POST `/projects/id/keywords` `{keywords: [..], deadline?}` · PATCH `/keywords/id` `{check: {column, on}}` (on: false — managers only) / `{ask_untick: {column, note?}}` / `{keep: {column}}` (managers) / `{note}` / `{keyword}` / `{deadline}` / `{position}` · DELETE `/keywords/id` | project details and keyword checklist (6.12) |
 | GET/POST/PATCH/DELETE `/meeting-tasks[/id]` | tasks; POST `/meeting-tasks/id/status`, `/progress` `{memberId,delta}` |
 | GET/POST/PATCH/DELETE `/monthly-tasks[/id]` | tasks |
 | POST `/records/tick` `{taskId, periodKey, partId?, memberId?, delta}` · POST `/records/status` | recurring progress |
@@ -436,5 +438,7 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 40. (Released as 0.1.14.) Team tab: a person's photo and name in Members & access open their My day (or their page when it can't be viewed). Playwright: clicking the name opens the view-only My day.
 
 41. (Released as 0.1.14.) Project Details and keyword checklist (6.12, designs PD-D and KP-C): schema 8 (`grp_projects.details`, `kw_columns`, `grp_keywords`, synced), EDIT_PROJECT_DETAILS / MANAGE_KEYWORDS / TICK_KEYWORD, the routes in section 8, export / import, trash; Plan and Details tabs. **Tests:** PHPUnit (permission matrix, details saved and synced, link kinds, only http(s), keywords added with repeats skipped, deadlines / rename / remove for managers only, everyone ticks with who and when, profile lock, per-project columns, export round trip, deleted forever with the project), Vitest (link kinds, groups by cycle, drop deadlines, late, progress, pasted lists), Playwright (leader writes About with a Sheet and a Drive link, adds keywords, moves one by the menu and one by drag, renames a column; member opens links, ticks and writes a note, manages nothing).
+
+42. Unticking is for Team Leaders and the Super Admin (6.12): UNTICK_KEYWORD; a Team Member asks (`ask_untick`), the request shows on the box and in Needs your approval with Untick / Keep ticked. **Tests:** PHPUnit (member untick refused, ask stored with who and reason, only on a ticked box, re-tick keeps the first ticker, keep and untick for managers only, permission matrix), Vitest (requests reach leaders only), Playwright (member asks with a reason, the box keeps its tick; leader unticks from Needs your approval).
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).

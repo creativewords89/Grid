@@ -158,6 +158,9 @@ class GRP_Permissions {
 	/** Keyword checklist: tick a box and write the note (SPEC.md 6.12). Everyone. */
 	const TICK_KEYWORD = 'tick_keyword';
 
+	/** Keyword checklist: untick a box, or keep it after someone asked to untick it (SPEC.md 6.12). Managers. */
+	const UNTICK_KEYWORD = 'untick_keyword';
+
 	/**
 	 * Task work that is locked while a Team Leader's or Team Member's required profile is
 	 * incomplete (SPEC.md section 3, Profile lock).
@@ -232,6 +235,7 @@ class GRP_Permissions {
 			case self::REVIEW_CYCLE:
 			case self::EDIT_PROJECT_DETAILS:
 			case self::MANAGE_KEYWORDS:
+			case self::UNTICK_KEYWORD:
 				return $manager;
 
 			case self::TICK_KEYWORD:

@@ -3,7 +3,7 @@ import { usePortal } from '../../context.js';
 import { cycleRange } from '../../lib/cycles.js';
 import { dateTime, short } from '../../lib/format.js';
 import { profileLocked } from '../../lib/people.js';
-import { columnsOf, deadlineFor, doneOf, groupOf, isLate, keywordsOf, splitKeywords } from '../../lib/plan.js';
+import { askOf, columnsOf, deadlineFor, doneOf, groupOf, isLate, keywordsOf, splitKeywords } from '../../lib/plan.js';
 import { isManager } from '../../lib/roles.js';
 import Modal from '../Modal.jsx';
 
@@ -286,6 +286,27 @@ export default function KeywordPlan() {
 			toast(err.message);
 		}
 	};
+	// A box: anyone ticks; only Team Leaders and the Super Admin untick, everyone else asks them.
+	const toggle = async (k, c) => {
+		const on = k.checks && k.checks[c.id];
+		if (!on) return patch(k, { check: { column: c.id, on: true } });
+		const ask = askOf(k, c);
+		if (can) {
+			const sure = ask ? await confirm({ title: `Untick ${c.name}?`, message: `${k.keyword} · ${name(ask.by)} asked to untick it${ask.note ? `: “${ask.note}”` : '.'}`, ok: 'Untick' }) : true;
+			if (sure) patch(k, { check: { column: c.id, on: false } }, 'Unticked');
+			return;
+		}
+		if (ask) return toast(`Already asked — waiting for a Team Leader (${name(ask.by)} asked).`);
+		const note = await confirm({
+			title: 'Ask to untick?',
+			message: `${c.name} · ${k.keyword}. Only a Team Leader or the Super Admin can untick a box; they see your request in Needs your approval.`,
+			input: 'Why? (optional)',
+			placeholder: 'e.g. Ticked by mistake',
+			ok: 'Ask to untick',
+		});
+		if (note === null || note === false) return;
+		patch(k, { ask_untick: { column: c.id, note: typeof note === 'string' ? note : '' } }, 'Asked your Team Leaders to untick it');
+	};
 	const style = { '--kp-cols': columns.length };
 	const fully = all.filter((k) => doneOf(k, columns) === columns.length).length;
 
@@ -360,6 +381,8 @@ export default function KeywordPlan() {
 												</b>
 												{columns.map((c) => {
 													const on = k.checks && k.checks[c.id];
+													const ask = askOf(k, c);
+													const tip = on ? `Ticked by ${name(on.by)} · ${dateTime(on.at)}${ask ? ` · untick asked by ${name(ask.by)}` : can ? ' · click to untick' : ' · ask a Team Leader to untick'}` : locked ? 'Finish your profile first' : `Tick ${c.name}`;
 													return (
 														<span key={c.id} role="cell" className="kp-c">
 															<button
@@ -367,10 +390,10 @@ export default function KeywordPlan() {
 																role="checkbox"
 																aria-checked={!!on}
 																aria-label={`${c.name} for ${k.keyword}`}
-																title={on ? `Ticked by ${name(on.by)} · ${dateTime(on.at)}` : locked ? 'Finish your profile first' : `Tick ${c.name}`}
-																className={'kp-box' + (on ? ' on' : '')}
+																title={tip}
+																className={'kp-box' + (on ? ' on' : '') + (ask ? ' asked' : '')}
 																disabled={locked}
-																onClick={() => patch(k, { check: { column: c.id, on: !on } })}
+																onClick={() => toggle(k, c)}
 															>
 																{on ? '✓' : ''}
 															</button>
@@ -418,7 +441,7 @@ export default function KeywordPlan() {
 						</div>
 					</div>
 				)}
-				<p className="kp-hint">Deadline = the end of the cycle a keyword sits in, or a date you pick. Past the deadline and not all ticked → late. Hover a tick to see who ticked it and when.</p>
+				<p className="kp-hint">Deadline = the end of the cycle a keyword sits in, or a date you pick. Past the deadline and not all ticked → late. Hover a tick to see who ticked it and when. Only a Team Leader or the Super Admin can untick a box — click a tick to ask them.</p>
 			</section>
 			{dialog === 'add' && <AddDialog project={p} onClose={() => setDialog('')} />}
 			{dialog === 'cols' && <ColumnsDialog project={p} onClose={() => setDialog('')} />}

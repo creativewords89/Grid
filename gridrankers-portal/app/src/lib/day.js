@@ -8,6 +8,7 @@ import { mayDecide, pendingReviews, reviewsOf } from './reviews.js';
 import { rowsOf } from './store.js';
 import { cycleSetup } from './cycleSetup.js';
 import { isManager } from './roles.js';
+import { untickRequests } from './plan.js';
 
 // My day (SPEC.md 7.0): what each box shows, as pure functions of the synced data.
 
@@ -203,7 +204,9 @@ export function approvals(data, me) {
 	const reviews = pendingReviews(data)
 		.filter((r) => mayDecide(r, me) && (r.review.reviewer || r.review.submittedBy !== me.id))
 		.map((r) => ({ kind: 'review', id: r.kind + ':' + r.id, at: r.review.submittedAt, who: data.members[r.review.submittedBy], review: r }));
-	return [...leave, ...reviews].sort((a, b) => String(b.at).localeCompare(String(a.at)));
+	// Requests to untick a keyword box (SPEC.md 6.12): Team Leaders and the Super Admin decide.
+	const unticks = isManager(me) ? untickRequests(data) : [];
+	return [...leave, ...reviews, ...unticks].sort((a, b) => String(b.at).localeCompare(String(a.at)));
 }
 
 // Projects tab: everything that needs attention across active projects.

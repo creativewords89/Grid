@@ -270,8 +270,10 @@ class GRP_REST_Plan extends GRP_REST_Controller {
 	}
 
 	/**
-	 * PATCH /keywords/{id}. Everyone: `{check: {column, on}}`, `{note}`. Team Leaders and the
-	 * Super Admin also: `{keyword}`, `{deadline}` (YYYY-MM-DD or '' for none), `{position}`.
+	 * PATCH /keywords/{id}. Everyone: `{check: {column, on: true}}`, `{note}`, and
+	 * `{ask_untick: {column, note?}}` on a ticked box. Team Leaders and the Super Admin also:
+	 * `{check: {column, on: false}}` (untick), `{keep: {column}}` (keep it ticked, the request
+	 * answered), `{keyword}`, `{deadline}` (YYYY-MM-DD or '' for none), `{position}`.
 	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response|WP_Error
@@ -293,8 +295,13 @@ class GRP_REST_Plan extends GRP_REST_Controller {
 		if ( $managed && ! self::can( GRP_Permissions::MANAGE_KEYWORDS ) ) {
 			return self::forbidden( __( 'Only a Team Leader or the Super Admin can change keywords and deadlines.', 'gridrankers-portal' ) );
 		}
-		if ( ( isset( $params['check'] ) || array_key_exists( 'note', $params ) ) && ! self::can( GRP_Permissions::TICK_KEYWORD ) ) {
+		if ( ( isset( $params['check'] ) || isset( $params['ask_untick'] ) || array_key_exists( 'note', $params ) ) && ! self::can( GRP_Permissions::TICK_KEYWORD ) ) {
 			return self::forbidden();
+		}
+		// Unticking is for Team Leaders and the Super Admin; everyone else asks them (SPEC.md 6.12).
+		$unticks = isset( $params['check'] ) && is_array( $params['check'] ) && empty( $params['check']['on'] );
+		if ( ( $unticks || isset( $params['keep'] ) ) && ! self::can( GRP_Permissions::UNTICK_KEYWORD ) ) {
+			return self::forbidden( __( 'Only a Team Leader or the Super Admin can untick a box. Ask them to untick it.', 'gridrankers-portal' ) );
 		}
 
 		if ( array_key_exists( 'keyword', $params ) ) {
@@ -323,21 +330,37 @@ class GRP_REST_Plan extends GRP_REST_Controller {
 			$note            = self::textarea( $params['note'], 500 );
 			$changes['note'] = '' !== $note ? $note : null;
 		}
-		if ( isset( $params['check'] ) ) {
-			$check   = is_array( $params['check'] ) ? $params['check'] : array();
-			$columns = self::columns( $project );
-			$col     = (string) ( $check['column'] ?? '' );
-			if ( ! in_array( $col, wp_list_pluck( $columns, 'id' ), true ) ) {
+		foreach ( array( 'check', 'ask_untick', 'keep' ) as $key ) {
+			if ( ! isset( $params[ $key ] ) ) {
+				continue;
+			}
+			$input = is_array( $params[ $key ] ) ? $params[ $key ] : array();
+			$col   = (string) ( $input['column'] ?? '' );
+			if ( ! in_array( $col, wp_list_pluck( self::columns( $project ), 'id' ), true ) ) {
 				return self::invalid( __( 'Unknown column.', 'gridrankers-portal' ) );
 			}
-			$checks = is_array( $row['checks'] ) ? $row['checks'] : array();
-			if ( ! empty( $check['on'] ) ) {
-				$checks[ $col ] = array(
-					'by' => self::actor()['id'],
-					'at' => GRP_Ids::now(),
+			$checks = isset( $changes['checks'] ) ? (array) $changes['checks'] : ( is_array( $row['checks'] ) ? $row['checks'] : array() );
+			$ticked = isset( $checks[ $col ] ) && is_array( $checks[ $col ] );
+			if ( 'check' === $key && ! empty( $input['on'] ) ) {
+				// Ticking a ticked box keeps who ticked it first.
+				if ( ! $ticked ) {
+					$checks[ $col ] = array(
+						'by' => self::actor()['id'],
+						'at' => GRP_Ids::now(),
+					);
+				}
+			} elseif ( 'check' === $key ) {
+				unset( $checks[ $col ] );
+			} elseif ( ! $ticked ) {
+				return self::invalid( __( 'That box is not ticked.', 'gridrankers-portal' ), 'grp_not_ticked' );
+			} elseif ( 'ask_untick' === $key ) {
+				$checks[ $col ]['ask'] = array(
+					'by'   => self::actor()['id'],
+					'at'   => GRP_Ids::now(),
+					'note' => self::textarea( $input['note'] ?? '', 300 ),
 				);
 			} else {
-				unset( $checks[ $col ] );
+				unset( $checks[ $col ]['ask'] );
 			}
 			$changes['checks'] = $checks ? $checks : new stdClass();
 		}
