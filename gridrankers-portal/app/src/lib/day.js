@@ -191,6 +191,12 @@ export function bellItems(data, me, today, now = Date.now()) {
 		const by = data.members[r.review.by];
 		items.push({ key: `rv:${r.title}:${r.review.at}`, text: `${r.review.state === 'rejected' ? 'Rejected' : 'Revision requested'}: “${r.title}”`, sub: [by && by.name, r.review.note].filter(Boolean).join(' · ') });
 	});
+	// Requests to undo In progress (SPEC.md 6.6) reach every Team Leader and the Super Admin.
+	if (isManager(me)) {
+		undoRequests(data).forEach((u) => {
+			items.push({ key: `undo:${u.id}:${u.at}`, text: `${u.who ? u.who.name : 'Someone'} asked to undo “${u.title}”`, sub: `${u.project.name} · In progress → Not started` });
+		});
+	}
 	const seen = dismissedKeys(data, me);
 	return items.map((i) => ({ ...i, unread: !seen.has('seen:' + i.key) }));
 }

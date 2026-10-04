@@ -469,6 +469,7 @@ class Test_GRP_REST_People extends GRP_REST_TestCase {
 			array(
 				'project_id' => $project['id'],
 				'title'      => 'Fix the H1',
+				'assignees'  => array( array( 'id' => $this->team['member']['id'] ) ),
 			)
 		)->get_data();
 		GRP_Store::update(

@@ -601,12 +601,18 @@ span.kp-dl{cursor:default}
 .kp-box{position:relative}
 .kp-box.asked::after{content:"";position:absolute;top:-4px;right:-4px;width:9px;height:9px;border-radius:50%;background:#B77F00;border:2px solid var(--panel)}
 
-/* Request undo (SPEC.md 6.6). */
+/* Request undo (SPEC.md 6.6, design TC-A): a chip on the card; leaders open Review for the reason. */
 .undo-link{align-self:flex-start;font-size:.8rem;font-weight:700}
-.undo-req{background:var(--doing-bg);color:var(--doing);border-radius:9px;padding:7px 10px;font-size:.8rem;display:flex;flex-direction:column;gap:3px}
-.undo-req b{color:inherit}
-.undo-why{color:var(--ink-2)}
-.undo-acts{display:flex;gap:6px;justify-content:flex-end;margin-top:4px}
+.undo-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.78rem}
+.undo-chip{display:inline-flex;align-items:center;font-size:.74rem;font-weight:700;color:var(--doing);background:var(--doing-bg);border:1px solid color-mix(in srgb,var(--doing) 30%,transparent);border-radius:99px;padding:2px 9px;white-space:nowrap}
+.undo-review{margin-left:auto;font-size:.8rem;font-weight:700}
+.undo-pop{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:7px;font-size:.82rem;background:var(--panel);box-shadow:0 10px 28px rgba(21,35,58,.14)}
+.undo-why{color:var(--ink-2);background:var(--panel-2);border-radius:8px;padding:6px 9px}
+.undo-note{border:1px solid var(--line);border-radius:8px;padding:6px 9px;font:inherit;background:var(--panel);color:var(--ink)}
+.undo-acts{display:flex;gap:6px;justify-content:flex-end}
+.seg .undo-dot::after{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:#E0A100;margin-left:5px;vertical-align:middle}
+.lock-line{font-size:.78rem;color:var(--ink-2)}
+.mcard > .acts{border-top:1px solid var(--line);padding-top:9px;margin-top:2px}
 .pdx-list{margin:0;padding-left:20px;font-size:.92rem;line-height:1.7}
 .pdx-hero .pdx-list{padding:14px 22px 0 42px}
 .pdx-ph{border-style:dashed}

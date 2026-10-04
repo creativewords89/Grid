@@ -297,7 +297,7 @@ class Test_GRP_Permissions extends WP_UnitTestCase {
 			array(
 				'admin'  => true,
 				'lead'   => true,
-				'member' => true,
+				'member' => false,
 			)
 		);
 	}
@@ -346,7 +346,7 @@ class Test_GRP_Permissions extends WP_UnitTestCase {
 			array(
 				'admin'  => true,
 				'lead'   => true,
-				'member' => true,
+				'member' => false,
 			)
 		);
 	}

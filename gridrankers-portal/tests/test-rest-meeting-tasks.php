@@ -281,7 +281,10 @@ class Test_GRP_REST_Meeting_Tasks extends GRP_REST_TestCase {
 		$others     = $this->task( 'lead', array( 'assignees' => $this->people( 'other' ) ) );
 
 		$this->assertStatus( 200, $this->api_as( 'member', 'POST', "/meeting-tasks/{$own['id']}/status", array( 'status' => 'doing' ) ) );
-		$this->assertStatus( 200, $this->api_as( 'member', 'POST', "/meeting-tasks/{$unassigned['id']}/status", array( 'status' => 'doing' ) ) );
+		$refused = $this->api_as( 'member', 'POST', "/meeting-tasks/{$unassigned['id']}/status", array( 'status' => 'doing' ) );
+		$this->assertStatus( 403, $refused, 'unassigned: a leader assigns it first' );
+		$this->assertStringContainsString( 'Nobody is assigned', $refused->get_data()['message'] );
+		$this->assertStatus( 200, $this->api_as( 'lead', 'POST', "/meeting-tasks/{$unassigned['id']}/status", array( 'status' => 'doing' ) ) );
 		$this->assertStatus( 403, $this->api_as( 'member', 'POST', "/meeting-tasks/{$others['id']}/status", array( 'status' => 'doing' ) ) );
 		$this->assertStatus( 200, $this->api_as( 'lead', 'POST', "/meeting-tasks/{$others['id']}/status", array( 'status' => 'doing' ) ) );
 	}
@@ -499,10 +502,10 @@ class Test_GRP_REST_Meeting_Tasks extends GRP_REST_TestCase {
 			)
 		);
 
-		// Unassigned: tick without memberId, credited to whoever ticks.
-		$this->assertSame( 'grp_completion_required', $this->api_as( 'other', 'POST', "/meeting-tasks/{$unassigned['id']}/progress", array( 'delta' => 1 ) )->get_data()['code'], 'the last unit asks what was completed' );
+		// Unassigned: Team Members can't tick it; a leader ticks without memberId, credited to them.
+		$this->assertStatus( 403, $this->api_as( 'other', 'POST', "/meeting-tasks/{$unassigned['id']}/progress", array( 'delta' => 1 ) ) );
 		$response = $this->api_as(
-			'other',
+			'lead',
 			'POST',
 			"/meeting-tasks/{$unassigned['id']}/progress",
 			array(
@@ -512,8 +515,7 @@ class Test_GRP_REST_Meeting_Tasks extends GRP_REST_TestCase {
 		);
 		$this->assertStatus( 200, $response );
 		$this->assertSame( 'done', $response->get_data()['status'] );
-		$this->assertSame( 'pending', $response->get_data()['review']['state'] );
-		$this->assertCount( 1, $this->credits( $this->team['other']['id'] ) );
+		$this->assertCount( 1, $this->credits( $this->team['lead']['id'] ) );
 	}
 
 	public function test_member_cannot_create_started_task_for_someone_else() {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { approvals, undoRequests } from '../lib/day.js';
+import { approvals, bellItems, undoRequests } from '../lib/day.js';
+import { canWorkOn } from '../lib/tasks.js';
 import { DEFAULT_COLUMNS, askOf, columnsOf, deadlineFor, doneOf, groupOf, isLate, isWebUrl, keywordsOf, linkKind, sectionsOf, splitKeywords, untickRequests } from '../lib/plan.js';
 import { emptyData } from '../lib/store.js';
 
@@ -85,5 +86,29 @@ describe('Keyword checklist (SPEC.md 6.12)', () => {
 		]);
 		expect(approvals(d, d.members.lee).filter((i) => i.kind === 'undo')).toHaveLength(2);
 		expect(approvals(d, d.members.max).filter((i) => i.kind === 'undo')).toHaveLength(0);
+	});
+
+	it('undo requests also ring the bell of every Team Leader and the Super Admin, not members', () => {
+		const d = emptyData();
+		d.members = {
+			max: { id: 'max', name: 'Max', role: 'member', active: 1 },
+			lee: { id: 'lee', name: 'Lee', role: 'lead', active: 1 },
+			ada: { id: 'ada', name: 'Ada', role: 'admin', active: 1 },
+		};
+		d.projects = { p: P };
+		d.meeting_tasks = { t: { id: 't', project_id: 'p', title: 'Fix H1', status: 'doing', assignees: [{ id: 'max' }], undo_request: { by: 'max', at: '2026-10-12 10:00:00', reason: 'Wrong card' } } };
+		const undoBell = (who) => bellItems(d, d.members[who], '2026-10-12').filter((b) => b.key.startsWith('undo:'));
+		expect(undoBell('lee').map((b) => [b.text, b.sub])).toEqual([['Max asked to undo “Fix H1”', `${P.name} · In progress → Not started`]]);
+		expect(undoBell('ada')).toHaveLength(1);
+		expect(undoBell('max')).toHaveLength(0);
+	});
+
+	it('Team Members work only on tasks assigned to them; leaders on any', () => {
+		const max = { id: 'max', role: 'member' };
+		expect(canWorkOn({ assignees: [] }, max)).toBe(false);
+		expect(canWorkOn({ assignees: [{ id: 'sam' }] }, max)).toBe(false);
+		expect(canWorkOn({ assignees: [{ id: 'max' }] }, max)).toBe(true);
+		expect(canWorkOn({ assignees: [] }, { id: 'lee', role: 'lead' })).toBe(true);
+		expect(canWorkOn({ assignees: [] }, { id: 'ada', role: 'admin' })).toBe(true);
 	});
 });

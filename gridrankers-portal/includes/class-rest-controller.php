@@ -99,6 +99,27 @@ abstract class GRP_REST_Controller {
 	}
 
 	/**
+	 * Why a Team Member may not work on a task (SPEC.md 6.6), or null when they may.
+	 *
+	 * @param array $task Task row with `assignees`.
+	 * @return string|null
+	 */
+	protected static function not_assigned_message( array $task ) {
+		if ( self::is_manager() ) {
+			return null;
+		}
+		$ids = GRP_Permissions::assignee_ids( $task['assignees'] ?? array() );
+		if ( ! $ids ) {
+			return __( 'Nobody is assigned to this task yet — a Team Leader or Super Admin must assign it first.', 'gridrankers-portal' );
+		}
+		if ( ! in_array( (string) ( self::actor()['id'] ?? '' ), $ids, true ) ) {
+			return __( 'This task is assigned to someone else — only they can update it.', 'gridrankers-portal' );
+		}
+
+		return null;
+	}
+
+	/**
 	 * 403 error.
 	 *
 	 * @param string $message Message.

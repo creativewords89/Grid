@@ -617,7 +617,11 @@ class GRP_REST_Records extends GRP_REST_Controller {
 	 * @return string
 	 */
 	private static function denied_message( array $task, $rec ) {
-		$state = self::state( $task, $rec );
+		$state      = self::state( $task, $rec );
+		$unassigned = self::not_assigned_message( $task );
+		if ( null !== $unassigned && 'done' !== $state ) {
+			return $unassigned;
+		}
 		if ( 'done' === $state ) {
 			return __( "It's completed. Only a Team Leader or Super Admin can send it back (Revise or Reject).", 'gridrankers-portal' );
 		}

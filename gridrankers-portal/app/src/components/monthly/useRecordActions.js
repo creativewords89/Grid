@@ -59,19 +59,22 @@ export default function useRecordActions() {
 		if (reason === null || reason === false) return;
 		try {
 			store(await api.post('records/undo', { taskId: task.id, periodKey, reason }));
-			toast('Undo requested — a Team Leader will answer');
+			toast('Undo requested — a Team Leader or the Super Admin will answer');
 		} catch (err) {
 			toast(err.message);
 		}
 	};
 
-	const decideUndo = async (task, periodKey, action, why) => {
-		const note = await confirm({
-			title: action === 'undo' ? 'Undo to Not started?' : 'Keep In progress?',
-			message: `“${task.title}”${why ? ` · “${why}”` : ''}`,
-			input: 'Message (optional)',
-			ok: action === 'undo' ? 'Undo' : 'Keep In progress',
-		});
+	const decideUndo = async (task, periodKey, action, why, message) => {
+		const note =
+			typeof message === 'string'
+				? message
+				: await confirm({
+						title: action === 'undo' ? 'Undo to Not started?' : 'Keep In progress?',
+						message: `“${task.title}”${why ? ` · “${why}”` : ''}`,
+						input: 'Message (optional)',
+						ok: action === 'undo' ? 'Undo' : 'Keep In progress',
+					});
 		if (note === null || note === false) return;
 		try {
 			store(await api.post('records/undo/decide', { taskId: task.id, periodKey, action, note: typeof note === 'string' ? note : '' }));

@@ -392,7 +392,7 @@ class GRP_Permissions {
 
 	/**
 	 * Status changes. Done → anything goes through review; In progress → Not started
-	 * is for managers; members may only touch tasks assigned to them or unassigned.
+	 * is for managers; members may only touch tasks assigned to them.
 	 *
 	 * @param array $user    Acting member.
 	 * @param bool  $manager Whether the actor is Super Admin or Team Leader.
@@ -464,7 +464,8 @@ class GRP_Permissions {
 	}
 
 	/**
-	 * Managers work on any task; members only on tasks assigned to them or unassigned.
+	 * Managers work on any task; members only on tasks assigned to them (SPEC.md 6.6: an
+	 * unassigned task must be assigned before a Team Member can move or tick it).
 	 *
 	 * @param array $user    Acting member.
 	 * @param bool  $manager Whether the actor is Super Admin or Team Leader.
@@ -476,9 +477,7 @@ class GRP_Permissions {
 			return true;
 		}
 
-		$ids = self::assignee_ids( $task['assignees'] ?? array() );
-
-		return ! $ids || in_array( (string) $user['id'], $ids, true );
+		return in_array( (string) $user['id'], self::assignee_ids( $task['assignees'] ?? array() ), true );
 	}
 
 	/**

@@ -268,7 +268,7 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 	/**
 	 * POST /meeting-tasks/{id}/progress `{memberId, delta, note?, link?}`.
 	 *
-	 * Ticks one unit of a person's share (or of an unassigned task when memberId is empty).
+	 * Ticks one unit of a person's share (or, for a Team Leader, of an unassigned task when memberId is empty).
 	 * Status follows the total: first tick → In progress, total = target → Completed (review).
 	 * Each unit is credited to the share's owner (port of the reference `ishare` handler).
 	 *
@@ -317,7 +317,7 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 				'total_after' => $total,
 			)
 		) ) {
-			return self::forbidden( 'done' === $task['status'] ? self::status_denied_message( $task ) : __( 'You can only tick off your own share of tasks assigned to you.', 'gridrankers-portal' ) );
+			return self::forbidden( 'done' === $task['status'] ? self::status_denied_message( $task ) : ( self::not_assigned_message( $task ) ?? __( 'You can only tick off your own share of tasks assigned to you.', 'gridrankers-portal' ) ) );
 		}
 		if ( $now === $was ) {
 			return rest_ensure_response( $task );
@@ -465,6 +465,10 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 	 * @return string
 	 */
 	private static function status_denied_message( array $task ) {
+		$unassigned = self::not_assigned_message( $task );
+		if ( null !== $unassigned && 'done' !== $task['status'] ) {
+			return $unassigned;
+		}
 		if ( 'done' === $task['status'] ) {
 			return self::is_manager()
 				? __( "It's completed. To reopen it, use Revise or Reject in Details.", 'gridrankers-portal' )
@@ -474,7 +478,7 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 			return __( "It's in progress — only a Team Leader or Super Admin can move it back to the start.", 'gridrankers-portal' );
 		}
 
-		return __( 'This task is assigned to someone else — only they can update it.', 'gridrankers-portal' );
+		return __( 'You can’t update this task.', 'gridrankers-portal' );
 	}
 
 	/**

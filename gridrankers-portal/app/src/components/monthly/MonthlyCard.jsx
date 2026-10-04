@@ -5,7 +5,7 @@ import { bornAt, isShared, isWaived, periodKeyOf, recordOf, stateOf, typePeople 
 import { isManager } from '../../lib/roles.js';
 import { assigneesOf, canWorkOn, isAssigned } from '../../lib/tasks.js';
 import Avatar from '../Avatar.jsx';
-import { MiniReview, People, ReviewBadge, UndoLine } from '../meeting/TaskCard.jsx';
+import { MiniReview, People, ReviewBadge, UnassignedLock, UndoLine } from '../meeting/TaskCard.jsx';
 import useRecordActions from './useRecordActions.js';
 
 export const TAG_LABEL = { none: 'No deadline', weekly: 'Weekly', biweekly: 'Bi-weekly', monthly: 'Monthly', date: 'Specific date', dates: 'Range' };
@@ -109,7 +109,7 @@ export function ProgressBox({ task, period }) {
 	const mayTick = (id) => st !== 'done' && (isManager(me) || id === me.id);
 
 	if (Array.isArray(task.parts) && task.parts.length) {
-		const anyone = st !== 'done' && (isManager(me) || isAssigned(task, me.id) || !people.length);
+		const anyone = st !== 'done' && (isManager(me) || isAssigned(task, me.id));
 		return (
 			<div className="bdbox">
 				<div className="qtop">
@@ -261,10 +261,10 @@ export default function MonthlyCard({ task, selWeek, onSelectWeek, missed, onDet
 		<button
 			key={k}
 			type="button"
-			className={'s-' + k}
+			className={'s-' + k + (st === k && period.rec && period.rec.undo_request && period.rec.undo_request.by ? ' undo-dot' : '')}
 			aria-pressed={st === k}
 			disabled={locked || (st === 'done' && k !== 'done') || (st === 'doing' && k === 'todo' && !isManager(me))}
-			title={st === 'done' && k !== 'done' ? 'Completed — reopen with Revise or Reject' : undefined}
+			title={locked && !(task.assignees || []).length ? 'Not assigned — a Team Leader or Super Admin must assign it first' : st === 'done' && k !== 'done' ? 'Completed — reopen with Revise or Reject' : undefined}
 			onClick={() => setStatus(task, periodKey, k)}
 		>
 			{label}
@@ -328,12 +328,13 @@ export default function MonthlyCard({ task, selWeek, onSelectWeek, missed, onDet
 			<div className="seg" role="group" aria-label={`Status of ${task.title}`}>
 				{seg}
 			</div>
+			<UnassignedLock task={{ assignees: task.assignees, status: st }} me={me} />
 			<UndoLine
 				task={{ status: st, target: n, title: task.title, undo_request: period.rec && period.rec.undo_request }}
 				me={me}
 				locked={locked}
 				onRequest={() => requestUndo(task, periodKey)}
-				onDecide={(a) => decideUndo(task, periodKey, a, period.rec && period.rec.undo_request && period.rec.undo_request.reason)}
+				onDecide={(a, note) => decideUndo(task, periodKey, a, period.rec && period.rec.undo_request && period.rec.undo_request.reason, note)}
 			/>
 			<div className="acts">
 				<div className="assign">

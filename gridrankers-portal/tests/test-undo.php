@@ -196,6 +196,7 @@ class Test_GRP_Undo extends GRP_REST_TestCase {
 				'project_id' => $project['id'],
 				'title'      => 'Posts',
 				'target'     => 2,
+				'assignees'  => array( array( 'id' => $this->team['member']['id'] ) ),
 			)
 		)->get_data();
 		$tick    = array(

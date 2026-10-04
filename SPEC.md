@@ -69,10 +69,10 @@ Three portal roles, stored on the team member (`role`): `admin` (Super Admin), `
 | Change meeting date / responsible people | ✔ | ✔ | ✘ |
 | Delete a task (soft delete) | ✔ | ✔ | ✘ |
 | Restore / delete forever (trash) | ✔ | ✔ | ✘ |
-| Change status / tick progress on a task | if assigned or unassigned | if assigned or unassigned + any task | only if assigned to them (or task unassigned) |
+| Change status / tick progress on a task | ✔ any task | ✔ any task | only if assigned to them — an unassigned task is locked until a leader assigns someone (6.6) |
 | Tick another person's share / breakdown row | ✔ | ✔ | ✘ |
 | Move In progress → Not started (incl. counting down to 0) | ✔ | ✔ | ✘ (Request undo, 6.6) |
-| Request undo of In progress → Not started on a task without a quantity (6.6) | — (moves it back) | — (moves it back) | ✔ own / unassigned tasks, reason required |
+| Request undo of In progress → Not started on a task without a quantity (6.6) | — (moves it back) | — (moves it back) | ✔ own tasks, reason required |
 | Answer a request to undo: Undo / Keep In progress (6.6) | ✔ | ✔ | ✘ |
 | Reopen a completed task | via Review only | via Review only | ✘ |
 | Review completed work (accept / revise / reject) | ✔ | ✔ | ✘ |
@@ -187,7 +187,8 @@ All tables: `id` CHAR(26) ULID (or keep imported string ids, VARCHAR(64)), `crea
 - **Status locks** (server-enforced):
   - Done → anything: only via review actions.
   - In progress → Not started (or counting down to 0): Super Admin / Team Leader only.
-- **Request undo** (*new*, designs ST-A / ST-B): a Team Member who moved a task without a quantity to In progress by mistake clicks **↶ Request undo** on the card and must write what the mistake was and why (at least 10 characters). Stored as `undo_request {by, at, reason}` on the meeting task or the cycle record (schema 9); the card shows **Undo requested · {name} · waiting for a Team Leader** with the reason; one request at a time. Team Leaders and the Super Admin answer on the card or in **Needs your approval** ("Undo requested" · task · project · In progress → Not started · reason): **Undo** (back to Not started, as their own move) or **Keep In progress**, with an optional message; the member gets a private notice "Undo approved / Undo not approved" with it (7 days). Any other status move drops the request. Quantity tasks never ask (they count down), leaders move tasks back themselves, and Completed goes through review as before.
+- **Assigned first** (*new*, design TC-A): a Team Member changes status or ticks only tasks assigned to them. An unassigned task is locked for them (all three status buttons off, "🔒 Assign someone before work starts — ask a Team Leader."); the server refuses with "Nobody is assigned to this task yet — a Team Leader or Super Admin must assign it first." Team Leaders and the Super Admin work on any task.
+- **Request undo** (*new*, designs ST-A / ST-B): a Team Member who moved a task without a quantity to In progress by mistake clicks **↶ Request undo** on the card and must write what the mistake was and why (at least 10 characters). Stored as `undo_request {by, at, reason}` on the meeting task or the cycle record (schema 9); the card shows only a chip (design TC-A): **↶ Undo requested** · "waiting for a Team Leader or Super Admin" for members, **↶ Undo requested · {name}** with **Review** for leaders — the reason is never on the card, Review opens it with an optional message, **Keep In progress** and **Undo**; an amber dot marks In progress while it waits; one request at a time. Every Team Leader and the Super Admin gets it in the bell ("{name} asked to undo “{task}”") and answers on the card or in **Needs your approval** ("Undo requested" · task · project · In progress → Not started · reason): **Undo** (back to Not started, as their own move) or **Keep In progress**, with an optional message; the member gets a private notice "Undo approved / Undo not approved" with it (7 days). Any other status move drops the request. Quantity tasks never ask (they count down), leaders move tasks back themselves, and Completed goes through review as before.
 - Meeting Minutes are **per cycle**: a task belongs to the cycle containing its meeting date (or created date). Banner counts, status counts and cards show only the selected cycle.
 
 ### 6.7 Activity crediting and reports
@@ -279,7 +280,7 @@ When an **active** project starts a new cycle, a Team Leader or the Super Admin 
 
 ### 7.2 Meeting Minutes
 Alert banner (cycle-scoped), project cycle bar, stats (status chips, cycle dates, cycle progress, days left / ended / starts in), cards, "+ Add task" tile.
-**Card** (compact): priority chip, Qty chip, meeting date; title; added / fixed / deadline chips; mini review tag; mini progress bar (qty > 1); status segment (Not started / In progress / Completed, locks per 6.6; ↶ Request undo / Undo requested under it); footer: avatar stack + "N person/people" or "? Not assigned", **Details**, Edit (admin/lead), 🗑 (admin/lead).
+**Card** (compact): priority chip, Qty chip, meeting date; title; added / fixed / deadline chips; mini review tag; mini progress bar (qty > 1); status segment (Not started / In progress / Completed, locks per 6.6; under it one small line: ↶ Request undo, the Undo requested chip, or the 🔒 not-assigned line); footer above a thin rule: avatar stack + "N person/people" or "? Not assigned", **Details**, Edit (admin/lead), 🗑 (admin/lead).
 **Task dialog**: Client, What needs to change, Details, Page URL, Priority, Status, Quantity, From meeting on, Deadline (6.3), Responsible (searchable people picker; shares when qty > 1). Members can't open Edit.
 **Details window**: header (tags, status pill, title, project), info grid (meeting, added, deadline, fixed, responsible), Progress (full steppers), Details text, Page link, Completion & review (+ reviewer actions). No history.
 
@@ -451,5 +452,7 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 44. (Released as 0.1.16.) Details tab layout (6.12, design PD-F): header card for the first section (initials, title, project · status · cycle, Edit), larger link chips with their type, other sections in two columns, full width. Playwright: the header card shows the project line without team names and the chips their type.
 
 45. (Released as 0.1.17.) Details: Goals and Notes for the team always shown after the header card (placeholders until filled in), bullet lists from "-" lines. Playwright: both cards there, Notes saved as a list, members see "Nothing here yet." and no Edit.
+
+46. Task card TC-A and assigned-first (6.6, 7.2): Team Members work only on tasks assigned to them (server and card); an undo request is a chip with Review for leaders (reason off the card) and rings every Team Leader's and the Super Admin's bell. **Tests:** PHPUnit (permission rows, unassigned refused with the message, leaders still work on it), Vitest (canWorkOn, bell for leaders only), Playwright (chip without reason, unassigned locked, leader reads the reason in Review and undoes from the card).
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).
