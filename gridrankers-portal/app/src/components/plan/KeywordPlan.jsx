@@ -299,7 +299,7 @@ export default function KeywordPlan() {
 		if (ask) return toast(`Already asked — waiting for a Team Leader (${name(ask.by)} asked).`);
 		const note = await confirm({
 			title: 'Ask to untick?',
-			message: `${c.name} · ${k.keyword}. Only a Team Leader or the Super Admin can untick a box; they see your request in Needs your approval.`,
+			message: `${c.name} · ${k.keyword}. Only a Team Leader or the Super Admin can untick a box; they see your request in their Notifications.`,
 			input: 'Why? (optional)',
 			placeholder: 'e.g. Ticked by mistake',
 			ok: 'Ask to untick',

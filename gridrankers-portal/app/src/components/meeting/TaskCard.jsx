@@ -54,7 +54,7 @@ export function ReviewBadge({ review, me, members }) {
 
 // Request undo (SPEC.md 6.6, design TC-A): a pending request is a small chip — the reason is not
 // on the card. Team Leaders and the Super Admin click Review to read it and answer (or use
-// Needs your approval); the member sees who it waits for.
+// Waiting for you in Notifications); the member sees who it waits for.
 export function UndoLine({ task, me, locked, onRequest, onDecide }) {
 	const { data } = usePortal();
 	const [open, setOpen] = useState(false);

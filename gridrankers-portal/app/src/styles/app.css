@@ -699,3 +699,11 @@ label.sf-opt small{color:var(--ink-2)}
 .md-today .dl-left{font-size:.85rem;color:var(--ink-2)}
 .md-today .dl-left b{font-size:1.25rem;color:var(--ink);margin-right:2px}
 .md-today .muted{font-size:.8rem;margin:0}
+/* Waiting for you: approvals inside Notifications (design NF-C). */
+.nf-wait{display:flex;flex-direction:column;gap:8px}
+.nf-wait h3,.nf-latest{margin:2px 2px 0;font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2)}
+.nf-wait h3{color:var(--doing)}
+.nf-wait .ap-item{flex:none;background:color-mix(in srgb,var(--doing-bg) 55%,var(--panel));border-color:color-mix(in srgb,var(--doing) 25%,var(--line))}
+.nf-more{align-self:flex-start;font-size:.82rem;font-weight:700}
+.nf-chips button.nf-chip-wait{background:var(--doing-bg);color:var(--doing);border-color:color-mix(in srgb,var(--doing) 30%,var(--line))}
+.nf-chips button.nf-chip-wait[aria-pressed=true]{background:var(--doing);color:#fff;border-color:var(--doing)}

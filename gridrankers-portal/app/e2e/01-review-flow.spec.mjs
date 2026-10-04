@@ -1,6 +1,6 @@
 // Member completes → admin asks for a revision → member completes again → admin accepts (SPEC.md 6.4).
 import { test, expect } from '@playwright/test';
-import { LEAD, MAX, addMeetingTask, card, openProject, signIn, signInOwner, signOut, signOutOwner, watchErrors } from './helpers.mjs';
+import { LEAD, MAX, addMeetingTask, card, openProject, signIn, signInOwner, signOut, signOutOwner, watchErrors, waiting } from './helpers.mjs';
 
 test('completion review round trip', async ({ page }) => {
 	const noErrors = watchErrors(page);
@@ -22,9 +22,10 @@ test('completion review round trip', async ({ page }) => {
 	await page.getByText('Sent for review').waitFor();
 	await signOut(page);
 
-	// Super Admin asks for a revision from Needs your approval on My day.
+	// Super Admin asks for a revision from Waiting for you in Notifications on My day.
 	await signInOwner(page);
-	const asks = page.locator('.md-card', { has: page.getByRole('heading', { name: 'Needs your approval' }) });
+	await expect(page.getByRole('heading', { name: 'Needs your approval' })).toHaveCount(0);
+	const asks = await waiting(page);
 	const pending = asks.locator('.ap-item', { hasText: title });
 	await pending.getByRole('button', { name: 'Send back' }).click();
 	await page.getByLabel('What needs changing').fill('Add the city to the meta title too');

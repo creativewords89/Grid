@@ -219,7 +219,7 @@ export function undoRequests(data) {
 	return out;
 }
 
-// Needs your approval: Team Members' leave requests and work waiting for review. A review
+// Waiting for you (Notifications, design NF-C): Team Members' leave requests and work waiting for review. A review
 // someone asked for shows only to that reviewer (and the Super Admin).
 export function approvals(data, me) {
 	const leave = rowsOf(data, 'leave')

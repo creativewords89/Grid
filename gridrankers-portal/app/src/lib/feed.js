@@ -1,9 +1,10 @@
 // Notifications on My day (SPEC.md 6.10, design NF-A): one feed of everything that matters to a
 // person, newest first — new tasks for them, reviews of their work, comments, leave answers,
-// events and birthdays, notices and shout-outs, and (leaders) undo requests. Keys are shared with
+// events and birthdays, notices and shout-outs. What waits for a leader's answer (approvals) is
+// shown above it, not in it (design NF-C). Keys are shared with
 // the bell, so reading an item in one place marks it read in the other.
 import { commentBell } from './comments.js';
-import { undoRequests, notices, recipientsOf } from './day.js';
+import { notices, recipientsOf } from './day.js';
 import { short } from './format.js';
 import { reviewsOf } from './reviews.js';
 import { isManager } from './roles.js';
@@ -70,8 +71,8 @@ export function feedOf(data, me, today, now = Date.now()) {
 		if (t && approved(r.review) && data.projects[t.project_id]) push({ key: `ok:${r.id}:${r.review.at}`, cat: 'task', tone: 'green', icon: '✓', title: 'Task approved', sub: `“${t.title}” was approved by ${name(data, r.review.by)}`, at: r.review.at, open: { project_id: t.project_id, tab: 'monthly', title: t.title } });
 	});
 
-	// Someone asked me to review their work.
-	const askedMe = (rv) => rv && rv.state === 'pending' && rv.reviewer === me.id && recent(rv.submittedAt);
+	// Someone asked me to review their work (Team Members; leaders answer it under Waiting for you).
+	const askedMe = (rv) => !isManager(me) && rv && rv.state === 'pending' && rv.reviewer === me.id && recent(rv.submittedAt);
 	rowsOf(data, 'meeting_tasks')
 		.filter((t) => askedMe(t.review) && data.projects[t.project_id])
 		.forEach((t) => push({ key: `ask:${t.id}:${t.review.submittedAt}`, cat: 'task', tone: 'blue', icon: '?', title: 'Review asked of you', sub: `${name(data, t.review.submittedBy)} asked you to review “${t.title}”`, at: t.review.submittedAt, open: { project_id: t.project_id, tab: 'board', title: t.title } }));
@@ -82,13 +83,6 @@ export function feedOf(data, me, today, now = Date.now()) {
 
 	// Comments on submissions I'm part of.
 	commentBell(data, me, now).forEach((c) => push({ key: c.key, cat: 'task', tone: 'blue', icon: '💬', title: c.text, sub: c.sub, at: c.at, open: { project_id: c.project_id, tab: c.tab, title: c.title } }));
-
-	// Leaders: requests to undo In progress.
-	if (isManager(me)) {
-		undoRequests(data)
-			.filter((u) => recent(u.at))
-			.forEach((u) => push({ key: `undo:${u.id}:${u.at}`, cat: 'task', tone: 'amber', icon: '↶', title: `${u.who ? u.who.name : 'Someone'} asked to undo “${u.title}”`, sub: `${u.project.name} · In progress → Not started`, at: u.at, open: { project_id: u.project.id, tab: u.tab, title: u.title } }));
-	}
 
 	// Answers to my leave (same keys as the message band).
 	rowsOf(data, 'leave')
