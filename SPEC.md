@@ -69,10 +69,10 @@ Three portal roles, stored on the team member (`role`): `admin` (Super Admin), `
 | Change meeting date / responsible people | ✔ | ✔ | ✘ |
 | Delete a task (soft delete) | ✔ | ✔ | ✘ |
 | Restore / delete forever (trash) | ✔ | ✔ | ✘ |
-| Change status / tick progress on a task | if assigned or unassigned | if assigned or unassigned + any task | only if assigned to them (or task unassigned) |
+| Change status / tick progress on a task | ✔ any task | ✔ any task | only if assigned to them — an unassigned task is locked until a leader assigns someone (6.6) |
 | Tick another person's share / breakdown row | ✔ | ✔ | ✘ |
 | Move In progress → Not started (incl. counting down to 0) | ✔ | ✔ | ✘ (Request undo, 6.6) |
-| Request undo of In progress → Not started on a task without a quantity (6.6) | — (moves it back) | — (moves it back) | ✔ own / unassigned tasks, reason required |
+| Request undo of In progress → Not started on a task without a quantity (6.6) | — (moves it back) | — (moves it back) | ✔ own tasks, reason required |
 | Answer a request to undo: Undo / Keep In progress (6.6) | ✔ | ✔ | ✘ |
 | Reopen a completed task | via Review only | via Review only | ✘ |
 | Review completed work (accept / revise / reject) | ✔ | ✔ | ✘ |
@@ -91,13 +91,18 @@ Three portal roles, stored on the team member (`role`): `admin` (Super Admin), `
 | Send / remove a notice (to everyone or chosen people) | ✔ (any) | ✔ (own) | ✘ |
 | Send / remove a shout-out (to Team Members only) | ✔ (any) | ✔ (own) | ✘ |
 | Ask someone to review own finished task (6.6) | ✔ | ✔ | ✘ |
+| Fill in the submission form when completing work (6.6) | ✔ (required) | ✔ (required) | ✔ (required) |
+| Edit a saved submission (6.6) | ✔ | ✔ | ✔ own submissions |
+| Attach files (upload) / open files (6.6) | ✔ | ✔ | ✔ |
+| Comment on a submission (6.6) | ✔ | ✔ | ✔ on tasks assigned to them, their own submissions and reviews asked of them |
+| Delete a comment | ✔ any | ✔ own | ✔ own |
 | Approve / send back a review someone asked **you** for | ✔ | ✔ | ✔ (only that task) |
 | Set own profile, incl. location and date of birth | ✔ | ✔ | ✔ |
 | Work on tasks while the profile is incomplete (6.10) | ✔ (reminder only) | ✘ | ✘ |
 
 Every REST endpoint calls `GRP_Permissions::can($user, $action, $object)`. Unit-test every row above.
 
-**Profile lock** (*new*): while a Team Leader's or Team Member's required profile (6.10) is incomplete, every task action is refused (add / edit / delete a task, change status, tick progress, review, ask for or answer a review, log work, skip a period) with `grp_profile_incomplete` and the missing fields. Viewing, leave and editing their own profile still work.
+**Profile lock** (*new*): while a Team Leader's or Team Member's required profile (6.10) is incomplete, every task action is refused (add / edit / delete a task, change status, tick progress, review, ask for or answer a review, log work, skip a period, upload a file, edit a submission, comment) with `grp_profile_incomplete` and the missing fields. Viewing, leave and editing their own profile still work.
 
 ## 4. Authentication
 
@@ -134,6 +139,8 @@ All tables: `id` CHAR(26) ULID (or keep imported string ids, VARCHAR(64)), `crea
 | `grp_leave` | id, member_id, type ENUM(day,sick), from_date DATE, to_date DATE, days TINYINT (working days in the range, 6.10), reason, status ENUM(pending,approved,rejected,cancelled), decided_by NULL, decided_at NULL, message (approver's note), created_by — *new* |
 | `grp_days_off` | id, kind ENUM(event,seasonal), name, from_date DATE, to_date DATE (= from_date for an event), created_by — whole team — *new* |
 | `grp_keywords` | id, project_id, keyword VARCHAR(191), checks JSON `{columnId: {by, at}}`, note TEXT NULL, deadline DATE NULL, position INT, created_by — *new* (6.12, schema 8) |
+| `grp_files` | id, name, mime, size INT, path (relative to `uploads/grp-private/`, random name), created_by — *new* (6.6, schema 10; not synced) |
+| `grp_comments` | id, ref_kind ENUM(item,record), ref_id, project_id, body TEXT, files JSON `[{id, mime, name, size}]`, created_by, deleted_at NULL — *new* (6.6, schema 10; synced as `comments`) |
 | `grp_posts` | id, kind ENUM(announcement,shoutout,notice), title NULL, body, to_member NULL (first shout-outs), to_members JSON NULL (chosen people; NULL = everyone), pinned TINYINT, show_until DATE NULL, created_by, soft delete — *new* |
 
 ## 6. Domain logic
@@ -176,8 +183,10 @@ All tables: `id` CHAR(26) ULID (or keep imported string ids, VARCHAR(64)), `crea
 
 ### 6.6 Completion, review and status locks
 - **Statuses** (*new*): meeting tasks and monthly tasks use the same three — **Not started · In progress · Completed** (stored `todo · doing · done`; Meeting Minutes said To fix / Fixed before). Team Members only move forward.
-- When a **Team Member** clicks Completed — or ticks the **last unit** of a quantity task (*new*; the server refuses it without a note, `grp_completion_required`; Cancel leaves it one short) — modal "What did you complete?" (required note, optional https link) → saved as `completion {note, link, by, at}` and `review {state:'pending', submittedBy, submittedAt}`.
-- Super Admin / Team Leader completions are `review.state='accepted', auto=1` by default. Their **Mark as done** dialog offers **Done — no review needed** (default) or **Ask someone to review it**: pick anyone (Super Admin, a Team Leader or a Team Member) and add an optional note → `review {state:'pending', submittedBy, submittedAt, reviewer: memberId, note}`. Only that person (plus the Super Admin) can then **Approve** (= Accept) or **Send back** (= Revise, note required), even when they are a Team Member. *Not in the reference portal.*
+- **Submit completed work** (*new*, design SF-A): whoever completes work — clicks Completed, ticks the **last unit** of a quantity task, or saves a task as Completed — fills in the form, **Team Leaders and the Super Admin included** (the server refuses it without a note, `grp_completion_required`; Cancel leaves it as it was / one short): **What you did** (required), **Links** (up to 10 http(s)), **Files** (choose or drop; PDF, images, Word, Excel, CSV, text; 10 MB each, up to 10) and **Comment for the reviewer** (optional) → `completion {note, link (first link), links[], files[{id, mime, name, size}], comment, by, at}`. A Team Member's work then waits for review: `review {state:'pending', submittedBy, submittedAt}`.
+- Team Leaders and the Super Admin choose at the bottom of the same form: **Done — no review needed** (default; `review.state='accepted', auto=1`, shown as "Completed · no review") or **Ask someone to review it** with a reviewer (anyone active but themselves) → `review {state:'pending', …, reviewer}`. Later, **Ask someone to review it** in Details still works on their own auto-accepted work: pick anyone (Super Admin, a Team Leader or a Team Member) and add an optional note → `review {state:'pending', submittedBy, submittedAt, reviewer: memberId, note}`. Only that person (plus the Super Admin) can then **Approve** (= Accept) or **Send back** (= Revise, note required), even when they are a Team Member. *Not in the reference portal.*
+- **Submission in Details** (*new*, design SF-B): "Submission & review" shows who submitted and when ("· edited {when}" after a change), what was done, links as chips, files with **View** (images, PDF) / **Download**, the comment for the reviewer, the review state, and **✎ Edit submission** for the person who submitted it, Team Leaders and the Super Admin — the same form, saved in place (`edited_by`, `edited_at`; the review is unchanged), any time, also after approval. Under it, **Comments**: a thread (oldest first) with author, time, text and attached files; the people on the task, who submitted it, the reviewer, Team Leaders and the Super Admin can write (text and/or files); authors (and the Super Admin) delete their own ("Comment deleted"). Comments from others in the last 7 days reach the bell of the people on the task: who submitted it, its assignees, the reviewer and anyone who commented there ("{name} commented on “{task}”").
+- **Files** are stored privately in `uploads/grp-private/YYYY/MM/` under random names, behind a deny-all `.htaccess` / `web.config`, and only sent through GET `/files/{id}` to signed-in team members (the app fetches them with its credentials). The type is checked from the content, not only the name.
 - Reviewers see pending work in **Needs your approval** on My day (7.0) and in the task Details, with Accept / Revise / Reject:
   - **Accept** → accepted (no badge shown afterwards).
   - **Revise** (note required) → status In progress; quantity tasks lose one unit (from the submitter); activity credit removed for that unit.
@@ -187,7 +196,8 @@ All tables: `id` CHAR(26) ULID (or keep imported string ids, VARCHAR(64)), `crea
 - **Status locks** (server-enforced):
   - Done → anything: only via review actions.
   - In progress → Not started (or counting down to 0): Super Admin / Team Leader only.
-- **Request undo** (*new*, designs ST-A / ST-B): a Team Member who moved a task without a quantity to In progress by mistake clicks **↶ Request undo** on the card and must write what the mistake was and why (at least 10 characters). Stored as `undo_request {by, at, reason}` on the meeting task or the cycle record (schema 9); the card shows **Undo requested · {name} · waiting for a Team Leader** with the reason; one request at a time. Team Leaders and the Super Admin answer on the card or in **Needs your approval** ("Undo requested" · task · project · In progress → Not started · reason): **Undo** (back to Not started, as their own move) or **Keep In progress**, with an optional message; the member gets a private notice "Undo approved / Undo not approved" with it (7 days). Any other status move drops the request. Quantity tasks never ask (they count down), leaders move tasks back themselves, and Completed goes through review as before.
+- **Assigned first** (*new*, design TC-A): a Team Member changes status or ticks only tasks assigned to them. An unassigned task is locked for them (all three status buttons off, "🔒 Assign someone before work starts — ask a Team Leader."); the server refuses with "Nobody is assigned to this task yet — a Team Leader or Super Admin must assign it first." Team Leaders and the Super Admin work on any task.
+- **Request undo** (*new*, designs ST-A / ST-B): a Team Member who moved a task without a quantity to In progress by mistake clicks **↶ Request undo** on the card and must write what the mistake was and why (at least 10 characters). Stored as `undo_request {by, at, reason}` on the meeting task or the cycle record (schema 9); the card shows only a chip (design TC-A): **↶ Undo requested** · "waiting for a Team Leader or Super Admin" for members, **↶ Undo requested · {name}** with **Review** for leaders — the reason is never on the card, Review opens it with an optional message, **Keep In progress** and **Undo**; an amber dot marks In progress while it waits; one request at a time. Every Team Leader and the Super Admin gets it in the bell ("{name} asked to undo “{task}”") and answers on the card or in **Needs your approval** ("Undo requested" · task · project · In progress → Not started · reason): **Undo** (back to Not started, as their own move) or **Keep In progress**, with an optional message; the member gets a private notice "Undo approved / Undo not approved" with it (7 days). Any other status move drops the request. Quantity tasks never ask (they count down), leaders move tasks back themselves, and Completed goes through review as before.
 - Meeting Minutes are **per cycle**: a task belongs to the cycle containing its meeting date (or created date). Banner counts, status counts and cards show only the selected cycle.
 
 ### 6.7 Activity crediting and reports
@@ -279,9 +289,9 @@ When an **active** project starts a new cycle, a Team Leader or the Super Admin 
 
 ### 7.2 Meeting Minutes
 Alert banner (cycle-scoped), project cycle bar, stats (status chips, cycle dates, cycle progress, days left / ended / starts in), cards, "+ Add task" tile.
-**Card** (compact): priority chip, Qty chip, meeting date; title; added / fixed / deadline chips; mini review tag; mini progress bar (qty > 1); status segment (Not started / In progress / Completed, locks per 6.6; ↶ Request undo / Undo requested under it); footer: avatar stack + "N person/people" or "? Not assigned", **Details**, Edit (admin/lead), 🗑 (admin/lead).
+**Card** (compact): priority chip, Qty chip, meeting date; title; added / fixed / deadline chips; mini review tag; mini progress bar (qty > 1); status segment (Not started / In progress / Completed, locks per 6.6; under it one small line: ↶ Request undo, the Undo requested chip, or the 🔒 not-assigned line); footer above a thin rule: avatar stack + "N person/people" or "? Not assigned", **Details**, Edit (admin/lead), 🗑 (admin/lead).
 **Task dialog**: Client, What needs to change, Details, Page URL, Priority, Status, Quantity, From meeting on, Deadline (6.3), Responsible (searchable people picker; shares when qty > 1). Members can't open Edit.
-**Details window**: header (tags, status pill, title, project), info grid (meeting, added, deadline, fixed, responsible), Progress (full steppers), Details text, Page link, Completion & review (+ reviewer actions). No history.
+**Details window**: header (tags, status pill, title, project), info grid (meeting, added, deadline, fixed, responsible), Progress (full steppers), Details text, Page link, Submission & review (design SF-B: submission, Edit submission, comments; + reviewer actions). No history.
 
 ### 7.3 Monthly Tasks
 Banner, project cycle bar, stats, filters (All / Weekly / Bi-weekly / Monthly) + week bar, cards, "+ Add monthly task".
@@ -337,6 +347,10 @@ The team sections are tabs of **My page** for leaders and the Super Admin (7.6) 
 | POST `/meeting-tasks/id/undo` `{reason}` · POST `/meeting-tasks/id/undo/decide` `{action: undo|keep, note?}` · POST `/records/undo` `{taskId, periodKey, reason}` · POST `/records/undo/decide` `{taskId, periodKey, action, note?}` | request undo (6.6) |
 | POST `/review` `{kind: item|record, id, action: accept|revision|reject, note}` | review |
 | POST `/review/request` `{kind, id, reviewer, note}` | ask someone to review own finished task (6.6) |
+| status / progress / tick / create as Completed take `{note, links[], files[], comment, reviewer?}` | the submission (6.6); `reviewer` for leaders only |
+| PATCH `/meeting-tasks/id/submission` `{note, links, files, comment}` · PATCH `/records/submission` `{taskId, periodKey, note, links, files, comment}` | edit a submission (6.6) |
+| POST `/files` (multipart `file`) → `{id, mime, name, size}` · GET `/files/id` (`?download=1`) | attach / open a file (6.6) |
+| POST `/comments` `{kind: item|record, id, body, files?}` · DELETE `/comments/id` | comment on a submission (6.6) |
 | GET/POST `/leave` · PATCH `/leave/id` `{action: approve|reject|cancel, message}` | day leave (6.10) |
 | GET `/leave/report?month=YYYY-MM` · `?year=YYYY` (Super Admin) | monthly settlement / year-end counts |
 | GET/POST/DELETE `/days-off[/id]` · PUT `/days-off/weekly` `{weekdays, member?}` (Super Admin) | days off |
@@ -451,5 +465,9 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 44. (Released as 0.1.16.) Details tab layout (6.12, design PD-F): header card for the first section (initials, title, project · status · cycle, Edit), larger link chips with their type, other sections in two columns, full width. Playwright: the header card shows the project line without team names and the chips their type.
 
 45. (Released as 0.1.17.) Details: Goals and Notes for the team always shown after the header card (placeholders until filled in), bullet lists from "-" lines. Playwright: both cards there, Notes saved as a list, members see "Nothing here yet." and no Edit.
+
+46. (Released as 0.1.18.) Task card TC-A and assigned-first (6.6, 7.2): Team Members work only on tasks assigned to them (server and card); an undo request is a chip with Review for leaders (reason off the card) and rings every Team Leader's and the Super Admin's bell. **Tests:** PHPUnit (permission rows, unassigned refused with the message, leaders still work on it), Vitest (canWorkOn, bell for leaders only), Playwright (chip without reason, unassigned locked, leader reads the reason in Review and undoes from the card).
+
+47. (Released as 0.1.18.) Submit completed work for everyone (6.6, designs SF-A / SF-B), released together with step 46: schema 10 (`grp_files`, `grp_comments`); the submission form with links, files and a comment, required from Team Leaders and the Super Admin too, who choose no review or a reviewer; Edit submission; comments with files and the bell; UPLOAD_FILE / DOWNLOAD_FILE / EDIT_SUBMISSION / COMMENT / DELETE_COMMENT. **Tests:** PHPUnit (permission rows; leaders need the note; reviewer chosen in the form; links limits; upload type, size and content checks, random private names; download for signed-in members only; edit by the submitter or leaders, not others; comments by the people on the task and the reviewer only; delete own; records), Vitest (file helpers, who may edit / comment, comment bell), Playwright (member submits with a link, a file and a comment, edits it and comments; leader replies and asks a reviewer in the form; the bell).
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).

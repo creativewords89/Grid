@@ -88,6 +88,9 @@ test('my day: leave, days off, birthdays, shout-outs and review requests', async
 	await page.getByText('Task added').waitFor();
 	const task = page.locator('article.mcard', { hasText: 'Approve content plan' });
 	await task.getByRole('button', { name: 'Completed' }).click();
+	await dlg.getByLabel('What you did').fill('Plan approved');
+	await dlg.getByRole('button', { name: 'Complete', exact: true }).click();
+	await page.getByText('Marked completed').waitFor();
 	await task.getByRole('button', { name: 'Details' }).click();
 	await dlg.getByRole('button', { name: 'Ask someone to review it' }).click();
 	// It opens inside the Details dialog: take the innermost open dialog.

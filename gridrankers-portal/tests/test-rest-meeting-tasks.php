@@ -254,7 +254,13 @@ class Test_GRP_REST_Meeting_Tasks extends GRP_REST_TestCase {
 	}
 
 	public function test_edit_cannot_reopen_done_task() {
-		$task = $this->task( 'lead', array( 'status' => 'done' ) );
+		$task = $this->task(
+			'lead',
+			array(
+				'status' => 'done',
+				'note'   => 'Done in the meeting',
+			)
+		);
 
 		$response = $this->api_as( 'lead', 'PATCH', "/meeting-tasks/{$task['id']}", array( 'status' => 'doing' ) );
 		$this->assertStatus( 409, $response );
@@ -281,7 +287,10 @@ class Test_GRP_REST_Meeting_Tasks extends GRP_REST_TestCase {
 		$others     = $this->task( 'lead', array( 'assignees' => $this->people( 'other' ) ) );
 
 		$this->assertStatus( 200, $this->api_as( 'member', 'POST', "/meeting-tasks/{$own['id']}/status", array( 'status' => 'doing' ) ) );
-		$this->assertStatus( 200, $this->api_as( 'member', 'POST', "/meeting-tasks/{$unassigned['id']}/status", array( 'status' => 'doing' ) ) );
+		$refused = $this->api_as( 'member', 'POST', "/meeting-tasks/{$unassigned['id']}/status", array( 'status' => 'doing' ) );
+		$this->assertStatus( 403, $refused, 'unassigned: a leader assigns it first' );
+		$this->assertStringContainsString( 'Nobody is assigned', $refused->get_data()['message'] );
+		$this->assertStatus( 200, $this->api_as( 'lead', 'POST', "/meeting-tasks/{$unassigned['id']}/status", array( 'status' => 'doing' ) ) );
 		$this->assertStatus( 403, $this->api_as( 'member', 'POST', "/meeting-tasks/{$others['id']}/status", array( 'status' => 'doing' ) ) );
 		$this->assertStatus( 200, $this->api_as( 'lead', 'POST', "/meeting-tasks/{$others['id']}/status", array( 'status' => 'doing' ) ) );
 	}
@@ -345,14 +354,98 @@ class Test_GRP_REST_Meeting_Tasks extends GRP_REST_TestCase {
 		$this->assertSame( 'done', end( $audit )['kind'] );
 	}
 
-	public function test_manager_completion_is_auto_accepted_without_note() {
+	public function test_managers_fill_in_the_submission_too() {
 		$task = $this->task( 'lead' );
+		$url  = "/meeting-tasks/{$task['id']}/status";
 
-		$response = $this->api_as( 'lead', 'POST', "/meeting-tasks/{$task['id']}/status", array( 'status' => 'done' ) );
+		$this->assertSame( 'grp_completion_required', $this->api_as( 'lead', 'POST', $url, array( 'status' => 'done' ) )->get_data()['code'] );
+		$response = $this->api_as(
+			'lead',
+			'POST',
+			$url,
+			array(
+				'status'  => 'done',
+				'note'    => 'Fixed the H1',
+				'links'   => array( 'https://example.com/a', 'https://example.com/b', 'https://example.com/a' ),
+				'comment' => 'Checked on mobile too',
+			)
+		);
 
 		$this->assertStatus( 200, $response );
-		$this->assertSame( 'accepted', $response->get_data()['review']['state'] );
+		$this->assertSame( 'accepted', $response->get_data()['review']['state'], 'no review needed by default' );
 		$this->assertSame( 1, $response->get_data()['review']['auto'] );
+		$completion = $response->get_data()['completion'];
+		$this->assertSame( array( 'https://example.com/a', 'https://example.com/b' ), $completion['links'] );
+		$this->assertSame( 'https://example.com/a', $completion['link'] );
+		$this->assertSame( 'Checked on mobile too', $completion['comment'] );
+		$this->assertSame( $this->team['lead']['id'], $completion['by'] );
+	}
+
+	public function test_a_leader_can_ask_for_a_review_in_the_submission() {
+		$task = $this->task( 'lead' );
+		$url  = "/meeting-tasks/{$task['id']}/status";
+		$done = array(
+			'status' => 'done',
+			'note'   => 'Wrote the page',
+		);
+
+		$this->assertStatus( 400, $this->api_as( 'lead', 'POST', $url, $done + array( 'reviewer' => $this->team['lead']['id'] ) ), 'not themselves' );
+		$this->assertStatus( 400, $this->api_as( 'lead', 'POST', $url, $done + array( 'reviewer' => 'ghost' ) ) );
+		$review = $this->api_as( 'lead', 'POST', $url, $done + array( 'reviewer' => $this->team['member']['id'] ) )->get_data()['review'];
+		$this->assertSame( 'pending', $review['state'] );
+		$this->assertSame( $this->team['member']['id'], $review['reviewer'] );
+
+		$mine = $this->task( 'lead', array( 'assignees' => $this->people( 'member' ) ) );
+		$this->assertStatus( 400, $this->api_as( 'member', 'POST', "/meeting-tasks/{$mine['id']}/status", $done + array( 'reviewer' => $this->team['other']['id'] ) ), 'Team Members always go to review' );
+	}
+
+	public function test_edit_submission() {
+		$task = $this->task( 'lead', array( 'assignees' => $this->people( 'member' ) ) );
+		$url  = "/meeting-tasks/{$task['id']}/submission";
+		$this->assertSame( 'grp_no_submission', $this->api_as( 'member', 'PATCH', $url, array( 'note' => 'Too early' ) )->get_data()['code'] );
+
+		$this->api_as(
+			'member',
+			'POST',
+			"/meeting-tasks/{$task['id']}/status",
+			array(
+				'status' => 'done',
+				'note'   => 'First version',
+			)
+		);
+		$edited = $this->api_as(
+			'member',
+			'PATCH',
+			$url,
+			array(
+				'note'  => 'Second version',
+				'links' => array( 'https://example.com/report' ),
+			)
+		);
+		$this->assertStatus( 200, $edited );
+		$completion = $edited->get_data()['completion'];
+		$this->assertSame( 'Second version', $completion['note'] );
+		$this->assertSame( $this->team['member']['id'], $completion['by'], 'still their submission' );
+		$this->assertSame( $this->team['member']['id'], $completion['edited_by'] );
+		$this->assertNotEmpty( $completion['edited_at'] );
+		$this->assertSame( 'pending', $edited->get_data()['review']['state'], 'editing keeps the review' );
+
+		$this->assertStatus( 400, $this->api_as( 'member', 'PATCH', $url, array( 'note' => '' ) ) );
+		$this->assertStatus( 403, $this->api_as( 'other', 'PATCH', $url, array( 'note' => 'Not mine' ) ) );
+		$this->assertStatus( 200, $this->api_as( 'lead', 'PATCH', $url, array( 'note' => 'Leader fixed a typo' ) ) );
+		$this->assertStatus(
+			400,
+			$this->api_as(
+				'member',
+				'PATCH',
+				$url,
+				array(
+					'note'  => 'With a file',
+					'files' => array( 'ghost' ),
+				)
+			),
+			'unknown file'
+		);
 	}
 
 	public function test_progress_on_shares() {
@@ -432,6 +525,7 @@ class Test_GRP_REST_Meeting_Tasks extends GRP_REST_TestCase {
 			array(
 				'memberId' => $them,
 				'delta'    => 1,
+				'note'     => 'All three done',
 			)
 		)->get_data();
 		$this->assertSame( 'done', $done['status'] );
@@ -499,10 +593,10 @@ class Test_GRP_REST_Meeting_Tasks extends GRP_REST_TestCase {
 			)
 		);
 
-		// Unassigned: tick without memberId, credited to whoever ticks.
-		$this->assertSame( 'grp_completion_required', $this->api_as( 'other', 'POST', "/meeting-tasks/{$unassigned['id']}/progress", array( 'delta' => 1 ) )->get_data()['code'], 'the last unit asks what was completed' );
+		// Unassigned: Team Members can't tick it; a leader ticks without memberId, credited to them.
+		$this->assertStatus( 403, $this->api_as( 'other', 'POST', "/meeting-tasks/{$unassigned['id']}/progress", array( 'delta' => 1 ) ) );
 		$response = $this->api_as(
-			'other',
+			'lead',
 			'POST',
 			"/meeting-tasks/{$unassigned['id']}/progress",
 			array(
@@ -512,8 +606,7 @@ class Test_GRP_REST_Meeting_Tasks extends GRP_REST_TestCase {
 		);
 		$this->assertStatus( 200, $response );
 		$this->assertSame( 'done', $response->get_data()['status'] );
-		$this->assertSame( 'pending', $response->get_data()['review']['state'] );
-		$this->assertCount( 1, $this->credits( $this->team['other']['id'] ) );
+		$this->assertCount( 1, $this->credits( $this->team['lead']['id'] ) );
 	}
 
 	public function test_member_cannot_create_started_task_for_someone_else() {

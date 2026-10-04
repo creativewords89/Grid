@@ -601,13 +601,64 @@ span.kp-dl{cursor:default}
 .kp-box{position:relative}
 .kp-box.asked::after{content:"";position:absolute;top:-4px;right:-4px;width:9px;height:9px;border-radius:50%;background:#B77F00;border:2px solid var(--panel)}
 
-/* Request undo (SPEC.md 6.6). */
+/* Request undo (SPEC.md 6.6, design TC-A): a chip on the card; leaders open Review for the reason. */
 .undo-link{align-self:flex-start;font-size:.8rem;font-weight:700}
-.undo-req{background:var(--doing-bg);color:var(--doing);border-radius:9px;padding:7px 10px;font-size:.8rem;display:flex;flex-direction:column;gap:3px}
-.undo-req b{color:inherit}
-.undo-why{color:var(--ink-2)}
-.undo-acts{display:flex;gap:6px;justify-content:flex-end;margin-top:4px}
+.undo-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.78rem}
+.undo-chip{display:inline-flex;align-items:center;font-size:.74rem;font-weight:700;color:var(--doing);background:var(--doing-bg);border:1px solid color-mix(in srgb,var(--doing) 30%,transparent);border-radius:99px;padding:2px 9px;white-space:nowrap}
+.undo-review{margin-left:auto;font-size:.8rem;font-weight:700}
+.undo-pop{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:7px;font-size:.82rem;background:var(--panel);box-shadow:0 10px 28px rgba(21,35,58,.14)}
+.undo-why{color:var(--ink-2);background:var(--panel-2);border-radius:8px;padding:6px 9px}
+.undo-note{border:1px solid var(--line);border-radius:8px;padding:6px 9px;font:inherit;background:var(--panel);color:var(--ink)}
+.undo-acts{display:flex;gap:6px;justify-content:flex-end}
+.seg .undo-dot::after{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:#E0A100;margin-left:5px;vertical-align:middle}
+.lock-line{font-size:.78rem;color:var(--ink-2)}
+.mcard > .acts{border-top:1px solid var(--line);padding-top:9px;margin-top:2px}
 .pdx-list{margin:0;padding-left:20px;font-size:.92rem;line-height:1.7}
 .pdx-hero .pdx-list{padding:14px 22px 0 42px}
 .pdx-ph{border-style:dashed}
 .pdx-hint{margin:0;font-size:.86rem}
+
+/* Submit completed work (SPEC.md 6.6, design SF-A) and the Submission in Details (SF-B). */
+dialog.sf-dlg{width:min(540px,94vw)}
+.sf-req{color:var(--urgent);font-weight:600;margin-left:4px}
+.sf-field{display:flex;flex-direction:column;gap:6px}
+.sf-lab{font-weight:700;font-size:.88rem}
+.sf-lab small,dialog label small{font-weight:500;color:var(--ink-2)}
+.sf-row{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:6px 10px;min-width:0}
+.sf-row.uploading{opacity:.7}
+.sf-row-name{flex:1;min-width:0;display:flex;flex-direction:column;font-size:.84rem;overflow-wrap:anywhere}
+.sf-row-name small{color:var(--ink-2)}
+.sf-badge{flex:none;width:34px;height:34px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:.62rem;font-weight:800;background:var(--panel-2);color:var(--ink-2)}
+.sf-badge.pdf{background:#FBE4E1;color:#A3261E} .sf-badge.img{background:#F0E9FD;color:#7C3AED} .sf-badge.xls{background:#E3F3E8;color:#1F7A45} .sf-badge.doc{background:#E8EEFC;color:#2753C9}
+.sf-link-ic{flex:none;width:22px;text-align:center;color:var(--accent);font-weight:800}
+.sf-x{all:unset;cursor:pointer;color:var(--ink-2);font-weight:800;padding:2px 6px;border-radius:6px}
+.sf-x:hover,.sf-x:focus-visible{background:var(--panel-2);color:var(--ink)}
+.sf-add{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:0 10px;background:var(--panel)}
+.sf-add input{flex:1;min-width:0;border:0;background:none;padding:9px 0;font:inherit;color:var(--ink);outline:none}
+.sf-drop{border:1.5px dashed var(--line);border-radius:12px;padding:12px;text-align:center;background:var(--panel-2);font-size:.85rem;color:var(--ink-2);display:flex;flex-direction:column;align-items:center;gap:2px}
+.sf-drop.on{border-color:var(--accent);background:var(--panel)}
+.sf-drop{line-height:1.5}
+.sf-drop small{font-size:.76rem}
+.sf-review{border:0;padding:0;margin:0;display:flex;flex-direction:column;gap:8px}
+.sf-review legend{font-weight:700;font-size:.88rem;margin-bottom:6px}
+dialog label.sf-opt{flex-direction:row;align-items:flex-start;gap:10px;border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-weight:400;cursor:pointer}
+label.sf-opt.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 6%,var(--panel))}
+label.sf-opt input{margin-top:3px}
+label.sf-opt span{display:flex;flex-direction:column}
+label.sf-opt small{color:var(--ink-2)}
+.sb{display:flex;flex-direction:column;gap:10px}
+.sb-head{display:flex;align-items:center;gap:8px;font-size:.86rem;flex-wrap:wrap}
+.sb-edit{margin-left:auto}
+.sb-note{margin:0;white-space:pre-wrap;font-size:.92rem;line-height:1.55}
+.sb-links{display:flex;flex-wrap:wrap;gap:6px}
+.sb-link{font-size:.82rem;font-weight:700;border:1px solid var(--line);border-radius:99px;padding:4px 10px;text-decoration:none;color:var(--accent);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sb-files{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+.sb-comment{margin:0;font-size:.86rem}
+.sb-comments{border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:9px}
+.sb-ch{font-size:.88rem}
+.sb-c{display:flex;gap:8px;align-items:flex-start}
+.sb-bubble{background:var(--panel-2);border-radius:10px;padding:7px 10px;font-size:.84rem;min-width:0;display:flex;flex-direction:column;gap:5px;max-width:100%}
+.sb-bubble p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.sb-new{display:flex;flex-direction:column;gap:6px}
+.sb-new-row{display:flex;gap:6px;align-items:center}
+.sb-new-row input[type=text]{flex:1;min-width:0;border:1px solid var(--line);border-radius:9px;padding:7px 10px;font:inherit;background:var(--panel);color:var(--ink)}

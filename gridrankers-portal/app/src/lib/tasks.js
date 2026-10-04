@@ -10,8 +10,9 @@ export const assigneesOf = (task, members) => (Array.isArray(task.assignees) ? t
 
 export const isAssigned = (task, id) => (task.assignees || []).some((a) => a.id === id);
 
-// Who may work on a task (reference canWorkOn; the server enforces the same rule).
-export const canWorkOn = (task, me) => !!me && (isManager(me) || !(task.assignees || []).length || isAssigned(task, me.id));
+// Who may work on a task (SPEC.md 6.6; the server enforces the same rule): Team Members only on
+// tasks assigned to them — an unassigned task must be assigned first.
+export const canWorkOn = (task, me) => !!me && (isManager(me) || isAssigned(task, me.id));
 
 export const progressTotal = (task) => Object.values(task.progress || {}).reduce((a, b) => a + (+b || 0), 0);
 

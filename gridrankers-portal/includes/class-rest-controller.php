@@ -99,6 +99,27 @@ abstract class GRP_REST_Controller {
 	}
 
 	/**
+	 * Why a Team Member may not work on a task (SPEC.md 6.6), or null when they may.
+	 *
+	 * @param array $task Task row with `assignees`.
+	 * @return string|null
+	 */
+	protected static function not_assigned_message( array $task ) {
+		if ( self::is_manager() ) {
+			return null;
+		}
+		$ids = GRP_Permissions::assignee_ids( $task['assignees'] ?? array() );
+		if ( ! $ids ) {
+			return __( 'Nobody is assigned to this task yet — a Team Leader or Super Admin must assign it first.', 'gridrankers-portal' );
+		}
+		if ( ! in_array( (string) ( self::actor()['id'] ?? '' ), $ids, true ) ) {
+			return __( 'This task is assigned to someone else — only they can update it.', 'gridrankers-portal' );
+		}
+
+		return null;
+	}
+
+	/**
 	 * 403 error.
 	 *
 	 * @param string $message Message.
@@ -321,35 +342,124 @@ abstract class GRP_REST_Controller {
 	}
 
 	/**
-	 * Completion note `{note, link, by, at}` from a request, or WP_Error when `$required`
-	 * and missing (SPEC.md section 6.6: "What did you complete?").
+	 * The submission sent when work is completed (SPEC.md 6.6, design SF-A):
+	 * `{note, link, links[], files[], comment, by, at}`, or WP_Error when `$required` and the note is
+	 * missing ("What you did"). Everyone fills it in, Team Leaders and the Super Admin included.
+	 * A leader may also name a `reviewer` (read by new_review()).
 	 *
-	 * @param WP_REST_Request $request  Request with `note` and `link`.
+	 * @param WP_REST_Request $request  Request with `note`, `link` / `links`, `files`, `comment`, `reviewer`.
 	 * @param bool            $required Whether a note is required.
 	 * @return array|null|WP_Error
 	 */
 	protected static function completion( WP_REST_Request $request, $required ) {
-		$note = self::textarea( $request['note'] ?? '', 2000 );
-		if ( mb_strlen( $note ) < 3 ) {
+		self::$reviewer = '';
+		$fields         = self::submission_fields( $request );
+		if ( is_wp_error( $fields ) ) {
+			return $fields;
+		}
+		if ( null === $fields ) {
 			return $required ? self::invalid( __( 'Add a few words about what you completed.', 'gridrankers-portal' ), 'grp_completion_required' ) : null;
 		}
 
-		$link = self::url( $request['link'] ?? '' );
-		if ( is_wp_error( $link ) ) {
-			return $link;
+		$reviewer = (string) ( $request['reviewer'] ?? '' );
+		if ( '' !== $reviewer ) {
+			$member = GRP_Store::get( 'grp_members', $reviewer );
+			if ( ! self::can( GRP_Permissions::REQUEST_REVIEW ) || ! $member || ! (int) $member['active'] || self::actor()['id'] === $member['id'] ) {
+				return self::invalid( __( 'Pick who should review it.', 'gridrankers-portal' ) );
+			}
+			self::$reviewer = $member['id'];
 		}
 
-		return array(
-			'note' => $note,
-			'link' => $link,
-			'by'   => self::actor()['id'],
-			'at'   => gmdate( 'c' ),
+		return $fields + array(
+			'by' => self::actor()['id'],
+			'at' => gmdate( 'c' ),
 		);
 	}
 
 	/**
-	 * A new review for completed work: managers' work is accepted automatically,
-	 * members' work waits for review (SPEC.md section 6.6).
+	 * Reviewer a Team Leader picked in the submission form, for new_review().
+	 *
+	 * @var string
+	 */
+	private static $reviewer = '';
+
+	/**
+	 * Most links and files on one submission or comment.
+	 */
+	const MAX_ATTACHMENTS = 10;
+
+	/**
+	 * The editable part of a submission: `{note, link, links, files, comment}`, null when the
+	 * note is missing, or WP_Error.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return array|null|WP_Error
+	 */
+	protected static function submission_fields( WP_REST_Request $request ) {
+		$note = self::textarea( $request['note'] ?? '', 2000 );
+		if ( mb_strlen( $note ) < 3 ) {
+			return null;
+		}
+
+		$raw = $request['links'] ?? null;
+		$raw = is_array( $raw ) ? $raw : array( $request['link'] ?? '' );
+		if ( count( $raw ) > self::MAX_ATTACHMENTS ) {
+			return self::invalid( __( 'Add at most 10 links.', 'gridrankers-portal' ) );
+		}
+		$links = array();
+		foreach ( $raw as $value ) {
+			$url = self::url( is_scalar( $value ) ? $value : '' );
+			if ( is_wp_error( $url ) ) {
+				return $url;
+			}
+			if ( '' !== $url && ! in_array( $url, $links, true ) ) {
+				$links[] = $url;
+			}
+		}
+
+		$files = self::attached_files( $request['files'] ?? array() );
+		if ( is_wp_error( $files ) ) {
+			return $files;
+		}
+
+		return array(
+			'note'    => $note,
+			'link'    => $links[0] ?? '',
+			'links'   => $links,
+			'files'   => $files,
+			'comment' => self::textarea( $request['comment'] ?? '', 1000 ),
+		);
+	}
+
+	/**
+	 * Uploaded files attached by id: `[{id, mime, name, size}]`, or WP_Error for an unknown id
+	 * or too many.
+	 *
+	 * @param mixed $raw File ids (or `{id}` objects).
+	 * @return array|WP_Error
+	 */
+	protected static function attached_files( $raw ) {
+		$raw = is_array( $raw ) ? $raw : array();
+		if ( count( $raw ) > self::MAX_ATTACHMENTS ) {
+			return self::invalid( __( 'Attach at most 10 files.', 'gridrankers-portal' ) );
+		}
+		$files = array();
+		foreach ( $raw as $item ) {
+			$id   = is_array( $item ) ? (string) ( $item['id'] ?? '' ) : (string) $item;
+			$file = '' !== $id ? GRP_Store::get( 'grp_files', $id ) : null;
+			if ( ! $file ) {
+				return self::invalid( __( 'One of the files is missing. Upload it again.', 'gridrankers-portal' ) );
+			}
+			$files[ $file['id'] ] = GRP_Files::meta( $file );
+		}
+
+		return array_values( $files );
+	}
+
+	/**
+	 * A new review for completed work: managers' work is accepted automatically unless they
+	 * asked someone to review it in the submission form; members' work waits for review
+	 * (SPEC.md section 6.6).
 	 *
 	 * @return array
 	 */
@@ -357,6 +467,15 @@ abstract class GRP_REST_Controller {
 		$actor = self::actor();
 		$now   = gmdate( 'c' );
 
+		if ( '' !== self::$reviewer ) {
+			return array(
+				'state'       => 'pending',
+				'submittedBy' => $actor['id'],
+				'submittedAt' => $now,
+				'reviewer'    => self::$reviewer,
+				'note'        => '',
+			);
+		}
 		if ( self::can( GRP_Permissions::AUTO_ACCEPT ) ) {
 			return array(
 				'state'       => 'accepted',
@@ -372,6 +491,39 @@ abstract class GRP_REST_Controller {
 			'state'       => 'pending',
 			'submittedBy' => $actor['id'],
 			'submittedAt' => $now,
+		);
+	}
+
+	/**
+	 * Edits a saved submission in place (SPEC.md 6.6, design SF-B): the person who submitted it, or a
+	 * Team Leader / the Super Admin. Keeps `by` and `at`, adds `edited_by` / `edited_at`.
+	 *
+	 * @param array|null      $completion Saved submission.
+	 * @param WP_REST_Request $request    Request with the new fields.
+	 * @return array|WP_Error
+	 */
+	protected static function edited_submission( $completion, WP_REST_Request $request ) {
+		if ( ! is_array( $completion ) || empty( $completion['by'] ) ) {
+			return self::conflict( __( 'There is no submission to edit yet.', 'gridrankers-portal' ), 'grp_no_submission' );
+		}
+		if ( ! self::can( GRP_Permissions::EDIT_SUBMISSION, array( 'completion' => $completion ) ) ) {
+			return self::forbidden( __( 'Only the person who submitted it, a Team Leader or the Super Admin can edit this submission.', 'gridrankers-portal' ) );
+		}
+		$fields = self::submission_fields( $request );
+		if ( is_wp_error( $fields ) ) {
+			return $fields;
+		}
+		if ( null === $fields ) {
+			return self::invalid( __( 'Add a few words about what you completed.', 'gridrankers-portal' ), 'grp_completion_required' );
+		}
+
+		return array_merge(
+			$completion,
+			$fields,
+			array(
+				'edited_by' => self::actor()['id'],
+				'edited_at' => gmdate( 'c' ),
+			)
 		);
 	}
 

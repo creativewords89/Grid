@@ -1,19 +1,22 @@
 import { usePortal } from '../../context.js';
-import { isManager } from '../../lib/roles.js';
+
+// The fields the server takes from the submission form.
+export const submission = ({ note, links, files, comment, reviewer }) => ({ note, links, files, comment, ...(reviewer ? { reviewer } : {}) });
 
 // Status, progress and delete for meeting tasks. Each write stores the row the server
 // returns; errors become toasts with the server's message.
 export default function useTaskActions() {
-	const { api, dispatch, toast, confirm, me, askCompletion } = usePortal();
+	const { api, dispatch, toast, confirm, askCompletion } = usePortal();
 	const save = (row) => dispatch({ type: 'upsert', table: 'meeting_tasks', row });
 
 	const setStatus = async (task, to) => {
 		if (task.status === to) return;
 		let body = { status: to };
-		if (to === 'done' && !isManager(me)) {
-			const note = await askCompletion(task.title);
-			if (!note) return;
-			body = { ...body, ...note };
+		// Everyone fills in the submission form (SPEC.md 6.6, design SF-A).
+		if (to === 'done') {
+			const sub = await askCompletion(task.title);
+			if (!sub) return;
+			body = { ...body, ...submission(sub) };
 		}
 		try {
 			const row = await api.post(`meeting-tasks/${task.id}/status`, body);
@@ -25,14 +28,14 @@ export default function useTaskActions() {
 	};
 
 	const tick = async (task, memberId, delta) => {
-		// The last unit completes the task: a Team Member says what they did (SPEC.md 6.6).
+		// The last unit completes the task: everyone fills in the submission (SPEC.md 6.6).
 		let extra = {};
 		const target = Math.max(1, task.target || 1);
 		const total = Object.values(task.progress || {}).reduce((a, b) => a + b, 0);
-		if (delta > 0 && total + 1 >= target && task.status !== 'done' && !isManager(me)) {
-			const note = await askCompletion(task.title);
-			if (!note) return;
-			extra = note;
+		if (delta > 0 && total + 1 >= target && task.status !== 'done') {
+			const sub = await askCompletion(task.title);
+			if (!sub) return;
+			extra = submission(sub);
 		}
 		try {
 			const row = await api.post(`meeting-tasks/${task.id}/progress`, { memberId: memberId || '', delta, ...extra });
@@ -84,20 +87,24 @@ export default function useTaskActions() {
 		if (reason === null || reason === false) return;
 		try {
 			save(await api.post(`meeting-tasks/${task.id}/undo`, { reason }));
-			toast('Undo requested — a Team Leader will answer');
+			toast('Undo requested — a Team Leader or the Super Admin will answer');
 		} catch (err) {
 			toast(err.message);
 		}
 	};
 
-	// Team Leader / Super Admin: Undo (back to Not started) or Keep In progress.
-	const decideUndo = async (task, action) => {
-		const note = await confirm({
-			title: action === 'undo' ? 'Undo to Not started?' : 'Keep In progress?',
-			message: `“${task.title}” · ${task.undo_request && task.undo_request.reason ? `“${task.undo_request.reason}”` : ''}`,
-			input: 'Message (optional)',
-			ok: action === 'undo' ? 'Undo' : 'Keep In progress',
-		});
+	// Team Leader / Super Admin: Undo (back to Not started) or Keep In progress. The card's Review
+	// panel passes the message; without one, ask for it.
+	const decideUndo = async (task, action, message) => {
+		const note =
+			typeof message === 'string'
+				? message
+				: await confirm({
+						title: action === 'undo' ? 'Undo to Not started?' : 'Keep In progress?',
+						message: `“${task.title}” · ${task.undo_request && task.undo_request.reason ? `“${task.undo_request.reason}”` : ''}`,
+						input: 'Message (optional)',
+						ok: action === 'undo' ? 'Undo' : 'Keep In progress',
+					});
 		if (note === null || note === false) return;
 		try {
 			save(await api.post(`meeting-tasks/${task.id}/undo/decide`, { action, note: typeof note === 'string' ? note : '' }));

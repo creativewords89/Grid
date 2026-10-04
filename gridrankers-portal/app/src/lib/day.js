@@ -9,6 +9,7 @@ import { rowsOf } from './store.js';
 import { cycleSetup } from './cycleSetup.js';
 import { isManager } from './roles.js';
 import { untickRequests } from './plan.js';
+import { commentBell } from './comments.js';
 
 // My day (SPEC.md 7.0): what each box shows, as pure functions of the synced data.
 
@@ -191,6 +192,14 @@ export function bellItems(data, me, today, now = Date.now()) {
 		const by = data.members[r.review.by];
 		items.push({ key: `rv:${r.title}:${r.review.at}`, text: `${r.review.state === 'rejected' ? 'Rejected' : 'Revision requested'}: “${r.title}”`, sub: [by && by.name, r.review.note].filter(Boolean).join(' · ') });
 	});
+	// Comments on submissions I'm part of (SPEC.md 6.6).
+	commentBell(data, me, now).forEach((c) => items.push(c));
+	// Requests to undo In progress (SPEC.md 6.6) reach every Team Leader and the Super Admin.
+	if (isManager(me)) {
+		undoRequests(data).forEach((u) => {
+			items.push({ key: `undo:${u.id}:${u.at}`, text: `${u.who ? u.who.name : 'Someone'} asked to undo “${u.title}”`, sub: `${u.project.name} · In progress → Not started` });
+		});
+	}
 	const seen = dismissedKeys(data, me);
 	return items.map((i) => ({ ...i, unread: !seen.has('seen:' + i.key) }));
 }

@@ -55,6 +55,35 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 		self::route( '/meeting-tasks/(?P<id>[\w-]+)/progress', WP_REST_Server::CREATABLE, 'progress' );
 		self::route( '/meeting-tasks/(?P<id>[\w-]+)/undo', WP_REST_Server::CREATABLE, 'request_undo' );
 		self::route( '/meeting-tasks/(?P<id>[\w-]+)/undo/decide', WP_REST_Server::CREATABLE, 'decide_undo' );
+		self::route( '/meeting-tasks/(?P<id>[\w-]+)/submission', 'PATCH', 'edit_submission' );
+	}
+
+	/**
+	 * PATCH /meeting-tasks/{id}/submission `{note, links, files, comment}`: edit the saved
+	 * submission (SPEC.md 6.6, design SF-B).
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function edit_submission( WP_REST_Request $request ) {
+		$task = GRP_Store::get( self::TABLE, $request['id'] );
+		if ( ! $task ) {
+			return self::not_found();
+		}
+		$completion = self::edited_submission( $task['completion'] ?? null, $request );
+		if ( is_wp_error( $completion ) ) {
+			return $completion;
+		}
+
+		return rest_ensure_response(
+			GRP_Store::transaction(
+				static function () use ( $task, $completion ) {
+					$updated = GRP_Store::update( self::TABLE, $task['id'], array( 'completion' => $completion ) );
+					GRP_Activity::audit( 'edit', 'items', $updated, self::actor(), 'Submission edited' );
+					return $updated;
+				}
+			)
+		);
 	}
 
 	/**
@@ -113,7 +142,7 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 		) ) {
 			return self::forbidden( __( 'Only the people responsible can start or complete this task.', 'gridrankers-portal' ) );
 		}
-		$completion = 'done' === $status ? self::completion( $request, ! self::is_manager() ) : null;
+		$completion = 'done' === $status ? self::completion( $request, true ) : null;
 		if ( is_wp_error( $completion ) ) {
 			return $completion;
 		}
@@ -249,7 +278,7 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 			return self::forbidden( self::status_denied_message( $task ) );
 		}
 
-		$completion = 'done' === $to ? self::completion( $request, ! self::is_manager() ) : null;
+		$completion = 'done' === $to ? self::completion( $request, true ) : null;
 		if ( is_wp_error( $completion ) ) {
 			return $completion;
 		}
@@ -268,7 +297,7 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 	/**
 	 * POST /meeting-tasks/{id}/progress `{memberId, delta, note?, link?}`.
 	 *
-	 * Ticks one unit of a person's share (or of an unassigned task when memberId is empty).
+	 * Ticks one unit of a person's share (or, for a Team Leader, of an unassigned task when memberId is empty).
 	 * Status follows the total: first tick → In progress, total = target → Completed (review).
 	 * Each unit is credited to the share's owner (port of the reference `ishare` handler).
 	 *
@@ -317,15 +346,15 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 				'total_after' => $total,
 			)
 		) ) {
-			return self::forbidden( 'done' === $task['status'] ? self::status_denied_message( $task ) : __( 'You can only tick off your own share of tasks assigned to you.', 'gridrankers-portal' ) );
+			return self::forbidden( 'done' === $task['status'] ? self::status_denied_message( $task ) : ( self::not_assigned_message( $task ) ?? __( 'You can only tick off your own share of tasks assigned to you.', 'gridrankers-portal' ) ) );
 		}
 		if ( $now === $was ) {
 			return rest_ensure_response( $task );
 		}
 
 		$status = $total >= $target ? 'done' : ( $total > 0 ? 'doing' : 'todo' );
-		// The last unit completes the task: a Team Member says what they did (SPEC.md 6.6).
-		$completion = 'done' === $status && 'done' !== $task['status'] ? self::completion( $request, ! self::is_manager() ) : null;
+		// The last unit completes the task: everyone fills in the submission (SPEC.md 6.6).
+		$completion = 'done' === $status && 'done' !== $task['status'] ? self::completion( $request, true ) : null;
 		if ( is_wp_error( $completion ) ) {
 			return $completion;
 		}
@@ -465,6 +494,10 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 	 * @return string
 	 */
 	private static function status_denied_message( array $task ) {
+		$unassigned = self::not_assigned_message( $task );
+		if ( null !== $unassigned && 'done' !== $task['status'] ) {
+			return $unassigned;
+		}
 		if ( 'done' === $task['status'] ) {
 			return self::is_manager()
 				? __( "It's completed. To reopen it, use Revise or Reject in Details.", 'gridrankers-portal' )
@@ -474,7 +507,7 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 			return __( "It's in progress — only a Team Leader or Super Admin can move it back to the start.", 'gridrankers-portal' );
 		}
 
-		return __( 'This task is assigned to someone else — only they can update it.', 'gridrankers-portal' );
+		return __( 'You can’t update this task.', 'gridrankers-portal' );
 	}
 
 	/**

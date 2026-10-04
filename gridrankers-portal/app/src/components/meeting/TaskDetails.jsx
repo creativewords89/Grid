@@ -1,46 +1,13 @@
 import { usePortal } from '../../context.js';
 import { deadlineInfo } from '../../lib/deadline.js';
-import { dateTime, longDate, localYmd, weekdayDate } from '../../lib/format.js';
+import { longDate, localYmd, weekdayDate } from '../../lib/format.js';
 import { isManager } from '../../lib/roles.js';
-import { PRI_LABEL, REVIEW_TXT, STATUS_TXT, assigneesOf, progressTotal } from '../../lib/tasks.js';
+import { PRI_LABEL, STATUS_TXT, assigneesOf, progressTotal } from '../../lib/tasks.js';
 import Avatar from '../Avatar.jsx';
 import Modal from '../Modal.jsx';
 import useTaskActions from './useTaskActions.js';
 import ReviewActions from '../review/ReviewActions.jsx';
-
-export function ReviewDetail({ review, completion, members }) {
-	const name = (id) => (members[id] ? members[id].name : 'someone');
-	if (!review && !completion) return <p className="muted">Not completed yet.</p>;
-	return (
-		<>
-			{completion && (
-				<div className="dt-comp">
-					<b>Completion note</b>{' '}
-					<span className="muted">
-						by {name(completion.by)} · {dateTime(completion.at)}
-					</span>
-					<p>{completion.note}</p>
-					{completion.link && /^https?:\/\//.test(completion.link) && (
-						<a href={completion.link} target="_blank" rel="noopener noreferrer">
-							{completion.link.replace(/^https?:\/\//, '')}
-						</a>
-					)}
-				</div>
-			)}
-			{review && (
-				<div className={'dt-rv rv-' + review.state}>
-					<span className="rv-tag">{REVIEW_TXT[review.state]}</span>{' '}
-					<span className="muted">
-						{review.state === 'pending'
-							? `submitted by ${name(review.submittedBy)} · ${dateTime(review.submittedAt)}`
-							: `${review.auto ? 'done by a reviewer' : 'by ' + name(review.by)} · ${dateTime(review.at || review.submittedAt)}`}
-					</span>
-					{review.note && review.state !== 'pending' && <p>“{review.note}”</p>}
-				</div>
-			)}
-		</>
-	);
-}
+import Submission from '../review/Submission.jsx';
 
 export function ShareSteppers({ task, members, me, onTick }) {
 	const target = Math.max(1, task.target || 1);
@@ -177,8 +144,8 @@ export default function TaskDetails({ taskId, onClose }) {
 					</section>
 				)}
 				<section className="dt-sec">
-					<h4>Completion &amp; review</h4>
-					<ReviewDetail review={task.review} completion={task.completion} members={members} />
+					<h4>Submission &amp; review</h4>
+					<Submission kind="item" row={task} task={task} title={task.title} />
 					<ReviewActions kind="item" id={task.id} review={task.review} done={task.status === 'done'} />
 				</section>
 			</div>

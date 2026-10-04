@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { usePortal } from '../../context.js';
 import { addDays } from '../../lib/cycles.js';
 import { monthEnd, mondayOf, short, toDate, weekNo } from '../../lib/format.js';
-import { isManager } from '../../lib/roles.js';
 import { assigneesOf } from '../../lib/tasks.js';
+import { submission } from './useTaskActions.js';
 import { rowsOf } from '../../lib/store.js';
 import { CalendarPicker } from '../DatePicker.jsx';
 import Modal from '../Modal.jsx';
@@ -175,10 +175,10 @@ export default function TaskDialog({ taskId, onClose }) {
 			deadline: deadlinePayload(),
 			assignees: f.assignees,
 		};
-		if (f.status === 'done' && (!editing || editing.status !== 'done') && !isManager(me)) {
-			const note = await askCompletion(body.title);
-			if (!note) return;
-			Object.assign(body, note);
+		if (f.status === 'done' && (!editing || editing.status !== 'done')) {
+			const sub = await askCompletion(body.title);
+			if (!sub) return;
+			Object.assign(body, submission(sub));
 		}
 		setBusy(true);
 		try {

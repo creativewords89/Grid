@@ -4,9 +4,9 @@ import { DUE_MODE_TEXT, M_STATUS_TXT } from '../../lib/monthly.js';
 import { assigneesOf } from '../../lib/tasks.js';
 import Avatar from '../Avatar.jsx';
 import Modal from '../Modal.jsx';
-import { ReviewDetail } from '../meeting/TaskDetails.jsx';
 import { DueChip, ProgressBox, usePeriod } from './MonthlyCard.jsx';
 import ReviewActions from '../review/ReviewActions.jsx';
+import Submission from '../review/Submission.jsx';
 
 export default function MonthlyDetails({ taskId, week, missed, onClose }) {
 	const { data } = usePortal();
@@ -87,8 +87,8 @@ export default function MonthlyDetails({ taskId, week, missed, onClose }) {
 					</section>
 				)}
 				<section className="dt-sec">
-					<h4>Completion &amp; review</h4>
-					<ReviewDetail review={rec && rec.review} completion={rec && rec.completion} members={members} />
+					<h4>Submission &amp; review</h4>
+					<Submission kind="record" row={rec} task={task} title={task.title} />
 					{rec && <ReviewActions kind="record" id={rec.id} review={rec.review} done={st === 'done'} />}
 				</section>
 			</div>

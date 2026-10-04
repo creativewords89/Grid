@@ -44,6 +44,7 @@ class Test_GRP_REST_Records_Review extends GRP_REST_TestCase {
 			$fields + array(
 				'project_id' => $this->project['id'],
 				'title'      => 'GBP Posts',
+				'assignees'  => array( array( 'id' => $this->team['member']['id'] ) ),
 			)
 		);
 		$this->assertStatus( 201, $response );
@@ -121,6 +122,7 @@ class Test_GRP_REST_Records_Review extends GRP_REST_TestCase {
 				'project_id' => $project['id'],
 				'title'      => 'Weekly post',
 				'due_mode'   => 'weekly',
+				'assignees'  => array( array( 'id' => $this->team['member']['id'] ) ),
 			)
 		)->get_data();
 		$cycle   = GRP_Cycles::cycle_range( $project, 0, $today );
@@ -137,7 +139,27 @@ class Test_GRP_REST_Records_Review extends GRP_REST_TestCase {
 		$this->assertStatus( 400, $tick( GRP_Cycles::cycle_range( $project, 1, $today )['key'] . '-w1' ), 'future cycle' );
 	}
 
-	public function test_member_ticks_unassigned_task_to_done_pending_review() {
+	public function test_unassigned_task_is_for_leaders_until_assigned() {
+		$task = $this->monthly(
+			array(
+				'target'    => 2,
+				'assignees' => array(),
+			)
+		);
+
+		$refused = $this->tick( 'member', $task );
+		$this->assertStatus( 403, $refused );
+		$this->assertStringContainsString( 'Nobody is assigned', $refused->get_data()['message'] );
+		$status = array(
+			'taskId'    => $task['id'],
+			'periodKey' => $this->period,
+			'status'    => 'doing',
+		);
+		$this->assertStatus( 403, $this->api_as( 'member', 'POST', '/records/status', $status ) );
+		$this->assertStatus( 200, $this->tick( 'lead', $task, 1, array( 'periodKey' => $this->period ) ) );
+	}
+
+	public function test_member_ticks_own_task_to_done_pending_review() {
 		$task = $this->monthly( array( 'target' => 2 ) );
 
 		$first = $this->tick( 'member', $task );

@@ -33,8 +33,10 @@ test('bi-weekly meeting and monthly tasks', async ({ page }) => {
 	await expect(page.locator('.wk-inline')).toContainText(/Weeks [13]–[24] of 4/);
 	await expect(page.locator('article.mcard')).toHaveCount(1);
 
-	// Completing it (a Team Leader's own work is accepted at once) counts for this two-week period only.
+	// Completing it (a Team Leader fills in the form too; no review needed) counts for this two-week period only.
 	await task.getByRole('button', { name: 'Completed' }).click();
+	await page.getByLabel('What you did').fill('Report sent');
+	await page.getByRole('button', { name: 'Complete', exact: true }).click();
 	await expect(task.locator('.wk.wd')).toHaveCount(1);
 	await expect(task.locator('.wk.wd')).toHaveClass(/cur/);
 	noErrors();

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { usePortal } from '../../context.js';
 import { deadlineInfo } from '../../lib/deadline.js';
 import { short, localYmd } from '../../lib/format.js';
@@ -51,28 +52,55 @@ export function ReviewBadge({ review, me, members }) {
 	);
 }
 
-// Request undo (SPEC.md 6.6): the pending request on a card, or the link to ask. Team Leaders and
-// the Super Admin answer it here or in Needs your approval.
+// Request undo (SPEC.md 6.6, design TC-A): a pending request is a small chip — the reason is not
+// on the card. Team Leaders and the Super Admin click Review to read it and answer (or use
+// Needs your approval); the member sees who it waits for.
 export function UndoLine({ task, me, locked, onRequest, onDecide }) {
 	const { data } = usePortal();
+	const [open, setOpen] = useState(false);
+	const [note, setNote] = useState('');
 	const ask = task.undo_request;
 	if (ask && ask.by) {
 		const who = data.members[ask.by];
+		if (!isManager(me)) {
+			return (
+				<div className="undo-line">
+					<span className="undo-chip">↶ Undo requested</span>
+					<span className="muted">waiting for a Team Leader or Super Admin</span>
+				</div>
+			);
+		}
+		const decide = (action) => {
+			setOpen(false);
+			onDecide(action, note.trim());
+			setNote('');
+		};
 		return (
-			<div className="undo-req">
-				<b>Undo requested</b> · {who ? who.name : 'someone'} · waiting for a Team Leader
-				{ask.reason && <span className="undo-why">“{ask.reason}”</span>}
-				{isManager(me) && (
-					<span className="undo-acts">
-						<button type="button" className="btn small" onClick={() => onDecide('keep')}>
-							Keep In progress
-						</button>
-						<button type="button" className="btn small primary" onClick={() => onDecide('undo')}>
-							Undo
-						</button>
-					</span>
+			<>
+				<div className="undo-line">
+					<span className="undo-chip">↶ Undo requested{who ? ' · ' + who.name : ''}</span>
+					<button type="button" className="linkbtn undo-review" aria-expanded={open} onClick={() => setOpen(!open)}>
+						{open ? 'Close' : 'Review'}
+					</button>
+				</div>
+				{open && (
+					<div className="undo-pop" role="group" aria-label="Undo request">
+						<span>
+							In progress → <b>Not started</b>
+						</span>
+						{ask.reason && <span className="undo-why">“{ask.reason}”</span>}
+						<input type="text" className="undo-note" placeholder="Message (optional)" aria-label="Message (optional)" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} />
+						<span className="undo-acts">
+							<button type="button" className="btn small" onClick={() => decide('keep')}>
+								Keep In progress
+							</button>
+							<button type="button" className="btn small primary" onClick={() => decide('undo')}>
+								Undo
+							</button>
+						</span>
+					</div>
 				)}
-			</div>
+			</>
 		);
 	}
 	if (task.status !== 'doing' || isManager(me) || locked || Math.max(1, task.target || 1) > 1) return null;
@@ -81,6 +109,12 @@ export function UndoLine({ task, me, locked, onRequest, onDecide }) {
 			↶ Request undo
 		</button>
 	);
+}
+
+// A Team Member can't work on a task until someone is assigned (SPEC.md 6.6).
+export function UnassignedLock({ task, me }) {
+	if (isManager(me) || (task.assignees || []).length || task.status === 'done') return null;
+	return <div className="lock-line">🔒 Assign someone before work starts — ask a Team Leader.</div>;
 }
 
 // Compact meeting-task card (SPEC.md 7.2; reference bcard).
@@ -95,7 +129,8 @@ export default function TaskCard({ task, onDetails, onEdit }) {
 	const done = progressTotal(task);
 	const people = assigneesOf(task, members);
 	const locked = !canWorkOn(task, me);
-	const lockTitle = `Only ${people.map((a) => members[a.id]?.name).join(', ') || 'the assignee'} can update this`;
+	const pending = !!(task.undo_request && task.undo_request.by);
+	const lockTitle = people.length ? `Only ${people.map((a) => members[a.id]?.name).join(', ')} can update this` : 'Not assigned — a Team Leader or Super Admin must assign it first';
 
 	const seg = [
 		['todo', 'Not started'],
@@ -116,7 +151,7 @@ export default function TaskCard({ task, onDetails, onEdit }) {
 			title = lockTitle;
 		}
 		return (
-			<button key={k} type="button" className={'s-' + k} aria-pressed={st === k} disabled={disabled} title={title} onClick={() => setStatus(task, k)}>
+			<button key={k} type="button" className={'s-' + k + (st === k && pending ? ' undo-dot' : '')} aria-pressed={st === k} disabled={disabled} title={title} onClick={() => setStatus(task, k)}>
 				{label}
 			</button>
 		);
@@ -154,7 +189,8 @@ export default function TaskCard({ task, onDetails, onEdit }) {
 			<div className="seg" role="group" aria-label={`Status of ${task.title}`}>
 				{seg}
 			</div>
-			<UndoLine task={task} me={me} locked={locked} onRequest={() => requestUndo(task)} onDecide={(a) => decideUndo(task, a)} />
+			<UnassignedLock task={task} me={me} />
+			<UndoLine task={task} me={me} locked={locked} onRequest={() => requestUndo(task)} onDecide={(a, note) => decideUndo(task, a, note)} />
 			<div className="acts">
 				<div className="assign">
 					<People list={people} members={members} />
