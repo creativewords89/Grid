@@ -607,3 +607,7 @@ span.kp-dl{cursor:default}
 .undo-req b{color:inherit}
 .undo-why{color:var(--ink-2)}
 .undo-acts{display:flex;gap:6px;justify-content:flex-end;margin-top:4px}
+.pdx-list{margin:0;padding-left:20px;font-size:.92rem;line-height:1.7}
+.pdx-hero .pdx-list{padding:14px 22px 0 42px}
+.pdx-ph{border-style:dashed}
+.pdx-hint{margin:0;font-size:.86rem}
