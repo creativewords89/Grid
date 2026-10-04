@@ -707,3 +707,15 @@ label.sf-opt small{color:var(--ink-2)}
 .nf-more{align-self:flex-start;font-size:.82rem;font-weight:700}
 .nf-chips button.nf-chip-wait{background:var(--doing-bg);color:var(--doing);border-color:color-mix(in srgb,var(--doing) 30%,var(--line))}
 .nf-chips button.nf-chip-wait[aria-pressed=true]{background:var(--doing);color:#fff;border-color:var(--doing)}
+/* Compact approval rows (Waiting for you): name, kind and buttons on top, one line below. */
+.ap-item.ap-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;column-gap:8px;row-gap:3px;padding:8px 10px}
+.ap-l1{display:flex;align-items:center;gap:6px;font-size:.86rem;min-width:0}
+.ap-l1 b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ap-l2 .mp-flag{margin-right:4px;font-size:.68rem;padding:1px 7px}
+.ap-l2{grid-column:2 / 4;font-size:.8rem;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ap-l2 .linkbtn{font-size:inherit;font-weight:600;max-width:calc(100% - 110px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom}
+.ap-row .ap-acts{gap:5px}
+.ap-row .ap-acts .btn{padding:3px 9px;font-size:.76rem;min-height:0;height:auto}
+/* Feed details stay on one line too. */
+.nf-sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nf-item{padding:8px 10px}

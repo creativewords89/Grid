@@ -115,7 +115,7 @@ test('project details and keyword checklist', async ({ page }) => {
 	const asks = await waiting(page);
 	const req = asks.locator('.ap-item', { hasText: 'Untick asked' });
 	await expect(req).toContainText('Content · emergency plumber dhaka');
-	await expect(req).toContainText('Ticked by mistake');
+	await expect(req).not.toContainText('Ticked by mistake');
 	await req.getByRole('button', { name: 'Untick', exact: true }).click();
 	await page.getByText('Unticked').waitFor();
 	await expect(asks.locator('.ap-item', { hasText: 'Untick asked' })).toHaveCount(0);
