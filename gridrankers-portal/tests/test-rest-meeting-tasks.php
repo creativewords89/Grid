@@ -500,7 +500,16 @@ class Test_GRP_REST_Meeting_Tasks extends GRP_REST_TestCase {
 		);
 
 		// Unassigned: tick without memberId, credited to whoever ticks.
-		$response = $this->api_as( 'other', 'POST', "/meeting-tasks/{$unassigned['id']}/progress", array( 'delta' => 1 ) );
+		$this->assertSame( 'grp_completion_required', $this->api_as( 'other', 'POST', "/meeting-tasks/{$unassigned['id']}/progress", array( 'delta' => 1 ) )->get_data()['code'], 'the last unit asks what was completed' );
+		$response = $this->api_as(
+			'other',
+			'POST',
+			"/meeting-tasks/{$unassigned['id']}/progress",
+			array(
+				'delta' => 1,
+				'note'  => 'Wrote the page',
+			)
+		);
 		$this->assertStatus( 200, $response );
 		$this->assertSame( 'done', $response->get_data()['status'] );
 		$this->assertSame( 'pending', $response->get_data()['review']['state'] );

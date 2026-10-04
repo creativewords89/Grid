@@ -69,3 +69,20 @@ export const splitKeywords = (text) =>
 		.split(/[\n\r\t,]+/)
 		.map((s) => s.trim())
 		.filter(Boolean);
+
+// Requests to untick a box (SPEC.md 6.12): only Team Leaders and the Super Admin untick, so a
+// Team Member asks; the request waits on the box (`checks[col].ask`) and in Needs your approval.
+export const askOf = (kw, col) => (kw.checks && kw.checks[col.id] && kw.checks[col.id].ask) || null;
+
+export function untickRequests(data) {
+	const out = [];
+	rowsOf(data, 'keywords').forEach((kw) => {
+		const project = data.projects[kw.project_id];
+		if (!project) return;
+		columnsOf(project).forEach((col) => {
+			const ask = askOf(kw, col);
+			if (ask) out.push({ kind: 'untick', id: `${kw.id}:${col.id}`, at: ask.at, who: data.members[ask.by], kw, col, project, ask });
+		});
+	});
+	return out;
+}

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_COLUMNS, columnsOf, deadlineFor, doneOf, groupOf, isLate, isWebUrl, keywordsOf, linkKind, sectionsOf, splitKeywords } from '../lib/plan.js';
+import { approvals, undoRequests } from '../lib/day.js';
+import { DEFAULT_COLUMNS, askOf, columnsOf, deadlineFor, doneOf, groupOf, isLate, isWebUrl, keywordsOf, linkKind, sectionsOf, splitKeywords, untickRequests } from '../lib/plan.js';
 import { emptyData } from '../lib/store.js';
 
 // Cycles start on day 5: Oct 5 – Nov 4, then Nov 5 – Dec 4.
@@ -57,5 +58,32 @@ describe('Keyword checklist (SPEC.md 6.12)', () => {
 		d.keywords = { a: { id: 'a', project_id: 'p', keyword: 'b', position: 2 }, b: { id: 'b', project_id: 'p', keyword: 'a', position: 1 }, c: { id: 'c', project_id: 'q', keyword: 'c', position: 0 } };
 		expect(keywordsOf(d, 'p').map((k) => k.id)).toEqual(['b', 'a']);
 		expect(splitKeywords('one\r\n two \n\n three\tfour, five')).toEqual(['one', 'two', 'three', 'four', 'five']);
+	});
+
+	it('requests to untick reach Team Leaders and the Super Admin only', () => {
+		const d = emptyData();
+		d.members = { max: { id: 'max', name: 'Max', role: 'member', active: 1 }, lee: { id: 'lee', name: 'Lee', role: 'lead', active: 1 } };
+		d.projects = { p: P };
+		d.keywords = { k: { id: 'k', project_id: 'p', keyword: 'kw', checks: { c1: { by: 'max', at: '2026-10-10 10:00:00', ask: { by: 'max', at: '2026-10-11 10:00:00', note: 'oops' } }, c2: { by: 'max' } } } };
+		expect(askOf(d.keywords.k, { id: 'c1' }).note).toBe('oops');
+		expect(askOf(d.keywords.k, { id: 'c2' })).toBeNull();
+		expect(untickRequests(d).map((r) => [r.id, r.col.name, r.who.name])).toEqual([['k:c1', 'On-page', 'Max']]);
+		expect(approvals(d, d.members.lee).filter((i) => i.kind === 'untick')).toHaveLength(1);
+		expect(approvals(d, d.members.max).filter((i) => i.kind === 'untick')).toHaveLength(0);
+	});
+
+	it('requests to undo In progress reach Team Leaders and the Super Admin', () => {
+		const d = emptyData();
+		d.members = { max: { id: 'max', name: 'Max', role: 'member', active: 1 }, lee: { id: 'lee', name: 'Lee', role: 'lead', active: 1 } };
+		d.projects = { p: P };
+		d.monthly_tasks = { m: { id: 'm', project_id: 'p', title: 'GBP post' } };
+		d.meeting_tasks = { t: { id: 't', project_id: 'p', title: 'Fix H1', status: 'doing', undo_request: { by: 'max', at: '2026-10-12 10:00:00', reason: 'Wrong card' } }, u: { id: 'u', project_id: 'p', title: 'Other', status: 'doing', undo_request: null } };
+		d.records = { r: { id: 'r', task_id: 'm', project_id: 'p', period_key: '2026-10', status: 'doing', undo_request: { by: 'max', at: '2026-10-13 10:00:00', reason: 'Wrong month' } } };
+		expect(undoRequests(d).map((x) => [x.id, x.title, x.tab])).toEqual([
+			['item:t', 'Fix H1', 'board'],
+			['rec:r', 'GBP post', 'monthly'],
+		]);
+		expect(approvals(d, d.members.lee).filter((i) => i.kind === 'undo')).toHaveLength(2);
+		expect(approvals(d, d.members.max).filter((i) => i.kind === 'undo')).toHaveLength(0);
 	});
 });

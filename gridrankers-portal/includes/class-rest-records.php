@@ -24,6 +24,8 @@ class GRP_REST_Records extends GRP_REST_Controller {
 		self::route( '/records', WP_REST_Server::READABLE, 'index' );
 		self::route( '/records/tick', WP_REST_Server::CREATABLE, 'tick' );
 		self::route( '/records/status', WP_REST_Server::CREATABLE, 'set_status' );
+		self::route( '/records/undo', WP_REST_Server::CREATABLE, 'request_undo' );
+		self::route( '/records/undo/decide', WP_REST_Server::CREATABLE, 'decide_undo' );
 	}
 
 	/**
@@ -139,7 +141,9 @@ class GRP_REST_Records extends GRP_REST_Controller {
 			return self::forbidden( self::denied_message( $task, $rec ) );
 		}
 
-		$completion = self::completion( $request, false );
+		// The last unit completes the task: a Team Member says what they did (SPEC.md 6.6).
+		$finishes   = $delta > 0 && $after >= $n && self::count_of( $rec ) < $n;
+		$completion = self::completion( $request, $finishes && ! self::is_manager() );
 		if ( is_wp_error( $completion ) ) {
 			return $completion;
 		}
@@ -210,6 +214,83 @@ class GRP_REST_Records extends GRP_REST_Controller {
 	}
 
 	/**
+	 * POST /records/undo `{taskId, periodKey, reason}`: a Team Member asks to put a period they
+	 * moved to In progress by mistake back to Not started (SPEC.md 6.6).
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function request_undo( WP_REST_Request $request ) {
+		$ctx = self::context( $request );
+		if ( is_wp_error( $ctx ) ) {
+			return $ctx;
+		}
+		list( $task, , , $rec ) = $ctx;
+		if ( ! $rec || ! self::can( GRP_Permissions::REQUEST_UNDO, array( 'task' => self::as_task( $task, $rec ) ) ) ) {
+			return self::forbidden( __( 'Only the person working on a task that is In progress can ask to undo it.', 'gridrankers-portal' ) );
+		}
+		if ( GRP_Undo::pending( $rec ) ) {
+			return self::conflict( __( 'An undo is already requested for this task.', 'gridrankers-portal' ), 'grp_undo_pending' );
+		}
+		$undo = GRP_Undo::request( $request['reason'] ?? '', self::actor() );
+		if ( is_wp_error( $undo ) ) {
+			return $undo;
+		}
+		$record = GRP_Store::update( self::TABLE, $rec['id'], array( 'undo_request' => $undo ) );
+		GRP_Activity::audit( 'progress', 'monthly', $task, self::actor(), self::period_label( $task, $rec['week'] ) . ' · undo requested' );
+
+		return rest_ensure_response(
+			array(
+				'record' => $record,
+				'id'     => $rec['id'],
+			)
+		);
+	}
+
+	/**
+	 * POST /records/undo/decide `{taskId, periodKey, action: undo|keep, note?}`. Team Leaders and
+	 * the Super Admin; the person who asked gets a notice with the answer.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function decide_undo( WP_REST_Request $request ) {
+		$ctx = self::context( $request );
+		if ( is_wp_error( $ctx ) ) {
+			return $ctx;
+		}
+		list( $task, $period_key, $week, $rec ) = $ctx;
+		if ( ! self::can( GRP_Permissions::DECIDE_UNDO ) ) {
+			return self::forbidden( __( 'Only a Team Leader or the Super Admin can answer a request to undo.', 'gridrankers-portal' ) );
+		}
+		$undo = GRP_Undo::pending( $rec );
+		if ( ! $undo ) {
+			return self::conflict( __( 'There is no request to undo on this task.', 'gridrankers-portal' ), 'grp_undo_none' );
+		}
+		$action = (string) $request['action'];
+		if ( ! in_array( $action, array( 'undo', 'keep' ), true ) ) {
+			return self::invalid( __( 'Choose Undo or Keep.', 'gridrankers-portal' ) );
+		}
+		$approved = 'undo' === $action && 'doing' === $rec['status'];
+		$note     = $request['note'] ?? '';
+
+		return rest_ensure_response(
+			GRP_Store::transaction(
+				static function () use ( $task, $period_key, $week, $rec, $undo, $approved, $note ) {
+					$out = $approved
+						? self::write( $task, $period_key, $week, $rec, 0, 'todo' )
+						: array(
+							'record' => GRP_Store::update( self::TABLE, $rec['id'], array( 'undo_request' => null ) ),
+							'id'     => $rec['id'],
+						);
+					GRP_Undo::answer( $undo, $approved, $task['title'], $note, self::actor() );
+					return $out;
+				}
+			)
+		);
+	}
+
+	/**
 	 * Port of the reference `writeRec`: stores a period's count, per-person and per-row
 	 * counts, credits or removes activity for the difference, and handles completion/review.
 	 *
@@ -271,12 +352,14 @@ class GRP_REST_Records extends GRP_REST_Controller {
 		}
 
 		$base = array(
-			'task_id'    => $task['id'],
-			'project_id' => $task['project_id'],
-			'period_key' => $period_key,
-			'week'       => $week,
-			'by_person'  => $by,
-			'parts'      => $parts,
+			'task_id'      => $task['id'],
+			'project_id'   => $task['project_id'],
+			'period_key'   => $period_key,
+			'week'         => $week,
+			'by_person'    => $by,
+			'parts'        => $parts,
+			// Any change answers a pending request to undo (SPEC.md 6.6).
+			'undo_request' => null,
 		);
 
 		if ( 'skipped' === $status ) {
@@ -424,6 +507,7 @@ class GRP_REST_Records extends GRP_REST_Controller {
 		return array(
 			'status'    => 'skipped' === $state ? 'todo' : $state,
 			'assignees' => $task['assignees'],
+			'target'    => $task['target'],
 		);
 	}
 

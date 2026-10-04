@@ -945,6 +945,15 @@ class Test_GRP_Permissions extends WP_UnitTestCase {
 				'member' => true,
 			)
 		);
+		$this->assert_matrix(
+			GRP_Permissions::UNTICK_KEYWORD,
+			null,
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => false,
+			)
+		);
 		$this->assertContains( GRP_Permissions::TICK_KEYWORD, GRP_Permissions::PROFILE_LOCKED, 'ticking is work: locked while the profile is incomplete' );
 	}
 

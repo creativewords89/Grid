@@ -2,7 +2,7 @@ import { isManager } from './roles.js';
 
 export const PRI = { urgent: 0, high: 1, normal: 2, low: 3 };
 export const PRI_LABEL = { urgent: 'Urgent', high: 'High', normal: 'Normal', low: 'Low' };
-export const STATUS_TXT = { todo: 'To fix', doing: 'In progress', done: 'Fixed' };
+export const STATUS_TXT = { todo: 'Not started', doing: 'In progress', done: 'Completed' };
 export const REVIEW_TXT = { pending: 'Awaiting review', accepted: 'Accepted', revision: 'Revision requested', rejected: 'Rejected' };
 
 // Assignees that are still on the team.

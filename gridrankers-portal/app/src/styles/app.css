@@ -575,3 +575,12 @@ span.kp-dl{cursor:default}
 .kp-cols{list-style:none;margin:8px 0;padding:0;display:flex;flex-direction:column;gap:6px}
 .kp-cols li{display:flex;align-items:center;gap:6px}
 .kp-cols input{flex:1;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font:inherit;background:var(--panel-2);color:var(--ink)}
+.kp-box{position:relative}
+.kp-box.asked::after{content:"";position:absolute;top:-4px;right:-4px;width:9px;height:9px;border-radius:50%;background:#B77F00;border:2px solid var(--panel)}
+
+/* Request undo (SPEC.md 6.6). */
+.undo-link{align-self:flex-start;font-size:.8rem;font-weight:700}
+.undo-req{background:var(--doing-bg);color:var(--doing);border-radius:9px;padding:7px 10px;font-size:.8rem;display:flex;flex-direction:column;gap:3px}
+.undo-req b{color:inherit}
+.undo-why{color:var(--ink-2)}
+.undo-acts{display:flex;gap:6px;justify-content:flex-end;margin-top:4px}

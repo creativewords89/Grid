@@ -27,6 +27,92 @@ function Item({ item }) {
 	const { api, data, dispatch, toast, confirm, setProject, setSearch, setView } = usePortal();
 	const decide = useReview();
 
+	// Someone asked to undo In progress (SPEC.md 6.6): Undo (back to Not started) or Keep.
+	if (item.kind === 'undo') {
+		const answer = async (action) => {
+			const note = await confirm({
+				title: action === 'undo' ? 'Undo to Not started?' : 'Keep In progress?',
+				message: `“${item.title}” · ${item.project.name}`,
+				input: 'Message (optional)',
+				ok: action === 'undo' ? 'Undo' : 'Keep In progress',
+			});
+			if (note === null || note === false) return;
+			const body = { action, note: typeof note === 'string' ? note : '' };
+			try {
+				if (item.item) dispatch({ type: 'upsert', table: 'meeting_tasks', row: await api.post(`meeting-tasks/${item.item.id}/undo/decide`, body) });
+				else {
+					const res = await api.post('records/undo/decide', { ...body, taskId: item.task.id, periodKey: item.record.period_key });
+					if (res.record) dispatch({ type: 'upsert', table: 'records', row: res.record });
+					else dispatch({ type: 'remove', table: 'records', id: res.id });
+				}
+				toast(action === 'undo' ? 'Undone — back to Not started' : 'Kept In progress');
+			} catch (err) {
+				toast(err.message);
+			}
+		};
+		return (
+			<div className="ap-item">
+				<div className="ap-head">
+					<Avatar person={item.who} small />
+					<b>{item.who ? item.who.name : '—'}</b>
+					<span className="mp-flag f-amber">Undo requested</span>
+				</div>
+				<p>
+					<button type="button" className="linkbtn" onClick={() => (setProject(item.project.id), setSearch(item.title), setView(item.tab))}>
+						{item.title}
+					</button>
+					{` · ${item.project.name} · In progress → Not started`}
+					{item.undo.reason ? <span className="muted"> · “{item.undo.reason}”</span> : null}
+				</p>
+				<div className="ap-acts">
+					<button type="button" className="btn small" onClick={() => answer('keep')}>
+						Keep In progress
+					</button>
+					<button type="button" className="btn small ok-btn" onClick={() => answer('undo')}>
+						Undo
+					</button>
+				</div>
+			</div>
+		);
+	}
+
+	// Someone asked to untick a keyword box (SPEC.md 6.12): Untick, or Keep ticked.
+	if (item.kind === 'untick') {
+		const { kw, col, project, ask } = item;
+		const answer = async (body, done) => {
+			try {
+				dispatch({ type: 'upsert', table: 'keywords', row: await api.patch(`keywords/${kw.id}`, body) });
+				toast(done);
+			} catch (err) {
+				toast(err.message);
+			}
+		};
+		return (
+			<div className="ap-item">
+				<div className="ap-head">
+					<Avatar person={item.who} small />
+					<b>{item.who ? item.who.name : '—'}</b>
+					<span className="mp-flag f-amber">Untick asked</span>
+				</div>
+				<p>
+					<button type="button" className="linkbtn" onClick={() => (setProject(project.id), setView('plan'))}>
+						{col.name} · {kw.keyword}
+					</button>
+					{` · ${project.name}`}
+					{ask.note ? <span className="muted"> · “{ask.note}”</span> : null}
+				</p>
+				<div className="ap-acts">
+					<button type="button" className="btn small danger-soft" onClick={() => answer({ check: { column: col.id, on: false } }, 'Unticked')}>
+						Untick
+					</button>
+					<button type="button" className="btn small" onClick={() => answer({ keep: { column: col.id } }, 'Kept ticked')}>
+						Keep ticked
+					</button>
+				</div>
+			</div>
+		);
+	}
+
 	if (item.kind === 'leave') {
 		const l = item.leave;
 		const range = l.from_date === l.to_date ? short(l.from_date) : `${short(l.from_date)} – ${short(l.to_date)}`;

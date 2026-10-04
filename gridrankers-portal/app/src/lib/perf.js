@@ -67,7 +67,7 @@ export function assignedFor(data, pid, today) {
 			group: i.status === 'doing' ? 'doing' : 'todo',
 			sub:
 				(target > 1 ? `${(i.progress || {})[pid] || 0}/${shareOf(i, pid) || target} done${(i.assignees || []).length > 1 ? ' (your share)' : ''} · ` : '') +
-				(i.status === 'doing' ? 'In progress' : 'To fix'),
+				(i.status === 'doing' ? 'In progress' : 'Not started'),
 			when: dl ? (dl.overdue ? 'Overdue · ' : '') + dl.label : i.meeting_date ? `From meeting ${short(i.meeting_date)}` : '',
 			sort: dl && dl.overdue ? -1 : PRI[i.priority] ?? 2,
 			due: itemDeadline(i)?.end || null,

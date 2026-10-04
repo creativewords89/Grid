@@ -87,7 +87,7 @@ test('my day: leave, days off, birthdays, shout-outs and review requests', async
 	await page.getByRole('button', { name: 'Save task' }).click();
 	await page.getByText('Task added').waitFor();
 	const task = page.locator('article.mcard', { hasText: 'Approve content plan' });
-	await task.getByRole('button', { name: 'Fixed' }).click();
+	await task.getByRole('button', { name: 'Completed' }).click();
 	await task.getByRole('button', { name: 'Details' }).click();
 	await dlg.getByRole('button', { name: 'Ask someone to review it' }).click();
 	// It opens inside the Details dialog: take the innermost open dialog.

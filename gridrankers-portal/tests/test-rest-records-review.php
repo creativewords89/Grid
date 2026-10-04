@@ -69,6 +69,8 @@ class Test_GRP_REST_Records_Review extends GRP_REST_TestCase {
 				'taskId'    => $task['id'],
 				'periodKey' => $this->period,
 				'delta'     => $delta,
+				// A Team Member's last unit asks what they completed (SPEC.md 6.6).
+				'note'      => 'Finished the work',
 			)
 		);
 	}
@@ -481,6 +483,7 @@ class Test_GRP_REST_Records_Review extends GRP_REST_TestCase {
 		$tick = array(
 			'memberId' => $me,
 			'delta'    => 1,
+			'note'     => 'Two citations added',
 		);
 
 		$this->api_as( 'member', 'POST', "/meeting-tasks/{$task['id']}/progress", $tick );

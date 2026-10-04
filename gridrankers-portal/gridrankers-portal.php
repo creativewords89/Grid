@@ -28,6 +28,7 @@ require_once GRP_PLUGIN_DIR . 'includes/class-weather.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-auth.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-store.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-activity.php';
+require_once GRP_PLUGIN_DIR . 'includes/class-undo.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-rest-auth.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-rest-controller.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-rest-projects.php';

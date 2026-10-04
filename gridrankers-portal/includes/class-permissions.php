@@ -149,6 +149,12 @@ class GRP_Permissions {
 	/** Review last cycle's monthly tasks of a project and send feedback (SPEC.md 6.11). Managers. */
 	const REVIEW_CYCLE = 'review_cycle';
 
+	/** Ask to undo In progress → Not started on a task without a quantity (SPEC.md 6.6). Context: `{task}`. Team Members who may work on it. */
+	const REQUEST_UNDO = 'request_undo';
+
+	/** Answer a request to undo: Undo or Keep In progress (SPEC.md 6.6). Managers. */
+	const DECIDE_UNDO = 'decide_undo';
+
 	/** Edit a project's Details tab: descriptions and links (SPEC.md 6.12). Managers. */
 	const EDIT_PROJECT_DETAILS = 'edit_project_details';
 
@@ -157,6 +163,9 @@ class GRP_Permissions {
 
 	/** Keyword checklist: tick a box and write the note (SPEC.md 6.12). Everyone. */
 	const TICK_KEYWORD = 'tick_keyword';
+
+	/** Keyword checklist: untick a box, or keep it after someone asked to untick it (SPEC.md 6.12). Managers. */
+	const UNTICK_KEYWORD = 'untick_keyword';
 
 	/**
 	 * Task work that is locked while a Team Leader's or Team Member's required profile is
@@ -176,6 +185,7 @@ class GRP_Permissions {
 		self::LOG_WORK,
 		self::SKIP_PERIOD,
 		self::TICK_KEYWORD,
+		self::REQUEST_UNDO,
 	);
 
 	/**
@@ -229,10 +239,17 @@ class GRP_Permissions {
 			case self::VIEW_TEAM_DASHBOARD:
 			case self::VIEW_PROJECTS_TAB:
 			case self::REQUEST_REVIEW:
+			case self::DECIDE_UNDO:
 			case self::REVIEW_CYCLE:
 			case self::EDIT_PROJECT_DETAILS:
 			case self::MANAGE_KEYWORDS:
+			case self::UNTICK_KEYWORD:
 				return $manager;
+
+			case self::REQUEST_UNDO:
+				// Leaders move tasks back themselves; quantity tasks count down instead.
+				$task = (array) ( $context['task'] ?? array() );
+				return ! $manager && 'doing' === ( $task['status'] ?? '' ) && (int) ( $task['target'] ?? 1 ) <= 1 && self::may_work_on( $user, $manager, $task );
 
 			case self::TICK_KEYWORD:
 				return in_array( $role, array( self::ROLE_ADMIN, self::ROLE_LEAD, self::ROLE_MEMBER ), true );
@@ -374,7 +391,7 @@ class GRP_Permissions {
 	}
 
 	/**
-	 * Status changes. Done → anything goes through review; In progress → To fix
+	 * Status changes. Done → anything goes through review; In progress → Not started
 	 * is for managers; members may only touch tasks assigned to them or unassigned.
 	 *
 	 * @param array $user    Acting member.
