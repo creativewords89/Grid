@@ -450,6 +450,6 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 
 44. (Released as 0.1.16.) Details tab layout (6.12, design PD-F): header card for the first section (initials, title, project · status · cycle, Edit), larger link chips with their type, other sections in two columns, full width. Playwright: the header card shows the project line without team names and the chips their type.
 
-45. Details: Goals and Notes for the team always shown after the header card (placeholders until filled in), bullet lists from "-" lines. Playwright: both cards there, Notes saved as a list, members see "Nothing here yet." and no Edit.
+45. (Released as 0.1.17.) Details: Goals and Notes for the team always shown after the header card (placeholders until filled in), bullet lists from "-" lines. Playwright: both cards there, Notes saved as a list, members see "Nothing here yet." and no Edit.
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).
