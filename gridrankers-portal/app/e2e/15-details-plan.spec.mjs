@@ -113,12 +113,12 @@ test('project details and keyword checklist', async ({ page }) => {
 	// Team Leader: the request waits in Notifications; Untick clears the box.
 	await signIn(page, LEAD);
 	const asks = await waiting(page);
-	const req = asks.locator('.ap-item', { hasText: 'Untick asked' });
+	const req = asks.locator('.ap-item', { hasText: 'asked to untick' });
 	await expect(req).toContainText('Content · emergency plumber dhaka');
 	await expect(req).not.toContainText('Ticked by mistake');
 	await req.getByRole('button', { name: 'Untick', exact: true }).click();
 	await page.getByText('Unticked').waitFor();
-	await expect(asks.locator('.ap-item', { hasText: 'Untick asked' })).toHaveCount(0);
+	await expect(asks.locator('.ap-item', { hasText: 'asked to untick' })).toHaveCount(0);
 	await openProject(page, 'Acme Plumbing');
 	await tab('Plan').click();
 	await expect(row('emergency plumber dhaka').getByRole('checkbox', { name: 'Content for emergency plumber dhaka' })).toHaveAttribute('aria-checked', 'false');

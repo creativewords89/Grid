@@ -1,8 +1,8 @@
 import { usePortal } from '../../context.js';
+import { ago } from '../../lib/feed.js';
 import { short } from '../../lib/format.js';
 import { leaveDays, monthName, takenInMonth, teamWeekly } from '../../lib/people.js';
 import { rowsOf } from '../../lib/store.js';
-import Avatar from '../Avatar.jsx';
 import useReview from '../review/useReview.js';
 
 // "within October's 1 day" / "2 days over, deducted" for a pending request.
@@ -18,26 +18,28 @@ function overText(data, leave) {
 	return { text: parts.join(' · '), over: parts.some((p) => p.includes('over')) };
 }
 
-// One compact row: who, what kind, one line (task · project or dates) and the buttons. Notes and
-// reasons are not repeated here; they are on the task's page and in the answer dialog.
-function Row({ item, tag, tone, line, onOpen, children }) {
+// One request as in design NF-C, without descriptions: a coloured icon, one sentence (who and what;
+// the task opens from it), when, and the buttons. Notes, reasons and completion text are on the
+// task's page and in the answer dialog.
+function Row({ item, tone, icon, title, onOpen, children }) {
 	return (
 		<div className="ap-item ap-row">
-			<Avatar person={item.who} small />
-			<span className="ap-l1">
-				<b>{item.who ? item.who.name : '—'}</b>
+			<span className={'nf-ic t-' + tone} aria-hidden="true">
+				{icon}
 			</span>
-			<div className="ap-acts">{children}</div>
-			<span className="ap-l2" title={typeof line === 'string' ? line : undefined}>
-				<span className={'mp-flag ' + tone}>{tag}</span>{' '}
+			<span className="ap-l1">
 				{onOpen ? (
-					<button type="button" className="linkbtn" onClick={onOpen}>
-						{line}
+					<button type="button" className="ap-title" onClick={onOpen} title={title}>
+						{title}
 					</button>
 				) : (
-					line
+					<b className="ap-title" title={title}>
+						{title}
+					</b>
 				)}
+				<small>{item.at ? ago(item.at) : ''}</small>
 			</span>
+			<div className="ap-acts">{children}</div>
 		</div>
 	);
 }
@@ -73,12 +75,12 @@ export function ApprovalItem({ item }) {
 			}
 		};
 		return (
-			<Row item={item} tag="Undo requested" tone="f-amber" line={`${item.title} · ${item.project.name}`} onOpen={go(item.project.id, item.title, item.tab)}>
+			<Row item={item} tone="amber" icon="↶" title={`${(item.who ? item.who.name : 'Someone')} asked to undo “${item.title}”`} onOpen={go(item.project.id, item.title, item.tab)}>
 				<button type="button" className="btn small ok-btn" onClick={() => answer('undo')}>
 					Undo
 				</button>
 				<button type="button" className="btn small" onClick={() => answer('keep')}>
-					Keep
+					Keep In progress
 				</button>
 			</Row>
 		);
@@ -96,7 +98,7 @@ export function ApprovalItem({ item }) {
 			}
 		};
 		return (
-			<Row item={item} tag="Untick asked" tone="f-amber" line={`${col.name} · ${kw.keyword} · ${project.name}`} onOpen={go(project.id, '', 'plan')}>
+			<Row item={item} tone="amber" icon="☐" title={`${(item.who ? item.who.name : 'Someone')} asked to untick ${col.name} · ${kw.keyword}`} onOpen={go(project.id, '', 'plan')}>
 				<button type="button" className="btn small danger-soft" onClick={() => answer({ check: { column: col.id, on: false } }, 'Unticked')}>
 					Untick
 				</button>
@@ -130,17 +132,7 @@ export function ApprovalItem({ item }) {
 			}
 		};
 		return (
-			<Row
-				item={item}
-				tag={kind}
-				tone="f-teal"
-				line={
-					<>
-						{range} · {l.days} day{l.days === 1 ? '' : 's'}
-						{info.over && <span className="ap-over"> · over the limit</span>}
-					</>
-				}
-			>
+			<Row item={item} tone="green" icon="✚" title={`${item.who.name} asks for ${kind.toLowerCase()} · ${range}`}>
 				<button type="button" className="btn small ok-btn" onClick={() => answer('approve')}>
 					Approve
 				</button>
@@ -152,9 +144,8 @@ export function ApprovalItem({ item }) {
 	}
 
 	const r = item.review;
-	const p = data.projects[r.project_id];
 	return (
-		<Row item={item} tag={r.review.reviewer ? 'Review asked' : 'Task review'} tone="f-purple" line={`${r.title}${p ? ` · ${p.name}` : ''}`} onOpen={go(r.project_id, r.title, r.tab)}>
+		<Row item={item} tone="blue" icon="✓" title={r.review.reviewer ? `${(item.who ? item.who.name : 'Someone')} asked you to review “${r.title}”` : `${(item.who ? item.who.name : 'Someone')} finished “${r.title}”`} onOpen={go(r.project_id, r.title, r.tab)}>
 			<button type="button" className="btn small ok-btn" onClick={() => decide(r.kind, r.id, 'accept')}>
 				Approve
 			</button>

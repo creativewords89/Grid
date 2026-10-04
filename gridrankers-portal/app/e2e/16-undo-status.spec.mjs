@@ -68,7 +68,7 @@ test('request undo and the last unit', async ({ page }) => {
 	// Review shows the reason and Undo puts it back to Not started.
 	await signIn(page, LEAD);
 	const ask = (await waiting(page)).locator('.ap-item', { hasText: undoTitle });
-	await expect(ask).toContainText('Undo requested');
+	await expect(ask).toContainText('asked to undo');
 	// A compact row: who, the kind and the task; the reason stays on the task card's Review.
 	await expect(ask).toContainText('Max Member');
 	await expect(ask).not.toContainText('I moved the wrong card');
