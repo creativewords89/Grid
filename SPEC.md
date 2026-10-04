@@ -476,6 +476,6 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 
 50. (Released as 0.1.20.) Approvals inside Notifications (7.0, design NF-C): the Needs your approval box is gone; Team Leaders and the Super Admin answer under **Waiting for you** / **To approve** in Notifications, not repeated in the feed; Today card: Who's out + Day leave for Team Leaders, Who's out only for the Super Admin. **Tests:** Vitest (leaders get no review-asked or undo items in the feed), Playwright (a sick leave request waits for the Team Leader with Approve, the box is gone for both, the Today card per role; review, leave, untick and undo answered from To approve).
 
-51. Notifications kept simple (NF-C without descriptions): requests are an icon, one sentence, when and the buttons; feed items are a self-contained title only. Vitest: the new titles. Playwright: no descriptions in the box, requests show who and what (not the reason), Open task still works.
+51. (Released as 0.1.21.) Notifications kept simple (NF-C without descriptions): requests are an icon, one sentence, when and the buttons; feed items are a self-contained title only. Vitest: the new titles. Playwright: no descriptions in the box, requests show who and what (not the reason), Open task still works.
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).
