@@ -84,7 +84,9 @@ button.brand:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* My day (SPEC.md 7.0): top bar with strips, tabs, two columns that end level. */
 .md{display:flex;flex-direction:column;gap:16px}
-.md-top{background:var(--panel);border:1px solid var(--line);border-radius:16px;display:flex;flex-direction:column;overflow:hidden}
+/* No overflow:hidden here: the bell's panel must reach over the cards below (the band rounds its own corners). */
+.md-top{background:var(--panel);border:1px solid var(--line);border-radius:16px;display:flex;flex-direction:column;position:relative;z-index:20}
+.md-band{border-radius:15px 15px 0 0;overflow:hidden}
 .md-top>.md-row{padding:16px 20px}
 .md-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .md-hello{flex:1 1 260px;display:flex;flex-direction:column;gap:2px;min-width:0}
