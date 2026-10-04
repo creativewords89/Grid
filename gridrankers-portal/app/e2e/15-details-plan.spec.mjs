@@ -1,7 +1,7 @@
 // Project Details and the keyword checklist (SPEC.md 6.12, designs PD-D and KP-C): leaders write
 // the details and manage keywords; everyone opens links, ticks boxes and writes notes.
 import { test, expect } from '@playwright/test';
-import { LEAD, MAX, openProject, signIn, signOut, watchErrors } from './helpers.mjs';
+import { LEAD, MAX, openProject, signIn, signOut, watchErrors, waiting } from './helpers.mjs';
 
 test('project details and keyword checklist', async ({ page }) => {
 	const noErrors = watchErrors(page);
@@ -110,9 +110,9 @@ test('project details and keyword checklist', async ({ page }) => {
 	await expect(box).toHaveClass(/asked/);
 	await signOut(page);
 
-	// Team Leader: the request is in Needs your approval; Untick clears the box.
+	// Team Leader: the request waits in Notifications; Untick clears the box.
 	await signIn(page, LEAD);
-	const asks = page.locator('.md-card', { has: page.getByRole('heading', { name: 'Needs your approval' }) });
+	const asks = await waiting(page);
 	const req = asks.locator('.ap-item', { hasText: 'Untick asked' });
 	await expect(req).toContainText('Content · emergency plumber dhaka');
 	await expect(req).toContainText('Ticked by mistake');

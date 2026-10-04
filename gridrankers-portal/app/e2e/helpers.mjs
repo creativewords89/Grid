@@ -129,3 +129,10 @@ export async function openTeam(page, tab = 'Team') {
 	await page.locator('.me-btn').click();
 	await page.locator('nav.ttabs').getByRole('tab', { name: tab, exact: true }).click();
 }
+
+// Team Leaders and the Super Admin: what waits for them, under To approve in Notifications
+// (SPEC.md 7.0, design NF-C).
+export async function waiting(page) {
+	await page.locator('section.nf .nf-chips').getByRole('button', { name: /^To approve/ }).click();
+	return page.locator('section.nf .nf-wait');
+}

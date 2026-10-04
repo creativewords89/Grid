@@ -1,14 +1,9 @@
-import { useMemo, useState } from 'react';
 import { usePortal } from '../../context.js';
-import { approvals } from '../../lib/day.js';
 import { short } from '../../lib/format.js';
 import { leaveDays, monthName, takenInMonth, teamWeekly } from '../../lib/people.js';
 import { rowsOf } from '../../lib/store.js';
 import Avatar from '../Avatar.jsx';
-import Modal from '../Modal.jsx';
 import useReview from '../review/useReview.js';
-
-const SHOWN = 2;
 
 // "within October's 1 day" / "2 days over, deducted" for a pending request.
 function overText(data, leave) {
@@ -23,7 +18,9 @@ function overText(data, leave) {
 	return { text: parts.join(' · '), over: parts.some((p) => p.includes('over')) };
 }
 
-function Item({ item }) {
+// One thing waiting for a Team Leader or the Super Admin, with its buttons (SPEC.md 7.0, design
+// NF-C): shown under Waiting for you in Notifications.
+export function ApprovalItem({ item }) {
 	const { api, data, dispatch, toast, confirm, setProject, setSearch, setView } = usePortal();
 	const decide = useReview();
 
@@ -181,61 +178,5 @@ function Item({ item }) {
 				</button>
 			</div>
 		</div>
-	);
-}
-
-// Needs your approval (Team Leader, Super Admin): leave requests and work to check.
-export default function Approvals() {
-	const { data, me } = usePortal();
-	const [all, setAll] = useState(false);
-	const list = useMemo(() => approvals(data, me), [data, me]);
-
-	return (
-		<section className="md-card" aria-labelledby="apTitle">
-			<div className="md-h">
-				<h2 id="apTitle">Needs your approval</h2>
-				{list.length > SHOWN && (
-					<button type="button" className="linkbtn" onClick={() => setAll(true)}>
-						View all {list.length}
-					</button>
-				)}
-			</div>
-			{list.length === 0 ? (
-				<div className="md-empty">
-					<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--done)" strokeWidth="1.8" aria-hidden="true">
-						<circle cx="12" cy="12" r="9" />
-						<path d="M8 12.5l2.5 2.5L16 9.5" />
-					</svg>
-					<b>Nothing waiting for you</b>
-					<span>Leave requests and finished tasks to check will show here.</span>
-				</div>
-			) : (
-				<div className="ap-list">
-					{list.slice(0, SHOWN).map((i) => (
-						<Item key={i.kind + i.id} item={i} />
-					))}
-				</div>
-			)}
-			<Modal open={all} onClose={() => setAll(false)} labelledBy="apAll" className="list-dlg">
-				<div className="ld-head">
-					<h2 id="apAll">Needs your approval</h2>
-					<span className="ld-count">{list.length}</span>
-					<button type="button" className="ld-x" aria-label="Close" onClick={() => setAll(false)}>
-						✕
-					</button>
-				</div>
-				<div className="ld-body ap-list">
-					{list.map((i) => (
-						<Item key={i.kind + i.id} item={i} />
-					))}
-				</div>
-				<div className="ld-foot">
-					<span />
-					<button type="button" className="btn" onClick={() => setAll(false)}>
-						Close
-					</button>
-				</div>
-			</Modal>
-		</section>
 	);
 }

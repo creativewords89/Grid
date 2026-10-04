@@ -2,7 +2,7 @@
 // a leader's own leave, Who's out today, a day off, birthdays, shout-outs and a review request.
 // Dates are relative to today; the team's weekly day off is moved away from them first.
 import { test, expect } from '@playwright/test';
-import { LEAD, MAX, apiCall, openProject, signIn, signInOwner, signOut, showStrip, signOutOwner, watchErrors, openTeam } from './helpers.mjs';
+import { LEAD, MAX, apiCall, openProject, signIn, signInOwner, signOut, showStrip, signOutOwner, watchErrors, openTeam, waiting } from './helpers.mjs';
 
 const pad = (n) => String(n).padStart(2, '0');
 const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -54,7 +54,7 @@ test('my day: leave, days off, birthdays, shout-outs and review requests', async
 	// leave (approved straight away) and sends Max a shout-out.
 	await signIn(page, LEAD);
 	await showStrip(page, 'Today is Max Member’s birthday.');
-	const asks = box('Needs your approval');
+	const asks = await waiting(page);
 	await expect(asks).toContainText('Max Member');
 	await expect(asks).toContainText('Day leave');
 	await asks.getByRole('button', { name: 'Approve' }).first().click();
@@ -106,7 +106,7 @@ test('my day: leave, days off, birthdays, shout-outs and review requests', async
 	// Super Admin: both are out today; adds today as an event day off.
 	await signInOwner(page);
 	await expect(box('Who’s out today').locator('li', { hasText: 'Lee Lead' })).toContainText('On leave');
-	await expect(box('Needs your approval')).toContainText('Approve content plan', { timeout: 15000 });
+	await expect(await waiting(page)).toContainText('Approve content plan', { timeout: 15000 });
 	await openTeam(page, 'Admin settings');
 	await page.getByLabel('Day off name').fill('Founders Day');
 	await page.getByLabel('Date', { exact: true }).fill(TODAY);

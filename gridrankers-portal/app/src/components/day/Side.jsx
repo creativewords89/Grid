@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { usePortal } from '../../context.js';
-import { dismissedKeys } from '../../lib/day.js';
+import { approvals, dismissedKeys } from '../../lib/day.js';
+import { isManager } from '../../lib/roles.js';
+import { ApprovalItem } from './Approvals.jsx';
 import { FILTERS, PAGE_SIZE, ago, countsOf, feedOf } from '../../lib/feed.js';
 import { useDismiss } from './DayHeader.jsx';
 import { short } from '../../lib/format.js';
@@ -185,16 +187,24 @@ export function WhosOut({ bare = false }) {
 // Notifications (SPEC.md 6.10, design NF-A): everything that matters to me in one feed, newest
 // first, with filters, unread dots, Mark all read and pages of PAGE_SIZE. Read state is shared with
 // the bell (`seen:` keys).
+// Waiting items shown above the feed on its first page; the rest under To approve.
+const WAIT_SHOWN = 3;
+const at0 = (page) => page === 0;
+
 export function Notifications() {
 	const { data, me, today, setProject, setSearch, setView, viewOnly } = usePortal();
 	const dismiss = useDismiss();
 	const [filter, setFilter] = useState('all');
 	const [page, setPage] = useState(0);
 	const items = useMemo(() => feedOf(data, me, today), [data, me, today]);
+	// Team Leaders and the Super Admin: what waits for their answer sits on top (design NF-C).
+	const waiting = useMemo(() => (isManager(me) ? approvals(data, me) : []), [data, me]);
 	const seen = dismissedKeys(data, me);
 	const unread = items.filter((i) => !seen.has('seen:' + i.key));
-	const counts = countsOf(items);
-	const shown = filter === 'all' ? items : items.filter((i) => i.cat === filter);
+	const counts = { ...countsOf(items), approve: waiting.length };
+	const approving = filter === 'approve';
+	const shown = approving ? waiting : filter === 'all' ? items : items.filter((i) => i.cat === filter);
+	const topWaiting = filter === 'all' && at0(page) ? waiting.slice(0, WAIT_SHOWN) : [];
 	const pages = Math.max(1, Math.ceil(shown.length / PAGE_SIZE));
 	const at = Math.min(page, pages - 1);
 	const read = (keys) => !viewOnly && keys.length && dismiss(keys.map((k) => 'seen:' + k));
@@ -217,13 +227,42 @@ export function Notifications() {
 				)}
 			</div>
 			<div className="nf-chips" role="group" aria-label="Show">
-				{FILTERS.map(([k, label]) => (
-					<button key={k} type="button" aria-pressed={filter === k} onClick={() => (setFilter(k), setPage(0))}>
+				{(waiting.length || isManager(me) ? [FILTERS[0], ['approve', 'To approve'], ...FILTERS.slice(1)] : FILTERS).map(([k, label]) => (
+					<button key={k} type="button" className={k === 'approve' ? 'nf-chip-wait' : undefined} aria-pressed={filter === k} onClick={() => (setFilter(k), setPage(0))}>
 						{label} {counts[k] > 0 && <span>{counts[k]}</span>}
 					</button>
 				))}
 			</div>
-			{shown.length === 0 ? (
+			{topWaiting.length > 0 && (
+				<div className="nf-wait" aria-labelledby="nfWait">
+					<h3 id="nfWait">Waiting for you · {waiting.length}</h3>
+					{topWaiting.map((i) => (
+						<ApprovalItem key={i.kind + i.id} item={i} />
+					))}
+					{waiting.length > WAIT_SHOWN && (
+						<button type="button" className="linkbtn nf-more" onClick={() => (setFilter('approve'), setPage(0))}>
+							+ {waiting.length - WAIT_SHOWN} more waiting for you
+						</button>
+					)}
+				</div>
+			)}
+			{topWaiting.length > 0 && shown.length > 0 && <h3 className="nf-latest">Latest</h3>}
+			{approving ? (
+				shown.length === 0 ? (
+					<div className="nf-wait">
+						<div className="md-empty">
+							<b>Nothing waiting for you</b>
+							<span>Leave requests, finished tasks to check and requests to undo or untick show here.</span>
+						</div>
+					</div>
+				) : (
+					<div className="nf-wait">
+						{shown.slice(at * PAGE_SIZE, at * PAGE_SIZE + PAGE_SIZE).map((i) => (
+							<ApprovalItem key={i.kind + i.id} item={i} />
+						))}
+					</div>
+				)
+			) : shown.length === 0 ? (
 				<div className="md-empty">
 					<b>{filter === 'all' ? 'Nothing new' : 'Nothing here'}</b>
 					<span>New tasks, reviews, leave answers, events and messages for you show here.</span>

@@ -2,7 +2,7 @@
 // filters, unread dots, Mark all read and pages; Who's out and Day leave share the Today card; the
 // left and right columns end at the same line.
 import { test, expect } from '@playwright/test';
-import { LEAD, MAX, apiCall, signIn, signOut, watchErrors } from './helpers.mjs';
+import { LEAD, MAX, apiCall, signIn, signInOwner, signOut, signOutOwner, watchErrors } from './helpers.mjs';
 
 test('notifications feed', async ({ page }) => {
 	const noErrors = watchErrors(page);
@@ -51,6 +51,32 @@ test('notifications feed', async ({ page }) => {
 	const title = (await first.locator('.nf-sub').innerText()).match(/“(.+)”/)[1];
 	await first.getByRole('button', { name: 'Open task ›' }).click();
 	await expect(page.locator('article.mcard', { hasText: title })).toBeVisible();
+
+	// Max asks for sick leave; it waits for the Team Leader at the top of Notifications (design NF-C).
+	const day = new Date(Date.now() + 20 * 86400000).toISOString().slice(0, 10);
+	expect((await apiCall(page, 'POST', 'leave', { type: 'sick', from: day, to: day, reason: 'Check-up ' + stamp })).status).toBe(201);
 	await signOut(page);
+
+	await signIn(page, LEAD);
+	await expect(page.getByRole('heading', { name: 'Needs your approval' })).toHaveCount(0);
+	const wait = box.locator('.nf-wait');
+	await expect(wait.getByRole('heading', { name: /Waiting for you · \d+/ })).toBeVisible();
+	await expect(box.locator('.nf-chips').getByRole('button', { name: /^To approve \d+/ })).toBeVisible();
+	await box.locator('.nf-chips').getByRole('button', { name: /^To approve/ }).click();
+	const req = box.locator('.nf-wait .ap-item', { hasText: 'Sick leave' }).filter({ hasText: 'Max Member' }).first();
+	await expect(req).toBeVisible();
+	await expect(req.getByRole('button', { name: 'Approve' })).toBeVisible();
+	// A Team Leader's Today card: Who's out and Day leave.
+	await expect(page.locator('section.md-today h2')).toHaveText(['Who’s out today', 'Day leave']);
+	await signOut(page);
+
+	// The Super Admin: the same, and the Today card has only Who's out.
+	await signInOwner(page);
+	await expect(page.getByRole('heading', { name: 'Needs your approval' })).toHaveCount(0);
+	await expect(page.locator('section.md-today h2')).toHaveText(['Who’s out today']);
+	await box.locator('.nf-chips').getByRole('button', { name: /^To approve/ }).click();
+	await expect(box.locator('.nf-wait .ap-item', { hasText: 'Sick leave' }).filter({ hasText: 'Max Member' }).first()).toBeVisible();
+	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/notif-admin.png', fullPage: true });
+	await signOutOwner(page);
 	noErrors();
 });

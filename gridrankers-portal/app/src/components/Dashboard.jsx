@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { usePortal } from '../context.js';
 import { isManager } from '../lib/roles.js';
-import Approvals from './day/Approvals.jsx';
 import CycleSetup from './day/CycleSetup.jsx';
 import DayHeader from './day/DayHeader.jsx';
 import DayLeave from './day/Leave.jsx';
@@ -79,7 +78,6 @@ export default function Dashboard({ onSignOut }) {
 					</div>
 					<div className="md-col">
 						<Notifications />
-						{manager && <Approvals />}
 						<section className="md-card md-today" aria-label="Today">
 							<WhosOut bare />
 							{me.role !== 'admin' && <DayLeave bare />}

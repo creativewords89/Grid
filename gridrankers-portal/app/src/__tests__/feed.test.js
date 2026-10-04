@@ -65,4 +65,14 @@ describe('notifications feed', () => {
 		expect(ago('2026-10-12T11:55:00Z', NOW)).toBe('5 min ago');
 		expect(ago('2026-10-12T10:00:00Z', NOW)).toBe('2 h ago');
 	});
+
+	it('leaders answer reviews asked of them and undo requests under Waiting for you, not in the feed', () => {
+		const d = data();
+		d.meeting_tasks.ask = { id: 'ask', project_id: 'p', title: 'Content plan', status: 'done', review: { state: 'pending', reviewer: 'lee', submittedBy: 'sam', submittedAt: '2026-10-12T08:00:00Z' } };
+		d.meeting_tasks.und = { id: 'und', project_id: 'p', title: 'H1', status: 'doing', undo_request: { by: 'max', at: '2026-10-12 08:00:00', reason: 'Wrong card' } };
+		const lead = feedOf(d, lee, TODAY, NOW).map((i) => i.key);
+		expect(lead.some((k) => k.startsWith('ask:') || k.startsWith('undo:'))).toBe(false);
+		d.meeting_tasks.ask.review.reviewer = 'max';
+		expect(feedOf(d, max, TODAY, NOW).map((i) => i.key)).toContain('ask:ask:2026-10-12T08:00:00Z');
+	});
 });

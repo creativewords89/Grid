@@ -2,7 +2,7 @@
 // who moved a task to In progress by mistake asks to undo it; a Team Leader decides from the card's
 // Review. The last unit of a quantity task asks what was completed; unassigned tasks are locked.
 import { test, expect } from '@playwright/test';
-import { LEAD, MAX, apiCall, card, openProject, signIn, signOut, watchErrors } from './helpers.mjs';
+import { LEAD, MAX, apiCall, card, openProject, signIn, signOut, watchErrors, waiting } from './helpers.mjs';
 
 test('request undo and the last unit', async ({ page }) => {
 	const noErrors = watchErrors(page);
@@ -64,10 +64,10 @@ test('request undo and the last unit', async ({ page }) => {
 	await page.keyboard.press('Escape');
 	await signOut(page);
 
-	// Team Leader: the request is in Needs your approval and the bell; on the card, Review shows the
-	// reason and Undo puts it back to Not started.
+	// Team Leader: the request waits in Notifications (Waiting for you) and the bell; on the card,
+	// Review shows the reason and Undo puts it back to Not started.
 	await signIn(page, LEAD);
-	const ask = box('Needs your approval').locator('.ap-item', { hasText: undoTitle });
+	const ask = (await waiting(page)).locator('.ap-item', { hasText: undoTitle });
 	await expect(ask).toContainText('Undo requested');
 	await expect(ask).toContainText('In progress → Not started');
 	await expect(ask).toContainText('I moved the wrong card');

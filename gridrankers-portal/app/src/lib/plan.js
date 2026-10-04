@@ -71,7 +71,7 @@ export const splitKeywords = (text) =>
 		.filter(Boolean);
 
 // Requests to untick a box (SPEC.md 6.12): only Team Leaders and the Super Admin untick, so a
-// Team Member asks; the request waits on the box (`checks[col].ask`) and in Needs your approval.
+// Team Member asks; the request waits on the box (`checks[col].ask`) and in the leaders' Waiting for you.
 export const askOf = (kw, col) => (kw.checks && kw.checks[col.id] && kw.checks[col.id].ask) || null;
 
 export function untickRequests(data) {
