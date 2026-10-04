@@ -8,6 +8,31 @@ import { isManager } from '../../lib/roles.js';
 const ICON = { sheet: '▦', doc: '≣', drive: '▲', other: '↗' };
 const newId = () => 'n' + Math.random().toString(36).slice(2, 10);
 
+// Text of a section: lines starting with "-", "•" or "*" show as a bullet list (SPEC.md 6.12).
+function Text({ text, className }) {
+	const lines = String(text || '')
+		.split(/\n/)
+		.map((l) => l.trim())
+		.filter(Boolean);
+	if (!lines.length) return null;
+	if (lines.every((l) => /^[-•*]\s*/.test(l))) {
+		return (
+			<ul className={'pdx-list ' + (className || '')}>
+				{lines.map((l, i) => (
+					<li key={i}>{l.replace(/^[-•*]\s*/, '')}</li>
+				))}
+			</ul>
+		);
+	}
+	return <p className={'pdx-text ' + (className || '')}>{text}</p>;
+}
+
+// Sections every project shows, filled in or not (design PD-F).
+const STANDARD = [
+	['Goals', 'What this project should achieve, e.g. Top 3 for “locksmith Riverview”.'],
+	['Notes for the team', 'Rules and reminders — one per line starting with “-” makes a list.'],
+];
+
 const TYPE_LABEL = { sheet: 'Google Sheet', doc: 'Google Doc', drive: 'Drive folder', other: 'Link' };
 const initials = (name) =>
 	String(name || '')
@@ -135,7 +160,7 @@ function Section({ section, can, editing, onEdit, onSave, onCancel, onRemove, on
 						</button>
 					)}
 				</div>
-				{section.text ? <p className="pdx-text pdx-pad">{section.text}</p> : null}
+				<Text text={section.text} className="pdx-pad" />
 				{(section.links.length > 0 || can) && (
 					<div className="pdx-chips pdx-pad">
 						{section.links.map((l) => (
@@ -166,7 +191,7 @@ function Section({ section, can, editing, onEdit, onSave, onCancel, onRemove, on
 						</button>
 					)}
 				</div>
-				{section.text ? <p className="pdx-text">{section.text}</p> : null}
+				<Text text={section.text} />
 				{(section.links.length > 0 || can) && (
 					<div className="pdx-chips">
 						{section.links.map((l) => (
@@ -288,27 +313,53 @@ export default function ProjectDetails() {
 					)}
 				</section>
 			)}
-			{sections.map((s, i) => (
-				<Section
-					key={s.id}
-					section={s}
-					hero={i === 0 ? hero : null}
-					can={can}
-					editing={editing === s.id}
-					onEdit={() => setEditing(s.id)}
-					onCancel={() => setEditing('')}
-					onSave={(d) => save(replace(s.id, d), 'Saved')}
-					onQuickAdd={(l) => save(replace(s.id, { ...s, links: [...s.links, l] }), 'Link added')}
-					onRemove={async () => {
-						if (await confirm({ title: `Remove “${s.title}”?`, message: 'Its text and links are removed for everyone.', ok: 'Remove', danger: true })) {
-							await save(
-								sections.filter((x) => x.id !== s.id),
-								'Section removed',
-							).catch(() => {});
-						}
-					}}
-				/>
-			))}
+			{(() => {
+				const card = (s, i) => (
+					<Section
+						key={s.id}
+						section={s}
+						hero={i === 0 ? hero : null}
+						can={can}
+						editing={editing === s.id}
+						onEdit={() => setEditing(s.id)}
+						onCancel={() => setEditing('')}
+						onSave={(d) => save(replace(s.id, d), 'Saved')}
+						onQuickAdd={(l) => save(replace(s.id, { ...s, links: [...s.links, l] }), 'Link added')}
+						onRemove={async () => {
+							if (await confirm({ title: `Remove “${s.title}”?`, message: 'Its text and links are removed for everyone.', ok: 'Remove', danger: true })) {
+								await save(
+									sections.filter((x) => x.id !== s.id),
+									'Section removed',
+								).catch(() => {});
+							}
+						}}
+					/>
+				);
+				const isStd = (s, i) => i > 0 && STANDARD.some(([t]) => t.toLowerCase() === s.title.trim().toLowerCase());
+				// Header card, then Goals and Notes for the team in that order (filled in or not), then the rest.
+				const standard = STANDARD.map(([title, hint]) => {
+					const k = sections.findIndex((s, i) => i > 0 && s.title.trim().toLowerCase() === title.toLowerCase());
+					if (k > 0) return card(sections[k], k);
+					if (editing === 'std:' + title) {
+						return <Section key={title} section={{ id: 'std', title, text: '', links: [] }} can editing onCancel={() => setEditing('')} onSave={(d) => save([...(sections.length ? sections : [{ id: '', title: 'About', text: '', links: [] }]), { ...d, id: '' }], 'Saved')} />;
+					}
+					// Empty: invites a Team Leader to fill it in.
+					return (
+						<section key={title} className="dcard pdx-card pdx-ph" aria-label={title}>
+							<div className="pdx-head">
+								<h3>{title}</h3>
+								{can && (
+									<button type="button" className="btn small" onClick={() => setEditing('std:' + title)} aria-label={`Edit ${title}`}>
+										Edit
+									</button>
+								)}
+							</div>
+							<p className="muted pdx-hint">{can ? hint : 'Nothing here yet.'}</p>
+						</section>
+					);
+				});
+				return [...sections.slice(0, 1).map((s) => card(s, 0)), ...standard, ...sections.map((s, i) => (i === 0 || isStd(s, i) ? null : card(s, i)))];
+			})()}
 			{editing === 'new' && <Section section={blank} can editing onCancel={() => setEditing('')} onSave={(d) => save([...sections, { ...d, id: '' }], 'Section added')} />}
 			{can && sections.length > 0 && editing !== 'new' && (
 				<button type="button" className="pdx-addsec" onClick={() => setEditing('new')}>

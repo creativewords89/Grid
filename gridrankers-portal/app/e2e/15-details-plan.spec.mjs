@@ -40,6 +40,16 @@ test('project details and keyword checklist', async ({ page }) => {
 	await page.locator('.pdx-pop').getByRole('button', { name: 'Add', exact: true }).click();
 	await page.getByText('Link added').waitFor();
 	await expect(about.locator('a.pdx-chip')).toHaveText([/Keyword research 2026/, /Job photos/]);
+	// Goals and Notes for the team are always there; Notes with "-" lines shows a list.
+	const goals = page.getByRole('region', { name: 'Goals' });
+	const notes = page.getByRole('region', { name: 'Notes for the team' });
+	await expect(goals).toBeVisible();
+	await notes.getByRole('button', { name: 'Edit Notes for the team' }).click();
+	await page.getByLabel('Description').fill('- Client-approved photos only\n- No prices on the site');
+	await page.locator('.pdx-card.editing').getByRole('button', { name: 'Save' }).click();
+	await page.getByText('Saved', { exact: true }).waitFor();
+	await expect(page.getByRole('region', { name: 'Notes for the team' }).locator('li')).toHaveText(['Client-approved photos only', 'No prices on the site']);
+	await expect(page.getByRole('region', { name: 'Goals' })).toBeVisible();
 	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/details.png' });
 
 	// Plan: keywords for this cycle and the next; one moves by drag, one by the Deadline menu.
@@ -71,6 +81,9 @@ test('project details and keyword checklist', async ({ page }) => {
 	await tab('Details').click();
 	await expect(page.locator('.pdx-hero').getByRole('link', { name: /Job photos/ })).toBeVisible();
 	await expect(page.locator('.pdx-hero')).toContainText('Drive folder');
+	await expect(page.getByRole('region', { name: 'Notes for the team' }).locator('li')).toHaveCount(2);
+	await expect(page.getByRole('region', { name: 'Goals' })).toContainText('Nothing here yet.');
+	await expect(page.getByRole('button', { name: 'Edit Goals' })).toHaveCount(0);
 	await expect(page.getByRole('button', { name: /^Edit/ })).toHaveCount(0);
 	await expect(page.getByRole('button', { name: '+ Add link' })).toHaveCount(0);
 	await tab('Plan').click();
