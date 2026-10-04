@@ -234,9 +234,9 @@ export default function TaskDialog({ taskId, onClose }) {
 					<label>
 						Status
 						<select value={f.status} onChange={set('status')} disabled={!!editing && editing.status === 'done'}>
-							<option value="todo">To fix</option>
+							<option value="todo">Not started</option>
 							<option value="doing">In progress</option>
-							<option value="done">Fixed</option>
+							<option value="done">Completed</option>
 						</select>
 					</label>
 					<label>

@@ -14,7 +14,7 @@ test('completion review round trip', async ({ page }) => {
 	// Member completes: a completion note is required.
 	await signIn(page, MAX);
 	await openProject(page, 'Acme Plumbing');
-	await card(page, title).getByRole('button', { name: 'Fixed' }).click();
+	await card(page, title).getByRole('button', { name: 'Completed' }).click();
 	await page.getByRole('button', { name: 'Mark completed' }).click();
 	await expect(page.getByText('Add a few words about what you completed.')).toBeVisible();
 	await page.getByLabel('What you did').fill('Changed the H1 to include Springfield');
@@ -68,7 +68,7 @@ test('completion review round trip', async ({ page }) => {
 	await openProject(page, 'Acme Plumbing');
 	const mine = card(page, title);
 	await expect(mine.locator('.rv')).toContainText('Add the city to the meta title too');
-	await mine.getByRole('button', { name: 'Fixed' }).click();
+	await mine.getByRole('button', { name: 'Completed' }).click();
 	await page.getByLabel('What you did').fill('Meta title updated too');
 	await page.getByRole('button', { name: 'Mark completed' }).click();
 	await page.getByText('Sent for review').waitFor();
@@ -82,14 +82,14 @@ test('completion review round trip', async ({ page }) => {
 	await page.getByText('Accepted', { exact: true }).first().waitFor();
 	await expect(page.locator('.dt-racts').getByRole('button', { name: 'Request revision' })).toBeVisible();
 	await page.getByRole('button', { name: 'Close' }).click();
-	await expect(card(page, title).locator('.seg [aria-pressed=true]')).toHaveText('Fixed');
+	await expect(card(page, title).locator('.seg [aria-pressed=true]')).toHaveText('Completed');
 	await signOutOwner(page);
 
 	// The member sees the acceptance.
 	await signIn(page, MAX);
 	await openProject(page, 'Acme Plumbing');
 	await expect(card(page, title).locator('.rv')).toHaveCount(0);
-	await expect(card(page, title).locator('.seg [aria-pressed=true]')).toHaveText('Fixed');
+	await expect(card(page, title).locator('.seg [aria-pressed=true]')).toHaveText('Completed');
 	// The name chip opens your own page (SPEC.md 7.6): no dashboard or task list, and no project
 	// highlighted in the sidebar.
 	await page.locator('.me-btn').click();

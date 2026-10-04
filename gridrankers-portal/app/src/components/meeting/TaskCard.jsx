@@ -51,10 +51,42 @@ export function ReviewBadge({ review, me, members }) {
 	);
 }
 
+// Request undo (SPEC.md 6.6): the pending request on a card, or the link to ask. Team Leaders and
+// the Super Admin answer it here or in Needs your approval.
+export function UndoLine({ task, me, locked, onRequest, onDecide }) {
+	const { data } = usePortal();
+	const ask = task.undo_request;
+	if (ask && ask.by) {
+		const who = data.members[ask.by];
+		return (
+			<div className="undo-req">
+				<b>Undo requested</b> · {who ? who.name : 'someone'} · waiting for a Team Leader
+				{ask.reason && <span className="undo-why">“{ask.reason}”</span>}
+				{isManager(me) && (
+					<span className="undo-acts">
+						<button type="button" className="btn small" onClick={() => onDecide('keep')}>
+							Keep In progress
+						</button>
+						<button type="button" className="btn small primary" onClick={() => onDecide('undo')}>
+							Undo
+						</button>
+					</span>
+				)}
+			</div>
+		);
+	}
+	if (task.status !== 'doing' || isManager(me) || locked || Math.max(1, task.target || 1) > 1) return null;
+	return (
+		<button type="button" className="linkbtn undo-link" onClick={onRequest}>
+			↶ Request undo
+		</button>
+	);
+}
+
 // Compact meeting-task card (SPEC.md 7.2; reference bcard).
 export default function TaskCard({ task, onDetails, onEdit }) {
 	const { data, me, today } = usePortal();
-	const { setStatus, remove } = useTaskActions();
+	const { setStatus, remove, requestUndo, decideUndo } = useTaskActions();
 	const members = data.members;
 	const st = task.status;
 	const open = st !== 'done';
@@ -66,9 +98,9 @@ export default function TaskCard({ task, onDetails, onEdit }) {
 	const lockTitle = `Only ${people.map((a) => members[a.id]?.name).join(', ') || 'the assignee'} can update this`;
 
 	const seg = [
-		['todo', 'To fix'],
+		['todo', 'Not started'],
 		['doing', 'In progress'],
-		['done', 'Fixed'],
+		['done', 'Completed'],
 	].map(([k, label]) => {
 		let title;
 		let disabled = false;
@@ -99,7 +131,7 @@ export default function TaskCard({ task, onDetails, onEdit }) {
 			</div>
 			<h3>{task.title}</h3>
 			<div className="line">
-				{st === 'done' ? <span className="due ok">Fixed{task.done_at ? ' ' + short(localYmd(task.done_at)) : ''}</span> : <span className="due">Added {short(localYmd(task.created_at))}</span>}
+				{st === 'done' ? <span className="due ok">Completed{task.done_at ? ' ' + short(localYmd(task.done_at)) : ''}</span> : <span className="due">Added {short(localYmd(task.created_at))}</span>}
 				{dl && (
 					<span className={`due dl-${dl.type} ${dl.overdue ? 'late' : dl.soon ? 'soon' : ''}`} title={dl.label}>
 						{dl.overdue ? 'Overdue · ' : ''}
@@ -122,6 +154,7 @@ export default function TaskCard({ task, onDetails, onEdit }) {
 			<div className="seg" role="group" aria-label={`Status of ${task.title}`}>
 				{seg}
 			</div>
+			<UndoLine task={task} me={me} locked={locked} onRequest={() => requestUndo(task)} onDecide={(a) => decideUndo(task, a)} />
 			<div className="acts">
 				<div className="assign">
 					<People list={people} members={members} />

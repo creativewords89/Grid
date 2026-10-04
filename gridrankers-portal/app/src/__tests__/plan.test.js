@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { approvals } from '../lib/day.js';
+import { approvals, undoRequests } from '../lib/day.js';
 import { DEFAULT_COLUMNS, askOf, columnsOf, deadlineFor, doneOf, groupOf, isLate, isWebUrl, keywordsOf, linkKind, sectionsOf, splitKeywords, untickRequests } from '../lib/plan.js';
 import { emptyData } from '../lib/store.js';
 
@@ -70,5 +70,20 @@ describe('Keyword checklist (SPEC.md 6.12)', () => {
 		expect(untickRequests(d).map((r) => [r.id, r.col.name, r.who.name])).toEqual([['k:c1', 'On-page', 'Max']]);
 		expect(approvals(d, d.members.lee).filter((i) => i.kind === 'untick')).toHaveLength(1);
 		expect(approvals(d, d.members.max).filter((i) => i.kind === 'untick')).toHaveLength(0);
+	});
+
+	it('requests to undo In progress reach Team Leaders and the Super Admin', () => {
+		const d = emptyData();
+		d.members = { max: { id: 'max', name: 'Max', role: 'member', active: 1 }, lee: { id: 'lee', name: 'Lee', role: 'lead', active: 1 } };
+		d.projects = { p: P };
+		d.monthly_tasks = { m: { id: 'm', project_id: 'p', title: 'GBP post' } };
+		d.meeting_tasks = { t: { id: 't', project_id: 'p', title: 'Fix H1', status: 'doing', undo_request: { by: 'max', at: '2026-10-12 10:00:00', reason: 'Wrong card' } }, u: { id: 'u', project_id: 'p', title: 'Other', status: 'doing', undo_request: null } };
+		d.records = { r: { id: 'r', task_id: 'm', project_id: 'p', period_key: '2026-10', status: 'doing', undo_request: { by: 'max', at: '2026-10-13 10:00:00', reason: 'Wrong month' } } };
+		expect(undoRequests(d).map((x) => [x.id, x.title, x.tab])).toEqual([
+			['item:t', 'Fix H1', 'board'],
+			['rec:r', 'GBP post', 'monthly'],
+		]);
+		expect(approvals(d, d.members.lee).filter((i) => i.kind === 'undo')).toHaveLength(2);
+		expect(approvals(d, d.members.max).filter((i) => i.kind === 'undo')).toHaveLength(0);
 	});
 });

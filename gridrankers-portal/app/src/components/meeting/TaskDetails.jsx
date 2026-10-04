@@ -143,7 +143,7 @@ export default function TaskDetails({ taskId, onClose }) {
 					<Row k="Meeting">{task.meeting_date ? weekdayDate(task.meeting_date) : ''}</Row>
 					<Row k="Added">{longDate(localYmd(task.created_at))}</Row>
 					<Row k="Deadline">{dl ? <span className={dl.overdue ? 't-late' : ''}>{(dl.overdue ? 'Overdue · ' : '') + dl.label}</span> : 'No deadline'}</Row>
-					<Row k="Fixed">{task.done_at ? longDate(localYmd(task.done_at)) : ''}</Row>
+					<Row k="Completed">{task.done_at ? longDate(localYmd(task.done_at)) : ''}</Row>
 					<Row k="Responsible">
 						{people.length
 							? people.map((a) => (

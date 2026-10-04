@@ -15,7 +15,7 @@ class GRP_Install {
 	/**
 	 * Current schema version. Bump it whenever get_schema() or migrations() changes.
 	 */
-	const DB_VERSION = 8;
+	const DB_VERSION = 9;
 
 	/**
 	 * Option that stores the installed schema version.
@@ -30,7 +30,8 @@ class GRP_Install {
 	 * tombstones for hard-deleted rows so GET /sync can report deletions. Schema 5 adds
 	 * leave, days off and posts (announcements, shout-outs) for SPEC.md 6.10; schema 6
 	 * adds member location and birth year, and private notices. Schema 8 adds project details,
- * the keyword checklist columns and `grp_keywords` (SPEC.md 6.12).
+ * the keyword checklist columns and `grp_keywords` (SPEC.md 6.12). Schema 9 adds `undo_request` (a Team
+ * Member's request to undo In progress, SPEC.md 6.6) to meeting tasks and cycle records.
 	 *
 	 * @var string[]
 	 */
@@ -309,6 +310,7 @@ class GRP_Install {
 				deadline json NULL,
 				review json NULL,
 				completion json NULL,
+				undo_request json NULL,
 				created_by varchar(64) NULL,
 				created_at datetime NOT NULL,
 				updated_at datetime NOT NULL,
@@ -353,6 +355,7 @@ class GRP_Install {
 				parts json NULL,
 				review json NULL,
 				completion json NULL,
+				undo_request json NULL,
 				done_at datetime NULL,
 				cleared_by varchar(64) NULL,
 				created_at datetime NOT NULL,

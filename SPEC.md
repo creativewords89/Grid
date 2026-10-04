@@ -71,7 +71,9 @@ Three portal roles, stored on the team member (`role`): `admin` (Super Admin), `
 | Restore / delete forever (trash) | ✔ | ✔ | ✘ |
 | Change status / tick progress on a task | if assigned or unassigned | if assigned or unassigned + any task | only if assigned to them (or task unassigned) |
 | Tick another person's share / breakdown row | ✔ | ✔ | ✘ |
-| Move In progress → To fix / Not started (incl. counting down to 0) | ✔ | ✔ | ✘ |
+| Move In progress → Not started (incl. counting down to 0) | ✔ | ✔ | ✘ (Request undo, 6.6) |
+| Request undo of In progress → Not started on a task without a quantity (6.6) | — (moves it back) | — (moves it back) | ✔ own / unassigned tasks, reason required |
+| Answer a request to undo: Undo / Keep In progress (6.6) | ✔ | ✔ | ✘ |
 | Reopen a completed task | via Review only | via Review only | ✘ |
 | Review completed work (accept / revise / reject) | ✔ | ✔ | ✘ |
 | Approve own work | auto-accepted | auto-accepted | ✘ |
@@ -173,7 +175,8 @@ All tables: `id` CHAR(26) ULID (or keep imported string ids, VARCHAR(64)), `crea
 - Record counts: `parts[partId]` (row total) and `parts["partId|memberId"]` (person within row), `by_person[memberId]`.
 
 ### 6.6 Completion, review and status locks
-- When a **Team Member** clicks Fixed / Completed: modal "What did you complete?" (required note, optional https link) → saved as `completion {note, link, by, at}` and `review {state:'pending', submittedBy, submittedAt}`.
+- **Statuses** (*new*): meeting tasks and monthly tasks use the same three — **Not started · In progress · Completed** (stored `todo · doing · done`; Meeting Minutes said To fix / Fixed before). Team Members only move forward.
+- When a **Team Member** clicks Completed — or ticks the **last unit** of a quantity task (*new*; the server refuses it without a note, `grp_completion_required`; Cancel leaves it one short) — modal "What did you complete?" (required note, optional https link) → saved as `completion {note, link, by, at}` and `review {state:'pending', submittedBy, submittedAt}`.
 - Super Admin / Team Leader completions are `review.state='accepted', auto=1` by default. Their **Mark as done** dialog offers **Done — no review needed** (default) or **Ask someone to review it**: pick anyone (Super Admin, a Team Leader or a Team Member) and add an optional note → `review {state:'pending', submittedBy, submittedAt, reviewer: memberId, note}`. Only that person (plus the Super Admin) can then **Approve** (= Accept) or **Send back** (= Revise, note required), even when they are a Team Member. *Not in the reference portal.*
 - Reviewers see pending work in **Needs your approval** on My day (7.0) and in the task Details, with Accept / Revise / Reject:
   - **Accept** → accepted (no badge shown afterwards).
@@ -183,7 +186,8 @@ All tables: `id` CHAR(26) ULID (or keep imported string ids, VARCHAR(64)), `crea
 - Buttons disappear immediately after a decision (optimistic UI). The submitter sees "Revision requested / Rejected · by X · note" on their card and in "Reviews of your work" (My tasks).
 - **Status locks** (server-enforced):
   - Done → anything: only via review actions.
-  - In progress → To fix / Not started (or counting down to 0): Super Admin / Team Leader only.
+  - In progress → Not started (or counting down to 0): Super Admin / Team Leader only.
+- **Request undo** (*new*, designs ST-A / ST-B): a Team Member who moved a task without a quantity to In progress by mistake clicks **↶ Request undo** on the card and must write what the mistake was and why (at least 10 characters). Stored as `undo_request {by, at, reason}` on the meeting task or the cycle record (schema 9); the card shows **Undo requested · {name} · waiting for a Team Leader** with the reason; one request at a time. Team Leaders and the Super Admin answer on the card or in **Needs your approval** ("Undo requested" · task · project · In progress → Not started · reason): **Undo** (back to Not started, as their own move) or **Keep In progress**, with an optional message; the member gets a private notice "Undo approved / Undo not approved" with it (7 days). Any other status move drops the request. Quantity tasks never ask (they count down), leaders move tasks back themselves, and Completed goes through review as before.
 - Meeting Minutes are **per cycle**: a task belongs to the cycle containing its meeting date (or created date). Banner counts, status counts and cards show only the selected cycle.
 
 ### 6.7 Activity crediting and reports
@@ -275,7 +279,7 @@ When an **active** project starts a new cycle, a Team Leader or the Super Admin 
 
 ### 7.2 Meeting Minutes
 Alert banner (cycle-scoped), project cycle bar, stats (status chips, cycle dates, cycle progress, days left / ended / starts in), cards, "+ Add task" tile.
-**Card** (compact): priority chip, Qty chip, meeting date; title; added / fixed / deadline chips; mini review tag; mini progress bar (qty > 1); status segment (To fix / In progress / Fixed, locks per 6.6); footer: avatar stack + "N person/people" or "? Not assigned", **Details**, Edit (admin/lead), 🗑 (admin/lead).
+**Card** (compact): priority chip, Qty chip, meeting date; title; added / fixed / deadline chips; mini review tag; mini progress bar (qty > 1); status segment (Not started / In progress / Completed, locks per 6.6; ↶ Request undo / Undo requested under it); footer: avatar stack + "N person/people" or "? Not assigned", **Details**, Edit (admin/lead), 🗑 (admin/lead).
 **Task dialog**: Client, What needs to change, Details, Page URL, Priority, Status, Quantity, From meeting on, Deadline (6.3), Responsible (searchable people picker; shares when qty > 1). Members can't open Edit.
 **Details window**: header (tags, status pill, title, project), info grid (meeting, added, deadline, fixed, responsible), Progress (full steppers), Details text, Page link, Completion & review (+ reviewer actions). No history.
 
@@ -329,7 +333,8 @@ The team sections are tabs of **My page** for leaders and the Super Admin (7.6) 
 | PUT `/projects/id/details` `{sections}` · PUT `/projects/id/keyword-columns` `{columns}` · POST `/projects/id/keywords` `{keywords: [..], deadline?}` · PATCH `/keywords/id` `{check: {column, on}}` (on: false — managers only) / `{ask_untick: {column, note?}}` / `{keep: {column}}` (managers) / `{note}` / `{keyword}` / `{deadline}` / `{position}` · DELETE `/keywords/id` | project details and keyword checklist (6.12) |
 | GET/POST/PATCH/DELETE `/meeting-tasks[/id]` | tasks; POST `/meeting-tasks/id/status`, `/progress` `{memberId,delta}` |
 | GET/POST/PATCH/DELETE `/monthly-tasks[/id]` | tasks |
-| POST `/records/tick` `{taskId, periodKey, partId?, memberId?, delta}` · POST `/records/status` | recurring progress |
+| POST `/records/tick` `{taskId, periodKey, partId?, memberId?, delta, note?, link?}` · POST `/records/status` | recurring progress |
+| POST `/meeting-tasks/id/undo` `{reason}` · POST `/meeting-tasks/id/undo/decide` `{action: undo|keep, note?}` · POST `/records/undo` `{taskId, periodKey, reason}` · POST `/records/undo/decide` `{taskId, periodKey, action, note?}` | request undo (6.6) |
 | POST `/review` `{kind: item|record, id, action: accept|revision|reject, note}` | review |
 | POST `/review/request` `{kind, id, reviewer, note}` | ask someone to review own finished task (6.6) |
 | GET/POST `/leave` · PATCH `/leave/id` `{action: approve|reject|cancel, message}` | day leave (6.10) |
@@ -440,5 +445,7 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 41. (Released as 0.1.14.) Project Details and keyword checklist (6.12, designs PD-D and KP-C): schema 8 (`grp_projects.details`, `kw_columns`, `grp_keywords`, synced), EDIT_PROJECT_DETAILS / MANAGE_KEYWORDS / TICK_KEYWORD, the routes in section 8, export / import, trash; Plan and Details tabs. **Tests:** PHPUnit (permission matrix, details saved and synced, link kinds, only http(s), keywords added with repeats skipped, deadlines / rename / remove for managers only, everyone ticks with who and when, profile lock, per-project columns, export round trip, deleted forever with the project), Vitest (link kinds, groups by cycle, drop deadlines, late, progress, pasted lists), Playwright (leader writes About with a Sheet and a Drive link, adds keywords, moves one by the menu and one by drag, renames a column; member opens links, ticks and writes a note, manages nothing).
 
 42. Unticking is for Team Leaders and the Super Admin (6.12): UNTICK_KEYWORD; a Team Member asks (`ask_untick`), the request shows on the box and in Needs your approval with Untick / Keep ticked. **Tests:** PHPUnit (member untick refused, ask stored with who and reason, only on a ticked box, re-tick keeps the first ticker, keep and untick for managers only, permission matrix), Vitest (requests reach leaders only), Playwright (member asks with a reason, the box keeps its tick; leader unticks from Needs your approval).
+
+43. One set of statuses and Request undo (6.6, designs ST-A / ST-B): Meeting Minutes renamed to Not started · In progress · Completed; schema 9 (`undo_request` on meeting tasks and cycle records); REQUEST_UNDO / DECIDE_UNDO; the routes in section 8; the answer as a private notice; the last unit of a quantity task needs the completion note from Team Members. **Tests:** PHPUnit (permission rows, reason required, one request at a time, others and quantity tasks refused, leader undoes / keeps with the notice, a status move drops it, monthly records, last unit needs the note), Vitest (requests reach leaders only), Playwright (member asks with a reason, leader undoes from Needs your approval, member gets Undo approved; last unit asks What did you complete?).
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).

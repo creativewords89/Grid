@@ -19,9 +19,9 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 	const STATUSES = array( 'todo', 'doing', 'done' );
 
 	const STATUS_TEXT = array(
-		'todo'  => 'To fix',
+		'todo'  => 'Not started',
 		'doing' => 'In progress',
-		'done'  => 'Fixed',
+		'done'  => 'Completed',
 	);
 
 	const DEADLINE_TYPES = array( 'none', 'weekly', 'biweekly', 'date', 'dates', 'monthly' );
@@ -53,6 +53,8 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 		self::route( '/meeting-tasks/(?P<id>[\w-]+)', WP_REST_Server::DELETABLE, 'destroy' );
 		self::route( '/meeting-tasks/(?P<id>[\w-]+)/status', WP_REST_Server::CREATABLE, 'set_status' );
 		self::route( '/meeting-tasks/(?P<id>[\w-]+)/progress', WP_REST_Server::CREATABLE, 'progress' );
+		self::route( '/meeting-tasks/(?P<id>[\w-]+)/undo', WP_REST_Server::CREATABLE, 'request_undo' );
+		self::route( '/meeting-tasks/(?P<id>[\w-]+)/undo/decide', WP_REST_Server::CREATABLE, 'decide_undo' );
 	}
 
 	/**
@@ -218,8 +220,8 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 	/**
 	 * POST /meeting-tasks/{id}/status `{status, note?, link?}`.
 	 *
-	 * Members need a completion note to mark a task Fixed. Done tasks only change
-	 * through review; In progress → To fix is for managers (GRP_Permissions).
+	 * Members need a completion note to mark a task Completed. Done tasks only change
+	 * through review; In progress → Not started is for managers (GRP_Permissions).
 	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response|WP_Error
@@ -267,7 +269,7 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 	 * POST /meeting-tasks/{id}/progress `{memberId, delta, note?, link?}`.
 	 *
 	 * Ticks one unit of a person's share (or of an unassigned task when memberId is empty).
-	 * Status follows the total: first tick → In progress, total = target → Fixed (review).
+	 * Status follows the total: first tick → In progress, total = target → Completed (review).
 	 * Each unit is credited to the share's owner (port of the reference `ishare` handler).
 	 *
 	 * @param WP_REST_Request $request Request.
@@ -321,8 +323,9 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 			return rest_ensure_response( $task );
 		}
 
-		$status     = $total >= $target ? 'done' : ( $total > 0 ? 'doing' : 'todo' );
-		$completion = 'done' === $status ? self::completion( $request, false ) : null;
+		$status = $total >= $target ? 'done' : ( $total > 0 ? 'doing' : 'todo' );
+		// The last unit completes the task: a Team Member says what they did (SPEC.md 6.6).
+		$completion = 'done' === $status && 'done' !== $task['status'] ? self::completion( $request, ! self::is_manager() ) : null;
 		if ( is_wp_error( $completion ) ) {
 			return $completion;
 		}
@@ -351,6 +354,73 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 	}
 
 	/**
+	 * POST /meeting-tasks/{id}/undo `{reason}`: a Team Member asks to put a task they moved to
+	 * In progress by mistake back to Not started (SPEC.md 6.6).
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function request_undo( WP_REST_Request $request ) {
+		$task = GRP_Store::get( self::TABLE, $request['id'] );
+		if ( ! $task ) {
+			return self::not_found();
+		}
+		if ( ! self::can( GRP_Permissions::REQUEST_UNDO, array( 'task' => $task ) ) ) {
+			return self::forbidden( __( 'Only the person working on a task that is In progress can ask to undo it.', 'gridrankers-portal' ) );
+		}
+		if ( GRP_Undo::pending( $task ) ) {
+			return self::conflict( __( 'An undo is already requested for this task.', 'gridrankers-portal' ), 'grp_undo_pending' );
+		}
+		$undo = GRP_Undo::request( $request['reason'] ?? '', self::actor() );
+		if ( is_wp_error( $undo ) ) {
+			return $undo;
+		}
+		$updated = GRP_Store::update( self::TABLE, $task['id'], array( 'undo_request' => $undo ) );
+		GRP_Activity::audit( 'status', 'items', $updated, self::actor(), 'undo requested' );
+
+		return rest_ensure_response( $updated );
+	}
+
+	/**
+	 * POST /meeting-tasks/{id}/undo/decide `{action: undo|keep, note?}`. Team Leaders and the
+	 * Super Admin; the person who asked gets a notice with the answer.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function decide_undo( WP_REST_Request $request ) {
+		$task = GRP_Store::get( self::TABLE, $request['id'] );
+		if ( ! $task ) {
+			return self::not_found();
+		}
+		if ( ! self::can( GRP_Permissions::DECIDE_UNDO ) ) {
+			return self::forbidden( __( 'Only a Team Leader or the Super Admin can answer a request to undo.', 'gridrankers-portal' ) );
+		}
+		$undo = GRP_Undo::pending( $task );
+		if ( ! $undo ) {
+			return self::conflict( __( 'There is no request to undo on this task.', 'gridrankers-portal' ), 'grp_undo_none' );
+		}
+		$action = (string) $request['action'];
+		if ( ! in_array( $action, array( 'undo', 'keep' ), true ) ) {
+			return self::invalid( __( 'Choose Undo or Keep.', 'gridrankers-portal' ) );
+		}
+		$approved = 'undo' === $action && 'doing' === $task['status'];
+		$note     = $request['note'] ?? '';
+
+		return rest_ensure_response(
+			GRP_Store::transaction(
+				static function () use ( $task, $undo, $approved, $note ) {
+					$changes = $approved ? self::status_changes( $task, 'todo', null ) : array( 'undo_request' => null );
+					$updated = GRP_Store::update( self::TABLE, $task['id'], $changes );
+					GRP_Activity::audit( 'status', 'items', $updated, self::actor(), $approved ? 'undo approved: In progress → Not started' : 'undo not approved' );
+					GRP_Undo::answer( $undo, $approved, $task['title'], $note, self::actor() );
+					return $updated;
+				}
+			)
+		);
+	}
+
+	/**
 	 * Column changes for a status move: done_at, review, completion and (for tasks
 	 * without a quantity) the activity credit (reference `withReview` + `itemDoneLog`).
 	 *
@@ -362,7 +432,11 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 	 */
 	private static function status_changes( array $task, $to, $completion, $credit = true ) {
 		$was_done = 'done' === $task['status'];
-		$changes  = array( 'status' => $to );
+		// Any status move answers a pending request to undo.
+		$changes = array(
+			'status'       => $to,
+			'undo_request' => null,
+		);
 
 		if ( 'done' === $to && ! $was_done ) {
 			$changes['done_at'] = GRP_Ids::now();
@@ -371,7 +445,7 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 				$changes['completion'] = $completion;
 			}
 			if ( $credit && (int) $task['target'] <= 1 ) {
-				GRP_Activity::credit( self::actor()['id'], $task['project_id'], $task['title'], 'Fixed', 1, 'board', 'item:' . $task['id'] );
+				GRP_Activity::credit( self::actor()['id'], $task['project_id'], $task['title'], 'Completed', 1, 'board', 'item:' . $task['id'] );
 			}
 		} elseif ( 'done' !== $to ) {
 			$changes['done_at'] = null;

@@ -18,18 +18,27 @@ export default function useTaskActions() {
 		try {
 			const row = await api.post(`meeting-tasks/${task.id}/status`, body);
 			save(row);
-			toast(to === 'done' ? (row.review && row.review.state === 'pending' ? 'Sent for review' : 'Marked fixed') : to === 'doing' ? 'In progress' : 'Back to To fix');
+			toast(to === 'done' ? (row.review && row.review.state === 'pending' ? 'Sent for review' : 'Marked completed') : to === 'doing' ? 'In progress' : 'Back to Not started');
 		} catch (err) {
 			toast(err.message);
 		}
 	};
 
 	const tick = async (task, memberId, delta) => {
+		// The last unit completes the task: a Team Member says what they did (SPEC.md 6.6).
+		let extra = {};
+		const target = Math.max(1, task.target || 1);
+		const total = Object.values(task.progress || {}).reduce((a, b) => a + b, 0);
+		if (delta > 0 && total + 1 >= target && task.status !== 'done' && !isManager(me)) {
+			const note = await askCompletion(task.title);
+			if (!note) return;
+			extra = note;
+		}
 		try {
-			const row = await api.post(`meeting-tasks/${task.id}/progress`, { memberId: memberId || '', delta });
+			const row = await api.post(`meeting-tasks/${task.id}/progress`, { memberId: memberId || '', delta, ...extra });
 			save(row);
 			const total = Object.values(row.progress || {}).reduce((a, b) => a + b, 0);
-			if (row.status === 'done' && task.status !== 'done') toast(row.review && row.review.state === 'pending' ? 'All done — sent for review' : 'All done — marked fixed');
+			if (row.status === 'done' && task.status !== 'done') toast(row.review && row.review.state === 'pending' ? 'All done — sent for review' : 'All done — completed');
 			else toast(`${total}/${row.target} done`);
 		} catch (err) {
 			toast(err.message);
@@ -63,5 +72,40 @@ export default function useTaskActions() {
 		}
 	};
 
-	return { setStatus, tick, remove };
+	// Request undo (SPEC.md 6.6): a Team Member who moved a task to In progress by mistake.
+	const requestUndo = async (task) => {
+		const reason = await confirm({
+			title: 'Request undo',
+			message: `“${task.title}” · In progress → Not started. A Team Leader or the Super Admin decides; you’ll get a notice with the answer.`,
+			input: 'What was the mistake, and why undo it?',
+			placeholder: 'e.g. I moved the wrong card — I haven’t started this one yet.',
+			ok: 'Send request',
+		});
+		if (reason === null || reason === false) return;
+		try {
+			save(await api.post(`meeting-tasks/${task.id}/undo`, { reason }));
+			toast('Undo requested — a Team Leader will answer');
+		} catch (err) {
+			toast(err.message);
+		}
+	};
+
+	// Team Leader / Super Admin: Undo (back to Not started) or Keep In progress.
+	const decideUndo = async (task, action) => {
+		const note = await confirm({
+			title: action === 'undo' ? 'Undo to Not started?' : 'Keep In progress?',
+			message: `“${task.title}” · ${task.undo_request && task.undo_request.reason ? `“${task.undo_request.reason}”` : ''}`,
+			input: 'Message (optional)',
+			ok: action === 'undo' ? 'Undo' : 'Keep In progress',
+		});
+		if (note === null || note === false) return;
+		try {
+			save(await api.post(`meeting-tasks/${task.id}/undo/decide`, { action, note: typeof note === 'string' ? note : '' }));
+			toast(action === 'undo' ? 'Undone — back to Not started' : 'Kept In progress');
+		} catch (err) {
+			toast(err.message);
+		}
+	};
+
+	return { setStatus, tick, remove, requestUndo, decideUndo };
 }

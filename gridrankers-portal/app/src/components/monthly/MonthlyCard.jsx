@@ -5,7 +5,7 @@ import { bornAt, isShared, isWaived, periodKeyOf, recordOf, stateOf, typePeople 
 import { isManager } from '../../lib/roles.js';
 import { assigneesOf, canWorkOn, isAssigned } from '../../lib/tasks.js';
 import Avatar from '../Avatar.jsx';
-import { MiniReview, People, ReviewBadge } from '../meeting/TaskCard.jsx';
+import { MiniReview, People, ReviewBadge, UndoLine } from '../meeting/TaskCard.jsx';
 import useRecordActions from './useRecordActions.js';
 
 export const TAG_LABEL = { none: 'No deadline', weekly: 'Weekly', biweekly: 'Bi-weekly', monthly: 'Monthly', date: 'Specific date', dates: 'Range' };
@@ -245,7 +245,7 @@ export function ProgressBox({ task, period }) {
 // Monthly / weekly task card (SPEC.md 7.3).
 export default function MonthlyCard({ task, selWeek, onSelectWeek, missed, onDetails, onEdit }) {
 	const { data, me, cycleOff, today } = usePortal();
-	const { setStatus, remove } = useRecordActions();
+	const { setStatus, remove, requestUndo, decideUndo } = useRecordActions();
 	const period = usePeriod(task, selWeek);
 	const { project, wk, aw, sel, slots, name, unit, freqLabel, tag, range, periodKey, st, n, count } = period;
 	const members = data.members;
@@ -328,6 +328,13 @@ export default function MonthlyCard({ task, selWeek, onSelectWeek, missed, onDet
 			<div className="seg" role="group" aria-label={`Status of ${task.title}`}>
 				{seg}
 			</div>
+			<UndoLine
+				task={{ status: st, target: n, title: task.title, undo_request: period.rec && period.rec.undo_request }}
+				me={me}
+				locked={locked}
+				onRequest={() => requestUndo(task, periodKey)}
+				onDecide={(a) => decideUndo(task, periodKey, a, period.rec && period.rec.undo_request && period.rec.undo_request.reason)}
+			/>
 			<div className="acts">
 				<div className="assign">
 					<People list={assigneesOf(task, members)} members={members} />

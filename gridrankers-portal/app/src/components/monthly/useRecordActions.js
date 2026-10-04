@@ -13,7 +13,18 @@ export default function useRecordActions() {
 
 	const tick = async (task, periodKey, delta, who = {}) => {
 		try {
-			const rec = store(await api.post('records/tick', { taskId: task.id, periodKey, delta, ...who }));
+			const body = { taskId: task.id, periodKey, delta, ...who };
+			let res;
+			try {
+				res = await api.post('records/tick', body);
+			} catch (err) {
+				// The last unit completes the task: a Team Member says what they did (SPEC.md 6.6).
+				if (err.code !== 'grp_completion_required') throw err;
+				const note = await askCompletion(task.title);
+				if (!note) return;
+				res = await api.post('records/tick', { ...body, ...note });
+			}
+			const rec = store(res);
 			const n = Math.max(1, task.target || 1);
 			toast(rec && rec.status === 'done' ? (rec.review && rec.review.state === 'pending' ? 'All done — sent for review' : 'All done') : `${rec ? rec.count : 0}/${n} done`);
 		} catch (err) {
@@ -31,6 +42,40 @@ export default function useRecordActions() {
 		try {
 			const rec = store(await api.post('records/status', body));
 			toast(to === 'done' ? (rec && rec.review && rec.review.state === 'pending' ? 'Sent for review' : 'Completed') : to === 'skipped' ? 'Skipped' : to === 'doing' ? 'In progress' : 'Reset to not started');
+		} catch (err) {
+			toast(err.message);
+		}
+	};
+
+	// Request undo (SPEC.md 6.6) on a period a Team Member moved to In progress by mistake.
+	const requestUndo = async (task, periodKey) => {
+		const reason = await confirm({
+			title: 'Request undo',
+			message: `“${task.title}” · In progress → Not started. A Team Leader or the Super Admin decides; you’ll get a notice with the answer.`,
+			input: 'What was the mistake, and why undo it?',
+			placeholder: 'e.g. I started the wrong task — I haven’t begun this one yet.',
+			ok: 'Send request',
+		});
+		if (reason === null || reason === false) return;
+		try {
+			store(await api.post('records/undo', { taskId: task.id, periodKey, reason }));
+			toast('Undo requested — a Team Leader will answer');
+		} catch (err) {
+			toast(err.message);
+		}
+	};
+
+	const decideUndo = async (task, periodKey, action, why) => {
+		const note = await confirm({
+			title: action === 'undo' ? 'Undo to Not started?' : 'Keep In progress?',
+			message: `“${task.title}”${why ? ` · “${why}”` : ''}`,
+			input: 'Message (optional)',
+			ok: action === 'undo' ? 'Undo' : 'Keep In progress',
+		});
+		if (note === null || note === false) return;
+		try {
+			store(await api.post('records/undo/decide', { taskId: task.id, periodKey, action, note: typeof note === 'string' ? note : '' }));
+			toast(action === 'undo' ? 'Undone — back to Not started' : 'Kept In progress');
 		} catch (err) {
 			toast(err.message);
 		}
@@ -63,5 +108,5 @@ export default function useRecordActions() {
 		}
 	};
 
-	return { tick, setStatus, remove };
+	return { tick, setStatus, remove, requestUndo, decideUndo };
 }

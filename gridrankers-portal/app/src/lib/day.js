@@ -195,6 +195,21 @@ export function bellItems(data, me, today, now = Date.now()) {
 	return items.map((i) => ({ ...i, unread: !seen.has('seen:' + i.key) }));
 }
 
+// Requests to undo In progress → Not started (SPEC.md 6.6) on meeting tasks and cycle records.
+export function undoRequests(data) {
+	const out = [];
+	rowsOf(data, 'meeting_tasks').forEach((t) => {
+		const u = t.undo_request;
+		if (u && u.by && data.projects[t.project_id]) out.push({ kind: 'undo', id: 'item:' + t.id, at: u.at, who: data.members[u.by], undo: u, title: t.title, project: data.projects[t.project_id], tab: 'board', item: t });
+	});
+	rowsOf(data, 'records').forEach((r) => {
+		const u = r.undo_request;
+		const task = data.monthly_tasks[r.task_id];
+		if (u && u.by && task && data.projects[r.project_id]) out.push({ kind: 'undo', id: 'rec:' + r.id, at: u.at, who: data.members[u.by], undo: u, title: task.title, project: data.projects[r.project_id], tab: 'monthly', record: r, task });
+	});
+	return out;
+}
+
 // Needs your approval: Team Members' leave requests and work waiting for review. A review
 // someone asked for shows only to that reviewer (and the Super Admin).
 export function approvals(data, me) {
@@ -204,9 +219,11 @@ export function approvals(data, me) {
 	const reviews = pendingReviews(data)
 		.filter((r) => mayDecide(r, me) && (r.review.reviewer || r.review.submittedBy !== me.id))
 		.map((r) => ({ kind: 'review', id: r.kind + ':' + r.id, at: r.review.submittedAt, who: data.members[r.review.submittedBy], review: r }));
-	// Requests to untick a keyword box (SPEC.md 6.12): Team Leaders and the Super Admin decide.
+	// Requests to untick a keyword box (SPEC.md 6.12) and to undo In progress (6.6): Team
+	// Leaders and the Super Admin decide.
 	const unticks = isManager(me) ? untickRequests(data) : [];
-	return [...leave, ...reviews, ...unticks].sort((a, b) => String(b.at).localeCompare(String(a.at)));
+	const undos = isManager(me) ? undoRequests(data) : [];
+	return [...leave, ...reviews, ...unticks, ...undos].sort((a, b) => String(b.at).localeCompare(String(a.at)));
 }
 
 // Projects tab: everything that needs attention across active projects.

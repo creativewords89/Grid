@@ -75,12 +75,12 @@ function UrgentBanner({ items, onOpen }) {
 							<div className="a-main">
 								<strong>{i.title}</strong>
 								<span>
-									{i.status === 'doing' ? 'In progress' : 'To fix'} · {who(i) || <em>Unassigned</em>}
+									{i.status === 'doing' ? 'In progress' : 'Not started'} · {who(i) || <em>Unassigned</em>}
 								</span>
 							</div>
 							<span className="a-age">{Math.max(0, daysBetween(localYmd(i.created_at), today))}d</span>
 							<button className="btn small a-done" onClick={() => setStatus(i, 'done')}>
-								Mark fixed
+								Mark completed
 							</button>
 							<button className="btn small" onClick={() => onOpen(i.id)}>
 								Open
@@ -95,9 +95,9 @@ function UrgentBanner({ items, onOpen }) {
 
 const FILTERS = [
 	['all', 'All', 't-all'],
-	['todo', 'To fix', 't-todo'],
+	['todo', 'Not started', 't-todo'],
 	['doing', 'In progress', 't-doing'],
-	['done', 'Fixed', 't-done'],
+	['done', 'Completed', 't-done'],
 	['urgent', 'Urgent', 't-late'],
 ];
 
