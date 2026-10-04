@@ -29,7 +29,7 @@ test('my day: leave, days off, birthdays, shout-outs and review requests', async
 	// Team Member: sets a birthday (today) and asks for 3 days of leave starting today.
 	await signIn(page, MAX);
 	await expect(box('Day leave')).toContainText(`1 day left in ${MONTH}`);
-	await expect(box('Notices')).toContainText('No notices yet');
+	await expect(box('Notifications')).not.toContainText('Great work on the Acme H1 fixes');
 	await page.locator('.me-btn').click();
 	await page.locator('nav.ttabs').getByRole('tab', { name: 'Settings' }).click();
 	await page.getByLabel('Birthday day').selectOption(pad(new Date().getDate()));
@@ -128,8 +128,8 @@ test('my day: leave, days off, birthdays, shout-outs and review requests', async
 	await expect(page.locator('.md-strip:visible .md-pager')).toContainText(/\d of \d/);
 	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/band.png' });
 	await expect(box('Day leave')).toContainText(`0 days left in ${MONTH}`);
-	await expect(box('Notices')).toContainText('Great work on the Acme H1 fixes');
-	await expect(box('Notices')).toContainText('Lee Lead → you');
+	await expect(box('Notifications')).toContainText('Great work on the Acme H1 fixes');
+	await expect(box('Notifications')).toContainText('Shout-out from Lee Lead');
 	const review = strip('Lee Lead asked you to review “Approve content plan”.');
 	await expect(review).toContainText('Please check the October topics');
 	await showStrip(page, 'asked you to review');

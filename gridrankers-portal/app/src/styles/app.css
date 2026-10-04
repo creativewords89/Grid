@@ -84,7 +84,9 @@ button.brand:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* My day (SPEC.md 7.0): top bar with strips, tabs, two columns that end level. */
 .md{display:flex;flex-direction:column;gap:16px}
-.md-top{background:var(--panel);border:1px solid var(--line);border-radius:16px;display:flex;flex-direction:column;overflow:hidden}
+/* No overflow:hidden here: the bell's panel must reach over the cards below (the band rounds its own corners). */
+.md-top{background:var(--panel);border:1px solid var(--line);border-radius:16px;display:flex;flex-direction:column;position:relative;z-index:20}
+.md-band{border-radius:15px 15px 0 0;overflow:hidden}
 .md-top>.md-row{padding:16px 20px}
 .md-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .md-hello{flex:1 1 260px;display:flex;flex-direction:column;gap:2px;min-width:0}
@@ -662,3 +664,38 @@ label.sf-opt small{color:var(--ink-2)}
 .sb-new{display:flex;flex-direction:column;gap:6px}
 .sb-new-row{display:flex;gap:6px;align-items:center}
 .sb-new-row input[type=text]{flex:1;min-width:0;border:1px solid var(--line);border-radius:9px;padding:7px 10px;font:inherit;background:var(--panel);color:var(--ink)}
+
+/* Notifications (SPEC.md 6.10, design NF-A) and the Today card under it. */
+.nf .md-h{gap:8px}
+.nf-new{font-size:.72rem;font-weight:800;color:#fff;background:var(--accent);border-radius:99px;padding:1px 8px}
+.nf-all{margin-left:auto;font-size:.82rem;font-weight:700}
+.nf-chips{display:flex;flex-wrap:wrap;gap:6px}
+.nf-chips button{font:inherit;font-size:.78rem;font-weight:700;padding:4px 10px;border-radius:99px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+.nf-chips button[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:var(--panel)}
+.nf-chips button span{opacity:.7;margin-left:2px}
+.nf-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.nf-item{display:flex;gap:10px;align-items:flex-start;padding:9px 10px;border-radius:12px}
+.nf-item.new{background:color-mix(in srgb,var(--accent) 6%,var(--panel))}
+.nf-dot{width:8px;height:8px;border-radius:50%;flex:none;margin-top:11px}
+.nf-item.new .nf-dot{background:var(--accent)}
+.nf-ic{width:30px;height:30px;border-radius:9px;flex:none;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:.9rem}
+.nf-ic.t-blue{background:#E8EEFC;color:#2753C9} .nf-ic.t-red{background:#FBE4E1;color:#A3261E} .nf-ic.t-amber{background:#FFF3D6;color:#8A5A00}
+.nf-ic.t-green{background:#E3F3E8;color:#1F6B3F} .nf-ic.t-purple{background:#F0E9FD;color:#6D3FC9} .nf-ic.t-pink{background:#FBE6EF;color:#9D2B5B} .nf-ic.t-grey{background:var(--panel-2);color:var(--ink-2)}
+.nf-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.nf-top{display:flex;gap:8px;align-items:baseline}
+.nf-top b{font-size:.88rem;overflow-wrap:anywhere}
+.nf-top small{margin-left:auto;white-space:nowrap;color:var(--ink-2);font-size:.75rem}
+.nf-sub{font-size:.82rem;color:var(--ink-2);line-height:1.4;overflow-wrap:anywhere;white-space:pre-wrap}
+.nf-open{align-self:flex-start;font-size:.8rem;font-weight:700;margin-top:2px}
+.nf-pages{display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-top:auto;padding-top:4px;font-size:.8rem}
+.md-today{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px 16px}
+.md-today:has(> .td-half:only-child){grid-template-columns:1fr}
+.td-half{display:flex;flex-direction:column;gap:6px;min-width:0}
+.td-half + .td-half{border-left:1px solid var(--line);padding-left:14px}
+.md-today h2{font-size:.92rem}
+.md-today .dl-left{margin:0}
+.md-today .md-h{gap:6px}
+@media (max-width:600px){.md-today{grid-template-columns:1fr}.td-half + .td-half{border-left:0;padding-left:0;border-top:1px solid var(--line);padding-top:12px}}
+.md-today .dl-left{font-size:.85rem;color:var(--ink-2)}
+.md-today .dl-left b{font-size:1.25rem;color:var(--ink);margin-right:2px}
+.md-today .muted{font-size:.8rem;margin:0}

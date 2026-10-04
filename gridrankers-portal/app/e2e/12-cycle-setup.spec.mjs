@@ -49,7 +49,7 @@ test('assign and review a new cycle', async ({ page }) => {
 	const cycleCo = (await apiCall(page, 'GET', 'projects')).json.find((p) => p.name === 'Cycle Co');
 	const refused = await apiCall(page, 'POST', `projects/${cycleCo.id}/cycle-review`, { task_id: pages.id, ok: true });
 	expect(refused.status).toBe(403);
-	await expect(box('Notices')).toContainText('Feedback: Cycle blogs');
+	await expect(box('Notifications')).toContainText('Feedback: Cycle blogs');
 	await expect(page.getByRole('heading', { name: 'New cycle setup' })).toHaveCount(0);
 	await signOut(page);
 	noErrors();

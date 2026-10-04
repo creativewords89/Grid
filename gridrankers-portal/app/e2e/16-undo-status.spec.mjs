@@ -72,7 +72,13 @@ test('request undo and the last unit', async ({ page }) => {
 	await expect(ask).toContainText('In progress → Not started');
 	await expect(ask).toContainText('I moved the wrong card');
 	await page.getByRole('button', { name: /Notifications/ }).click();
-	await expect(page.getByText(`Max Member asked to undo “${undoTitle}”`)).toBeVisible();
+	await expect(page.locator('.md-pop').getByText(`Max Member asked to undo “${undoTitle}”`)).toBeVisible();
+	// The panel lies over the cards below, not clipped by the header (what is under its lower part is the panel itself).
+	const box2 = await page.locator('.md-pop').boundingBox();
+	expect(box2.height).toBeGreaterThan(120);
+	const onTop = await page.evaluate(({ x, y }) => !!document.elementFromPoint(x, y)?.closest('.md-pop'), { x: box2.x + box2.width / 2, y: box2.y + box2.height - 10 });
+	expect(onTop).toBe(true);
+	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/bell-open.png' });
 	await page.getByRole('button', { name: /Notifications/ }).click();
 	await openProject(page, 'Acme Plumbing');
 	const theirs = card(page, undoTitle);
@@ -88,7 +94,7 @@ test('request undo and the last unit', async ({ page }) => {
 
 	// Max gets the answer and the task is Not started again.
 	await signIn(page, MAX);
-	await expect(box('Notices')).toContainText('Undo approved');
+	await expect(box('Notifications')).toContainText('Undo approved');
 	await openProject(page, 'Acme Plumbing');
 	await expect(card(page, undoTitle).locator('.seg [aria-pressed=true]')).toHaveText('Not started');
 	await signOut(page);

@@ -89,7 +89,9 @@ test('submission with files, edit and comments', async ({ page }) => {
 	// Max: the leader's comment rings the bell.
 	await signIn(page, MAX);
 	await page.getByRole('button', { name: /Notifications/ }).click();
-	await expect(page.getByText(`Lee Lead commented on “${maxTitle}”`)).toBeVisible();
+	await expect(page.locator('.md-pop').getByText(`Lee Lead commented on “${maxTitle}”`)).toBeVisible();
+	// …and shows in the Notifications box too.
+	await expect(page.locator('section.nf .nf-item', { hasText: `Lee Lead commented on “${maxTitle}”` })).toBeVisible();
 	await signOut(page);
 	noErrors();
 });

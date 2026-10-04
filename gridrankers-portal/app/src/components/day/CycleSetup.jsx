@@ -129,7 +129,7 @@ export function ReviewCycleDialog({ c, onClose }) {
 				))}
 			</ul>
 			<div className="ld-foot">
-				<span className="muted">Feedback goes to the people responsible as a notice (bell and Notices box).</span>
+				<span className="muted">Feedback goes to the people responsible as a notice (bell and Notifications box).</span>
 				<button type="button" className="btn" onClick={onClose}>
 					Close
 				</button>

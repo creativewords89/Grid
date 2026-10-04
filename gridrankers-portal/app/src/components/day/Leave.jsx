@@ -110,7 +110,7 @@ export function LeaveDialog({ open, onClose }) {
 }
 
 // Day leave box (Team Member, Team Leader): days left this month and the button.
-export default function DayLeave() {
+export default function DayLeave({ bare = false }) {
 	const { data, me, today, setView, setTeamPerson, viewOnly } = usePortal();
 	const [open, setOpen] = useState(false);
 	const month = today.slice(0, 7);
@@ -132,8 +132,10 @@ export default function DayLeave() {
 		setView('team');
 	};
 
+	// `bare`: one half of the Today card (design NF-A) instead of its own card.
+	const Box = bare ? 'div' : 'section';
 	return (
-		<section className="md-card" aria-labelledby="dlTitle">
+		<Box className={bare ? 'td-half' : 'md-card'} aria-labelledby="dlTitle">
 			<div className="md-h">
 				<h2 id="dlTitle">Day leave</h2>
 				<button type="button" className="linkbtn" onClick={openMine}>
@@ -152,12 +154,12 @@ export default function DayLeave() {
 			)}
 			{!viewOnly && (
 				<div>
-					<button type="button" className="btn primary" onClick={() => setOpen(true)}>
+					<button type="button" className={'btn primary' + (bare ? ' small' : '')} onClick={() => setOpen(true)}>
 						{lead ? 'Take day leave' : 'Request day leave'}
 					</button>
 				</div>
 			)}
 			<LeaveDialog open={open} onClose={() => setOpen(false)} />
-		</section>
+		</Box>
 	);
 }

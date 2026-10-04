@@ -124,7 +124,7 @@ export function NoticeDialog({ open, onClose }) {
 						))}
 					</select>
 				</label>
-				<p className="hint">{toAll ? 'Everyone sees it at the top of their Notices box.' : 'Only the people you choose see it, at the top of their Notices box, with a bell notification.'}{shout ? ' Shout-outs show a star and everyone can see them for 30 days.' : ''}</p>
+				<p className="hint">{toAll ? 'Everyone sees it in their Notifications box.' : 'Only the people you choose see it, in their Notifications box and bell.'}{shout ? ' Shout-outs show a star and everyone can see them for 30 days.' : ''}</p>
 				<p className="err" role="alert">
 					{error}
 				</p>

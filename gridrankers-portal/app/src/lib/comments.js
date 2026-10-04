@@ -44,7 +44,15 @@ export function commentBell(data, me, now = Date.now()) {
 		const mine = comp.by === me.id || rv.reviewer === me.id || isAssigned(task, me.id) || all.some((o) => o.ref_id === c.ref_id && o.created_by === me.id);
 		if (!mine) return;
 		const who = data.members[c.created_by];
-		out.push({ key: `cm:${c.id}`, text: `${who ? who.name : 'Someone'} commented on “${task.title}”`, sub: c.body || ((c.files || []).length ? `📎 ${c.files.map((f) => f.name).join(', ')}` : '') });
+		out.push({
+			key: `cm:${c.id}`,
+			text: `${who ? who.name : 'Someone'} commented on “${task.title}”`,
+			sub: c.body || ((c.files || []).length ? `📎 ${c.files.map((f) => f.name).join(', ')}` : ''),
+			at: c.created_at,
+			title: task.title,
+			project_id: task.project_id,
+			tab: c.ref_kind === 'item' ? 'board' : 'monthly',
+		});
 	});
 	return out;
 }

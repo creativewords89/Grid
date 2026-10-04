@@ -25,18 +25,17 @@ test('private notices and the profile lock', async ({ page }) => {
 
 	// Nia sees the notice for everyone, not Max's.
 	await signIn(page, 'NIACODE11');
-	await expect(box('Notices')).toContainText('Office closes at 4 PM');
-	await expect(box('Notices')).not.toContainText('Acme report');
+	await expect(box('Notifications')).toContainText('Office closes at 4 PM');
+	await expect(box('Notifications')).not.toContainText('Acme report');
 	const synced = (await apiCall(page, 'GET', 'sync')).json.changes.posts.map((p) => p.title);
 	expect(synced).not.toContain('Acme report');
 	await signOut(page);
 
 	// Max sees it, then removes his location: reminder, locked tasks and a clear server answer.
 	await signIn(page, MAX);
-	const mine = box('Notices').locator('.nc-card', { hasText: 'Acme report' });
-	await expect(mine).toContainText('To you');
-	// The tag says who it is for; the card names only the sender.
-	await expect(mine.locator('.so-head')).toHaveText(/^Lee Lead\s*To you$/);
+	const mine = box('Notifications').locator('.nf-item', { hasText: 'Acme report' });
+	// Who sent it, to whom, and its title.
+	await expect(mine.locator('.nf-top b')).toHaveText('Lee Lead → you · Acme report');
 
 	await page.locator('.me-btn').click();
 	await page.locator('nav.ttabs').getByRole('tab', { name: 'Settings' }).click();
