@@ -9,7 +9,7 @@ import MyProjects from './day/MyProjects.jsx';
 import NeedsAttention, { useAttention } from './day/NeedsAttention.jsx';
 import { NoticeDialog } from './day/PostDialogs.jsx';
 import ProjectsBoard from './day/ProjectsBoard.jsx';
-import { Notices, WhosOut } from './day/Side.jsx';
+import { Notifications, WhosOut } from './day/Side.jsx';
 
 const TAB_KEY = 'grp:dash-tab';
 
@@ -78,10 +78,12 @@ export default function Dashboard({ onSignOut }) {
 						<MyProjects />
 					</div>
 					<div className="md-col">
-						<Notices />
-						<WhosOut />
+						<Notifications />
 						{manager && <Approvals />}
-						{me.role !== 'admin' && <DayLeave />}
+						<section className="md-card md-today" aria-label="Today">
+							<WhosOut bare />
+							{me.role !== 'admin' && <DayLeave bare />}
+						</section>
 					</div>
 				</div>
 			) : (

@@ -60,7 +60,7 @@ export const PROJECT_FILTERS = {
 	week: (g, today) => !!g.flag.due && daysBetween(today, g.flag.due) <= 7,
 };
 
-const dismissedKeys = (data, me) => new Set(rowsOf(data, 'dismissals').filter((d) => d.member_id === me.id).map((d) => d.notice_key));
+export const dismissedKeys = (data, me) => new Set(rowsOf(data, 'dismissals').filter((d) => d.member_id === me.id).map((d) => d.notice_key));
 
 const ago = (iso, days, now) => !!iso && now - new Date(String(iso).replace(' ', 'T') + (String(iso).length === 19 ? 'Z' : '')).getTime() < days * 86400000;
 

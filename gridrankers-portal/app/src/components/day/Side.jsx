@@ -1,23 +1,15 @@
 import { useMemo, useState } from 'react';
 import { usePortal } from '../../context.js';
-import { notices } from '../../lib/day.js';
+import { dismissedKeys } from '../../lib/day.js';
+import { FILTERS, PAGE_SIZE, ago, countsOf, feedOf } from '../../lib/feed.js';
+import { useDismiss } from './DayHeader.jsx';
 import { short } from '../../lib/format.js';
 import { dayOffName, teamWeekly, whosOut } from '../../lib/people.js';
 import { rowsOf } from '../../lib/store.js';
 import Avatar from '../Avatar.jsx';
 import Modal from '../Modal.jsx';
 
-const STAR = (
-	<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-		<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" />
-	</svg>
-);
 
-const MEGA = (
-	<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-		<path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1zM15 9a4 4 0 0 1 0 6" />
-	</svg>
-);
 
 const backText = (back, today) => {
 	const days = Math.round((Date.parse(back) - Date.parse(today)) / 86400000);
@@ -123,7 +115,7 @@ function OutList({ list, today, onClose }) {
 
 // Who's out today (SPEC.md 6.10): day off or on leave — never the leave type or reason. Up to 3
 // people by name; more as faces + counts with See all; one line when the whole team is off.
-export function WhosOut() {
+export function WhosOut({ bare = false }) {
 	const { data, me, today } = usePortal();
 	const [all, setAll] = useState(false);
 	const people = useMemo(() => rowsOf(data, 'members').filter((m) => m.active), [data]);
@@ -172,8 +164,10 @@ export function WhosOut() {
 		);
 	}
 
+	// `bare`: one half of the Today card (design NF-A) instead of its own card.
+	const Box = bare ? 'div' : 'section';
 	return (
-		<section className="md-card" aria-labelledby="woTitle">
+		<Box className={bare ? 'td-half' : 'md-card'} aria-labelledby="woTitle">
 			<div className="md-h">
 				<h2 id="woTitle">Who’s out today</h2>
 				{list.length > NAMES && (
@@ -184,95 +178,96 @@ export function WhosOut() {
 			</div>
 			{body}
 			{all && <OutList list={list} today={today} onClose={() => setAll(false)} />}
-		</section>
+		</Box>
 	);
 }
 
-const when = (iso) => {
-	const t = Date.parse(String(iso).replace(' ', 'T') + 'Z');
-	const days = Math.floor((Date.now() - t) / 86400000);
-	return days <= 0 ? `Today, ${new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}` : days === 1 ? 'Yesterday' : new Date(t).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
-};
-
-const TAG = { you: ['To you', 'f-blue'], all: ['Everyone', 'f-green'], shout: ['Shout-out', 'f-amber'] };
-
-function NoticeCard({ n }) {
-	const [label, cls] = TAG[n.tag];
-	return (
-		<div className={'nc-card' + (n.tag === 'shout' ? ' nc-shout' : '')}>
-			<div className="so-head">
-				<Avatar person={n.from} small />
-				<span>
-					<b>{n.from ? n.from.name : 'Team Leader'}</b>
-					{/* The tag already says To you / Everyone; a shout-out still names who it praises. */}
-					{n.tag === 'shout' && (
-						<>
-							{' '}
-							→ <b>{n.to}</b>
-						</>
-					)}
-				</span>
-				<span className={'mp-flag ' + cls}>{label}</span>
-			</div>
-			{n.post.title && <b className="nc-title">{n.post.title}</b>}
-			<p>
-				<span className={n.tag === 'shout' ? 'so-star' : 'nc-ico'}>{n.tag === 'shout' ? STAR : MEGA}</span>
-				{n.post.body}
-			</p>
-			<small className="muted">{when(n.post.created_at)}</small>
-		</div>
-	);
-}
-
-// Notices (SPEC.md 6.10): notices to everyone, notices to me and shout-outs, newest first.
-export function Notices() {
-	const { data, me, today } = usePortal();
-	const [all, setAll] = useState(false);
-	const list = useMemo(() => notices(data, me, today), [data, me, today]);
+// Notifications (SPEC.md 6.10, design NF-A): everything that matters to me in one feed, newest
+// first, with filters, unread dots, Mark all read and pages of PAGE_SIZE. Read state is shared with
+// the bell (`seen:` keys).
+export function Notifications() {
+	const { data, me, today, setProject, setSearch, setView, viewOnly } = usePortal();
+	const dismiss = useDismiss();
+	const [filter, setFilter] = useState('all');
+	const [page, setPage] = useState(0);
+	const items = useMemo(() => feedOf(data, me, today), [data, me, today]);
+	const seen = dismissedKeys(data, me);
+	const unread = items.filter((i) => !seen.has('seen:' + i.key));
+	const counts = countsOf(items);
+	const shown = filter === 'all' ? items : items.filter((i) => i.cat === filter);
+	const pages = Math.max(1, Math.ceil(shown.length / PAGE_SIZE));
+	const at = Math.min(page, pages - 1);
+	const read = (keys) => !viewOnly && keys.length && dismiss(keys.map((k) => 'seen:' + k));
+	const open = (i) => {
+		if (!seen.has('seen:' + i.key)) read([i.key]);
+		setProject(i.open.project_id);
+		setSearch(i.open.title);
+		setView(i.open.tab);
+	};
 
 	return (
-		<section className="md-card md-grow" aria-labelledby="ncTitle">
+		<section className="md-card md-grow nf" aria-labelledby="nfTitle">
 			<div className="md-h">
-				<h2 id="ncTitle">Notices</h2>
-				{list.length > NAMES && (
-					<button type="button" className="linkbtn" onClick={() => setAll(true)}>
-						View all {list.length}
+				<h2 id="nfTitle">Notifications</h2>
+				{unread.length > 0 && <span className="nf-new">{unread.length} new</span>}
+				{unread.length > 0 && !viewOnly && (
+					<button type="button" className="linkbtn nf-all" onClick={() => read(unread.map((i) => i.key))}>
+						Mark all read
 					</button>
 				)}
 			</div>
-			{list.length === 0 ? (
+			<div className="nf-chips" role="group" aria-label="Show">
+				{FILTERS.map(([k, label]) => (
+					<button key={k} type="button" aria-pressed={filter === k} onClick={() => (setFilter(k), setPage(0))}>
+						{label} {counts[k] > 0 && <span>{counts[k]}</span>}
+					</button>
+				))}
+			</div>
+			{shown.length === 0 ? (
 				<div className="md-empty">
-					<span className="nc-ico">{MEGA}</span>
-					<b>No notices yet</b>
-					<span>Notices and shout-outs from your Team Leaders show here.</span>
+					<b>{filter === 'all' ? 'Nothing new' : 'Nothing here'}</b>
+					<span>New tasks, reviews, leave answers, events and messages for you show here.</span>
 				</div>
 			) : (
-				<div className="so-list">
-					{list.slice(0, NAMES).map((n) => (
-						<NoticeCard key={n.post.id} n={n} />
-					))}
+				<ul className="nf-list">
+					{shown.slice(at * PAGE_SIZE, at * PAGE_SIZE + PAGE_SIZE).map((i) => {
+						const isNew = !seen.has('seen:' + i.key);
+						return (
+							<li key={i.key} className={'nf-item' + (isNew ? ' new' : '')}>
+								<span className="nf-dot" aria-label={isNew ? 'Unread' : undefined} />
+								<span className={'nf-ic t-' + i.tone} aria-hidden="true">
+									{i.icon}
+								</span>
+								<span className="nf-body">
+									<span className="nf-top">
+										<b>{i.title}</b>
+										<small>{ago(i.at)}</small>
+									</span>
+									{i.sub && <span className="nf-sub">{i.sub}</span>}
+									{i.open && (
+										<button type="button" className="linkbtn nf-open" onClick={() => open(i)}>
+											Open task ›
+										</button>
+									)}
+								</span>
+							</li>
+						);
+					})}
+				</ul>
+			)}
+			{pages > 1 && (
+				<div className="nf-pages">
+					<span className="muted">
+						{at * PAGE_SIZE + 1}–{Math.min(shown.length, at * PAGE_SIZE + PAGE_SIZE)} of {shown.length}
+					</span>
+					<button type="button" className="pg" aria-label="Previous page" disabled={at === 0} onClick={() => setPage(at - 1)}>
+						‹
+					</button>
+					<button type="button" className="pg" aria-label="Next page" disabled={at === pages - 1} onClick={() => setPage(at + 1)}>
+						›
+					</button>
 				</div>
 			)}
-			<Modal open={all} onClose={() => setAll(false)} labelledBy="ncAll" className="list-dlg">
-				<div className="ld-head">
-					<h2 id="ncAll">Notices</h2>
-					<span className="ld-count">{list.length}</span>
-					<button type="button" className="ld-x" aria-label="Close" onClick={() => setAll(false)}>
-						✕
-					</button>
-				</div>
-				<div className="ld-body so-list">
-					{list.map((n) => (
-						<NoticeCard key={n.post.id} n={n} />
-					))}
-				</div>
-				<div className="ld-foot">
-					<span />
-					<button type="button" className="btn" onClick={() => setAll(false)}>
-						Close
-					</button>
-				</div>
-			</Modal>
 		</section>
 	);
 }
