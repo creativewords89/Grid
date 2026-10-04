@@ -1,14 +1,36 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePortal } from '../../context.js';
 import { LINK_LABEL, isWebUrl, linkKind, sectionsOf } from '../../lib/plan.js';
+import { cycleRange } from '../../lib/cycles.js';
+import { short } from '../../lib/format.js';
 import { isManager } from '../../lib/roles.js';
 
 const ICON = { sheet: '▦', doc: '≣', drive: '▲', other: '↗' };
 const newId = () => 'n' + Math.random().toString(36).slice(2, 10);
 
-// A link chip: opens in a new tab (edit mode: × removes it, drag to reorder).
-function Chip({ link, onRemove, drag }) {
-	const body = (
+const TYPE_LABEL = { sheet: 'Google Sheet', doc: 'Google Doc', drive: 'Drive folder', other: 'Link' };
+const initials = (name) =>
+	String(name || '')
+		.split(/\s+/)
+		.filter(Boolean)
+		.slice(0, 2)
+		.map((w) => w[0].toUpperCase())
+		.join('');
+
+// A link chip: opens in a new tab (edit mode: × removes it, drag to reorder). `wide`: the larger
+// chip of the header card, with its type under the name (design PD-F).
+function Chip({ link, onRemove, drag, wide }) {
+	const body = wide ? (
+		<>
+			<span className={'pdx-ibox k-' + link.kind} aria-hidden="true">
+				{ICON[link.kind] || ICON.other}
+			</span>
+			<span className="pdx-wname">
+				<b>{link.title}</b>
+				<small>{TYPE_LABEL[link.kind] || TYPE_LABEL.other}</small>
+			</span>
+		</>
+	) : (
 		<>
 			<span className={'pdx-ico k-' + link.kind} aria-hidden="true">
 				{ICON[link.kind] || ICON.other}
@@ -27,7 +49,7 @@ function Chip({ link, onRemove, drag }) {
 		);
 	}
 	return (
-		<a className="pdx-chip" href={link.url} target="_blank" rel="noopener noreferrer" title={link.url}>
+		<a className={'pdx-chip' + (wide ? ' wide' : '')} href={link.url} target="_blank" rel="noopener noreferrer" title={link.url}>
 			{body}
 		</a>
 	);
@@ -87,12 +109,51 @@ function AddLink({ onAdd, onClose }) {
 }
 
 // One section: title, text and link chips; Edit turns it into a form.
-function Section({ section, can, editing, onEdit, onSave, onCancel, onRemove, onQuickAdd }) {
+function Section({ section, can, editing, onEdit, onSave, onCancel, onRemove, onQuickAdd, hero }) {
 	const [draft, setDraft] = useState(section);
 	const [adding, setAdding] = useState(false);
 	const [dragFrom, setDragFrom] = useState(-1);
 	const [busy, setBusy] = useState(false);
 	useEffect(() => setDraft(section), [section, editing]);
+
+	// The first section is the project's header card (design PD-F): mark, title, project · status ·
+	// cycle, then the text and the links as larger chips.
+	if (!editing && hero) {
+		return (
+			<section className="dcard pdx-hero" aria-label={section.title}>
+				<div className="pdx-band">
+					<span className="pdx-mark" aria-hidden="true">
+						{hero.mark}
+					</span>
+					<div className="pdx-htext">
+						<h2>{section.title}</h2>
+						<span>{hero.meta}</span>
+					</div>
+					{can && (
+						<button type="button" className="pdx-bandbtn" onClick={onEdit} aria-label={`Edit ${section.title}`}>
+							Edit
+						</button>
+					)}
+				</div>
+				{section.text ? <p className="pdx-text pdx-pad">{section.text}</p> : null}
+				{(section.links.length > 0 || can) && (
+					<div className="pdx-chips pdx-pad">
+						{section.links.map((l) => (
+							<Chip key={l.id} link={l} wide />
+						))}
+						{can && (
+							<span className="pdx-addwrap">
+								<button type="button" className="pdx-chip add wide" onClick={() => setAdding(true)}>
+									+ Add link
+								</button>
+								{adding && <AddLink onAdd={onQuickAdd} onClose={() => setAdding(false)} />}
+							</span>
+						)}
+					</div>
+				)}
+			</section>
+		);
+	}
 
 	if (!editing) {
 		return (
@@ -191,7 +252,7 @@ const hostOf = (url) => {
 // Project → Details (SPEC.md 6.12, design PD-D): descriptions with their links as chips.
 // Team Leaders and the Super Admin edit; everyone reads.
 export default function ProjectDetails() {
-	const { api, data, project, dispatch, toast, confirm, me } = usePortal();
+	const { api, data, project, dispatch, toast, confirm, me, today } = usePortal();
 	const p = data.projects[project];
 	const can = isManager(me);
 	const sections = sectionsOf(p);
@@ -210,6 +271,8 @@ export default function ProjectDetails() {
 		}
 	};
 	const replace = (id, s) => sections.map((x) => (x.id === id ? s : x));
+	const cycle = cycleRange(p, 0, today);
+	const hero = { mark: initials(p.name), meta: [p.name, p.state.charAt(0).toUpperCase() + p.state.slice(1), cycle ? `Cycle ${short(cycle.start)} – ${short(cycle.end)}` : ''].filter(Boolean).join(' · ') };
 	const blank = { id: 'new', title: sections.length ? '' : 'About', text: '', links: [] };
 
 	return (
@@ -225,10 +288,11 @@ export default function ProjectDetails() {
 					)}
 				</section>
 			)}
-			{sections.map((s) => (
+			{sections.map((s, i) => (
 				<Section
 					key={s.id}
 					section={s}
+					hero={i === 0 ? hero : null}
 					can={can}
 					editing={editing === s.id}
 					onEdit={() => setEditing(s.id)}

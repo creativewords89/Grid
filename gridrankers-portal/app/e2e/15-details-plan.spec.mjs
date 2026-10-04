@@ -23,7 +23,11 @@ test('project details and keyword checklist', async ({ page }) => {
 	await page.locator('.pdx-pop').getByRole('button', { name: 'Add', exact: true }).click();
 	await page.locator('.pdx-card.editing').getByRole('button', { name: 'Save' }).click();
 	await page.getByText('Section added').waitFor();
-	const about = page.locator('.pdx-card', { has: page.getByRole('heading', { name: 'About' }) });
+	// The first section is the project's header card (design PD-F): no team names in it.
+	const about = page.locator('.pdx-hero');
+	await expect(about.getByRole('heading', { name: 'About' })).toBeVisible();
+	await expect(about.locator('.pdx-htext span')).toHaveText(/^Acme Plumbing · Active · Cycle /);
+	await expect(about).not.toContainText('Max Member');
 	await expect(about).toContainText('Family plumbing company in Dhaka and Gazipur.');
 	const chip = about.getByRole('link', { name: /Keyword research 2026/ });
 	await expect(chip).toHaveAttribute('href', 'https://docs.google.com/spreadsheets/d/abc/edit');
@@ -65,7 +69,8 @@ test('project details and keyword checklist', async ({ page }) => {
 	await signIn(page, MAX);
 	await openProject(page, 'Acme Plumbing');
 	await tab('Details').click();
-	await expect(page.locator('.pdx-card').getByRole('link', { name: /Job photos/ })).toBeVisible();
+	await expect(page.locator('.pdx-hero').getByRole('link', { name: /Job photos/ })).toBeVisible();
+	await expect(page.locator('.pdx-hero')).toContainText('Drive folder');
 	await expect(page.getByRole('button', { name: /^Edit/ })).toHaveCount(0);
 	await expect(page.getByRole('button', { name: '+ Add link' })).toHaveCount(0);
 	await tab('Plan').click();
