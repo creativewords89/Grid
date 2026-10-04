@@ -15,7 +15,7 @@ class GRP_Install {
 	/**
 	 * Current schema version. Bump it whenever get_schema() or migrations() changes.
 	 */
-	const DB_VERSION = 9;
+	const DB_VERSION = 10;
 
 	/**
 	 * Option that stores the installed schema version.
@@ -31,7 +31,8 @@ class GRP_Install {
 	 * leave, days off and posts (announcements, shout-outs) for SPEC.md 6.10; schema 6
 	 * adds member location and birth year, and private notices. Schema 8 adds project details,
  * the keyword checklist columns and `grp_keywords` (SPEC.md 6.12). Schema 9 adds `undo_request` (a Team
- * Member's request to undo In progress, SPEC.md 6.6) to meeting tasks and cycle records.
+ * Member's request to undo In progress, SPEC.md 6.6) to meeting tasks and cycle records. Schema 10 adds
+ * `grp_files` (private uploads for submissions and comments) and `grp_comments` (SPEC.md 6.6).
 	 *
 	 * @var string[]
 	 */
@@ -52,6 +53,8 @@ class GRP_Install {
 		'grp_days_off',
 		'grp_posts',
 		'grp_keywords',
+		'grp_files',
+		'grp_comments',
 	);
 
 	/**
@@ -538,6 +541,35 @@ class GRP_Install {
 				updated_at datetime NOT NULL,
 				PRIMARY KEY  (id),
 				KEY project_id (project_id),
+				KEY updated_at (updated_at)
+			) $collate;",
+
+			"CREATE TABLE {$t['grp_files']} (
+				id varchar(64) NOT NULL,
+				name varchar(191) NOT NULL,
+				mime varchar(100) NOT NULL,
+				size int(11) NOT NULL DEFAULT 0,
+				path varchar(255) NOT NULL,
+				created_by varchar(64) NULL,
+				created_at datetime NOT NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				KEY created_by (created_by)
+			) $collate;",
+
+			"CREATE TABLE {$t['grp_comments']} (
+				id varchar(64) NOT NULL,
+				ref_kind enum('item','record') NOT NULL,
+				ref_id varchar(128) NOT NULL,
+				project_id varchar(64) NULL,
+				body text NOT NULL,
+				files json NULL,
+				created_by varchar(64) NULL,
+				deleted_at datetime NULL,
+				created_at datetime NOT NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				KEY ref (ref_kind,ref_id),
 				KEY updated_at (updated_at)
 			) $collate;",
 		);

@@ -344,7 +344,15 @@ class Test_GRP_REST_People extends GRP_REST_TestCase {
 				'title'      => 'Approve content plan',
 			)
 		)->get_data();
-		$done    = $this->api_as( 'lead', 'POST', "/meeting-tasks/{$task['id']}/status", array( 'status' => 'done' ) )->get_data();
+		$done    = $this->api_as(
+			'lead',
+			'POST',
+			"/meeting-tasks/{$task['id']}/status",
+			array(
+				'status' => 'done',
+				'note'   => 'Plan approved',
+			)
+		)->get_data();
 		$this->assertSame( 'accepted', $done['review']['state'], 'done straight away by default' );
 
 		$ask = array(

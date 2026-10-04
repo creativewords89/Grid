@@ -26,6 +26,39 @@ class GRP_REST_Records extends GRP_REST_Controller {
 		self::route( '/records/status', WP_REST_Server::CREATABLE, 'set_status' );
 		self::route( '/records/undo', WP_REST_Server::CREATABLE, 'request_undo' );
 		self::route( '/records/undo/decide', WP_REST_Server::CREATABLE, 'decide_undo' );
+		self::route( '/records/submission', 'PATCH', 'edit_submission' );
+	}
+
+	/**
+	 * PATCH /records/submission `{taskId, periodKey, note, links, files, comment}`: edit the saved
+	 * submission of a period (SPEC.md 6.6, design SF-B).
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function edit_submission( WP_REST_Request $request ) {
+		$ctx = self::context( $request );
+		if ( is_wp_error( $ctx ) ) {
+			return $ctx;
+		}
+		list( $task, , , $rec ) = $ctx;
+		$completion             = self::edited_submission( $rec ? ( $rec['completion'] ?? null ) : null, $request );
+		if ( is_wp_error( $completion ) ) {
+			return $completion;
+		}
+
+		return rest_ensure_response(
+			GRP_Store::transaction(
+				static function () use ( $task, $rec, $completion ) {
+					$record = GRP_Store::update( self::TABLE, $rec['id'], array( 'completion' => $completion ) );
+					GRP_Activity::audit( 'edit', 'monthly', $task, self::actor(), self::period_label( $task, $rec['week'] ) . ' · submission edited' );
+					return array(
+						'record' => $record,
+						'id'     => $record['id'],
+					);
+				}
+			)
+		);
 	}
 
 	/**
@@ -141,9 +174,9 @@ class GRP_REST_Records extends GRP_REST_Controller {
 			return self::forbidden( self::denied_message( $task, $rec ) );
 		}
 
-		// The last unit completes the task: a Team Member says what they did (SPEC.md 6.6).
+		// The last unit completes the task: everyone fills in the submission (SPEC.md 6.6).
 		$finishes   = $delta > 0 && $after >= $n && self::count_of( $rec ) < $n;
-		$completion = self::completion( $request, $finishes && ! self::is_manager() );
+		$completion = self::completion( $request, $finishes );
 		if ( is_wp_error( $completion ) ) {
 			return $completion;
 		}
@@ -196,7 +229,7 @@ class GRP_REST_Records extends GRP_REST_Controller {
 			return self::forbidden( self::denied_message( $task, $rec ) );
 		}
 
-		$completion = 'done' === $to ? self::completion( $request, ! self::is_manager() ) : null;
+		$completion = 'done' === $to ? self::completion( $request, true ) : null;
 		if ( is_wp_error( $completion ) ) {
 			return $completion;
 		}

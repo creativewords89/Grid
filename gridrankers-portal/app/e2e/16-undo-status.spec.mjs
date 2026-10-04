@@ -56,10 +56,10 @@ test('request undo and the last unit', async ({ page }) => {
 	await dlg.getByRole('button', { name: 'One more for Max Member' }).click();
 	await page.getByText('1/2 done').first().waitFor();
 	await dlg.getByRole('button', { name: 'One more for Max Member' }).click();
-	const done = page.locator('dialog[open]', { has: page.getByRole('heading', { name: 'What did you complete?' }) });
+	const done = page.locator('dialog[open]', { has: page.getByRole('heading', { name: 'Submit completed work' }) });
 	await expect(done).toBeVisible();
 	await done.getByLabel('What you did').fill('Added two citations to the Dhaka page');
-	await done.getByRole('button', { name: 'Mark completed' }).click();
+	await done.getByRole('button', { name: 'Submit for review' }).click();
 	await page.getByText('All done — sent for review').waitFor();
 	await page.keyboard.press('Escape');
 	await signOut(page);

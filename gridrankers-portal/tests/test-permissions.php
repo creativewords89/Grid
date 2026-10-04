@@ -1235,4 +1235,82 @@ class Test_GRP_Permissions extends WP_UnitTestCase {
 		$this->assertSame( array( 'Location', 'Date of birth' ), GRP_Permissions::missing_profile( $this->users['member'] ) );
 		$this->assertSame( array( 'Full name', 'Location', 'Date of birth', 'Phone number', 'Photo' ), GRP_Permissions::missing_profile( array() ) );
 	}
+
+	public function test_everyone_uploads_and_opens_files() {
+		$all = array(
+			'admin'  => true,
+			'lead'   => true,
+			'member' => true,
+		);
+		$this->assert_matrix( GRP_Permissions::UPLOAD_FILE, null, $all );
+		$this->assert_matrix( GRP_Permissions::DOWNLOAD_FILE, null, $all );
+		$this->assertContains( GRP_Permissions::UPLOAD_FILE, GRP_Permissions::PROFILE_LOCKED );
+	}
+
+	public function test_edit_submission() {
+		$this->assert_matrix(
+			GRP_Permissions::EDIT_SUBMISSION,
+			array( 'completion' => array( 'by' => 'm-member' ) ),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => true,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::EDIT_SUBMISSION,
+			array( 'completion' => array( 'by' => 'm-other' ) ),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => false,
+			)
+		);
+		$this->assertContains( GRP_Permissions::EDIT_SUBMISSION, GRP_Permissions::PROFILE_LOCKED );
+	}
+
+	public function test_comment_on_a_submission() {
+		$others = array(
+			'task'       => $this->task( 'done', array( 'm-other' ) ),
+			'completion' => array( 'by' => 'm-other' ),
+			'review'     => array( 'state' => 'pending' ),
+		);
+		$this->assert_matrix(
+			GRP_Permissions::COMMENT,
+			$others,
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => false,
+			)
+		);
+		foreach ( array(
+			'assigned'  => array( 'task' => $this->task( 'done', array( 'm-member' ) ) ),
+			'submitted' => array( 'completion' => array( 'by' => 'm-member' ) ) + $others,
+			'reviewer'  => array( 'review' => array( 'reviewer' => 'm-member' ) ) + $others,
+		) as $why => $context ) {
+			$this->assertTrue( GRP_Permissions::can( $this->users['member'], GRP_Permissions::COMMENT, $context ), $why );
+		}
+	}
+
+	public function test_delete_comment() {
+		$this->assert_matrix(
+			GRP_Permissions::DELETE_COMMENT,
+			fn ( $role ) => array( 'comment' => array( 'created_by' => $this->users[ $role ]['id'] ) ),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => true,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::DELETE_COMMENT,
+			array( 'comment' => array( 'created_by' => 'm-other' ) ),
+			array(
+				'admin'  => true,
+				'lead'   => false,
+				'member' => false,
+			)
+		);
+	}
 }

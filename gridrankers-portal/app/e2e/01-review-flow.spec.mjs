@@ -15,10 +15,10 @@ test('completion review round trip', async ({ page }) => {
 	await signIn(page, MAX);
 	await openProject(page, 'Acme Plumbing');
 	await card(page, title).getByRole('button', { name: 'Completed' }).click();
-	await page.getByRole('button', { name: 'Mark completed' }).click();
+	await page.getByRole('button', { name: 'Submit for review' }).click();
 	await expect(page.getByText('Add a few words about what you completed.')).toBeVisible();
 	await page.getByLabel('What you did').fill('Changed the H1 to include Springfield');
-	await page.getByRole('button', { name: 'Mark completed' }).click();
+	await page.getByRole('button', { name: 'Submit for review' }).click();
 	await page.getByText('Sent for review').waitFor();
 	await signOut(page);
 
@@ -70,7 +70,7 @@ test('completion review round trip', async ({ page }) => {
 	await expect(mine.locator('.rv')).toContainText('Add the city to the meta title too');
 	await mine.getByRole('button', { name: 'Completed' }).click();
 	await page.getByLabel('What you did').fill('Meta title updated too');
-	await page.getByRole('button', { name: 'Mark completed' }).click();
+	await page.getByRole('button', { name: 'Submit for review' }).click();
 	await page.getByText('Sent for review').waitFor();
 	await signOut(page);
 

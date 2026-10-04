@@ -167,6 +167,21 @@ class GRP_Permissions {
 	/** Keyword checklist: untick a box, or keep it after someone asked to untick it (SPEC.md 6.12). Managers. */
 	const UNTICK_KEYWORD = 'untick_keyword';
 
+	/** Upload a file for a submission or a comment (SPEC.md 6.6). Everyone. */
+	const UPLOAD_FILE = 'upload_file';
+
+	/** Open or download an uploaded file (SPEC.md 6.6). Everyone signed in. */
+	const DOWNLOAD_FILE = 'download_file';
+
+	/** Edit a saved submission (SPEC.md 6.6, design SF-B). Context: `{completion}`. The person who submitted it, or managers. */
+	const EDIT_SUBMISSION = 'edit_submission';
+
+	/** Comment on a task's submission (SPEC.md 6.6). Context: `{task, completion, review}`. Managers, the task's people, who submitted it and the reviewer. */
+	const COMMENT = 'comment';
+
+	/** Delete a comment. Context: `{comment}`. Whoever wrote it, or the Super Admin. */
+	const DELETE_COMMENT = 'delete_comment';
+
 	/**
 	 * Task work that is locked while a Team Leader's or Team Member's required profile is
 	 * incomplete (SPEC.md section 3, Profile lock).
@@ -186,6 +201,9 @@ class GRP_Permissions {
 		self::SKIP_PERIOD,
 		self::TICK_KEYWORD,
 		self::REQUEST_UNDO,
+		self::UPLOAD_FILE,
+		self::EDIT_SUBMISSION,
+		self::COMMENT,
 	);
 
 	/**
@@ -252,7 +270,18 @@ class GRP_Permissions {
 				return ! $manager && 'doing' === ( $task['status'] ?? '' ) && (int) ( $task['target'] ?? 1 ) <= 1 && self::may_work_on( $user, $manager, $task );
 
 			case self::TICK_KEYWORD:
+			case self::UPLOAD_FILE:
+			case self::DOWNLOAD_FILE:
 				return in_array( $role, array( self::ROLE_ADMIN, self::ROLE_LEAD, self::ROLE_MEMBER ), true );
+
+			case self::EDIT_SUBMISSION:
+				return $manager || self::is_self( $user, ( (array) ( $context['completion'] ?? array() ) )['by'] ?? null );
+
+			case self::COMMENT:
+				return $manager || self::on_submission( $user, (array) $context );
+
+			case self::DELETE_COMMENT:
+				return $admin || self::is_self( $user, ( (array) ( $context['comment'] ?? array() ) )['created_by'] ?? null );
 
 			case self::DELETE_PROJECT:
 			case self::REMOVE_MEMBER:
@@ -461,6 +490,25 @@ class GRP_Permissions {
 		}
 
 		return $own && 'pending' === $context['status'];
+	}
+
+	/**
+	 * Whether a Team Member is one of a task's people: assigned to it, the one who submitted it, or
+	 * the reviewer someone asked for.
+	 *
+	 * @param array $user    Acting member.
+	 * @param array $context `{task, completion, review}`.
+	 * @return bool
+	 */
+	private static function on_submission( array $user, array $context ) {
+		$id = (string) $user['id'];
+		if ( in_array( $id, self::assignee_ids( ( (array) ( $context['task'] ?? array() ) )['assignees'] ?? array() ), true ) ) {
+			return true;
+		}
+		$completion = (array) ( $context['completion'] ?? array() );
+		$review     = (array) ( $context['review'] ?? array() );
+
+		return self::is_self( $user, $completion['by'] ?? null ) || self::is_self( $user, $review['reviewer'] ?? null ) || self::is_self( $user, $review['submittedBy'] ?? null );
 	}
 
 	/**

@@ -109,8 +109,9 @@ export default function App({ config }) {
 	const [confirm, confirmView] = useConfirm();
 	const [completion, setCompletion] = useState(null);
 
-	// "What did you complete?" — resolves {note, link} or null.
-	const askCompletion = useCallback((title) => new Promise((resolve) => setCompletion({ title, resolve })), []);
+	// "Submit completed work" (SPEC.md 6.6) — resolves {note, links, files, comment, reviewer?} or null.
+	// `opts.edit` with `opts.initial` edits a saved submission.
+	const askCompletion = useCallback((title, opts = {}) => new Promise((resolve) => setCompletion({ title, edit: !!opts.edit, initial: opts.initial || null, resolve })), []);
 	const finishCompletion = (value) => {
 		if (completion) completion.resolve(value);
 		setCompletion(null);
@@ -266,7 +267,7 @@ export default function App({ config }) {
 			</div>
 			{toastView}
 			{confirmView}
-			<CompletionDialog open={!!completion} title={completion ? completion.title : ''} onCancel={() => finishCompletion(null)} onSubmit={finishCompletion} />
+			<CompletionDialog open={!!completion} title={completion ? completion.title : ''} edit={!!(completion && completion.edit)} initial={completion ? completion.initial : null} onCancel={() => finishCompletion(null)} onSubmit={finishCompletion} />
 		</PortalContext.Provider>
 	);
 }

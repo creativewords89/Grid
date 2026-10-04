@@ -1,7 +1,7 @@
 // Client-side copy of the portal data, keyed by table then id. The server is the source
 // of truth; this is filled by /sync and by the rows returned from writes.
 
-export const TABLES = ['projects', 'meeting_tasks', 'monthly_tasks', 'records', 'members', 'activity', 'trash', 'dismissals', 'settings', 'leave', 'days_off', 'posts', 'keywords'];
+export const TABLES = ['projects', 'meeting_tasks', 'monthly_tasks', 'records', 'members', 'activity', 'trash', 'dismissals', 'settings', 'leave', 'days_off', 'posts', 'keywords', 'comments'];
 
 export function emptyData() {
 	return { ...Object.fromEntries(TABLES.map((t) => [t, {}])), _removed: {} };

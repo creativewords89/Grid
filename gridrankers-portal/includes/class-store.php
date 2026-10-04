@@ -23,6 +23,7 @@ class GRP_Store {
 		'grp_posts'         => array( 'to_members' ),
 		'grp_projects'      => array( 'cycle_changes', 'cycle_log', 'cycle_reviews', 'details', 'kw_columns' ),
 		'grp_keywords'      => array( 'checks' ),
+		'grp_comments'      => array( 'files' ),
 		'grp_meeting_tasks' => array( 'assignees', 'progress', 'deadline', 'review', 'completion', 'undo_request' ),
 		'grp_monthly_tasks' => array( 'assignees', 'parts' ),
 		'grp_cycle_records' => array( 'by_person', 'parts', 'review', 'completion', 'undo_request' ),
@@ -53,6 +54,7 @@ class GRP_Store {
 		'birth_year',
 		'pinned',
 		'position',
+		'size',
 	);
 
 	/**
@@ -72,6 +74,7 @@ class GRP_Store {
 		'grp_days_off',
 		'grp_posts',
 		'grp_keywords',
+		'grp_comments',
 	);
 
 	/**

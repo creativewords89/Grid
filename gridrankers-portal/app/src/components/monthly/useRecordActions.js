@@ -1,9 +1,9 @@
 import { usePortal } from '../../context.js';
-import { isManager } from '../../lib/roles.js';
+import { submission } from '../meeting/useTaskActions.js';
 
 // Ticks and status moves on a recurring task's period record, plus delete with Undo.
 export default function useRecordActions() {
-	const { api, dispatch, toast, confirm, me, askCompletion } = usePortal();
+	const { api, dispatch, toast, confirm, askCompletion } = usePortal();
 
 	const store = (res) => {
 		if (res.record) dispatch({ type: 'upsert', table: 'records', row: res.record });
@@ -18,11 +18,11 @@ export default function useRecordActions() {
 			try {
 				res = await api.post('records/tick', body);
 			} catch (err) {
-				// The last unit completes the task: a Team Member says what they did (SPEC.md 6.6).
+				// The last unit completes the task: everyone fills in the submission (SPEC.md 6.6).
 				if (err.code !== 'grp_completion_required') throw err;
-				const note = await askCompletion(task.title);
-				if (!note) return;
-				res = await api.post('records/tick', { ...body, ...note });
+				const sub = await askCompletion(task.title);
+				if (!sub) return;
+				res = await api.post('records/tick', { ...body, ...submission(sub) });
 			}
 			const rec = store(res);
 			const n = Math.max(1, task.target || 1);
@@ -34,10 +34,10 @@ export default function useRecordActions() {
 
 	const setStatus = async (task, periodKey, to) => {
 		let body = { taskId: task.id, periodKey, status: to };
-		if (to === 'done' && !isManager(me)) {
-			const note = await askCompletion(task.title);
-			if (!note) return;
-			body = { ...body, ...note };
+		if (to === 'done') {
+			const sub = await askCompletion(task.title);
+			if (!sub) return;
+			body = { ...body, ...submission(sub) };
 		}
 		try {
 			const rec = store(await api.post('records/status', body));

@@ -36,6 +36,7 @@ class GRP_REST_Sync extends GRP_REST_Controller {
 		'grp_days_off'      => 'days_off',
 		'grp_posts'         => 'posts',
 		'grp_keywords'      => 'keywords',
+		'grp_comments'      => 'comments',
 	);
 
 	/**
