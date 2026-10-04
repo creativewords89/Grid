@@ -35,7 +35,7 @@ test('private notices and the profile lock', async ({ page }) => {
 	await signIn(page, MAX);
 	const mine = box('Notifications').locator('.nf-item', { hasText: 'Acme report' });
 	// Who sent it, to whom, and its title.
-	await expect(mine.locator('.nf-top b')).toHaveText('Lee Lead → you · Acme report');
+	await expect(mine.locator('.nf-top b')).toHaveText('Lee Lead → you: Acme report');
 
 	await page.locator('.me-btn').click();
 	await page.locator('nav.ttabs').getByRole('tab', { name: 'Settings' }).click();

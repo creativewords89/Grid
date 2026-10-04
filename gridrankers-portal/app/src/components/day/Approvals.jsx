@@ -1,8 +1,8 @@
 import { usePortal } from '../../context.js';
+import { ago } from '../../lib/feed.js';
 import { short } from '../../lib/format.js';
 import { leaveDays, monthName, takenInMonth, teamWeekly } from '../../lib/people.js';
 import { rowsOf } from '../../lib/store.js';
-import Avatar from '../Avatar.jsx';
 import useReview from '../review/useReview.js';
 
 // "within October's 1 day" / "2 days over, deducted" for a pending request.
@@ -18,18 +18,45 @@ function overText(data, leave) {
 	return { text: parts.join(' · '), over: parts.some((p) => p.includes('over')) };
 }
 
-// One thing waiting for a Team Leader or the Super Admin, with its buttons (SPEC.md 7.0, design
-// NF-C): shown under Waiting for you in Notifications.
+// One request as in design NF-C, without descriptions: a coloured icon, one sentence (who and what;
+// the task opens from it), when, and the buttons. Notes, reasons and completion text are on the
+// task's page and in the answer dialog.
+function Row({ item, tone, icon, title, onOpen, children }) {
+	return (
+		<div className="ap-item ap-row">
+			<span className={'nf-ic t-' + tone} aria-hidden="true">
+				{icon}
+			</span>
+			<span className="ap-l1">
+				{onOpen ? (
+					<button type="button" className="ap-title" onClick={onOpen} title={title}>
+						{title}
+					</button>
+				) : (
+					<b className="ap-title" title={title}>
+						{title}
+					</b>
+				)}
+				<small>{item.at ? ago(item.at) : ''}</small>
+			</span>
+			<div className="ap-acts">{children}</div>
+		</div>
+	);
+}
+
+// One thing waiting for a Team Leader or the Super Admin, with its buttons (SPEC.md 7.0, designs
+// NF-C, compact rows): shown under Waiting for you in Notifications.
 export function ApprovalItem({ item }) {
 	const { api, data, dispatch, toast, confirm, setProject, setSearch, setView } = usePortal();
 	const decide = useReview();
+	const go = (projectId, title, tab) => () => (setProject(projectId), title && setSearch(title), setView(tab));
 
 	// Someone asked to undo In progress (SPEC.md 6.6): Undo (back to Not started) or Keep.
 	if (item.kind === 'undo') {
 		const answer = async (action) => {
 			const note = await confirm({
 				title: action === 'undo' ? 'Undo to Not started?' : 'Keep In progress?',
-				message: `“${item.title}” · ${item.project.name}`,
+				message: `“${item.title}” · ${item.project.name}${item.undo.reason ? ` — “${item.undo.reason}”` : ''}`,
 				input: 'Message (optional)',
 				ok: action === 'undo' ? 'Undo' : 'Keep In progress',
 			});
@@ -48,34 +75,20 @@ export function ApprovalItem({ item }) {
 			}
 		};
 		return (
-			<div className="ap-item">
-				<div className="ap-head">
-					<Avatar person={item.who} small />
-					<b>{item.who ? item.who.name : '—'}</b>
-					<span className="mp-flag f-amber">Undo requested</span>
-				</div>
-				<p>
-					<button type="button" className="linkbtn" onClick={() => (setProject(item.project.id), setSearch(item.title), setView(item.tab))}>
-						{item.title}
-					</button>
-					{` · ${item.project.name} · In progress → Not started`}
-					{item.undo.reason ? <span className="muted"> · “{item.undo.reason}”</span> : null}
-				</p>
-				<div className="ap-acts">
-					<button type="button" className="btn small" onClick={() => answer('keep')}>
-						Keep In progress
-					</button>
-					<button type="button" className="btn small ok-btn" onClick={() => answer('undo')}>
-						Undo
-					</button>
-				</div>
-			</div>
+			<Row item={item} tone="amber" icon="↶" title={`${(item.who ? item.who.name : 'Someone')} asked to undo “${item.title}”`} onOpen={go(item.project.id, item.title, item.tab)}>
+				<button type="button" className="btn small ok-btn" onClick={() => answer('undo')}>
+					Undo
+				</button>
+				<button type="button" className="btn small" onClick={() => answer('keep')}>
+					Keep In progress
+				</button>
+			</Row>
 		);
 	}
 
 	// Someone asked to untick a keyword box (SPEC.md 6.12): Untick, or Keep ticked.
 	if (item.kind === 'untick') {
-		const { kw, col, project, ask } = item;
+		const { kw, col, project } = item;
 		const answer = async (body, done) => {
 			try {
 				dispatch({ type: 'upsert', table: 'keywords', row: await api.patch(`keywords/${kw.id}`, body) });
@@ -85,28 +98,14 @@ export function ApprovalItem({ item }) {
 			}
 		};
 		return (
-			<div className="ap-item">
-				<div className="ap-head">
-					<Avatar person={item.who} small />
-					<b>{item.who ? item.who.name : '—'}</b>
-					<span className="mp-flag f-amber">Untick asked</span>
-				</div>
-				<p>
-					<button type="button" className="linkbtn" onClick={() => (setProject(project.id), setView('plan'))}>
-						{col.name} · {kw.keyword}
-					</button>
-					{` · ${project.name}`}
-					{ask.note ? <span className="muted"> · “{ask.note}”</span> : null}
-				</p>
-				<div className="ap-acts">
-					<button type="button" className="btn small danger-soft" onClick={() => answer({ check: { column: col.id, on: false } }, 'Unticked')}>
-						Untick
-					</button>
-					<button type="button" className="btn small" onClick={() => answer({ keep: { column: col.id } }, 'Kept ticked')}>
-						Keep ticked
-					</button>
-				</div>
-			</div>
+			<Row item={item} tone="amber" icon="☐" title={`${(item.who ? item.who.name : 'Someone')} asked to untick ${col.name} · ${kw.keyword}`} onOpen={go(project.id, '', 'plan')}>
+				<button type="button" className="btn small danger-soft" onClick={() => answer({ check: { column: col.id, on: false } }, 'Unticked')}>
+					Untick
+				</button>
+				<button type="button" className="btn small" onClick={() => answer({ keep: { column: col.id } }, 'Kept ticked')}>
+					Keep ticked
+				</button>
+			</Row>
 		);
 	}
 
@@ -114,10 +113,11 @@ export function ApprovalItem({ item }) {
 		const l = item.leave;
 		const range = l.from_date === l.to_date ? short(l.from_date) : `${short(l.from_date)} – ${short(l.to_date)}`;
 		const info = overText(data, l);
+		const kind = l.type === 'sick' ? 'Sick leave' : 'Day leave';
 		const answer = async (action) => {
 			const message = await confirm({
 				title: action === 'approve' ? `Approve ${item.who.name}’s leave?` : `Reject ${item.who.name}’s leave?`,
-				message: `${l.type === 'sick' ? 'Sick leave' : 'Day leave'} · ${range} (${l.days} day${l.days === 1 ? '' : 's'})${l.reason ? ` · “${l.reason}”` : ''}`,
+				message: `${kind} · ${range} (${l.days} day${l.days === 1 ? '' : 's'}) · ${info.text}${l.reason ? ` · “${l.reason}”` : ''}`,
 				input: 'Message (optional)',
 				placeholder: action === 'approve' ? 'e.g. Enjoy the wedding!' : 'Why not',
 				ok: action === 'approve' ? 'Approve' : 'Reject',
@@ -132,51 +132,26 @@ export function ApprovalItem({ item }) {
 			}
 		};
 		return (
-			<div className="ap-item">
-				<div className="ap-head">
-					<Avatar person={item.who} small />
-					<b>{item.who.name}</b>
-					<span className="mp-flag f-teal">Leave request</span>
-				</div>
-				<p>
-					{l.type === 'sick' ? 'Sick leave' : 'Day leave'} · {range} ({l.days} day{l.days === 1 ? '' : 's'}) · <span className={info.over ? 'ap-over' : 'muted'}>{info.text}</span>
-				</p>
-				<div className="ap-acts">
-					<button type="button" className="btn small ok-btn" onClick={() => answer('approve')}>
-						Approve
-					</button>
-					<button type="button" className="btn small danger-soft" onClick={() => answer('reject')}>
-						Reject
-					</button>
-				</div>
-			</div>
+			<Row item={item} tone="green" icon="✚" title={`${item.who.name} asks for ${kind.toLowerCase()} · ${range}`}>
+				<button type="button" className="btn small ok-btn" onClick={() => answer('approve')}>
+					Approve
+				</button>
+				<button type="button" className="btn small danger-soft" onClick={() => answer('reject')}>
+					Reject
+				</button>
+			</Row>
 		);
 	}
 
 	const r = item.review;
-	const p = data.projects[r.project_id];
 	return (
-		<div className="ap-item">
-			<div className="ap-head">
-				<Avatar person={item.who} small />
-				<b>{item.who ? item.who.name : '—'}</b>
-				<span className="mp-flag f-purple">{r.review.reviewer ? 'Review asked' : 'Task review'}</span>
-			</div>
-			<p>
-				<button type="button" className="linkbtn" onClick={() => (setProject(r.project_id), setSearch(r.title), setView(r.tab))}>
-					{r.title}
-				</button>
-				{p ? ` · ${p.name}` : ''}
-				{r.review.note ? <span className="muted"> · “{r.review.note}”</span> : r.completion && r.completion.note ? <span className="muted"> · “{r.completion.note}”</span> : null}
-			</p>
-			<div className="ap-acts">
-				<button type="button" className="btn small ok-btn" onClick={() => decide(r.kind, r.id, 'accept')}>
-					Approve
-				</button>
-				<button type="button" className="btn small danger-soft" onClick={() => decide(r.kind, r.id, 'revision')}>
-					Send back
-				</button>
-			</div>
-		</div>
+		<Row item={item} tone="blue" icon="✓" title={r.review.reviewer ? `${(item.who ? item.who.name : 'Someone')} asked you to review “${r.title}”` : `${(item.who ? item.who.name : 'Someone')} finished “${r.title}”`} onOpen={go(r.project_id, r.title, r.tab)}>
+			<button type="button" className="btn small ok-btn" onClick={() => decide(r.kind, r.id, 'accept')}>
+				Approve
+			</button>
+			<button type="button" className="btn small danger-soft" onClick={() => decide(r.kind, r.id, 'revision')}>
+				Send back
+			</button>
+		</Row>
 	);
 }

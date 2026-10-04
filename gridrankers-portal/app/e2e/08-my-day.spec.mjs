@@ -56,7 +56,7 @@ test('my day: leave, days off, birthdays, shout-outs and review requests', async
 	await showStrip(page, 'Today is Max Member’s birthday.');
 	const asks = await waiting(page);
 	await expect(asks).toContainText('Max Member');
-	await expect(asks).toContainText('Day leave');
+	await expect(asks).toContainText('asks for day leave');
 	await asks.getByRole('button', { name: 'Approve' }).first().click();
 	await dlg.getByLabel('Message (optional)').fill('Enjoy the wedding!');
 	await dlg.getByRole('button', { name: 'Approve' }).click();
@@ -128,7 +128,6 @@ test('my day: leave, days off, birthdays, shout-outs and review requests', async
 	await expect(page.locator('.md-strip:visible .md-pager')).toContainText(/\d of \d/);
 	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/band.png' });
 	await expect(box('Day leave')).toContainText(`0 days left in ${MONTH}`);
-	await expect(box('Notifications')).toContainText('Great work on the Acme H1 fixes');
 	await expect(box('Notifications')).toContainText('Shout-out from Lee Lead');
 	const review = strip('Lee Lead asked you to review “Approve content plan”.');
 	await expect(review).toContainText('Please check the October topics');

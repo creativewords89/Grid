@@ -707,3 +707,16 @@ label.sf-opt small{color:var(--ink-2)}
 .nf-more{align-self:flex-start;font-size:.82rem;font-weight:700}
 .nf-chips button.nf-chip-wait{background:var(--doing-bg);color:var(--doing);border-color:color-mix(in srgb,var(--doing) 30%,var(--line))}
 .nf-chips button.nf-chip-wait[aria-pressed=true]{background:var(--doing);color:#fff;border-color:var(--doing)}
+/* Waiting for you (design NF-C, no descriptions): icon, one sentence and when, buttons under it. */
+.ap-item.ap-row{display:grid;grid-template-columns:30px minmax(0,1fr);align-items:start;column-gap:10px;row-gap:7px;padding:10px 12px}
+.ap-row .nf-ic{grid-row:1 / 3}
+.ap-l1{display:flex;align-items:baseline;gap:8px;min-width:0}
+.ap-title{all:unset;cursor:pointer;flex:1;min-width:0;font-weight:700;font-size:.88rem;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+b.ap-title{cursor:default}
+button.ap-title:hover,button.ap-title:focus-visible{text-decoration:underline}
+.ap-l1 small{white-space:nowrap;color:var(--ink-2);font-size:.75rem}
+.ap-row .ap-acts{grid-column:2;gap:6px}
+.ap-row .ap-acts .btn{padding:4px 12px;font-size:.8rem}
+/* Feed: titles only (no descriptions), at most two lines. */
+.nf-top b{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.nf-item{padding:8px 10px}

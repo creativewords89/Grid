@@ -23,7 +23,9 @@ test('notifications feed', async ({ page }) => {
 	// The seven new tasks are the newest news: the first page shows six of them, unread.
 	await expect(box.locator('.nf-item')).toHaveCount(6);
 	await expect(box.locator('.nf-item.new', { hasText: String(stamp) })).toHaveCount(6);
-	await expect(box.locator('.nf-item', { hasText: String(stamp) }).first()).toContainText('New task for you');
+	await expect(box.locator('.nf-item', { hasText: String(stamp) }).first()).toContainText('New task: “Feed task');
+	// No descriptions in the box: titles only.
+	await expect(box.locator('.nf-sub')).toHaveCount(0);
 	await expect(box.locator('.nf-pages')).toContainText(/1–6 of \d+/);
 	await box.getByRole('button', { name: 'Next page' }).click();
 	await expect(box.locator('.nf-pages')).toContainText(/7–/);
@@ -48,7 +50,7 @@ test('notifications feed', async ({ page }) => {
 	await expect(box.locator('.nf-item.new')).toHaveCount(0);
 	await expect(box.locator('.nf-new')).toHaveCount(0);
 	const first = box.locator('.nf-item', { hasText: String(stamp) }).first();
-	const title = (await first.locator('.nf-sub').innerText()).match(/“(.+)”/)[1];
+	const title = (await first.locator('.nf-top b').innerText()).match(/“(.+)”/)[1];
 	await first.getByRole('button', { name: 'Open task ›' }).click();
 	await expect(page.locator('article.mcard', { hasText: title })).toBeVisible();
 
@@ -63,7 +65,7 @@ test('notifications feed', async ({ page }) => {
 	await expect(wait.getByRole('heading', { name: /Waiting for you · \d+/ })).toBeVisible();
 	await expect(box.locator('.nf-chips').getByRole('button', { name: /^To approve \d+/ })).toBeVisible();
 	await box.locator('.nf-chips').getByRole('button', { name: /^To approve/ }).click();
-	const req = box.locator('.nf-wait .ap-item', { hasText: 'Sick leave' }).filter({ hasText: 'Max Member' }).first();
+	const req = box.locator('.nf-wait .ap-item', { hasText: 'Max Member asks for sick leave' }).first();
 	await expect(req).toBeVisible();
 	await expect(req.getByRole('button', { name: 'Approve' })).toBeVisible();
 	// A Team Leader's Today card: Who's out and Day leave.
@@ -75,7 +77,7 @@ test('notifications feed', async ({ page }) => {
 	await expect(page.getByRole('heading', { name: 'Needs your approval' })).toHaveCount(0);
 	await expect(page.locator('section.md-today h2')).toHaveText(['Who’s out today']);
 	await box.locator('.nf-chips').getByRole('button', { name: /^To approve/ }).click();
-	await expect(box.locator('.nf-wait .ap-item', { hasText: 'Sick leave' }).filter({ hasText: 'Max Member' }).first()).toBeVisible();
+	await expect(box.locator('.nf-wait .ap-item', { hasText: 'Max Member asks for sick leave' }).first()).toBeVisible();
 	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/notif-admin.png', fullPage: true });
 	await signOutOwner(page);
 	noErrors();

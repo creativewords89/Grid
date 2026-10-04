@@ -44,11 +44,11 @@ describe('notifications feed', () => {
 			'ev:e',
 		]);
 		const byKey = Object.fromEntries(items.map((i) => [i.key, i]));
-		expect(byKey['new:n']).toMatchObject({ cat: 'task', title: 'New task for you', sub: 'Lee assigned you “Add city to titles” · Acme', open: { project_id: 'p', tab: 'board', title: 'Add city to titles' } });
-		expect(byKey['rv:Fix H1:2026-10-12T10:00:00Z']).toMatchObject({ title: 'Task rejected', tone: 'red', sub: 'Lee: “Fix H1” — “Keep the city”' });
-		expect(byKey['leave:l1:approved']).toMatchObject({ cat: 'leave', title: 'Sick leave approved' });
-		expect(byKey['ev:e']).toMatchObject({ cat: 'event', title: 'Founders Day' });
-		expect(byKey['shout:s'].title).toBe('Shout-out from Lee');
+		expect(byKey['new:n']).toMatchObject({ cat: 'task', title: 'New task: “Add city to titles”', open: { project_id: 'p', tab: 'board', title: 'Add city to titles' } });
+		expect(byKey['rv:Fix H1:2026-10-12T10:00:00Z']).toMatchObject({ title: 'Rejected: “Fix H1”', tone: 'red' });
+		expect(byKey['leave:l1:approved']).toMatchObject({ cat: 'leave', title: 'Sick leave approved · Oct 2' });
+		expect(byKey['ev:e']).toMatchObject({ cat: 'event', title: 'Founders Day · Oct 19' });
+		expect(byKey['shout:s'].title).toBe('Shout-out from Lee: Great work');
 	});
 
 	it('leaves out my own tasks, old news, auto-accepted work and past events', () => {

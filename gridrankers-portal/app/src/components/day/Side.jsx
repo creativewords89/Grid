@@ -282,7 +282,6 @@ export function Notifications() {
 										<b>{i.title}</b>
 										<small>{ago(i.at)}</small>
 									</span>
-									{i.sub && <span className="nf-sub">{i.sub}</span>}
 									{i.open && (
 										<button type="button" className="linkbtn nf-open" onClick={() => open(i)}>
 											Open task ›
