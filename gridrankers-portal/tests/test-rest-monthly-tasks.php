@@ -37,8 +37,56 @@ class Test_GRP_REST_Monthly_Tasks extends GRP_REST_TestCase {
 			$fields + array(
 				'project_id' => $this->project['id'],
 				'title'      => 'Blogs',
+				'assignees'  => array(
+					array(
+						'id' => $this->team['member']['id'],
+						'n'  => 1,
+					),
+				),
 			)
 		);
+	}
+
+	public function test_a_monthly_task_always_has_someone_responsible() {
+		$none = $this->create( 'lead', array( 'assignees' => array() ) );
+		$this->assertStatus( 400, $none );
+		$this->assertSame( 'grp_people_required', $none->as_error()->get_error_code() );
+
+		$task = $this->create( 'lead' )->get_data();
+		$path = '/monthly-tasks/' . $task['id'];
+		$this->assertStatus( 400, $this->api_as( 'lead', 'PATCH', $path, array( 'assignees' => array() ) ) );
+		$this->assertSame( array( $this->team['member']['id'] ), wp_list_pluck( GRP_Store::get( 'grp_monthly_tasks', $task['id'] )['assignees'], 'id' ) );
+		// Breakdown rows with people count; other edits leave the people alone.
+		$rows = $this->api_as(
+			'lead',
+			'PATCH',
+			$path,
+			array(
+				'assignees' => array(),
+				'parts'     => array(
+					array(
+						'name'   => 'Dhaka',
+						'n'      => 2,
+						'people' => array( array( 'id' => $this->team['other']['id'] ) ),
+					),
+				),
+			)
+		);
+		$this->assertStatus( 200, $rows );
+		$this->assertStatus( 200, $this->api_as( 'lead', 'PATCH', $path, array( 'title' => 'Blog posts' ) ) );
+
+		// The system's standard tasks start unassigned; they can be renamed before someone is picked.
+		$std = GRP_Store::find(
+			'grp_monthly_tasks',
+			array(
+				'project_id' => $this->project['id'],
+				'std'        => 1,
+			)
+		);
+		if ( $std ) {
+			$this->assertStatus( 200, $this->api_as( 'lead', 'PATCH', '/monthly-tasks/' . $std[0]['id'], array( 'title' => 'GBP posts' ) ) );
+			$this->assertStatus( 400, $this->api_as( 'lead', 'PATCH', '/monthly-tasks/' . $std[0]['id'], array( 'target' => 2 ) ) );
+		}
 	}
 
 	public function test_biweekly_mode_makes_a_biweekly_task() {
@@ -194,7 +242,7 @@ class Test_GRP_REST_Monthly_Tasks extends GRP_REST_TestCase {
 		$this->assertSame( 'monthly', $updated->get_data()['due_mode'], 'unsent fields kept' );
 
 		$edit = wp_list_filter( $this->audit_for( $task['id'] ), array( 'kind' => 'edit' ) );
-		$this->assertSame( array( 'title', 'target' ), wp_list_pluck( reset( $edit )['changes'], 'field' ) );
+		$this->assertSame( array( 'title', 'target', 'assignees' ), wp_list_pluck( reset( $edit )['changes'], 'field' ) );
 
 		$this->assertStatus( 200, $this->api_as( 'admin', 'DELETE', "/monthly-tasks/{$task['id']}" ) );
 		$this->assertCount( 1, GRP_Store::find( 'grp_trash', array( 'doc_id' => $task['id'] ) ) );

@@ -140,12 +140,9 @@ class Test_GRP_REST_Records_Review extends GRP_REST_TestCase {
 	}
 
 	public function test_unassigned_task_is_for_leaders_until_assigned() {
-		$task = $this->monthly(
-			array(
-				'target'    => 2,
-				'assignees' => array(),
-			)
-		);
+		// Like a standard task the system adds: nobody yet (SPEC.md 6.8).
+		$task = $this->monthly( array( 'target' => 2 ) );
+		$task = GRP_Store::update( 'grp_monthly_tasks', $task['id'], array( 'assignees' => array() ) );
 
 		$refused = $this->tick( 'member', $task );
 		$this->assertStatus( 403, $refused );

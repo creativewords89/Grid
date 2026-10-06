@@ -21,6 +21,7 @@ test('weekly tasks use cycle weeks', async ({ page }) => {
 	await page.getByRole('button', { name: 'Add monthly task' }).click();
 	await page.getByLabel('Task', { exact: true }).fill('Weekly social post');
 	await page.locator('.dl-opts').getByText('Weekly', { exact: true }).click();
+	await page.locator('dialog[open] .pk-row', { hasText: 'Max Member' }).click();
 	await page.getByRole('button', { name: 'Save task' }).click();
 	await page.getByText('Weekly social post').first().waitFor();
 

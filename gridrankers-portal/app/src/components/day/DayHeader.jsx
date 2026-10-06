@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePortal } from '../../context.js';
 import { strips } from '../../lib/day.js';
 import { bellItems } from '../../lib/feed.js';
+import { useReminderAction } from './CycleSetup.jsx';
 import { weekdayDate } from '../../lib/format.js';
 import { MEMBER_TAB_KEY, greeting } from '../../lib/people.js';
 import { ROLE } from '../../lib/roles.js';
@@ -80,6 +81,7 @@ function Bell() {
 	const [open, setOpen] = useState(false);
 	const ref = useRef(null);
 	const dismiss = useDismiss();
+	const act = useReminderAction();
 	const items = useMemo(() => bellItems(data, me, today), [data, me, today]);
 	const unread = items.filter((i) => i.unread);
 
@@ -98,8 +100,9 @@ function Bell() {
 
 	const toggle = () => {
 		setOpen(!open);
-		// Opening the list marks everything in it as read.
-		if (!open && unread.length) dismiss(unread.map((i) => 'seen:' + i.key));
+		// Opening the list marks everything in it as read, except the setup reminders (SPEC.md 6.11).
+		const read = unread.filter((i) => !i.sticky);
+		if (!open && read.length) dismiss(read.map((i) => 'seen:' + i.key));
 	};
 
 	return (
@@ -118,9 +121,14 @@ function Bell() {
 					) : (
 						<ul>
 							{items.map((i) => (
-								<li key={i.key} className={i.unread ? 'new' : ''}>
+								<li key={i.key} className={(i.unread ? 'new' : '') + (i.sticky ? ' must t-' + i.tone : '')}>
 									<b>{i.text}</b>
 									{i.sub && <span>{i.sub}</span>}
+									{i.reminder && (
+										<button type="button" className="linkbtn" onClick={() => (setOpen(false), act(i.reminder))}>
+											{i.reminder.ok} ›
+										</button>
+									)}
 								</li>
 							))}
 						</ul>

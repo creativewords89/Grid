@@ -5,6 +5,7 @@
 // shown above it, not in it (design NF-C). Keys are shared with
 // the bell, so reading an item in one place marks it read in the other.
 import { commentBell } from './comments.js';
+import { setupReminders } from './cycleSetup.js';
 import { approvals, dismissedKeys, notices, recipientsOf, strips } from './day.js';
 import { short } from './format.js';
 import { reviewsOf } from './reviews.js';
@@ -167,7 +168,8 @@ export function waitTitle(item) {
 
 // The bell (SPEC.md 6.9): the same things as the Notifications box — the message band, what waits
 // for a leader, and the feed — with the same read state (`seen:` keys), so a new item on My day
-// always shows on the bell too.
+// always shows on the bell too. New cycle setup reminders come first and always count as new
+// (`sticky`): opening the bell does not clear them, finishing the work does (SPEC.md 6.11).
 export function bellItems(data, me, today, now = Date.now()) {
 	const seen = dismissedKeys(data, me);
 	const keys = new Set();
@@ -175,9 +177,12 @@ export function bellItems(data, me, today, now = Date.now()) {
 	const add = (i) => {
 		if (keys.has(i.key)) return;
 		keys.add(i.key);
-		out.push({ ...i, unread: !seen.has('seen:' + i.key) });
+		out.push({ ...i, unread: i.sticky || !seen.has('seen:' + i.key) });
 	};
-	strips(data, me, today, { now, all: true }).forEach((s) => add({ key: s.key, text: s.title, sub: s.text }));
+	setupReminders(data, me, today).forEach((r) => add({ key: r.key, text: r.title, sub: r.tone === 'red' ? 'Overdue · until it’s done' : 'Every day until it’s done', sticky: true, tone: r.tone, reminder: r }));
+	strips(data, me, today, { now, all: true })
+		.filter((s) => s.kind !== 'cycle')
+		.forEach((s) => add({ key: s.key, text: s.title, sub: s.text }));
 	if (isManager(me)) approvals(data, me).forEach((a) => add({ key: `wait:${a.kind}:${a.id}`, text: waitTitle(a), sub: 'Waiting for you' }));
 	feedOf(data, me, today, now).forEach((f) => add({ key: f.key, text: f.title, sub: '' }));
 	return out;

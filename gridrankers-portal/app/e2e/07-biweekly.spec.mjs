@@ -23,6 +23,7 @@ test('bi-weekly meeting and monthly tasks', async ({ page }) => {
 	await page.getByLabel('Task', { exact: true }).fill('Fortnightly report');
 	await page.locator('.dl-opts').getByText('Bi-weekly').click();
 	await expect(page.getByText('Quantity per 2 weeks')).toBeVisible();
+	await page.locator('dialog[open] .pk-row', { hasText: 'Max Member' }).click();
 	await page.getByRole('button', { name: 'Save task' }).click();
 	const task = page.locator('article.mcard', { hasText: 'Fortnightly report' });
 	await expect(task.locator('.freq')).toHaveText('Bi-weekly');

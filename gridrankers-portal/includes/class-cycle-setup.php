@@ -1,7 +1,7 @@
 <?php
 /**
  * New cycle setup (SPEC.md 6.11): within 3 days of a project's new cycle, a Team Leader or the
- * Super Admin assigns every monthly task and reviews last cycle's monthly tasks.
+ * Super Admin assigns every monthly task and reviews last cycle's monthly and meeting tasks.
  *
  * @package GridRankers_Portal
  */
@@ -26,18 +26,20 @@ class GRP_Cycle_Setup {
 	const FEEDBACK_DAYS = 14;
 
 	/**
-	 * Records the review of one monthly task of the project's previous cycle. Feedback (`$ok`
-	 * false) goes to the task's responsible people as a private notice.
+	 * Records the review of one monthly or meeting task of the project's previous cycle.
+	 * Feedback (`$ok` false) goes to the task's responsible people as a private notice; a
+	 * carried-over meeting task (`$carry`) gets that date as its deadline.
 	 *
-	 * @param array  $project Project row.
-	 * @param array  $task    Monthly task of that project.
-	 * @param bool   $ok      True for "Looks good", false for feedback.
-	 * @param string $note    Feedback text (required when `$ok` is false).
-	 * @param array  $actor   Acting member.
-	 * @param string $today   `Y-m-d`.
+	 * @param array       $project Project row.
+	 * @param array       $task    Monthly or meeting task of that project.
+	 * @param bool        $ok      True for "Looks good", false for feedback.
+	 * @param string      $note    Feedback text (required when `$ok` is false).
+	 * @param array       $actor   Acting member.
+	 * @param string      $today   `Y-m-d`.
+	 * @param string|null $carry   New deadline `Y-m-d` for an open meeting task.
 	 * @return array Updated project.
 	 */
-	public static function review( array $project, array $task, $ok, $note, array $actor, $today ) {
+	public static function review( array $project, array $task, $ok, $note, array $actor, $today, $carry = null ) {
 		$cycle = GRP_Cycles::cycle_range( $project, -1, $today );
 		$to    = $ok ? array() : self::responsible( $task );
 
@@ -60,6 +62,20 @@ class GRP_Cycle_Setup {
 		$reviews = is_array( $project['cycle_reviews'] ?? null ) ? $project['cycle_reviews'] : array();
 		$done    = isset( $reviews[ $cycle['key'] ] ) && is_array( $reviews[ $cycle['key'] ] ) ? $reviews[ $cycle['key'] ] : array();
 
+		if ( $carry ) {
+			$moved = GRP_Store::update(
+				'grp_meeting_tasks',
+				$task['id'],
+				array(
+					'deadline' => array(
+						'type' => 'date',
+						'date' => $carry,
+					),
+				)
+			);
+			GRP_Activity::audit( 'edit', 'items', $moved, $actor, 'carried over to ' . $carry );
+		}
+
 		$done[ (string) $task['id'] ] = array(
 			'ok'   => (bool) $ok,
 			'note' => $ok ? '' : $note,
@@ -67,7 +83,10 @@ class GRP_Cycle_Setup {
 			'by'   => $actor['id'],
 			'at'   => GRP_Ids::now(),
 		);
-		$reviews[ $cycle['key'] ]     = $done;
+		if ( $carry ) {
+			$done[ (string) $task['id'] ]['carry'] = $carry;
+		}
+		$reviews[ $cycle['key'] ] = $done;
 		// Keep the latest cycles only (keys sort by date).
 		uksort( $reviews, 'strcmp' );
 		$reviews = array_slice( $reviews, -self::KEEP, null, true );

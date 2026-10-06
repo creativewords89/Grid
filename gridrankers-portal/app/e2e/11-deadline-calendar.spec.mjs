@@ -59,7 +59,12 @@ test('pick deadlines on a calendar', async ({ page }) => {
 	await dlg.getByRole('button', { name: 'Day 5', exact: true }).click();
 	await expect(dlg.locator('.dp-foot')).toContainText('between day 1 and day 5');
 	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/cal-days.png' });
+	// Nobody responsible: not saved (SPEC.md 6.11).
 	await dlg.getByRole('button', { name: 'Save task' }).click();
+	await expect(dlg.getByRole('alert')).toHaveText('A monthly task needs at least one person responsible.');
+	await dlg.locator('.pk-row', { hasText: 'Max Member' }).click();
+	await dlg.getByRole('button', { name: 'Save task' }).click();
+	await expect(dlg).toHaveCount(0);
 	const monthly = (await apiCall(page, 'GET', 'monthly-tasks')).json.find((t) => t.title === 'Early-cycle audit');
 	expect(monthly).toMatchObject({ due_mode: 'dates', due_from_day: 1, due_day: 5 });
 

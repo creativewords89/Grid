@@ -3,6 +3,7 @@ import { usePortal } from '../../context.js';
 import { approvals, dismissedKeys } from '../../lib/day.js';
 import { isManager } from '../../lib/roles.js';
 import { ApprovalItem } from './Approvals.jsx';
+import { SetupReminders } from './CycleSetup.jsx';
 import { FILTERS, PAGE_SIZE, ago, countsOf, feedOf } from '../../lib/feed.js';
 import { useDismiss } from './DayHeader.jsx';
 import { short } from '../../lib/format.js';
@@ -226,6 +227,7 @@ export function Notifications() {
 					</button>
 				)}
 			</div>
+			<SetupReminders />
 			<div className="nf-chips" role="group" aria-label="Show">
 				{(waiting.length || isManager(me) ? [FILTERS[0], ['approve', 'To approve'], ...FILTERS.slice(1)] : FILTERS).map(([k, label]) => (
 					<button key={k} type="button" className={k === 'approve' ? 'nf-chip-wait' : undefined} aria-pressed={filter === k} onClick={() => (setFilter(k), setPage(0))}>
