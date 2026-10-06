@@ -507,10 +507,10 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 
 57. (Released as 0.1.24.) General tasks (6.13, designs GT-A, GT-B, GT-C): meeting tasks with no project; sidebar link with a count, the General tasks screen (tabs, chips, cards, Recent Activities), Where in the task dialog (add and move), My day group, notifications, reviews and undo. **Tests:** PHPUnit (permission row, only leaders add, the person on it works on it, moved to a project and back with the audit, restored from the trash without a project), Vitest (General vs project tasks, the board's order, My day group, new-task notice and review open the General board), Playwright (leader adds from the sidebar screen, member sees it on My day and in Notifications and starts it, Recent Activities, Edit → Where moves it to a project).
 
-58. Fix: a finished week or two-week period on a monthly card keeps its full width with "✓" on the same line (its style no longer shares a class name with the 34px weekday buttons). Playwright: the finished bi-weekly box is the same size as the open one.
+58. (Released as 0.1.25.) Fix: a finished week or two-week period on a monthly card keeps its full width with "✓" on the same line (its style no longer shares a class name with the 34px weekday buttons). Playwright: the finished bi-weekly box is the same size as the open one.
 
-59. General tasks screen: the **Add general task** card comes last, after the tasks (as on Meeting Minutes). Playwright: the last box is the Add card.
+59. (Released as 0.1.25.) General tasks screen: the **Add general task** card comes last, after the tasks (as on Meeting Minutes). Playwright: the last box is the Add card.
 
-60. Fix: from the General tasks screen, clicking a project in the sidebar opens that project's Meeting Minutes (it stayed on General tasks). Playwright: General tasks → Bright Dental opens Bright Dental.
+60. (Released as 0.1.25.) Fix: from the General tasks screen, clicking a project in the sidebar opens that project's Meeting Minutes (it stayed on General tasks). Playwright: General tasks → Bright Dental opens Bright Dental.
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).
