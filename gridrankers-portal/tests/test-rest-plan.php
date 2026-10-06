@@ -37,11 +37,13 @@ class Test_GRP_REST_Plan extends GRP_REST_TestCase {
 		);
 	}
 
-	public function test_leaders_edit_the_details_and_everyone_reads_them() {
+	public function test_everyone_edits_the_details_and_reads_them() {
 		$project = $this->project();
 		$path    = "/projects/{$project['id']}/details";
 
-		$this->assertStatus( 403, $this->api_as( 'member', 'PUT', $path, $this->details() ) );
+		$this->assertStatus( 200, $this->api_as( 'member', 'PUT', $path, $this->details() ), 'Team Members maintain the Details tab too' );
+		GRP_Store::update( 'grp_members', $this->team['other']['id'], array( 'location' => null ) );
+		$this->assertSame( 'grp_profile_incomplete', $this->api_as( 'other', 'PUT', $path, $this->details() )->get_data()['code'] );
 		$response = $this->api_as( 'lead', 'PUT', $path, $this->details() );
 		$this->assertStatus( 200, $response );
 		$section = $response->get_data()['details']['sections'][0];
@@ -77,8 +79,7 @@ class Test_GRP_REST_Plan extends GRP_REST_TestCase {
 		$path    = "/projects/{$project['id']}/keywords";
 		$add     = array( 'keywords' => array( 'emergency plumber', ' Emergency Plumber ', '', 'drain cleaning' ) );
 
-		$this->assertStatus( 403, $this->api_as( 'member', 'POST', $path, $add ) );
-		$response = $this->api_as( 'lead', 'POST', $path, $add + array( 'deadline' => '2026-10-31' ) );
+		$response = $this->api_as( 'member', 'POST', $path, $add + array( 'deadline' => '2026-10-31' ) );
 		$this->assertStatus( 201, $response );
 		$rows = $response->get_data();
 		$this->assertSame( array( 'emergency plumber', 'drain cleaning' ), wp_list_pluck( $rows, 'keyword' ), 'blank lines and repeats are skipped' );
@@ -87,17 +88,17 @@ class Test_GRP_REST_Plan extends GRP_REST_TestCase {
 		$this->assertSame( 'grp_keywords_none', $this->api_as( 'admin', 'POST', $path, array( 'keywords' => array( 'DRAIN cleaning' ) ) )->get_data()['code'] );
 
 		$id = $rows[0]['id'];
-		// Deadline, rename and order: leaders and the Super Admin only.
-		$this->assertStatus( 403, $this->api_as( 'member', 'PATCH', "/keywords/{$id}", array( 'deadline' => '2026-11-30' ) ) );
-		$this->assertStatus( 403, $this->api_as( 'member', 'PATCH', "/keywords/{$id}", array( 'keyword' => 'x' ) ) );
+		// Deadline, rename and order: everyone (Team Members included).
+		$this->assertSame( '2026-11-30', $this->api_as( 'member', 'PATCH', "/keywords/{$id}", array( 'deadline' => '2026-11-30' ) )->get_data()['deadline'] );
+		$this->assertSame( 'drain', $this->api_as( 'member', 'PATCH', "/keywords/{$id}", array( 'keyword' => 'drain' ) )->get_data()['keyword'] );
+		$this->assertSame( 'emergency plumber', $this->api_as( 'member', 'PATCH', "/keywords/{$id}", array( 'keyword' => 'emergency plumber' ) )->get_data()['keyword'] );
 		$this->assertSame( '2026-11-30', $this->api_as( 'admin', 'PATCH', "/keywords/{$id}", array( 'deadline' => '2026-11-30' ) )->get_data()['deadline'] );
 		$this->assertNull( $this->api_as( 'lead', 'PATCH', "/keywords/{$id}", array( 'deadline' => '' ) )->get_data()['deadline'], 'no deadline' );
 		$this->assertSame( 'grp_keyword_taken', $this->api_as( 'lead', 'PATCH', "/keywords/{$id}", array( 'keyword' => 'Drain Cleaning' ) )->get_data()['code'] );
 		$this->assertSame( 7, (int) $this->api_as( 'lead', 'PATCH', "/keywords/{$id}", array( 'position' => 7 ) )->get_data()['position'] );
 
-		// Removing: leaders and the Super Admin; /sync reports the deletion.
-		$this->assertStatus( 403, $this->api_as( 'member', 'DELETE', "/keywords/{$id}" ) );
-		$this->assertStatus( 200, $this->api_as( 'lead', 'DELETE', "/keywords/{$id}" ) );
+		// Removing: everyone; /sync reports the deletion.
+		$this->assertStatus( 200, $this->api_as( 'member', 'DELETE', "/keywords/{$id}" ) );
 		$this->assertNull( GRP_Store::get( 'grp_keywords', $id ) );
 	}
 
@@ -137,14 +138,13 @@ class Test_GRP_REST_Plan extends GRP_REST_TestCase {
 		);
 
 		$this->assertSame( 'Need 3 backlinks', $this->api_as( 'other', 'PATCH', $path, array( 'note' => 'Need 3 backlinks' ) )->get_data()['note'] );
-		// Only Team Leaders and the Super Admin untick; a Team Member asks them to.
+		// Everyone unticks (SPEC.md 6.12); an older "ask to untick" request is still answered by anyone.
 		$untick = array(
 			'check' => array(
 				'column' => 'c2',
 				'on'     => false,
 			),
 		);
-		$this->assertStatus( 403, $this->api_as( 'member', 'PATCH', $path, $untick ) );
 		$this->assertArrayHasKey( 'c2', (array) GRP_Store::get( 'grp_keywords', $row['id'] )['checks'] );
 		$ask   = array(
 			'ask_untick' => array(
@@ -171,10 +171,9 @@ class Test_GRP_REST_Plan extends GRP_REST_TestCase {
 		)->get_data()['checks']['c2'];
 		$this->assertSame( $this->team['member']['id'], $again['by'] );
 		// Keep it ticked (the request is answered), or untick it.
-		$this->assertStatus( 403, $this->api_as( 'member', 'PATCH', $path, array( 'keep' => array( 'column' => 'c2' ) ) ) );
-		$kept = $this->api_as( 'lead', 'PATCH', $path, array( 'keep' => array( 'column' => 'c2' ) ) )->get_data()['checks']['c2'];
+		$kept = $this->api_as( 'member', 'PATCH', $path, array( 'keep' => array( 'column' => 'c2' ) ) )->get_data()['checks']['c2'];
 		$this->assertArrayNotHasKey( 'ask', $kept );
-		$cleared = $this->api_as( 'lead', 'PATCH', $path, $untick )->get_data();
+		$cleared = $this->api_as( 'other', 'PATCH', $path, $untick )->get_data();
 		$this->assertArrayNotHasKey( 'c2', (array) $cleared['checks'] );
 
 		// A Team Member with an incomplete profile can't tick (section 3, Profile lock).
@@ -206,8 +205,7 @@ class Test_GRP_REST_Plan extends GRP_REST_TestCase {
 			array( 'name' => 'GBP post' ),
 		);
 
-		$this->assertStatus( 403, $this->api_as( 'member', 'PUT', $path, array( 'columns' => $columns ) ) );
-		$saved = $this->api_as( 'lead', 'PUT', $path, array( 'columns' => $columns ) )->get_data()['kw_columns'];
+		$saved = $this->api_as( 'member', 'PUT', $path, array( 'columns' => $columns ) )->get_data()['kw_columns'];
 		$this->assertSame( array( 'On-page', 'GBP post' ), wp_list_pluck( $saved, 'name' ) );
 		$this->assertSame( 'c1', $saved[0]['id'], 'existing ids are kept so ticks stay' );
 		$this->assertNotEmpty( $saved[1]['id'] );

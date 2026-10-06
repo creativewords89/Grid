@@ -3,7 +3,7 @@ import { usePortal } from '../../context.js';
 import { LINK_LABEL, isWebUrl, linkKind, sectionsOf } from '../../lib/plan.js';
 import { cycleRange } from '../../lib/cycles.js';
 import { short } from '../../lib/format.js';
-import { isManager } from '../../lib/roles.js';
+import { profileLocked } from '../../lib/people.js';
 
 const ICON = { sheet: '▦', doc: '≣', drive: '▲', other: '↗' };
 const newId = () => 'n' + Math.random().toString(36).slice(2, 10);
@@ -275,11 +275,12 @@ const hostOf = (url) => {
 };
 
 // Project → Details (SPEC.md 6.12, design PD-D): descriptions with their links as chips.
-// Team Leaders and the Super Admin edit; everyone reads.
+// Everyone edits and reads (SPEC.md 6.12): Team Members, Team Leaders and the Super Admin; the
+// server refuses edits while a profile is incomplete.
 export default function ProjectDetails() {
 	const { api, data, project, dispatch, toast, confirm, me, today } = usePortal();
 	const p = data.projects[project];
-	const can = isManager(me);
+	const can = !profileLocked(data.members[me.id] || me, me);
 	const sections = sectionsOf(p);
 	const [editing, setEditing] = useState('');
 
@@ -305,7 +306,7 @@ export default function ProjectDetails() {
 			{sections.length === 0 && editing !== 'new' && (
 				<section className="dcard pdx-empty">
 					<b>No details yet</b>
-					<span className="muted">{can ? 'Add a description and the links the team needs — sheets, Drive folders, docs.' : 'A Team Leader adds the description and links here.'}</span>
+					<span className="muted">{can ? 'Add a description and the links the team needs — sheets, Drive folders, docs.' : 'Finish your profile to add the description and links.'}</span>
 					{can && (
 						<button type="button" className="btn primary" onClick={() => setEditing('new')}>
 							+ Add a section

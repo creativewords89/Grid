@@ -42,18 +42,17 @@ export const keywordsOf = (data, projectId) =>
 // Ticked columns of a keyword (only the project's current columns count).
 export const doneOf = (kw, columns) => columns.filter((c) => kw.checks && kw.checks[c.id]).length;
 
-// This cycle (deadline up to its end), Next cycle (up to the next one's end), or Later (no
-// deadline, or further away).
-export function groupOf(kw, project, today) {
-	if (!kw.deadline) return 'later';
+// Past: every box ticked — the keyword is done, whatever its deadline. The rest: Next cycle
+// (deadline after this cycle's end) or This cycle (no deadline, due this cycle, or late).
+export function groupOf(kw, project, today, columns = columnsOf(project)) {
+	if (columns.length && doneOf(kw, columns) === columns.length) return 'past';
 	const cur = cycleRange(project, 0, today);
-	const next = cycleRange(project, 1, today);
-	if (cur && kw.deadline <= cur.end) return 'this';
-	if (next && kw.deadline <= next.end) return 'next';
-	return 'later';
+	if (kw.deadline && cur && kw.deadline > cur.end) return 'next';
+	return 'this';
 }
 
-// The deadline a keyword gets when dropped into a group: the end of that cycle, or none.
+// The deadline a keyword gets when dropped into This or Next cycle: the end of that cycle.
+// Past is reached by ticking every box, not by a drop.
 export function deadlineFor(group, project, today) {
 	if (group === 'this') return cycleRange(project, 0, today).end;
 	if (group === 'next') return cycleRange(project, 1, today).end;
@@ -70,8 +69,8 @@ export const splitKeywords = (text) =>
 		.map((s) => s.trim())
 		.filter(Boolean);
 
-// Requests to untick a box (SPEC.md 6.12): only Team Leaders and the Super Admin untick, so a
-// Team Member asks; the request waits on the box (`checks[col].ask`) and in the leaders' Waiting for you.
+// Requests to untick a box from before everyone could untick (SPEC.md 6.12): one still waits on
+// the box (`checks[col].ask`) and in the leaders' Waiting for you until someone answers it.
 export const askOf = (kw, col) => (kw.checks && kw.checks[col.id] && kw.checks[col.id].ask) || null;
 
 export function untickRequests(data) {

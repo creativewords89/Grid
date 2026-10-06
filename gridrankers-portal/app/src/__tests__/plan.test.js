@@ -34,18 +34,21 @@ describe('Keyword checklist (SPEC.md 6.12)', () => {
 		expect(columnsOf(P).map((c) => c.name)).toEqual(['On-page', 'Content', 'Internal links', 'Backlinks']);
 		expect(columnsOf({ ...P, kw_columns: [{ id: 'x', name: 'GBP' }] })).toEqual([{ id: 'x', name: 'GBP' }]);
 	});
-	it('groups by deadline: this cycle, next cycle, later', () => {
+	it('groups: done keywords in past, the rest by deadline', () => {
 		expect(groupOf({ deadline: '2026-11-04' }, P, TODAY)).toBe('this');
 		expect(groupOf({ deadline: '2026-10-01' }, P, TODAY)).toBe('this');
+		expect(groupOf({ deadline: null }, P, TODAY)).toBe('this');
 		expect(groupOf({ deadline: '2026-11-05' }, P, TODAY)).toBe('next');
-		expect(groupOf({ deadline: '2026-12-04' }, P, TODAY)).toBe('next');
-		expect(groupOf({ deadline: '2026-12-05' }, P, TODAY)).toBe('later');
-		expect(groupOf({ deadline: null }, P, TODAY)).toBe('later');
+		expect(groupOf({ deadline: '2026-12-05' }, P, TODAY)).toBe('next');
+		const all = { c1: { by: 'm' }, c2: { by: 'm' }, c3: { by: 'm' }, c4: { by: 'm' } };
+		expect(groupOf({ deadline: '2026-12-05', checks: all }, P, TODAY)).toBe('past');
+		expect(groupOf({ deadline: null, checks: all }, P, TODAY)).toBe('past');
+		expect(groupOf({ deadline: '2026-10-01', checks: { ...all, c4: undefined } }, P, TODAY)).toBe('this');
+		expect(groupOf({ checks: { x: 1 } }, P, TODAY, [{ id: 'x', name: 'GBP' }])).toBe('past');
 	});
 	it('a drop sets the deadline to the end of that cycle', () => {
 		expect(deadlineFor('this', P, TODAY)).toBe('2026-11-04');
 		expect(deadlineFor('next', P, TODAY)).toBe('2026-12-04');
-		expect(deadlineFor('later', P, TODAY)).toBe('');
 	});
 	it('counts ticks of the current columns and flags late keywords', () => {
 		const kw = { deadline: '2026-10-12', checks: { c1: { by: 'm' }, c2: { by: 'm' }, gone: { by: 'm' } } };
