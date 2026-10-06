@@ -1,5 +1,5 @@
 import { usePortal } from '../../context.js';
-import { ago } from '../../lib/feed.js';
+import { ago, waitTitle } from '../../lib/feed.js';
 import { short } from '../../lib/format.js';
 import { leaveDays, monthName, takenInMonth, teamWeekly } from '../../lib/people.js';
 import { rowsOf } from '../../lib/store.js';
@@ -75,7 +75,7 @@ export function ApprovalItem({ item }) {
 			}
 		};
 		return (
-			<Row item={item} tone="amber" icon="↶" title={`${(item.who ? item.who.name : 'Someone')} asked to undo “${item.title}”`} onOpen={go(item.project.id, item.title, item.tab)}>
+			<Row item={item} tone="amber" icon="↶" title={waitTitle(item)} onOpen={go(item.project.id, item.title, item.tab)}>
 				<button type="button" className="btn small ok-btn" onClick={() => answer('undo')}>
 					Undo
 				</button>
@@ -98,7 +98,7 @@ export function ApprovalItem({ item }) {
 			}
 		};
 		return (
-			<Row item={item} tone="amber" icon="☐" title={`${(item.who ? item.who.name : 'Someone')} asked to untick ${col.name} · ${kw.keyword}`} onOpen={go(project.id, '', 'plan')}>
+			<Row item={item} tone="amber" icon="☐" title={waitTitle(item)} onOpen={go(project.id, '', 'plan')}>
 				<button type="button" className="btn small danger-soft" onClick={() => answer({ check: { column: col.id, on: false } }, 'Unticked')}>
 					Untick
 				</button>
@@ -132,7 +132,7 @@ export function ApprovalItem({ item }) {
 			}
 		};
 		return (
-			<Row item={item} tone="green" icon="✚" title={`${item.who.name} asks for ${kind.toLowerCase()} · ${range}`}>
+			<Row item={item} tone="green" icon="✚" title={waitTitle(item)}>
 				<button type="button" className="btn small ok-btn" onClick={() => answer('approve')}>
 					Approve
 				</button>
@@ -145,7 +145,7 @@ export function ApprovalItem({ item }) {
 
 	const r = item.review;
 	return (
-		<Row item={item} tone="blue" icon="✓" title={r.review.reviewer ? `${(item.who ? item.who.name : 'Someone')} asked you to review “${r.title}”` : `${(item.who ? item.who.name : 'Someone')} finished “${r.title}”`} onOpen={go(r.project_id, r.title, r.tab)}>
+		<Row item={item} tone="blue" icon="✓" title={waitTitle(item)} onOpen={go(r.project_id, r.title, r.tab)}>
 			<button type="button" className="btn small ok-btn" onClick={() => decide(r.kind, r.id, 'accept')}>
 				Approve
 			</button>

@@ -478,4 +478,6 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 
 51. (Released as 0.1.21.) Notifications kept simple (NF-C without descriptions): requests are an icon, one sentence, when and the buttons; feed items are a self-contained title only. Vitest: the new titles. Playwright: no descriptions in the box, requests show who and what (not the reason), Open task still works.
 
+52. Bell = Notifications box: the bell lists the message band, what waits for a leader ("{sentence}" · Waiting for you) and every item of the Notifications feed, one entry per key, with the same read state; it refreshes with the regular sync. **Tests:** Vitest (everything in the box is on the bell, read state shared, a leave request rings a leader's bell), Playwright (a new task shows on the bell's count and list; a sick-leave request on the leader's bell).
+
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).

@@ -1,6 +1,6 @@
 // Submission files, editing and comments (SPEC.md 6.6, designs SF-A / SF-B).
 import { describe, expect, it } from 'vitest';
-import { bellItems } from '../lib/day.js';
+import { bellItems } from '../lib/feed.js';
 import { canComment, canEditSubmission, commentBell, commentsOf } from '../lib/comments.js';
 import { fileBadge, fileSize, linksOf } from '../lib/files.js';
 import { emptyData } from '../lib/store.js';

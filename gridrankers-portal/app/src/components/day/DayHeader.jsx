@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePortal } from '../../context.js';
-import { bellItems, strips } from '../../lib/day.js';
+import { strips } from '../../lib/day.js';
+import { bellItems } from '../../lib/feed.js';
 import { weekdayDate } from '../../lib/format.js';
 import { MEMBER_TAB_KEY, greeting } from '../../lib/people.js';
 import { ROLE } from '../../lib/roles.js';

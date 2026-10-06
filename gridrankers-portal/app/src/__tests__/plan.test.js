@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { approvals, bellItems, undoRequests } from '../lib/day.js';
+import { approvals, undoRequests } from '../lib/day.js';
+import { bellItems } from '../lib/feed.js';
 import { canWorkOn } from '../lib/tasks.js';
 import { DEFAULT_COLUMNS, askOf, columnsOf, deadlineFor, doneOf, groupOf, isLate, isWebUrl, keywordsOf, linkKind, sectionsOf, splitKeywords, untickRequests } from '../lib/plan.js';
 import { emptyData } from '../lib/store.js';
@@ -97,8 +98,8 @@ describe('Keyword checklist (SPEC.md 6.12)', () => {
 		};
 		d.projects = { p: P };
 		d.meeting_tasks = { t: { id: 't', project_id: 'p', title: 'Fix H1', status: 'doing', assignees: [{ id: 'max' }], undo_request: { by: 'max', at: '2026-10-12 10:00:00', reason: 'Wrong card' } } };
-		const undoBell = (who) => bellItems(d, d.members[who], '2026-10-12').filter((b) => b.key.startsWith('undo:'));
-		expect(undoBell('lee').map((b) => [b.text, b.sub])).toEqual([['Max asked to undo “Fix H1”', `${P.name} · In progress → Not started`]]);
+		const undoBell = (who) => bellItems(d, d.members[who], '2026-10-12').filter((b) => b.key.startsWith('wait:undo:'));
+		expect(undoBell('lee').map((b) => [b.text, b.sub])).toEqual([['Max asked to undo “Fix H1”', 'Waiting for you']]);
 		expect(undoBell('ada')).toHaveLength(1);
 		expect(undoBell('max')).toHaveLength(0);
 	});

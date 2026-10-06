@@ -5,7 +5,7 @@
 // shown above it, not in it (design NF-C). Keys are shared with
 // the bell, so reading an item in one place marks it read in the other.
 import { commentBell } from './comments.js';
-import { notices, recipientsOf } from './day.js';
+import { approvals, dismissedKeys, notices, recipientsOf, strips } from './day.js';
 import { short } from './format.js';
 import { reviewsOf } from './reviews.js';
 import { isManager } from './roles.js';
@@ -150,3 +150,35 @@ export function ago(iso, now = Date.now()) {
 	return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
+
+// One sentence for something waiting for a Team Leader or the Super Admin (SPEC.md 7.0): the
+// Waiting for you cards and the bell say the same.
+export function waitTitle(item) {
+	const who = item.who ? item.who.name : 'Someone';
+	if (item.kind === 'undo') return `${who} asked to undo “${item.title}”`;
+	if (item.kind === 'untick') return `${who} asked to untick ${item.col.name} · ${item.kw.keyword}`;
+	if (item.kind === 'leave') {
+		const l = item.leave;
+		return `${who} asks for ${l.type === 'sick' ? 'sick' : 'day'} leave · ${range(l.from_date, l.to_date)}`;
+	}
+	const r = item.review;
+	return r.review.reviewer ? `${who} asked you to review “${r.title}”` : `${who} finished “${r.title}”`;
+}
+
+// The bell (SPEC.md 6.9): the same things as the Notifications box — the message band, what waits
+// for a leader, and the feed — with the same read state (`seen:` keys), so a new item on My day
+// always shows on the bell too.
+export function bellItems(data, me, today, now = Date.now()) {
+	const seen = dismissedKeys(data, me);
+	const keys = new Set();
+	const out = [];
+	const add = (i) => {
+		if (keys.has(i.key)) return;
+		keys.add(i.key);
+		out.push({ ...i, unread: !seen.has('seen:' + i.key) });
+	};
+	strips(data, me, today, { now, all: true }).forEach((s) => add({ key: s.key, text: s.title, sub: s.text }));
+	if (isManager(me)) approvals(data, me).forEach((a) => add({ key: `wait:${a.kind}:${a.id}`, text: waitTitle(a), sub: 'Waiting for you' }));
+	feedOf(data, me, today, now).forEach((f) => add({ key: f.key, text: f.title, sub: '' }));
+	return out;
+}
