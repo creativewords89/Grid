@@ -50,6 +50,7 @@ class GRP_REST_Members extends GRP_REST_Controller {
 		self::route( '/members/(?P<id>[\w-]+)', 'PATCH', 'update' );
 		self::route( '/members/(?P<id>[\w-]+)', WP_REST_Server::DELETABLE, 'destroy' );
 		self::route( '/members/(?P<id>[\w-]+)/code', WP_REST_Server::CREATABLE, 'set_code' );
+		self::route( '/members/(?P<id>[\w-]+)/tour', WP_REST_Server::READABLE, 'tour' );
 	}
 
 	/**
@@ -93,6 +94,32 @@ class GRP_REST_Members extends GRP_REST_Controller {
 		$member = GRP_Store::get( self::TABLE, $request['id'] );
 
 		return $member ? rest_ensure_response( self::visible( $member ) ) : self::not_found();
+	}
+
+	/**
+	 * GET /members/{id}/tour: may the signed-in person tour this person's portal, view only
+	 * (SPEC.md 7.0)? The app asks before every tour; 403 when not.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function tour( WP_REST_Request $request ) {
+		$member = GRP_Store::get( self::TABLE, $request['id'] );
+		if ( ! $member ) {
+			return self::not_found();
+		}
+		if ( ! self::can(
+			GRP_Permissions::TOUR_MEMBER,
+			array(
+				'member_id' => $member['id'],
+				'role'      => $member['role'],
+				'active'    => $member['active'],
+			)
+		) ) {
+			return self::forbidden( __( 'You can’t tour this person’s portal.', 'gridrankers-portal' ) );
+		}
+
+		return rest_ensure_response( self::visible( $member ) );
 	}
 
 	/**

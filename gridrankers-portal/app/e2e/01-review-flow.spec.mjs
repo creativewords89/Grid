@@ -52,13 +52,13 @@ test('completion review round trip', async ({ page }) => {
 	await expect(access.locator('.ma-row:not(.ma-th)').first()).toContainText('Team Leader');
 	await access.getByRole('button', { name: /^All/ }).click();
 	await access.getByRole('button', { name: 'More for Max Member' }).click();
-	await expect(access.locator('.ma-menu button')).toHaveText(['View their My day', 'Open their page', 'Set sign-in code', 'Change role', 'Remove from team']);
+	await expect(access.locator('.ma-menu button')).toHaveText(['Tour their portal', 'Open their page', 'Set sign-in code', 'Change role', 'Remove from team']);
 	if (process.env.SHOTS) await access.screenshot({ path: process.env.SHOTS + '/team-access.png' });
-	// Team → someone's My day → their page → back to the Team tab.
+	// Team → a tour of someone's portal → their page → back to the Team tab.
 	await page.locator('nav.ttabs').getByRole('tab', { name: 'Team' }).click();
 	await access.getByRole('button', { name: 'More for Max Member' }).click();
-	await access.getByRole('menuitem', { name: 'View their My day' }).click();
-	await page.locator('.va-bar').getByRole('button', { name: 'Open Max Member’s page' }).click();
+	await access.getByRole('menuitem', { name: 'Tour their portal' }).click();
+	await page.locator('.tour-bar').getByRole('button', { name: 'Open Max’s page' }).click();
 	await expect(page.locator('nav.ttabs').getByRole('tab', { name: 'Overview' })).toBeVisible();
 	await page.getByRole('button', { name: '← All team members' }).click();
 	await expect(page.locator('nav.ttabs').getByRole('tab', { name: 'Team' })).toHaveAttribute('aria-selected', 'true');

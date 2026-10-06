@@ -536,12 +536,87 @@ class Test_GRP_Permissions extends WP_UnitTestCase {
 	}
 
 	public function test_see_someone_elses_page() {
+		// A Team Member's page: the Super Admin and Team Leaders.
 		$this->assert_matrix(
 			GRP_Permissions::VIEW_MEMBER_PAGE,
-			array( 'member_id' => 'm-other' ),
+			array(
+				'member_id' => 'm-other',
+				'role'      => 'member',
+			),
 			array(
 				'admin'  => true,
 				'lead'   => true,
+				'member' => false,
+			)
+		);
+		// A Team Leader's or the Super Admin's page: the Super Admin only.
+		foreach ( array( 'lead', 'admin' ) as $role ) {
+			$this->assert_matrix(
+				GRP_Permissions::VIEW_MEMBER_PAGE,
+				array(
+					'member_id' => 'm-other',
+					'role'      => $role,
+				),
+				array(
+					'admin'  => true,
+					'lead'   => false,
+					'member' => false,
+				)
+			);
+		}
+	}
+
+	/**
+	 * Row: Tour someone's portal, view only (7.0).
+	 */
+	public function test_tour_someones_portal() {
+		$who = static function ( $role, $active = 1 ) {
+			return array(
+				'member_id' => 'm-other',
+				'role'      => $role,
+				'active'    => $active,
+			);
+		};
+		$this->assert_matrix(
+			GRP_Permissions::TOUR_MEMBER,
+			$who( 'member' ),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => false,
+			)
+		);
+		foreach ( array( 'lead', 'admin' ) as $role ) {
+			$this->assert_matrix(
+				GRP_Permissions::TOUR_MEMBER,
+				$who( $role ),
+				array(
+					'admin'  => true,
+					'lead'   => false,
+					'member' => false,
+				)
+			);
+		}
+		// Not yourself, not someone removed from the team.
+		$this->assert_matrix(
+			GRP_Permissions::TOUR_MEMBER,
+			fn ( $role ) => array(
+				'member_id' => $this->users[ $role ]['id'],
+				'role'      => $role,
+				'active'    => 1,
+			),
+			array(
+				'admin'  => false,
+				'lead'   => false,
+				'member' => false,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::TOUR_MEMBER,
+			$who( 'member', 0 ),
+			array(
+				'admin'  => false,
+				'lead'   => false,
 				'member' => false,
 			)
 		);

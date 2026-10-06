@@ -68,8 +68,17 @@ class GRP_Permissions {
 	/** See the Team dashboard. */
 	const VIEW_TEAM_DASHBOARD = 'view_team_dashboard';
 
-	/** See a member's page. Object: `{member_id}`. */
+	/**
+	 * See a member's page. Context: `{member_id, role}` of that person. Everyone sees their own; the
+	 * Super Admin anyone's; a Team Leader Team Members' only.
+	 */
 	const VIEW_MEMBER_PAGE = 'view_member_page';
+
+	/**
+	 * Tour someone's portal, view only (SPEC.md 7.0). Context: `{member_id, role, active}` of that
+	 * person. The Super Admin tours anyone else; a Team Leader Team Members only; Team Members nobody.
+	 */
+	const TOUR_MEMBER = 'tour_member';
 
 	/** Add or approve a member. Object: `{role, wp_user_id?}` of the new member. */
 	const ADD_MEMBER = 'add_member';
@@ -322,6 +331,14 @@ class GRP_Permissions {
 				return false;
 
 			case self::VIEW_MEMBER_PAGE:
+				return self::is_self( $user, $context['member_id'] ?? null ) || $admin || ( $manager && self::ROLE_MEMBER === ( $context['role'] ?? '' ) );
+
+			case self::TOUR_MEMBER:
+				if ( self::is_self( $user, $context['member_id'] ?? null ) || ( isset( $context['active'] ) && ! (int) $context['active'] ) ) {
+					return false;
+				}
+				return $admin || ( $manager && self::ROLE_MEMBER === ( $context['role'] ?? '' ) );
+
 			case self::LOG_WORK:
 				return $manager || self::is_self( $user, $context['member_id'] ?? null );
 
