@@ -15,7 +15,7 @@ class GRP_Install {
 	/**
 	 * Current schema version. Bump it whenever get_schema() or migrations() changes.
 	 */
-	const DB_VERSION = 10;
+	const DB_VERSION = 11;
 
 	/**
 	 * Option that stores the installed schema version.
@@ -32,7 +32,8 @@ class GRP_Install {
 	 * adds member location and birth year, and private notices. Schema 8 adds project details,
  * the keyword checklist columns and `grp_keywords` (SPEC.md 6.12). Schema 9 adds `undo_request` (a Team
  * Member's request to undo In progress, SPEC.md 6.6) to meeting tasks and cycle records. Schema 10 adds
- * `grp_files` (private uploads for submissions and comments) and `grp_comments` (SPEC.md 6.6).
+ * `grp_files` (private uploads for submissions and comments) and `grp_comments` (SPEC.md 6.6). Schema 11
+ * adds `grp_billing` and `grp_billing_fees`, the Super Admin's invoice tracker (SPEC.md 6.14).
 	 *
 	 * @var string[]
 	 */
@@ -55,6 +56,8 @@ class GRP_Install {
 		'grp_keywords',
 		'grp_files',
 		'grp_comments',
+		'grp_billing',
+		'grp_billing_fees',
 	);
 
 	/**
@@ -118,8 +121,9 @@ class GRP_Install {
 	 */
 	private static function migrations() {
 		return array(
-			3 => array( __CLASS__, 'migrate_weekly_records' ),
-			7 => array( __CLASS__, 'start_cycle_setup' ),
+			3  => array( __CLASS__, 'migrate_weekly_records' ),
+			7  => array( __CLASS__, 'start_cycle_setup' ),
+			11 => array( 'GRP_Billing', 'start' ),
 		);
 	}
 
@@ -570,6 +574,40 @@ class GRP_Install {
 				updated_at datetime NOT NULL,
 				PRIMARY KEY  (id),
 				KEY ref (ref_kind,ref_id),
+				KEY updated_at (updated_at)
+			) $collate;",
+
+			"CREATE TABLE {$t['grp_billing']} (
+				id varchar(64) NOT NULL,
+				project_id varchar(64) NOT NULL,
+				project_name varchar(191) NOT NULL DEFAULT '',
+				cycle_key varchar(32) NOT NULL,
+				cycle_start date NOT NULL,
+				cycle_end date NOT NULL,
+				amount decimal(12,2) NULL,
+				currency varchar(8) NOT NULL DEFAULT '',
+				sent_at date NULL,
+				sent_by varchar(64) NULL,
+				ref varchar(191) NULL,
+				skipped tinyint(1) NOT NULL DEFAULT 0,
+				note text NULL,
+				payments json NULL,
+				created_at datetime NOT NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				UNIQUE KEY project_cycle (project_id,cycle_key),
+				KEY cycle_end (cycle_end),
+				KEY updated_at (updated_at)
+			) $collate;",
+
+			"CREATE TABLE {$t['grp_billing_fees']} (
+				id varchar(64) NOT NULL,
+				fee decimal(12,2) NULL,
+				currency varchar(8) NOT NULL DEFAULT '',
+				remind_days tinyint(3) unsigned NOT NULL DEFAULT 3,
+				created_at datetime NOT NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (id),
 				KEY updated_at (updated_at)
 			) $collate;",
 		);

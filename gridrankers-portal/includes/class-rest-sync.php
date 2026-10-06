@@ -37,7 +37,14 @@ class GRP_REST_Sync extends GRP_REST_Controller {
 		'grp_posts'         => 'posts',
 		'grp_keywords'      => 'keywords',
 		'grp_comments'      => 'comments',
+		'grp_billing'       => 'billing',
+		'grp_billing_fees'  => 'billing_fees',
 	);
+
+	/**
+	 * Tables only the Super Admin receives (the invoice tracker, SPEC.md 6.14).
+	 */
+	const ADMIN_TABLES = array( 'grp_billing', 'grp_billing_fees' );
 
 	/**
 	 * Registers routes.
@@ -61,6 +68,12 @@ class GRP_REST_Sync extends GRP_REST_Controller {
 		$page    = max( 0, (int) $request['page'] );
 		$actor   = self::actor();
 		$manager = self::is_manager();
+		$admin   = GRP_Permissions::can( $actor, GRP_Permissions::MANAGE_BILLING );
+
+		// A full sync (sign-in, reload) is when the tracker picks up cycles that just ended.
+		if ( $admin && '' === $since && 0 === $page ) {
+			GRP_Billing::ensure( GRP_Cycles::today() );
+		}
 
 		$changes = array();
 		$more    = false;
@@ -68,7 +81,7 @@ class GRP_REST_Sync extends GRP_REST_Controller {
 		foreach ( self::TABLES as $table => $key ) {
 			$where = '' !== $since ? array( 'updated_at >=' => $since ) : array();
 
-			if ( 'grp_trash' === $table && ! $manager ) {
+			if ( ( 'grp_trash' === $table && ! $manager ) || ( ! $admin && in_array( $table, self::ADMIN_TABLES, true ) ) ) {
 				$changes[ $key ] = array();
 				continue;
 			}
@@ -110,7 +123,7 @@ class GRP_REST_Sync extends GRP_REST_Controller {
 		$deletions = array();
 		if ( '' !== $since && 0 === $page ) {
 			foreach ( GRP_Store::find( 'grp_deletions', array( 'updated_at >=' => $since ), array( 'order_by' => 'updated_at' ) ) as $row ) {
-				if ( isset( self::TABLES[ $row['table_name'] ] ) ) {
+				if ( isset( self::TABLES[ $row['table_name'] ] ) && ( $admin || ! in_array( $row['table_name'], self::ADMIN_TABLES, true ) ) ) {
 					$deletions[] = array(
 						'table' => self::TABLES[ $row['table_name'] ],
 						'id'    => $row['doc_id'],
