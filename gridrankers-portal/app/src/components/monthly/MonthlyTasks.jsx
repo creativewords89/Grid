@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { usePortal } from '../../context.js';
 import { activeSlot, addDays, cycleFill, cycleRange, daysBetween, dueAt, isSplit, periodsOf, slotLabel, slotsOf } from '../../lib/cycles.js';
+import { unassignedOf } from '../../lib/cycleSetup.js';
 import { short } from '../../lib/format.js';
 import { computeMissed, isWaived, periodKeyOf, recordOf, stateOf } from '../../lib/monthly.js';
 import { isManager } from '../../lib/roles.js';
@@ -12,6 +13,27 @@ import MonthlyCard from './MonthlyCard.jsx';
 import MonthlyDetails from './MonthlyDetails.jsx';
 import MonthlyDialog from './MonthlyDialog.jsx';
 import useRecordActions from './useRecordActions.js';
+
+// Every monthly task needs someone responsible (SPEC.md 6.11): a red line while any has nobody.
+// Team Leaders and the Super Admin also get a reminder each day until they do.
+function UnassignedBanner({ project }) {
+	const { data, me } = usePortal();
+	const n = project.state === 'active' ? unassignedOf(data, project).length : 0;
+	if (!n) return null;
+	return (
+		<div className="ua-banner" role="status">
+			<span className="ua-ic" aria-hidden="true">
+				!
+			</span>
+			<span>
+				<b>
+					{n} monthly task{n === 1 ? ' has' : 's have'} nobody assigned.
+				</b>{' '}
+				{isManager(me) ? 'Every monthly task needs someone responsible — open each one and pick people. You’ll be reminded each day until it’s done.' : 'A Team Leader will assign them.'}
+			</span>
+		</div>
+	);
+}
 
 // Transition / pending cycle-change notices for the viewed cycle (reference transitionNotices).
 function TransitionNotice({ project }) {
@@ -221,6 +243,7 @@ export default function MonthlyTasks() {
 
 	return (
 		<>
+			<UnassignedBanner project={p} />
 			<TransitionNotice project={p} />
 			<MissedBanner project={p} tasks={all} missed={missed} />
 			<CycleBar project={p} />

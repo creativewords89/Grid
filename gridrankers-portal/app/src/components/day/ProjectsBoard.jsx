@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePortal } from '../../context.js';
-import { cycleSetup } from '../../lib/cycleSetup.js';
+import { attentionByProject, healthOf, teamOf } from '../../lib/attention.js';
 import { activeWeek, cycleRange, daysBetween, isWeekly } from '../../lib/cycles.js';
 import { deadlineInfo } from '../../lib/deadline.js';
 import { computeMissed, isWaived, recordOf, stateOf } from '../../lib/monthly.js';
@@ -8,6 +8,7 @@ import { pendingReviews } from '../../lib/reviews.js';
 import { isAdmin, isManager } from '../../lib/roles.js';
 import { rowsOf } from '../../lib/store.js';
 import { searchText } from '../../lib/tasks.js';
+import Avatar from '../Avatar.jsx';
 import Modal from '../Modal.jsx';
 
 const STATES = [
@@ -18,7 +19,7 @@ const STATES = [
 const LABEL = Object.fromEntries(STATES);
 const ORDER = { active: 0, paused: 1, inactive: 2 };
 
-// Everything a project card shows, from data the app already syncs.
+// Everything a project row shows, from data the app already syncs.
 export function projectSummary(p, data, reviews, today) {
 	const tasks = rowsOf(data, 'meeting_tasks').filter((t) => t.project_id === p.id);
 	const monthly = rowsOf(data, 'monthly_tasks').filter((t) => t.project_id === p.id);
@@ -34,7 +35,7 @@ export function projectSummary(p, data, reviews, today) {
 		mTotal: counted.length,
 		reviews: reviews.filter((r) => r.project_id === p.id).length,
 		overdue,
-		cycle: P && { day: P.day || p.cycle_day, end: P.end, left: Math.max(0, daysBetween(today, P.end)) },
+		cycle: P && { day: P.day || p.cycle_day, end: P.end, left: Math.max(0, daysBetween(today, P.end)), len: daysBetween(P.start, P.end) + 1 },
 	};
 }
 
@@ -115,7 +116,7 @@ function NewProjectDialog({ open, onClose }) {
 	);
 }
 
-// Card menu (SPEC.md 7.0): move to another status; delete (Super Admin).
+// Row menu (SPEC.md 7.0): move to another status; delete (Super Admin).
 function CardMenu({ p, onMove, onDelete }) {
 	const { me } = usePortal();
 	const [open, setOpen] = useState(false);
@@ -166,9 +167,66 @@ function CardMenu({ p, onMove, onDelete }) {
 	);
 }
 
-function ProjectCard({ p, s }) {
-	const { api, data, dispatch, me, setProject, setView, toast, confirm } = usePortal();
+// The Needs attention cell (design PJ-A4): the most urgent item, why in its colour, and +N for
+// the rest (a small list). Clicking an item opens it.
+function Attention({ p, items }) {
+	const { setProject, setSearch, setView } = usePortal();
+	const [open, setOpen] = useState(false);
+	const ref = useRef(null);
+	useEffect(() => {
+		if (!open) return undefined;
+		const close = (e) => {
+			if (e.type === 'keydown' ? e.key === 'Escape' : !ref.current || !ref.current.contains(e.target)) setOpen(false);
+		};
+		document.addEventListener('mousedown', close);
+		document.addEventListener('keydown', close);
+		return () => {
+			document.removeEventListener('mousedown', close);
+			document.removeEventListener('keydown', close);
+		};
+	}, [open]);
+	if (!items.length) return <span className="pj-ok">✓ On track</span>;
+	const go = (i) => {
+		setOpen(false);
+		if (i.setup) {
+			window.dispatchEvent(new Event('grp:cycle-setup'));
+			return;
+		}
+		setProject(p.id);
+		setSearch(i.open.title);
+		setView(i.open.tab);
+	};
+	const [first] = items;
+	return (
+		<span className="pj-att" ref={ref}>
+			<button type="button" className={'pj-item t-' + first.tone} onClick={(e) => (e.stopPropagation(), go(first))}>
+				<span className="pj-t">{first.title}</span>
+				<b> · {first.why}</b>
+			</button>
+			{items.length > 1 && (
+				<button type="button" className="pj-more" aria-expanded={open} aria-label={`${items.length - 1} more for ${p.name}`} onClick={(e) => (e.stopPropagation(), setOpen(!open))}>
+					+{items.length - 1}
+				</button>
+			)}
+			{open && (
+				<span className="pj-pop" role="dialog" aria-label={`${p.name}: needs attention`} onClick={(e) => e.stopPropagation()}>
+					<b className="pj-pop-h">
+						{p.name} · {items.length} need attention
+					</b>
+					{items.map((i) => (
+						<button key={i.key} type="button" className={'pj-pop-i t-' + i.tone} onClick={() => go(i)}>
+							<span>{i.title}</span>
+							<b>{i.why}</b>
+						</button>
+					))}
+				</span>
+			)}
+		</span>
+	);
+}
 
+function ProjectRow({ p, s, items, team }) {
+	const { api, data, dispatch, me, setProject, setView, toast, confirm } = usePortal();
 	const open = () => {
 		setProject(p.id);
 		setView('board');
@@ -209,43 +267,59 @@ function ProjectCard({ p, s }) {
 			toast(err.message);
 		}
 	};
-
-	const issues = [s.setupLate && `Setup ${s.setupLate} day${s.setupLate === 1 ? '' : 's'} overdue`, s.urgent && `${s.urgent} urgent`, s.overdue && `${s.overdue} overdue`, s.reviews && `${s.reviews} to review`].filter(Boolean);
+	const health = healthOf(items);
 	const pct = s.mTotal ? Math.round((s.mDone / s.mTotal) * 100) : 0;
-
+	const cyc = s.cycle ? Math.round((100 * (s.cycle.len - s.cycle.left)) / Math.max(1, s.cycle.len)) : 0;
 	return (
-		<article className={`pd-card st-${p.state}`}>
-			<button type="button" className="pd-open" onClick={open} aria-label={`Open ${p.name}`}>
-				<span className="pd-head">
-					<b className="pd-name">{p.name}</b>
-					<span className="pd-cycle">
-						{s.cycle ? `Day ${s.cycle.day} · ${s.cycle.left} day${s.cycle.left === 1 ? '' : 's'} left` : 'No cycle start day yet'}
-						{p.state !== 'active' ? ` · ${LABEL[p.state]}` : ''}
+		<div className={`pj-row st-${p.state}`} role="row" onClick={open}>
+			<span role="cell" className={'pj-dot h-' + health} aria-label={{ red: 'Needs attention now', amber: 'Keep an eye on it', green: 'On track' }[health]} />
+			<span role="cell" className="pj-name">
+				<button type="button" className="pj-open" onClick={(e) => (e.stopPropagation(), open())} aria-label={`Open ${p.name}`}>
+					{p.name}
+				</button>
+				{p.state !== 'active' && <small>{LABEL[p.state]}</small>}
+			</span>
+			<span role="cell" className="pj-cyc">
+				<span className="pd-cycle">{s.cycle ? `Day ${s.cycle.day} · ${s.cycle.left} day${s.cycle.left === 1 ? '' : 's'} left` : 'No cycle start day yet'}</span>
+				{s.cycle && (
+					<span className="pj-bar g" aria-hidden="true">
+						<span style={{ width: cyc + '%' }} />
 					</span>
-				</span>
-				<span className="pd-prog">
-					<span className="pd-prog-l">
-						<span>Monthly tasks</span>
-						{/* Monthly tasks are added only while a project is active (SPEC.md 6.8). */}
-						<b>{p.state !== 'active' && !s.mTotal ? 'Start when active' : `${s.mDone}/${s.mTotal}`}</b>
-					</span>
-					<span className="pd-bar-t" aria-hidden="true">
-						<span className="pd-bar-f" style={{ width: pct + '%' }} />
-					</span>
-				</span>
-				<span className="pd-foot">
-					<span>
-						<b>{s.open}</b> open task{s.open === 1 ? '' : 's'}
-					</span>
-					<span className={issues.length ? 'pd-hot' : 'pd-ok'}>{issues.length ? issues.join(' · ') : 'On track'}</span>
-				</span>
-			</button>
-			{isManager(me) && <CardMenu p={p} onMove={move} onDelete={remove} />}
-		</article>
+				)}
+			</span>
+			<span role="cell" className="pj-mon">
+				{/* Monthly tasks are added only while a project is active (SPEC.md 6.8). */}
+				{p.state !== 'active' && !s.mTotal ? (
+					<span className="muted">Start when active</span>
+				) : (
+					<>
+						<span className={'pj-bar' + (s.mTotal && s.mDone === s.mTotal ? ' full' : '')} aria-hidden="true">
+							<span style={{ width: pct + '%' }} />
+						</span>
+						<b>
+							{s.mDone}/{s.mTotal}
+						</b>
+					</>
+				)}
+			</span>
+			<span role="cell" className="pj-attc">
+				<Attention p={p} items={items} />
+			</span>
+			<span role="cell" className="pj-team">
+				{team.slice(0, 4).map((m) => (
+					<Avatar key={m.id} person={m} small />
+				))}
+				{team.length > 4 && <small>+{team.length - 4}</small>}
+			</span>
+			<span role="cell" className="pj-menu" onClick={(e) => e.stopPropagation()}>
+				{isManager(me) && <CardMenu p={p} onMove={move} onDelete={remove} />}
+			</span>
+		</div>
 	);
 }
 
-// Projects tab of the Dashboard (SPEC.md 7.0): every project at a glance (Super Admin, Team Leader).
+// Projects tab of the Dashboard (SPEC.md 7.0, design PJ-A4): every project at a glance, one row
+// each, worst first (Super Admin, Team Leader).
 export default function ProjectsBoard() {
 	const { data, me, today } = usePortal();
 	const [filter, setFilter] = useState('active');
@@ -254,37 +328,52 @@ export default function ProjectsBoard() {
 
 	const projects = rowsOf(data, 'projects').sort((a, b) => ORDER[a.state] - ORDER[b.state] || a.name.localeCompare(b.name));
 	const reviews = useMemo(() => pendingReviews(data), [data]);
-	// New cycle setup overdue per project (SPEC.md 6.11).
-	const setupLate = useMemo(() => Object.fromEntries(cycleSetup(data, today).map((c) => [c.project.id, c.late])), [data, today]);
+	const attention = useMemo(() => attentionByProject(data, today), [data, today]);
 	const counts = { all: projects.length, ...Object.fromEntries(STATES.map(([k]) => [k, projects.filter((p) => p.state === k).length])) };
 	const query = q.trim().toLowerCase();
 	const list = projects.filter((p) => (filter === 'all' || p.state === filter) && (!query || searchText([p.name]).includes(query)));
+	// Worst first (red, amber, green), then by name (design PJ-A4).
+	const rows = list
+		.map((p) => {
+			const items = attention[p.id] || [];
+			return { p, s: projectSummary(p, data, reviews, today), items, team: teamOf(p, data), h: { red: 0, amber: 1, green: 2 }[healthOf(items)] };
+		})
+		.sort((a, b) => ORDER[a.p.state] - ORDER[b.p.state] || a.h - b.h || a.p.name.localeCompare(b.p.name));
 
 	return (
 		<div className="pd">
 			<div className="pd-top">
 				<input className="search pd-search" type="search" placeholder="Search projects" aria-label="Search projects" value={q} onChange={(e) => setQ(e.target.value)} />
+				<div className="pd-tabs" role="tablist" aria-label="Filter projects by status">
+					{[...STATES, ['all', 'All']].map(([k, l]) => (
+						<button key={k} type="button" role="tab" aria-selected={filter === k} onClick={() => setFilter(k)}>
+							{l} <span>{counts[k]}</span>
+						</button>
+					))}
+				</div>
 				{isManager(me) && (
 					<button type="button" className="btn primary" onClick={() => setAdding(true)}>
 						+ New project
 					</button>
 				)}
 			</div>
-			<div className="pd-tabs" role="tablist" aria-label="Filter projects by status">
-				{[...STATES, ['all', 'All']].map(([k, l]) => (
-					<button key={k} type="button" role="tab" aria-selected={filter === k} onClick={() => setFilter(k)}>
-						{l} <span>{counts[k]}</span>
-					</button>
-				))}
-			</div>
 			{projects.length === 0 ? (
 				<p className="empty">{isManager(me) ? 'No projects yet. Add the first one with + New project.' : 'No projects yet. A Team Leader or the Super Admin adds them.'}</p>
 			) : list.length === 0 ? (
 				<p className="empty">{query ? 'No projects match.' : `No ${filter === 'all' ? '' : LABEL[filter].toLowerCase() + ' '}projects.`}</p>
 			) : (
-				<div className="pd-grid">
-					{list.map((p) => (
-						<ProjectCard key={p.id} p={p} s={{ ...projectSummary(p, data, reviews, today), setupLate: setupLate[p.id] || 0 }} />
+				<div className="pj-table" role="table" aria-label="Projects">
+					<div className="pj-row pj-head" role="row">
+						<span role="columnheader" />
+						<span role="columnheader">Project</span>
+						<span role="columnheader">Cycle</span>
+						<span role="columnheader">Monthly tasks</span>
+						<span role="columnheader">Needs attention</span>
+						<span role="columnheader">Team</span>
+						<span />
+					</div>
+					{rows.map(({ p, s, items, team }) => (
+						<ProjectRow key={p.id} p={p} s={s} items={items} team={team} />
 					))}
 				</div>
 			)}

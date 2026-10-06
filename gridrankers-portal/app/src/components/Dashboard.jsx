@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { usePortal } from '../context.js';
+import { attentionByProject, attentionCount } from '../lib/attention.js';
 import { isManager } from '../lib/roles.js';
 import CycleSetup from './day/CycleSetup.jsx';
 import DayHeader from './day/DayHeader.jsx';
 import DayLeave from './day/Leave.jsx';
 import MyProjects from './day/MyProjects.jsx';
-import NeedsAttention, { useAttention } from './day/NeedsAttention.jsx';
 import { NoticeDialog } from './day/PostDialogs.jsx';
 import ProjectsBoard from './day/ProjectsBoard.jsx';
 import { Notifications, WhosOut } from './day/Side.jsx';
@@ -15,7 +15,7 @@ const TAB_KEY = 'grp:dash-tab';
 // Dashboard (SPEC.md 7.0): the landing page after sign-in. Everyone gets My day; the Super
 // Admin and Team Leaders also get the Projects tab and Send notice (the team is on My page).
 export default function Dashboard({ onSignOut }) {
-	const { me, viewOnly } = usePortal();
+	const { data, me, today, viewOnly } = usePortal();
 	const manager = isManager(me);
 	const [tab, setTabState] = useState(() => {
 		try {
@@ -25,7 +25,8 @@ export default function Dashboard({ onSignOut }) {
 		}
 	});
 	const [dialog, setDialog] = useState(null);
-	const items = useAttention();
+	const attention = useMemo(() => attentionByProject(data, today), [data, today]);
+	const needing = attentionCount(data, attention);
 	const setTab = (t) => {
 		setTabState(t);
 		try {
@@ -58,7 +59,7 @@ export default function Dashboard({ onSignOut }) {
 							My day
 						</button>
 						<button type="button" role="tab" aria-selected={current === 'projects'} onClick={() => setTab('projects')}>
-							Projects {items.length > 0 && <span className="md-n">{items.length}</span>}
+							Projects {needing > 0 && <span className="md-n">{needing}</span>}
 						</button>
 					</div>
 					{!viewOnly && (
@@ -86,7 +87,6 @@ export default function Dashboard({ onSignOut }) {
 				</div>
 			) : (
 				<div className="md-projects">
-					<NeedsAttention items={items} />
 					<ProjectsBoard />
 				</div>
 			)}

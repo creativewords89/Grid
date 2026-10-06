@@ -209,6 +209,11 @@ class GRP_REST_Monthly_Tasks extends GRP_REST_Controller {
 			if ( is_wp_error( $work ) ) {
 				return $work;
 			}
+			// Every monthly task has someone responsible (SPEC.md 6.11): none is added, or
+			// emptied, without people. The system's standard tasks are added another way.
+			if ( ! $work['assignees'] ) {
+				return self::invalid( __( 'A monthly task needs at least one person responsible.', 'gridrankers-portal' ), 'grp_people_required' );
+			}
 			$out += $work;
 		}
 

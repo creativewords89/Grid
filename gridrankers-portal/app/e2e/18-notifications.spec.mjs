@@ -27,11 +27,10 @@ test('notifications feed', async ({ page }) => {
 	// No descriptions in the box: titles only.
 	await expect(box.locator('.nf-sub')).toHaveCount(0);
 	await expect(box.locator('.nf-pages')).toContainText(/1–6 of \d+/);
-	// The bell shows the same news (SPEC.md 6.9): its count and its list.
+	// The bell counts the same news (SPEC.md 6.9); opening it would mark them read, so its list is
+	// checked at the end.
 	await expect(page.locator('.md-bell-btn .md-badge')).toBeVisible();
-	await page.getByRole('button', { name: /Notifications, \d+ new/ }).click();
-	await expect(page.locator('.md-pop').getByText(`New task: “Feed task 7 ${stamp}”`)).toBeVisible();
-	await page.locator('.md-bell-btn').click();
+	await expect(page.getByRole('button', { name: /Notifications, \d+ new/ })).toBeVisible();
 	await box.getByRole('button', { name: 'Next page' }).click();
 	await expect(box.locator('.nf-pages')).toContainText(/7–/);
 	await box.getByRole('button', { name: /^Leave/ }).click();
@@ -58,6 +57,19 @@ test('notifications feed', async ({ page }) => {
 	const title = (await first.locator('.nf-top b').innerText()).match(/“(.+)”/)[1];
 	await first.getByRole('button', { name: 'Open task ›' }).click();
 	await expect(page.locator('article.mcard', { hasText: title })).toBeVisible();
+
+	// A new task after that rings the bell again and shows in its list.
+	await signOut(page);
+	await signIn(page, LEAD);
+	expect((await apiCall(page, 'POST', 'meeting-tasks', { project_id: project.id, title: `Feed task 8 ${stamp}`, assignees: [{ id: max.id }] })).status).toBe(201);
+	await signOut(page);
+	await signIn(page, MAX);
+	await expect(page.getByRole('button', { name: /Notifications, \d+ new/ })).toBeVisible();
+	await page.locator('.md-bell-btn').click();
+	await expect(page.locator('.md-pop li.new', { hasText: `New task: “Feed task 8 ${stamp}”` })).toHaveCount(1);
+	await expect(page.locator('.md-pop li.new', { hasText: `Feed task 7 ${stamp}` })).toHaveCount(0);
+	await page.locator('.md-bell-btn').click();
+	await expect(box.locator('.nf-item.new')).toHaveCount(0);
 
 	// Max asks for sick leave; it waits for the Team Leader at the top of Notifications (design NF-C).
 	const day = new Date(Date.now() + 20 * 86400000).toISOString().slice(0, 10);

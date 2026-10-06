@@ -229,9 +229,11 @@ class GRP_REST_Projects extends GRP_REST_Controller {
 	}
 
 	/**
-	 * POST /projects/{id}/cycle-review `{task_id, ok, note?}`: review one monthly task of the
-	 * project's last cycle — "Looks good" (`ok` true) or feedback (`ok` false, `note` required),
-	 * sent to the people responsible as a private notice (SPEC.md 6.11). Managers only.
+	 * POST /projects/{id}/cycle-review `{task_id, ok, note?, carry?}`: review one monthly or
+	 * meeting task of the project's last cycle — "Looks good" (`ok` true) or feedback (`ok`
+	 * false, `note` required), sent to the people responsible as a private notice; `carry`
+	 * (`Y-m-d`, today or later) moves an open meeting task into this cycle with that deadline
+	 * instead (SPEC.md 6.11). Managers only.
 	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response|WP_Error
@@ -244,11 +246,28 @@ class GRP_REST_Projects extends GRP_REST_Controller {
 		if ( ! self::can( GRP_Permissions::REVIEW_CYCLE ) ) {
 			return self::forbidden( __( 'Only a Team Leader or the Super Admin can review a cycle.', 'gridrankers-portal' ) );
 		}
-		$task = GRP_Store::get( 'grp_monthly_tasks', (string) $request['task_id'] );
-		if ( ! $task || (string) $task['project_id'] !== (string) $project['id'] ) {
-			return self::invalid( __( 'That monthly task is not in this project.', 'gridrankers-portal' ) );
+		$id      = (string) $request['task_id'];
+		$meeting = false;
+		$task    = GRP_Store::get( 'grp_monthly_tasks', $id );
+		if ( ! $task ) {
+			$task    = GRP_Store::get( 'grp_meeting_tasks', $id );
+			$meeting = (bool) $task;
 		}
-		$ok   = rest_sanitize_boolean( $request['ok'] ?? false );
+		if ( ! $task || (string) $task['project_id'] !== (string) $project['id'] || ! empty( $task['deleted_at'] ) ) {
+			return self::invalid( __( 'That task is not in this project.', 'gridrankers-portal' ) );
+		}
+		$today = GRP_Cycles::today();
+		$carry = null;
+		if ( null !== $request->get_param( 'carry' ) ) {
+			$carry = (string) $request['carry'];
+			if ( ! $meeting || 'done' === $task['status'] ) {
+				return self::invalid( __( 'Only an open meeting task can be carried over.', 'gridrankers-portal' ) );
+			}
+			if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $carry ) || ! strtotime( $carry ) || $carry < $today ) {
+				return self::invalid( __( 'Pick a new deadline from today on.', 'gridrankers-portal' ) );
+			}
+		}
+		$ok   = null !== $carry || rest_sanitize_boolean( $request['ok'] ?? false );
 		$note = self::textarea( $request['note'] ?? '', 2000 );
 		if ( ! $ok && '' === $note ) {
 			return self::invalid( __( 'Write the feedback.', 'gridrankers-portal' ) );
@@ -256,8 +275,8 @@ class GRP_REST_Projects extends GRP_REST_Controller {
 
 		return rest_ensure_response(
 			GRP_Store::transaction(
-				static function () use ( $project, $task, $ok, $note ) {
-					return GRP_Cycle_Setup::review( $project, $task, $ok, $note, self::actor(), GRP_Cycles::today() );
+				static function () use ( $project, $task, $ok, $note, $carry, $today ) {
+					return GRP_Cycle_Setup::review( $project, $task, $ok, $note, self::actor(), $today, $carry );
 				}
 			)
 		);

@@ -468,6 +468,7 @@ class Test_GRP_Import_Export extends GRP_REST_TestCase {
 				'project_id' => $project['id'],
 				'title'      => 'Fortnightly report',
 				'due_mode'   => 'biweekly',
+				'assignees'  => array( array( 'id' => $this->team['member']['id'] ) ),
 			)
 		)->get_data();
 

@@ -112,6 +112,7 @@ class Test_GRP_REST_Team extends GRP_REST_TestCase {
 			array(
 				'project_id' => $project['id'],
 				'title'      => 'Orphan',
+				'assignees'  => array( array( 'id' => $this->team['member']['id'] ) ),
 			)
 		)->get_data();
 		$trash_id = $this->api_as( 'lead', 'DELETE', "/monthly-tasks/{$task['id']}" )->get_data()['trash_id'];

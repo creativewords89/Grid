@@ -169,6 +169,8 @@ export default function MonthlyDialog({ taskId, onClose }) {
 		if (f.due_mode === 'date' && !f.due_day) return setError('Pick the day of the cycle it is due.');
 		if (f.due_mode === 'dates' && (!f.from_day || !f.to_day)) return setError('Pick the first and last day of the cycle it is due.');
 		const parts = f.parts.filter((x) => x.name.trim()).map((x) => ({ id: x.id, name: x.name.trim(), n: x.n, people: (x.people || []).filter((a) => a.n > 0) }));
+		// Every monthly task has someone responsible (SPEC.md 6.11); the server checks again.
+		if (!f.assignees.length && !parts.some((x) => x.people.length)) return setError('A monthly task needs at least one person responsible.');
 		const body = {
 			project_id: f.project_id,
 			title: f.title.trim(),
@@ -324,7 +326,7 @@ export default function MonthlyDialog({ taskId, onClose }) {
 				</div>
 				<div className="pk-wrap">
 					<span className="pk-label">
-						Responsible <small>tick the team members responsible for this task</small>
+						Responsible <span className="req" aria-hidden="true">*</span> <small>tick the team members responsible for this task — at least one</small>
 					</span>
 					{fromParts.length > 0 ? (
 						<>
