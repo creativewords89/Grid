@@ -68,8 +68,12 @@ test('invoices tracker', async ({ page }) => {
 	const bill = page.getByRole('dialog', { name: /^Cycle Co · / });
 	await expect(bill.locator('.bl-pays li')).toHaveCount(2);
 	await bill.getByRole('button', { name: 'Close' }).click();
-	await expect(row.locator('.bl-tag')).toHaveText('Paid');
-	await expect(row.getByLabel('Payment received · Cycle Co')).toBeChecked();
+	// Nothing left to do on it: the row moves on to the cycle that's running now.
+	await expect(row.locator('.bl-tag')).toContainText('This cycle · ends');
+	await expect(row.getByLabel('Payment received · Cycle Co')).not.toBeChecked();
+	// Every active project is on the list from day one, with its current cycle.
+	await expect(page.locator('.bl-row', { hasText: 'Acme Plumbing' }).locator('.bl-tag')).toContainText('This cycle');
+	await expect(page.locator('.bl-tile', { hasText: 'To send' })).toContainText('All sent');
 
 	// Year view: the cycle's cell is Paid, nothing owed.
 	await page.locator('.bl-seg').getByRole('button', { name: 'Year view' }).click();

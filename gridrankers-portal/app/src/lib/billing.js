@@ -1,5 +1,5 @@
-// The Super Admin's invoice tracker (SPEC.md 6.14): one row per project per ended cycle, a
-// payment tag on each, and daily reminders. A record for the Super Admin, not a way to send invoices.
+// The Super Admin's invoice tracker (SPEC.md 6.14): one row per project per cycle (the current one
+// and the ended ones), a payment tag on each, and daily reminders. A record for the Super Admin, not a way to send invoices.
 
 import { rowsOf } from './store.js';
 import { daysBetween } from './cycles.js';
@@ -17,6 +17,7 @@ export const TAGS = [
 	{ id: 'overdue', label: 'Overdue' },
 	{ id: 'paid', label: 'Paid' },
 	{ id: 'skipped', label: 'Not billed' },
+	{ id: 'current', label: 'This cycle' },
 ];
 export const TAG_LABEL = Object.fromEntries(TAGS.map((t) => [t.id, t.label]));
 
@@ -39,7 +40,8 @@ export function statusOf(row, remindDays, today) {
 	const amount = row.amount == null ? 0 : +row.amount;
 	if (+row.skipped) return 'skipped';
 	if (paid > 0 && (amount <= 0 || paid >= amount)) return 'paid';
-	if (!row.sent_at) return 'to_send';
+	// Not sent: still running → This cycle (bill early if you like, no reminder); ended → To send.
+	if (!row.sent_at) return String(row.cycle_end || '') >= today ? 'current' : 'to_send';
 	if (paid > 0) return 'partly';
 	return daysSinceSent(row, today) >= remindDays ? 'overdue' : 'waiting';
 }
@@ -76,7 +78,7 @@ export function billingRows(data, today) {
 			const paid = paidOf(row);
 			const status = statusOf(row, remind, today);
 			const amount = row.amount == null ? null : +row.amount;
-			const left = status === 'paid' || status === 'skipped' || amount == null ? 0 : round(Math.max(0, amount - paid));
+			const left = status === 'paid' || status === 'skipped' || status === 'current' || amount == null ? 0 : round(Math.max(0, amount - paid));
 			return { ...row, name: project ? project.name : row.project_name, project, status, paid, left, remind, days: daysSinceSent(row, today) };
 		})
 		.sort((a, b) => a.name.localeCompare(b.name) || String(a.cycle_end).localeCompare(String(b.cycle_end)));
@@ -87,18 +89,23 @@ export function tagText(r) {
 	if (r.status === 'overdue') return `Overdue · ${plural(r.days, 'day')}`;
 	if (r.status === 'partly') return r.left > 0 ? `Partly paid · ${money(r.left, r.currency)} left` : 'Partly paid';
 	if (r.status === 'waiting') return `Waiting · sent ${short(r.sent_at)}`;
+	if (r.status === 'current') return `This cycle · ends ${short(r.cycle_end)}`;
 	return TAG_LABEL[r.status];
 }
 
-// TR-A: one line per project, its latest cycle, plus how many older cycles are still open.
+// Something still to do on a row: send it, or wait for its money.
+export const isOpen = (r) => r.status === 'to_send' || r.status === 'waiting' || r.status === 'partly' || r.status === 'overdue';
+
+// TR-A: one line per project — its oldest cycle that still needs something (send or get paid),
+// or else its latest cycle (usually This cycle) — plus how many more of its cycles are open.
 export function latestByProject(rows) {
 	const by = {};
 	rows.forEach((r) => (by[r.project_id] = by[r.project_id] || []).push(r));
 	return Object.values(by)
 		.map((list) => {
-			const last = list[list.length - 1];
-			const older = list.slice(0, -1).filter((r) => r.status !== 'paid' && r.status !== 'skipped');
-			return { ...last, older };
+			const open = list.filter(isOpen);
+			const focus = open[0] || list[list.length - 1];
+			return { ...focus, older: open.filter((r) => r.id !== focus.id) };
 		})
 		.sort((a, b) => a.name.localeCompare(b.name));
 }
