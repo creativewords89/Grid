@@ -513,4 +513,6 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 
 60. (Released as 0.1.25.) Fix: from the General tasks screen, clicking a project in the sidebar opens that project's Meeting Minutes (it stayed on General tasks). Playwright: General tasks → Bright Dental opens Bright Dental.
 
+61. Fix: in Notifications, the Latest items line up on the left with the cards above (their unread dot sits in the left padding instead of taking a column). Playwright: the feed's icons are where the cards' icons are.
+
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).

@@ -81,6 +81,10 @@ test('notifications feed', async ({ page }) => {
 	const wait = box.locator('.nf-wait');
 	await expect(wait.getByRole('heading', { name: /Waiting for you · \d+/ })).toBeVisible();
 	await expect(box.locator('.nf-chips').getByRole('button', { name: /^To approve \d+/ })).toBeVisible();
+	// Every notification lines up on the left: the feed's icons sit where the cards' icons do.
+	const cardIcon = await wait.locator('.ap-item .nf-ic').first().boundingBox();
+	const feedIcons = box.locator('.nf-list .nf-item .nf-ic');
+	if (await feedIcons.count()) expect(Math.abs((await feedIcons.first().boundingBox()).x - cardIcon.x)).toBeLessThan(2);
 	await box.locator('.nf-chips').getByRole('button', { name: /^To approve/ }).click();
 	const req = box.locator('.nf-wait .ap-item', { hasText: 'Max Member asks for sick leave' }).first();
 	await expect(req).toBeVisible();
