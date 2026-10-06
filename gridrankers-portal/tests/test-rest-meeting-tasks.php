@@ -645,4 +645,42 @@ class Test_GRP_REST_Meeting_Tasks extends GRP_REST_TestCase {
 		$this->assertStatus( 400, $this->api( 'POST', '/meeting-tasks', array( 'url' => 'https://' ) + $base ) );
 		$this->assertStatus( 400, $this->api( 'POST', '/meeting-tasks', array( 'url' => 'https://a b.com' ) + $base ) );
 	}
+
+	public function test_general_tasks_are_not_part_of_a_project() {
+		$base = array(
+			'project_id' => '',
+			'title'      => 'Renew the domain',
+			'assignees'  => $this->people( 'member' ),
+		);
+		// Team Leaders and the Super Admin add them; a Team Member can't.
+		$this->assertStatus( 403, $this->api_as( 'member', 'POST', '/meeting-tasks', $base ) );
+		$task = $this->task( 'lead', $base );
+		$this->assertSame( '', $task['project_id'] );
+		$this->assertStatus( 201, $this->api_as( 'admin', 'POST', '/meeting-tasks', array( 'title' => 'Office photos' ) + $base ) );
+
+		// The person on it works on it like any task.
+		$this->assertStatus( 200, $this->api_as( 'member', 'POST', "/meeting-tasks/{$task['id']}/status", array( 'status' => 'doing' ) ) );
+		$this->assertStatus( 403, $this->api_as( 'other', 'POST', "/meeting-tasks/{$task['id']}/status", array( 'status' => 'done' ) ) );
+
+		// Moved into a project and back by a leader; the move is in the audit log.
+		$this->assertStatus( 403, $this->api_as( 'member', 'PATCH', "/meeting-tasks/{$task['id']}", array( 'project_id' => $this->project['id'] ) ) );
+		$moved = $this->api_as( 'lead', 'PATCH', "/meeting-tasks/{$task['id']}", array( 'project_id' => $this->project['id'] ) );
+		$this->assertStatus( 200, $moved );
+		$this->assertSame( $this->project['id'], $moved->get_data()['project_id'] );
+		$back = $this->api_as( 'lead', 'PATCH', "/meeting-tasks/{$task['id']}", array( 'project_id' => '' ) );
+		$this->assertSame( '', $back->get_data()['project_id'] );
+		$moves = array();
+		foreach ( wp_list_filter( $this->audit_for( $task['id'] ), array( 'kind' => 'edit' ) ) as $edit ) {
+			foreach ( wp_list_filter( (array) $edit['changes'], array( 'field' => 'project_id' ) ) as $change ) {
+				$moves[] = $change['from'] . ' → ' . $change['to'];
+			}
+		}
+		$this->assertContains( 'General → ' . $this->project['name'], $moves );
+		$this->assertContains( $this->project['name'] . ' → General', $moves );
+
+		// Listed with ?project= (empty = all) and restorable from the trash without a project.
+		$trash_id = $this->api_as( 'lead', 'DELETE', "/meeting-tasks/{$task['id']}" )->get_data()['trash_id'];
+		$this->assertStatus( 200, $this->api_as( 'admin', 'POST', "/trash/$trash_id/restore" ) );
+		$this->assertSame( '', GRP_Store::get( 'grp_meeting_tasks', $task['id'] )['project_id'] );
+	}
 }

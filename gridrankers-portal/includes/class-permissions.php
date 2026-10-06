@@ -182,12 +182,16 @@ class GRP_Permissions {
 	/** Delete a comment. Context: `{comment}`. Whoever wrote it, or the Super Admin. */
 	const DELETE_COMMENT = 'delete_comment';
 
+	/** Add a General task, not part of any project (SPEC.md 6.13). Super Admin, Team Leader. */
+	const ADD_GENERAL_TASK = 'add_general_task';
+
 	/**
 	 * Task work that is locked while a Team Leader's or Team Member's required profile is
 	 * incomplete (SPEC.md section 3, Profile lock).
 	 */
 	const PROFILE_LOCKED = array(
 		self::ADD_TASK,
+		self::ADD_GENERAL_TASK,
 		self::EDIT_TASK,
 		self::CHANGE_TASK_SCHEDULE,
 		self::DELETE_TASK,
@@ -262,6 +266,7 @@ class GRP_Permissions {
 			case self::REQUEST_REVIEW:
 			case self::DECIDE_UNDO:
 			case self::REVIEW_CYCLE:
+			case self::ADD_GENERAL_TASK:
 				return $manager;
 
 			case self::REQUEST_UNDO:

@@ -397,14 +397,15 @@ class GRP_Import {
 	 */
 	public static function meeting_task( array $d ) {
 		$id = self::id( $d['id'] ?? '' );
-		if ( ! $id || empty( $d['clientId'] ) ) {
+		// No clientId (or an empty one): a General task (SPEC.md 6.13).
+		if ( ! $id ) {
 			return null;
 		}
 		$target = max( 1, (int) ( $d['target'] ?? 1 ) );
 
 		return array(
 			'id'           => $id,
-			'project_id'   => (string) $d['clientId'],
+			'project_id'   => (string) ( $d['clientId'] ?? '' ),
 			'title'        => (string) ( $d['title'] ?? '' ),
 			'notes'        => (string) ( $d['notes'] ?? '' ),
 			'url'          => (string) ( $d['url'] ?? '' ),

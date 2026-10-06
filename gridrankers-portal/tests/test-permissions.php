@@ -120,6 +120,22 @@ class Test_GRP_Permissions extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Row: Add a General task, not part of any project (Super Admin and Team Leader).
+	 */
+	public function test_add_general_task() {
+		$this->assert_matrix(
+			GRP_Permissions::ADD_GENERAL_TASK,
+			null,
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => false,
+			)
+		);
+		$this->assertContains( GRP_Permissions::ADD_GENERAL_TASK, GRP_Permissions::PROFILE_LOCKED );
+	}
+
+	/**
 	 * Row: Move project Active/Paused/Inactive.
 	 */
 	public function test_move_project_state() {

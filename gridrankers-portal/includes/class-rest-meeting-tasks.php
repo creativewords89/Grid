@@ -12,6 +12,10 @@ defined( 'ABSPATH' ) || exit;
  */
 class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 
+	/** `project_id` of a General task: one that isn't part of any project (SPEC.md 6.13). */
+	const GENERAL = '';
+
+
 	const TABLE = 'grp_meeting_tasks';
 
 	const PRIORITIES = array( 'urgent', 'high', 'normal', 'low' );
@@ -124,6 +128,9 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 		$fields = self::fields( $request, null );
 		if ( is_wp_error( $fields ) ) {
 			return $fields;
+		}
+		if ( self::GENERAL === $fields['project_id'] && ! self::can( GRP_Permissions::ADD_GENERAL_TASK ) ) {
+			return self::forbidden( __( 'Only a Team Leader or the Super Admin can add a general task.', 'gridrankers-portal' ) );
 		}
 
 		$status = $request['status'] ? (string) $request['status'] : 'todo';
@@ -525,11 +532,17 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 		$out      = array();
 
 		if ( $has( 'project_id' ) ) {
-			$project = GRP_Store::get( 'grp_projects', (string) $request['project_id'] );
-			if ( ! $project ) {
-				return self::invalid( __( 'Pick a project.', 'gridrankers-portal' ) );
+			// An empty project is a General task: not part of any project (SPEC.md 6.13).
+			$id = (string) ( $request['project_id'] ?? '' );
+			if ( '' === $id ) {
+				$out['project_id'] = self::GENERAL;
+			} else {
+				$project = GRP_Store::get( 'grp_projects', $id );
+				if ( ! $project ) {
+					return self::invalid( __( 'Pick a project, or General.', 'gridrankers-portal' ) );
+				}
+				$out['project_id'] = $project['id'];
 			}
-			$out['project_id'] = $project['id'];
 		}
 		if ( $has( 'title' ) ) {
 			$out['title'] = self::text( $request['title'], 500 );
