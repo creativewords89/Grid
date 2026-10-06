@@ -279,7 +279,7 @@ export default function MonthlyCard({ task, selWeek, onSelectWeek, missed, onDet
 				const skipped = rec2 && rec2.status === 'skipped';
 				const past = r2.end < today && r2.start >= born;
 				const cur = w === aw && today >= range.start && today <= range.end;
-				const cls = ws === 'done' ? 'wd' : skipped ? 'wsk' : ws === 'doing' ? (past ? 'wl' : 'wp') : past ? 'wl' : '';
+				const cls = ws === 'done' ? 'wkd' : skipped ? 'wsk' : ws === 'doing' ? (past ? 'wl' : 'wp') : past ? 'wl' : '';
 				const lab = ws === 'done' ? 'done' : skipped ? 'skipped' : ws === 'doing' ? (past ? 'unfinished (was in progress)' : 'in progress') : past ? 'unfinished' : 'not started';
 				return (
 					<button
