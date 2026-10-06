@@ -227,7 +227,6 @@ export function Notifications() {
 					</button>
 				)}
 			</div>
-			<SetupReminders />
 			<div className="nf-chips" role="group" aria-label="Show">
 				{(waiting.length || isManager(me) ? [FILTERS[0], ['approve', 'To approve'], ...FILTERS.slice(1)] : FILTERS).map(([k, label]) => (
 					<button key={k} type="button" className={k === 'approve' ? 'nf-chip-wait' : undefined} aria-pressed={filter === k} onClick={() => (setFilter(k), setPage(0))}>
@@ -235,6 +234,8 @@ export function Notifications() {
 					</button>
 				))}
 			</div>
+			{/* New cycle setup reminders (SPEC.md 6.11): under the filters, with what waits for you. */}
+			{(filter === 'all' || filter === 'approve') && at0(page) && <SetupReminders />}
 			{topWaiting.length > 0 && (
 				<div className="nf-wait" aria-labelledby="nfWait">
 					<h3 id="nfWait">Waiting for you · {waiting.length}</h3>
