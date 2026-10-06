@@ -185,6 +185,9 @@ class GRP_Permissions {
 	/** Add a General task, not part of any project (SPEC.md 6.13). Super Admin, Team Leader. */
 	const ADD_GENERAL_TASK = 'add_general_task';
 
+	/** See and keep the invoice tracker: fees, invoices sent, payments (SPEC.md 6.14). Super Admin only. */
+	const MANAGE_BILLING = 'manage_billing';
+
 	/**
 	 * Task work that is locked while a Team Leader's or Team Member's required profile is
 	 * incomplete (SPEC.md section 3, Profile lock).
@@ -298,6 +301,7 @@ class GRP_Permissions {
 			case self::IMPORT_DATA:
 			case self::VIEW_LEAVE_REPORT:
 			case self::MANAGE_PEOPLE_SETTINGS:
+			case self::MANAGE_BILLING:
 				return $admin;
 
 			case self::CHANGE_PROJECT_CYCLE:

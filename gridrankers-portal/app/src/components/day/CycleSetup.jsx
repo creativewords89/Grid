@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { usePortal } from '../../context.js';
-import { cycleSetup, lastCycleCount, setupReminders } from '../../lib/cycleSetup.js';
+import { allReminders, cycleSetup, lastCycleCount } from '../../lib/cycleSetup.js';
 import { isBiweekly, isSplit } from '../../lib/cycles.js';
 import { itemDeadline } from '../../lib/deadline.js';
 import { short } from '../../lib/format.js';
@@ -194,6 +194,10 @@ export function ReviewCycleDialog({ c, onClose }) {
 export function useReminderAction() {
 	const { setProject, setView } = usePortal();
 	return (r) => {
+		if (r.kind === 'invoice') {
+			setView('invoices');
+			return;
+		}
 		if (r.kind === 'unassigned') {
 			setProject(r.project.id);
 			setView('monthly');
@@ -203,11 +207,11 @@ export function useReminderAction() {
 	};
 }
 
-// The setup reminders at the top of Notifications (SPEC.md 6.11): no dismiss, no Mark all read —
-// each goes away when its work is done.
+// The setup and invoice reminders at the top of Notifications (SPEC.md 6.11, 6.14): no dismiss,
+// no Mark all read — each goes away when its work is done.
 export function SetupReminders() {
 	const { data, me, today, viewOnly } = usePortal();
-	const list = useMemo(() => setupReminders(data, me, today), [data, me, today]);
+	const list = useMemo(() => allReminders(data, me, today), [data, me, today]);
 	const act = useReminderAction();
 	if (!list.length) return null;
 	return (
@@ -215,7 +219,7 @@ export function SetupReminders() {
 			{list.map((r) => (
 				<div key={r.key} className={'nf-must-item t-' + r.tone}>
 					<span className="nf-ic" aria-hidden="true">
-						{r.kind === 'unassigned' ? '👤' : '!'}
+						{r.kind === 'unassigned' ? '👤' : r.kind === 'invoice' ? '🧾' : '!'}
 					</span>
 					<span className="nf-body">
 						<span className="nf-top">

@@ -5,6 +5,7 @@ import { addDays, cycleRange, daysBetween, isSplit, slotsOf } from './cycles.js'
 import { itemDeadline } from './deadline.js';
 import { recordOf } from './monthly.js';
 import { rowsOf } from './store.js';
+import { billingReminders } from './billing.js';
 
 export const SETUP_DAYS = 3;
 export const SINCE_KEY = 'cycle_setup_since';
@@ -84,6 +85,10 @@ export function setupTodo(c) {
 // Reminders for Team Leaders and the Super Admin (SPEC.md 6.11), shown in the Notifications box
 // and on the bell: a new one each day (the key carries the date) while the setup is not done or a
 // monthly task has nobody on it. Nobody dismisses them: they go away as soon as the work is done.
+// Every daily reminder that stays until its work is done: cycle setup (SPEC.md 6.11), then the
+// Super Admin's invoices (SPEC.md 6.14).
+export const allReminders = (data, me, today) => [...setupReminders(data, me, today), ...billingReminders(data, me, today)];
+
 export function setupReminders(data, me, today) {
 	if (!me || (me.role !== 'admin' && me.role !== 'lead')) return [];
 	const out = [];

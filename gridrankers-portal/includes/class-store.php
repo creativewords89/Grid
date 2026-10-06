@@ -30,6 +30,7 @@ class GRP_Store {
 		'grp_audit'         => array( 'changes' ),
 		'grp_trash'         => array( 'data' ),
 		'grp_settings'      => array( 'value' ),
+		'grp_billing'       => array( 'payments' ),
 	);
 
 	/**
@@ -55,6 +56,16 @@ class GRP_Store {
 		'pinned',
 		'position',
 		'size',
+		'skipped',
+		'remind_days',
+	);
+
+	/**
+	 * Money columns (cast to float on read; NULL stays NULL).
+	 */
+	const FLOAT_COLUMNS = array(
+		'amount',
+		'fee',
 	);
 
 	/**
@@ -75,6 +86,8 @@ class GRP_Store {
 		'grp_posts',
 		'grp_keywords',
 		'grp_comments',
+		'grp_billing',
+		'grp_billing_fees',
 	);
 
 	/**
@@ -285,6 +298,11 @@ class GRP_Store {
 		foreach ( self::INT_COLUMNS as $column ) {
 			if ( isset( $row[ $column ] ) && is_numeric( $row[ $column ] ) ) {
 				$row[ $column ] = (int) $row[ $column ];
+			}
+		}
+		foreach ( self::FLOAT_COLUMNS as $column ) {
+			if ( isset( $row[ $column ] ) && is_numeric( $row[ $column ] ) ) {
+				$row[ $column ] = (float) $row[ $column ];
 			}
 		}
 

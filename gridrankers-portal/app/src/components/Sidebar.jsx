@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { usePortal } from '../context.js';
 import { rowsOf } from '../lib/store.js';
 import { GENERAL, GENERAL_NAME } from '../lib/tasks.js';
+import { isAdmin } from '../lib/roles.js';
 
 const GROUPS = [
 	{ state: 'active', title: 'Active projects' },
@@ -26,7 +27,7 @@ const initialsOf = (name) =>
 // Active projects always open; Paused and Inactive folded until opened. Counts show only when a
 // project has open work (red when something is urgent).
 export default function Sidebar({ syncStatus }) {
-	const { data, view, setView, setProject, project } = usePortal();
+	const { data, me, view, setView, setProject, project } = usePortal();
 	const [open, setOpen] = useState({ paused: false, inactive: false });
 
 	const projects = rowsOf(data, 'projects').sort((a, b) => a.name.localeCompare(b.name));
@@ -74,6 +75,16 @@ export default function Sidebar({ syncStatus }) {
 					</span>
 				)}
 			</button>
+			{/* Invoices (SPEC.md 6.14): the Super Admin's own record of what is billed and paid. */}
+			{isAdmin(me) && (
+				<button type="button" className="side-link" aria-current={view === 'invoices' ? 'page' : undefined} onClick={() => setView('invoices')}>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+						<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" />
+						<path d="M9 8h6M9 12h6M9 16h3" />
+					</svg>
+					Invoices
+				</button>
+			)}
 			{GROUPS.map((g) => {
 				const list = projects.filter((p) => p.state === g.state);
 				const folds = g.state !== 'active';
