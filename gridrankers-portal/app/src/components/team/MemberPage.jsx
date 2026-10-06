@@ -3,7 +3,7 @@ import { usePortal } from '../../context.js';
 import { short, toDate } from '../../lib/format.js';
 import { assignedFor, daysIn, fmtDur, inRange, perfRange, perfShift, perfStats, periodWord, personEvents } from '../../lib/perf.js';
 import { MEMBER_TAB_KEY, REQUIRED_PROFILE, missingProfile } from '../../lib/people.js';
-import { ROLE, canViewDay, initials, isAdmin, isManager } from '../../lib/roles.js';
+import { ROLE, canTour, initials, isAdmin, isManager } from '../../lib/roles.js';
 import { rowsOf } from '../../lib/store.js';
 import Avatar from '../Avatar.jsx';
 import { ReviewsOfWork } from '../review/ReviewLists.jsx';
@@ -654,9 +654,9 @@ export default function MemberPage({ pid, perf, setPerf, onBack, initialTab }) {
 								← All team members
 							</button>
 						)}
-						{canViewDay(me, person) && (
+						{canTour(me, person) && (
 							<button type="button" className="btn small" onClick={() => setViewAs(person.id)}>
-								View their My day
+								Tour their portal
 							</button>
 						)}
 					</div>

@@ -6,10 +6,13 @@ export const ROLE = { admin: 'Super Admin', lead: 'Team Leader', member: 'Team M
 export const isManager = (me) => !!me && (me.role === 'admin' || me.role === 'lead');
 export const isAdmin = (me) => !!me && me.role === 'admin';
 
-// Viewing someone's My day (SPEC.md 7.0, view only): the Super Admin can view Team Leaders and
-// Team Members; a Team Leader can view Team Members and other Team Leaders; nobody views the
-// Super Admin, and Team Members view nobody.
-export const canViewDay = (viewer, target) => !!viewer && !!target && viewer.id !== target.id && +target.active !== 0 && target.role !== 'admin' && isManager(viewer);
+// Touring someone's portal, view only (SPEC.md 7.0): the Super Admin tours anyone else; a Team
+// Leader tours Team Members only; Team Members tour nobody. The server checks it too
+// (GET /members/{id}/tour).
+export const canTour = (viewer, target) => !!viewer && !!target && viewer.id !== target.id && +target.active !== 0 && (isAdmin(viewer) || (viewer.role === 'lead' && target.role === 'member'));
+
+// Opening someone's page: your own; the Super Admin anyone's; a Team Leader Team Members' only.
+export const canOpenPage = (viewer, target) => !!viewer && !!target && (viewer.id === target.id || isAdmin(viewer) || (viewer.role === 'lead' && target.role === 'member'));
 
 export const initials = (name) =>
 	(name || '')

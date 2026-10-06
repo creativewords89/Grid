@@ -10,6 +10,33 @@
  */
 class Test_GRP_REST_Team extends GRP_REST_TestCase {
 
+	public function test_who_may_tour_whom() {
+		$path = fn ( $who ) => "/members/{$this->team[ $who ]['id']}/tour";
+
+		// Super Admin: anyone else.
+		foreach ( array( 'lead', 'member' ) as $who ) {
+			$response = $this->api_as( 'admin', 'GET', $path( $who ) );
+			$this->assertStatus( 200, $response );
+			$this->assertSame( $this->team[ $who ]['id'], $response->get_data()['id'] );
+		}
+		$this->assertStatus( 403, $this->api_as( 'admin', 'GET', $path( 'admin' ) ), 'not yourself' );
+
+		// Team Leader: Team Members only.
+		$this->assertStatus( 200, $this->api_as( 'lead', 'GET', $path( 'member' ) ) );
+		$this->assertStatus( 403, $this->api_as( 'lead', 'GET', $path( 'admin' ) ) );
+		$other = $this->add_member( 'Liv Lead', 'lead' );
+		$this->assertStatus( 403, $this->api_as( 'lead', 'GET', "/members/{$other['id']}/tour" ) );
+
+		// Team Members: nobody.
+		$this->assertStatus( 403, $this->api_as( 'member', 'GET', $path( 'other' ) ) );
+		$this->assertStatus( 403, $this->api_as( 'member', 'GET', $path( 'lead' ) ) );
+
+		// Nobody tours someone removed from the team; unknown ids are 404.
+		GRP_Store::update( 'grp_members', $this->team['other']['id'], array( 'active' => 0 ) );
+		$this->assertStatus( 403, $this->api_as( 'admin', 'GET', $path( 'other' ) ) );
+		$this->assertStatus( 404, $this->api_as( 'admin', 'GET', '/members/nope/tour' ) );
+	}
+
 	public function test_log_work_for_self_and_managers_for_anyone() {
 		$self = $this->api_as(
 			'member',

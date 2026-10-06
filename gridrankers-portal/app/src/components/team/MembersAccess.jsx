@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePortal } from '../../context.js';
-import { ROLE, canViewDay, isAdmin } from '../../lib/roles.js';
+import { ROLE, canOpenPage, canTour, isAdmin } from '../../lib/roles.js';
 import Avatar from '../Avatar.jsx';
 import Modal from '../Modal.jsx';
 
@@ -96,8 +96,9 @@ export default function MembersAccess({ people, openCount, urgentCount, onPerson
 	const query = q.trim().toLowerCase();
 	const shown = people.filter((p) => (f === 'all' || (f === 'nosign' ? noSignIn(p) : p.role === f)) && (!query || [p.name, p.title, p.email, p.phone].join(' ').toLowerCase().includes(query)));
 	const admins = people.filter((p) => p.role === 'admin').length;
-	const viewDay = (p) => (setTeamPerson('all'), setViewAs(p.id));
-	const open = (p) => (canViewDay(me, p) ? viewDay(p) : onPerson(p.id));
+	// A tour of their portal, view only (SPEC.md 7.0), or else their page — when you may see either.
+	const tour = (p) => setViewAs(p.id);
+	const open = (p) => (canTour(me, p) ? tour(p) : canOpenPage(me, p) ? onPerson(p.id) : null);
 
 	return (
 		<section className="dcard ma-card" aria-labelledby="maTitle">
@@ -135,8 +136,8 @@ export default function MembersAccess({ people, openCount, urgentCount, onPerson
 				{shown.map((p) => {
 					const [sk, st] = SIGN(p);
 					const items = [
-						...(canViewDay(me, p) ? [['View their My day', () => viewDay(p)]] : []),
-						['Open their page', () => onPerson(p.id)],
+						...(canTour(me, p) ? [['Tour their portal', () => tour(p)]] : []),
+						...(canOpenPage(me, p) ? [['Open their page', () => onPerson(p.id)]] : []),
 						// What each role may do (section 3): codes for Team Members (leaders) or anyone but the
 						// Super Admin (Super Admin); roles and removing: Super Admin only.
 						...(p.id !== me.id && p.role !== 'admin' && (isAdmin(me) || p.role === 'member') ? [['Set sign-in code', () => onSetCode(p)]] : []),
@@ -145,14 +146,24 @@ export default function MembersAccess({ people, openCount, urgentCount, onPerson
 					return (
 						<div key={p.id} className="ma-row" role="row">
 							<span className="ma-who" role="cell">
-								{/* Photo and name open their My day (view only) or, for someone whose My day can't be viewed, their page. */}
-								<button type="button" className="ma-open" aria-label={`Open ${p.name}`} title={canViewDay(me, p) ? 'View their My day' : 'Open their page'} onClick={() => open(p)}>
-									<Avatar person={p} />
-									<span>
-										<b>{p.name}</b>
-										<small>{p.title || ROLE[p.role]}</small>
+								{/* Photo and name start a tour (view only) or, for someone you can't tour, open their page. */}
+								{canTour(me, p) || canOpenPage(me, p) ? (
+									<button type="button" className="ma-open" aria-label={`Open ${p.name}`} title={canTour(me, p) ? 'Tour their portal (view only)' : 'Open their page'} onClick={() => open(p)}>
+										<Avatar person={p} />
+										<span>
+											<b>{p.name}</b>
+											<small>{p.title || ROLE[p.role]}</small>
+										</span>
+									</button>
+								) : (
+									<span className="ma-open ma-static">
+										<Avatar person={p} />
+										<span>
+											<b>{p.name}</b>
+											<small>{p.title || ROLE[p.role]}</small>
+										</span>
 									</span>
-								</button>
+								)}
 							</span>
 							<span role="cell">
 								<span className={'ma-role r-' + p.role}>{ROLE[p.role]}</span>
@@ -174,8 +185,17 @@ export default function MembersAccess({ people, openCount, urgentCount, onPerson
 							<span className={'ma-sign s-' + sk} role="cell">
 								{st}
 							</span>
-							<span role="cell">
-								<RowMenu person={p} items={items} />
+							<span role="cell" className="ma-end">
+								{canTour(me, p) && (
+									<button type="button" className="btn small ma-tour" aria-label={`Tour ${p.name}’s portal`} title="See the portal as they see it — view only" onClick={() => tour(p)}>
+										<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+											<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+											<circle cx="12" cy="12" r="3" />
+										</svg>
+										Tour
+									</button>
+								)}
+								{items.length > 0 && <RowMenu person={p} items={items} />}
 							</span>
 						</div>
 					);

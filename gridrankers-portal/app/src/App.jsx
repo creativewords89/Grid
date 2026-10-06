@@ -20,7 +20,9 @@ import RecentActivities from './components/RecentActivities.jsx';
 import KeywordPlan from './components/plan/KeywordPlan.jsx';
 import ProjectDetails from './components/plan/ProjectDetails.jsx';
 import { todayYmd } from './lib/cycles.js';
-import { ROLE, canViewDay, isAdmin } from './lib/roles.js';
+import { ROLE, canTour, isAdmin } from './lib/roles.js';
+import Avatar from './components/Avatar.jsx';
+import TourGuard from './components/TourGuard.jsx';
 
 const VIEW_KEY = 'grp:view';
 const PROJECT_KEY = 'grp:project';
@@ -105,7 +107,7 @@ export default function App({ config }) {
 	const [search, setSearch] = useState('');
 	const [cycleOff, setCycleOff] = useState(0);
 	const [teamPerson, setTeamPerson] = useState('all');
-	// Someone else's My day, view only (SPEC.md 7.0).
+	// Touring someone's portal, view only (SPEC.md 7.0): their id while a tour is on.
 	const [viewAs, setViewAs] = useState(null);
 	const [toast, toastView] = useToasts();
 	const [confirm, confirmView] = useConfirm();
@@ -149,12 +151,10 @@ export default function App({ config }) {
 	const me = auth.me && data.members[auth.me.id] ? { ...auth.me, ...data.members[auth.me.id], role: auth.me.role } : auth.me;
 
 	const setView = (v) => {
-		setViewAs(null);
 		setViewState(v);
 		remember(VIEW_KEY, v, 'sessionStorage');
 	};
 	const setProject = (id) => {
-		setViewAs(null);
 		setProjectState(id);
 		setCycleOff(0);
 		remember(PROJECT_KEY, id);
@@ -194,85 +194,117 @@ export default function App({ config }) {
 	}
 
 	const today = todayYmd();
-	const ctx = { api, data, dispatch, me, view, setView, project, setProject, search, setSearch, toast, confirm, config, cycleOff, setCycleOff, today, askCompletion, teamPerson, setTeamPerson: (id) => (setViewAs(null), setTeamPerson(id)), setViewAs };
 
-	// Viewing someone's My day: their "me", nothing can be changed, and going anywhere else ends it.
+	// A tour (SPEC.md 7.0) starts on that person's My day, once the server agrees, and lasts until
+	// Close tour: you go anywhere they can go and see what they see; nothing can be changed.
+	const startTour = async (id) => {
+		const target = data.members[id];
+		if (!canTour(me, target)) {
+			setTeamPerson(id);
+			setView('team');
+			return;
+		}
+		try {
+			await api.get(`members/${id}/tour`);
+			setViewAs(id);
+			setTeamPerson('all');
+			setSearch('');
+			setView('dash');
+		} catch (err) {
+			toast(err.message);
+		}
+	};
+	// Close tour → back to your own My page, on its Team tab.
+	const closeTour = () => {
+		setViewAs(null);
+		setTeamPerson('all');
+		setSearch('');
+		setView('team');
+	};
+
+	const ctx = { api, data, dispatch, me, view, setView, project, setProject, search, setSearch, toast, confirm, config, cycleOff, setCycleOff, today, askCompletion, teamPerson, setTeamPerson, setViewAs: startTour };
+
 	const target = viewAs && data.members[viewAs];
-	const viewing = canViewDay(me, target) ? target : null;
-	let asCtx = null;
+	const viewing = canTour(me, target) ? target : null;
+	let tourCtx = null;
 	if (viewing) {
-		const refuse = () => Promise.reject(new Error(`View only — this is ${viewing.name}’s My day.`));
-		const leave = (fn) => (...args) => (setViewAs(null), fn(...args));
-		asCtx = {
+		const refuse = () => Promise.reject(new Error(`View only — you’re touring ${viewing.name}’s portal.`));
+		tourCtx = {
 			...ctx,
 			me: { ...viewing },
 			viewer: me,
 			viewOnly: true,
 			api: { ...api, post: refuse, patch: refuse, put: refuse, del: refuse },
-			setView: leave(setView),
-			setProject: leave(setProject),
-			setTeamPerson: leave(setTeamPerson),
+			// Inside a tour of a Team Leader, opening a Team Member tours them instead (if you may).
+			setViewAs: (id) => (canTour(me, data.members[id]) ? startTour(id) : null),
 		};
 	}
+	const shown = tourCtx || ctx;
+	const shownMe = shown.me;
 
 	return (
-		<PortalContext.Provider value={ctx}>
-			<div className="app">
-				<Sidebar syncStatus={syncStatus} />
-				<main>
-					{viewing ? (
-						<div className="va-bar" role="status">
-							<span>
-								Viewing <b>{viewing.name}</b>’s My day · <span className={'role r-' + viewing.role}>{ROLE[viewing.role]}</span> · view only
-							</span>
-							<span className="va-acts">
-								<button type="button" className="btn small" onClick={() => (setViewAs(null), setTeamPerson(viewing.id))}>
-									Open {viewing.name}’s page
-								</button>
-								<button type="button" className="btn small" onClick={() => setViewAs(null)}>
-									← Back
-								</button>
-							</span>
-						</div>
-					) : (
-						view !== 'dash' && <TopBar onSignOut={signOut} />
-					)}
-					<section className="grp-view" aria-label="Content">
-						{viewing ? (
-							<PortalContext.Provider value={asCtx}>
-								<div className="view-only">
+		<PortalContext.Provider value={shown}>
+			{viewing && (
+				<div className="tour-bar" role="region" aria-label="Tour">
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+						<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+						<circle cx="12" cy="12" r="3" />
+					</svg>
+					<Avatar person={viewing} />
+					<span className="tour-who">
+						Touring <b>{viewing.name}</b>’s portal
+					</span>
+					<span className="tour-role">{ROLE[viewing.role]}</span>
+					<span className="tour-hint">· view only — you see what {viewing.name.split(' ')[0]} sees; nothing can be changed</span>
+					<span className="tour-acts">
+						{/* Their page as you see it (with your tools); ends the tour. */}
+						<button type="button" className="btn small tour-ghost" onClick={() => (setViewAs(null), setTeamPerson(viewing.id), setView('team'))}>
+							Open {viewing.name.split(' ')[0]}’s page
+						</button>
+						<button type="button" className="btn small tour-close" onClick={closeTour}>
+							✕ Close tour
+						</button>
+					</span>
+				</div>
+			)}
+			<TourGuard on={!!viewing} name={viewing ? viewing.name : ''} toast={toast}>
+				<div className={'app' + (viewing ? ' tour' : '')}>
+					<Sidebar syncStatus={syncStatus} />
+					<main>
+						{view !== 'dash' && <TopBar onSignOut={signOut} />}
+						<section className="grp-view" aria-label="Content">
+							{view === 'dash' ? (
+								<div className={viewing ? 'view-only' : undefined}>
 									<Dashboard onSignOut={signOut} />
 								</div>
-							</PortalContext.Provider>
-						) : view === 'dash' ? (
-							<Dashboard onSignOut={signOut} />
-						) : view === 'team' ? (
-							<TeamView />
-						) : view === 'general' ? (
-							<GeneralTasks />
-						) : view === 'invoices' ? (
-							isAdmin(me) ? <Invoices /> : <p className="empty">Only the Super Admin keeps the invoices.</p>
-						) : projects.length === 0 ? (
-							<div className="col" style={{ maxWidth: 520 }}>
-								<h2>Start with a project</h2>
-								<p className="empty">Projects are added on the Dashboard (click GridRankers at the top left).</p>
-							</div>
-						) : view === 'board' ? (
-							<MeetingMinutes />
-						) : view === 'monthly' ? (
-							<MonthlyTasks />
-						) : view === 'plan' ? (
-							<KeywordPlan />
-						) : view === 'details' ? (
-							<ProjectDetails />
-						) : view === 'log' ? (
-							<RecentActivities />
-						) : (
-							<p className="empty">This screen arrives in a later build step.</p>
-						)}
-					</section>
-				</main>
-			</div>
+							) : view === 'team' ? (
+								<TeamView />
+							) : view === 'general' ? (
+								<GeneralTasks />
+							) : view === 'invoices' ? (
+								isAdmin(shownMe) ? <Invoices /> : <p className="empty">Only the Super Admin keeps the invoices.</p>
+							) : projects.length === 0 ? (
+								<div className="col" style={{ maxWidth: 520 }}>
+									<h2>Start with a project</h2>
+									<p className="empty">Projects are added on the Dashboard (click GridRankers at the top left).</p>
+								</div>
+							) : view === 'board' ? (
+								<MeetingMinutes />
+							) : view === 'monthly' ? (
+								<MonthlyTasks />
+							) : view === 'plan' ? (
+								<KeywordPlan />
+							) : view === 'details' ? (
+								<ProjectDetails />
+							) : view === 'log' ? (
+								<RecentActivities />
+							) : (
+								<p className="empty">This screen arrives in a later build step.</p>
+							)}
+						</section>
+					</main>
+				</div>
+			</TourGuard>
 			{toastView}
 			{confirmView}
 			<CompletionDialog open={!!completion} title={completion ? completion.title : ''} edit={!!(completion && completion.edit)} initial={completion ? completion.initial : null} onCancel={() => finishCompletion(null)} onSubmit={finishCompletion} />
