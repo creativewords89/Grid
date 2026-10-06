@@ -567,7 +567,7 @@ a.pdx-chip:hover{border-color:var(--accent);color:var(--accent)}
 .kp-kw{overflow-wrap:anywhere}
 .kp-gh{display:flex;align-items:center;gap:8px;padding:8px 16px;background:var(--panel-2);border-bottom:1px solid var(--line);font-size:.86rem;min-width:880px}
 .kp-gh i{width:9px;height:9px;border-radius:50%;background:var(--accent)}
-.kp-gh.g-next i{background:#7C3AED}.kp-gh.g-later i{background:#9AA8BA}
+.kp-gh.g-next i{background:#7C3AED}.kp-gh.g-past i{background:#16A34A}
 .kp-gn{margin-left:auto}
 .kp-group.over{outline:2px dashed #7C3AED;outline-offset:-2px;background:color-mix(in srgb,#7C3AED 5%,var(--panel))}
 .kp-emptyg{padding:10px 16px;font-size:.82rem;color:var(--ink-2);border-bottom:1px solid var(--line)}

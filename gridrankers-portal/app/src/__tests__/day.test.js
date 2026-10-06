@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { approvals, attention, bellItems, myProjects, notices, PROJECT_FILTERS, strips } from '../lib/day.js';
+import { approvals, attention, myProjects, notices, PROJECT_FILTERS, strips } from '../lib/day.js';
+import { bellItems } from '../lib/feed.js';
 import { dayOffKind, daysLeft, fill, leaveDays, messages, missingProfile, profileLocked, takenInMonth, teamWeekly, weekday, whosOut } from '../lib/people.js';
 import { emptyData } from '../lib/store.js';
 
@@ -160,7 +161,8 @@ describe('my day', () => {
 			['shout', 'shout', 'Sara Ahmed'],
 			['all', 'all', 'everyone'],
 		]);
-		expect(bellItems(d, d.members.max, TODAY, NOW).map((b) => b.key)).toEqual(['bday:2026', 'bday:sara:2026', 'notice:mine', 'notice:all']);
+		// The bell lists what the Notifications box lists (shout-outs to others included), with the band first.
+		expect(bellItems(d, d.members.max, TODAY, NOW).map((b) => b.key)).toEqual(['bday:2026', 'bday:sara:2026', 'notice:mine', 'shout:shout', 'notice:all']);
 	});
 
 	it('required profile: reminder for everyone, lock for leaders and members', () => {

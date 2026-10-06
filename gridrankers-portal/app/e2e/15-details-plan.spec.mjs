@@ -1,7 +1,7 @@
-// Project Details and the keyword checklist (SPEC.md 6.12, designs PD-D and KP-C): leaders write
-// the details and manage keywords; everyone opens links, ticks boxes and writes notes.
+// Project Details and the keyword checklist (SPEC.md 6.12, designs PD-D and KP-C): everyone writes
+// the details, manages keywords, ticks and unticks boxes and writes notes; done keywords go to Past.
 import { test, expect } from '@playwright/test';
-import { LEAD, MAX, openProject, signIn, signOut, watchErrors, waiting } from './helpers.mjs';
+import { LEAD, MAX, openProject, signIn, signOut, watchErrors } from './helpers.mjs';
 
 test('project details and keyword checklist', async ({ page }) => {
 	const noErrors = watchErrors(page);
@@ -64,9 +64,9 @@ test('project details and keyword checklist', async ({ page }) => {
 	await row('blocked drain gazipur').getByRole('button', { name: /Deadline for blocked drain gazipur/ }).click();
 	await page.getByRole('menuitem', { name: /^Next cycle/ }).click();
 	await expect(group('Next cycle')).toContainText('blocked drain gazipur');
-	await row('water heater repair').dragTo(group('Later').locator('.kp-gh'));
-	await expect(group('Later')).toContainText('water heater repair');
-	await expect(row('water heater repair').getByRole('button', { name: /Deadline for/ })).toHaveText(/No deadline/);
+	await row('water heater repair').dragTo(group('Next cycle').locator('.kp-gh'));
+	await expect(group('Next cycle').locator('.kp-row')).toHaveCount(2);
+	await expect(group('Past')).toContainText('Keywords with every box ticked show here');
 	// Columns: rename one.
 	await page.getByRole('button', { name: '⚙ Columns' }).click();
 	await dlg.getByLabel('Column 4').fill('GBP post');
@@ -75,20 +75,25 @@ test('project details and keyword checklist', async ({ page }) => {
 	await expect(page.locator('.kp-th')).toContainText('GBP post');
 	await signOut(page);
 
-	// Team Member: opens the links, ticks a box and writes a note; manages nothing.
+	// Team Member: maintains the Details and Plan tabs too (SPEC.md 6.12), ticks, unticks and writes notes.
 	await signIn(page, MAX);
 	await openProject(page, 'Acme Plumbing');
 	await tab('Details').click();
 	await expect(page.locator('.pdx-hero').getByRole('link', { name: /Job photos/ })).toBeVisible();
 	await expect(page.locator('.pdx-hero')).toContainText('Drive folder');
 	await expect(page.getByRole('region', { name: 'Notes for the team' }).locator('li')).toHaveCount(2);
-	await expect(page.getByRole('region', { name: 'Goals' })).toContainText('Nothing here yet.');
-	await expect(page.getByRole('button', { name: 'Edit Goals' })).toHaveCount(0);
-	await expect(page.getByRole('button', { name: /^Edit/ })).toHaveCount(0);
-	await expect(page.getByRole('button', { name: '+ Add link' })).toHaveCount(0);
+	await page.getByRole('region', { name: 'Goals' }).getByRole('button', { name: 'Edit Goals' }).click();
+	await page.getByLabel('Description').fill('Top 3 for emergency plumber in Dhaka');
+	await page.locator('.pdx-card.editing').getByRole('button', { name: 'Save' }).click();
+	await page.getByText('Saved', { exact: true }).waitFor();
+	await expect(page.getByRole('region', { name: 'Goals' })).toContainText('Top 3 for emergency plumber in Dhaka');
+	await expect(page.getByRole('button', { name: '+ Add link' }).first()).toBeVisible();
 	await tab('Plan').click();
-	await expect(page.getByRole('button', { name: '+ Add keywords' })).toHaveCount(0);
-	await expect(page.getByRole('button', { name: /Deadline for/ })).toHaveCount(0);
+	await page.getByRole('button', { name: '+ Add keywords' }).click();
+	await dlg.getByLabel(/Keywords/).fill('plumber near me');
+	await dlg.getByRole('button', { name: 'Add keyword', exact: true }).click();
+	await page.getByText('Keyword added').waitFor();
+	await expect(row('plumber near me').getByRole('button', { name: /Deadline for plumber near me/ })).toBeVisible();
 	const box = row('emergency plumber dhaka').getByRole('checkbox', { name: 'Content for emergency plumber dhaka' });
 	await box.click();
 	await expect(box).toHaveAttribute('aria-checked', 'true');
@@ -98,30 +103,25 @@ test('project details and keyword checklist', async ({ page }) => {
 	await note.fill('Need 3 more local backlinks');
 	await note.press('Enter');
 	await expect(note).toHaveValue('Need 3 more local backlinks');
-	await expect(page.locator('.kp-foot')).toContainText('3 keywords');
+	await expect(page.locator('.kp-foot')).toContainText('4 keywords');
 	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/plan.png' });
-	// A Team Member can't untick: clicking a tick asks a Team Leader instead.
+	// Anyone unticks a box straight away.
 	await box.click();
-	await expect(dlg.getByRole('heading', { name: 'Ask to untick?' })).toBeVisible();
-	await dlg.getByLabel('Why? (optional)').fill('Ticked by mistake');
-	await dlg.getByRole('button', { name: 'Ask to untick' }).click();
-	await page.getByText('Asked your Team Leaders to untick it').waitFor();
-	await expect(box).toHaveAttribute('aria-checked', 'true');
-	await expect(box).toHaveClass(/asked/);
-	await signOut(page);
-
-	// Team Leader: the request waits in Notifications; Untick clears the box.
-	await signIn(page, LEAD);
-	const asks = await waiting(page);
-	const req = asks.locator('.ap-item', { hasText: 'asked to untick' });
-	await expect(req).toContainText('Content · emergency plumber dhaka');
-	await expect(req).not.toContainText('Ticked by mistake');
-	await req.getByRole('button', { name: 'Untick', exact: true }).click();
 	await page.getByText('Unticked').waitFor();
-	await expect(asks.locator('.ap-item', { hasText: 'asked to untick' })).toHaveCount(0);
-	await openProject(page, 'Acme Plumbing');
-	await tab('Plan').click();
-	await expect(row('emergency plumber dhaka').getByRole('checkbox', { name: 'Content for emergency plumber dhaka' })).toHaveAttribute('aria-checked', 'false');
+	await expect(box).toHaveAttribute('aria-checked', 'false');
+	await expect(row('emergency plumber dhaka')).toContainText('0/4');
+	// Every box ticked → the keyword moves to Past; unticking one brings it back.
+	for (const col of ['On-page', 'Content', 'Internal links', 'GBP post']) {
+		const b = row('emergency plumber dhaka').getByRole('checkbox', { name: `${col} for emergency plumber dhaka` });
+		await b.click();
+		await expect(b).toHaveAttribute('aria-checked', 'true');
+	}
+	await expect(group('Past').locator('.kp-row')).toHaveCount(1);
+	await expect(group('Past')).toContainText('emergency plumber dhaka');
+	await expect(group('This cycle')).not.toContainText('emergency plumber dhaka');
+	await row('emergency plumber dhaka').getByRole('checkbox', { name: 'GBP post for emergency plumber dhaka' }).click();
+	await expect(group('This cycle')).toContainText('emergency plumber dhaka');
+	await expect(group('Past').locator('.kp-row')).toHaveCount(0);
 	await signOut(page);
 	noErrors();
 });

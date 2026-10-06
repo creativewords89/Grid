@@ -1,6 +1,6 @@
 // Notifications on My day (SPEC.md 6.10, design NF-A).
 import { describe, expect, it } from 'vitest';
-import { PAGE_SIZE, ago, countsOf, feedOf } from '../lib/feed.js';
+import { PAGE_SIZE, ago, bellItems, countsOf, feedOf } from '../lib/feed.js';
 import { emptyData } from '../lib/store.js';
 
 const TODAY = '2026-10-12';
@@ -74,5 +74,19 @@ describe('notifications feed', () => {
 		expect(lead.some((k) => k.startsWith('ask:') || k.startsWith('undo:'))).toBe(false);
 		d.meeting_tasks.ask.review.reviewer = 'max';
 		expect(feedOf(d, max, TODAY, NOW).map((i) => i.key)).toContain('ask:ask:2026-10-12T08:00:00Z');
+	});
+
+	it('the bell lists what the box lists, with the same read state', () => {
+		const d = data();
+		const box = feedOf(d, max, TODAY, NOW).map((i) => i.key);
+		const bell = bellItems(d, max, TODAY, NOW);
+		expect(box.every((k) => bell.some((b) => b.key === k))).toBe(true);
+		expect(new Set(bell.map((b) => b.key)).size).toBe(bell.length);
+		expect(bell.find((b) => b.key === 'new:n')).toMatchObject({ text: 'New task: “Add city to titles”', unread: true });
+		d.dismissals = { s: { id: 's', member_id: 'max', notice_key: 'seen:new:n' } };
+		expect(bellItems(d, max, TODAY, NOW).find((b) => b.key === 'new:n').unread).toBe(false);
+		// Leaders: what waits for them rings the bell too.
+		d.leave.l2 = { id: 'l2', member_id: 'sam', type: 'sick', from_date: '2026-10-20', to_date: '2026-10-20', days: 1, status: 'pending', created_at: '2026-10-12 11:30:00' };
+		expect(bellItems(d, lee, TODAY, NOW).find((b) => b.key === 'wait:leave:l2')).toMatchObject({ text: 'Sam asks for sick leave · Oct 20', unread: true });
 	});
 });

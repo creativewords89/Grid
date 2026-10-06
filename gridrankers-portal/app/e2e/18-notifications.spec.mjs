@@ -27,6 +27,11 @@ test('notifications feed', async ({ page }) => {
 	// No descriptions in the box: titles only.
 	await expect(box.locator('.nf-sub')).toHaveCount(0);
 	await expect(box.locator('.nf-pages')).toContainText(/1–6 of \d+/);
+	// The bell shows the same news (SPEC.md 6.9): its count and its list.
+	await expect(page.locator('.md-bell-btn .md-badge')).toBeVisible();
+	await page.getByRole('button', { name: /Notifications, \d+ new/ }).click();
+	await expect(page.locator('.md-pop').getByText(`New task: “Feed task 7 ${stamp}”`)).toBeVisible();
+	await page.locator('.md-bell-btn').click();
 	await box.getByRole('button', { name: 'Next page' }).click();
 	await expect(box.locator('.nf-pages')).toContainText(/7–/);
 	await box.getByRole('button', { name: /^Leave/ }).click();
@@ -68,6 +73,10 @@ test('notifications feed', async ({ page }) => {
 	const req = box.locator('.nf-wait .ap-item', { hasText: 'Max Member asks for sick leave' }).first();
 	await expect(req).toBeVisible();
 	await expect(req.getByRole('button', { name: 'Approve' })).toBeVisible();
+	// The request rings the leader's bell too.
+	await page.locator('.md-bell-btn').click();
+	await expect(page.locator('.md-pop').getByText(/Max Member asks for sick leave/).first()).toBeVisible();
+	await page.locator('.md-bell-btn').click();
 	// A Team Leader's Today card: Who's out and Day leave.
 	await expect(page.locator('section.md-today h2')).toHaveText(['Who’s out today', 'Day leave']);
 	await signOut(page);

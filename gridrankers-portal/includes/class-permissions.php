@@ -155,16 +155,16 @@ class GRP_Permissions {
 	/** Answer a request to undo: Undo or Keep In progress (SPEC.md 6.6). Managers. */
 	const DECIDE_UNDO = 'decide_undo';
 
-	/** Edit a project's Details tab: descriptions and links (SPEC.md 6.12). Managers. */
+	/** Edit a project's Details tab: descriptions and links (SPEC.md 6.12). Everyone. */
 	const EDIT_PROJECT_DETAILS = 'edit_project_details';
 
-	/** Keyword checklist: add, rename, remove keywords, set deadlines and the columns (SPEC.md 6.12). Managers. */
+	/** Keyword checklist: add, rename, remove keywords, set deadlines and the columns (SPEC.md 6.12). Everyone. */
 	const MANAGE_KEYWORDS = 'manage_keywords';
 
 	/** Keyword checklist: tick a box and write the note (SPEC.md 6.12). Everyone. */
 	const TICK_KEYWORD = 'tick_keyword';
 
-	/** Keyword checklist: untick a box, or keep it after someone asked to untick it (SPEC.md 6.12). Managers. */
+	/** Keyword checklist: untick a box, or keep it after someone asked to untick it (SPEC.md 6.12). Everyone. */
 	const UNTICK_KEYWORD = 'untick_keyword';
 
 	/** Upload a file for a submission or a comment (SPEC.md 6.6). Everyone. */
@@ -200,6 +200,9 @@ class GRP_Permissions {
 		self::LOG_WORK,
 		self::SKIP_PERIOD,
 		self::TICK_KEYWORD,
+		self::EDIT_PROJECT_DETAILS,
+		self::MANAGE_KEYWORDS,
+		self::UNTICK_KEYWORD,
 		self::REQUEST_UNDO,
 		self::UPLOAD_FILE,
 		self::EDIT_SUBMISSION,
@@ -259,9 +262,6 @@ class GRP_Permissions {
 			case self::REQUEST_REVIEW:
 			case self::DECIDE_UNDO:
 			case self::REVIEW_CYCLE:
-			case self::EDIT_PROJECT_DETAILS:
-			case self::MANAGE_KEYWORDS:
-			case self::UNTICK_KEYWORD:
 				return $manager;
 
 			case self::REQUEST_UNDO:
@@ -270,6 +270,9 @@ class GRP_Permissions {
 				return ! $manager && 'doing' === ( $task['status'] ?? '' ) && (int) ( $task['target'] ?? 1 ) <= 1 && self::may_work_on( $user, $manager, $task );
 
 			case self::TICK_KEYWORD:
+			case self::EDIT_PROJECT_DETAILS:
+			case self::MANAGE_KEYWORDS:
+			case self::UNTICK_KEYWORD:
 			case self::UPLOAD_FILE:
 			case self::DOWNLOAD_FILE:
 				return in_array( $role, array( self::ROLE_ADMIN, self::ROLE_LEAD, self::ROLE_MEMBER ), true );

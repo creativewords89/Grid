@@ -4,13 +4,12 @@ import { cycleRange } from '../../lib/cycles.js';
 import { dateTime, short } from '../../lib/format.js';
 import { profileLocked } from '../../lib/people.js';
 import { askOf, columnsOf, deadlineFor, doneOf, groupOf, isLate, keywordsOf, splitKeywords } from '../../lib/plan.js';
-import { isManager } from '../../lib/roles.js';
 import Modal from '../Modal.jsx';
 
 const GROUPS = [
 	['this', 'This cycle'],
 	['next', 'Next cycle'],
-	['later', 'Later'],
+	['past', 'Past'],
 ];
 
 // Closes a popover on an outside click or Escape.
@@ -29,7 +28,7 @@ function useDismiss(open, close) {
 	return ref;
 }
 
-// The Deadline pill: This cycle · Next cycle · Pick a date · No deadline (managers).
+// The Deadline pill: This cycle · Next cycle · Pick a date · No deadline (everyone).
 function DeadlinePill({ kw, project, columns, can, onSet }) {
 	const { today } = usePortal();
 	const [open, setOpen] = useState(false);
@@ -71,7 +70,7 @@ function DeadlinePill({ kw, project, columns, can, onSet }) {
 	);
 }
 
-// The ⋯ menu of a keyword: Rename, Remove (managers).
+// The ⋯ menu of a keyword: Rename, Remove (everyone).
 function RowMenu({ kw, onRename, onRemove }) {
 	const [open, setOpen] = useState(false);
 	const ref = useDismiss(open, () => setOpen(false));
@@ -233,8 +232,8 @@ function ColumnsDialog({ project, onClose }) {
 }
 
 // Project → Plan (SPEC.md 6.12, design KP-C): the keyword checklist grouped by deadline.
-// Everyone ticks and writes notes; Team Leaders and the Super Admin manage keywords, deadlines
-// (drag a row to another group, or the Deadline menu) and the columns.
+// Everyone ticks, unticks and writes notes, and manages keywords, deadlines (drag a row between
+// This and Next cycle, or the Deadline menu) and the columns. Ticking every box moves a row to Past.
 export default function KeywordPlan() {
 	const { api, data, project, dispatch, toast, confirm, me, today } = usePortal();
 	const p = data.projects[project];
@@ -244,15 +243,16 @@ export default function KeywordPlan() {
 	const [over, setOver] = useState('');
 	if (!p) return null;
 
-	const can = isManager(me);
 	const locked = profileLocked(data.members[me.id] || me, me);
+	// Everyone maintains the plan, ticks and unticks (SPEC.md 6.12).
+	const can = !locked;
 	const columns = columnsOf(p);
 	const all = keywordsOf(data, p.id);
 	const query = q.trim().toLowerCase();
 	const rows = all.filter((k) => !query || [k.keyword, k.note].join(' ').toLowerCase().includes(query));
 	const cur = cycleRange(p, 0, today);
 	const next = cycleRange(p, 1, today);
-	const sub = { this: `${short(cur.start)} – ${short(cur.end)} · deadline ${short(cur.end)}`, next: `${short(next.start)} – ${short(next.end)} · deadline ${short(next.end)}`, later: 'no deadline yet' };
+	const sub = { this: `${short(cur.start)} – ${short(cur.end)} · deadline ${short(cur.end)}`, next: `${short(next.start)} – ${short(next.end)} · deadline ${short(next.end)}`, past: 'every box ticked' };
 	const name = (id) => (data.members[id] ? data.members[id].name : 'someone');
 
 	const patch = async (kw, body, done) => {
@@ -268,7 +268,7 @@ export default function KeywordPlan() {
 		const kw = data.keywords[dragId];
 		setDragId('');
 		setOver('');
-		if (!kw || groupOf(kw, p, today) === group) return;
+		if (!kw || group === 'past' || groupOf(kw, p, today, columns) === group) return;
 		const deadline = deadlineFor(group, p, today);
 		patch(kw, { deadline }, `Moved to ${GROUPS.find((g) => g[0] === group)[1].toLowerCase()}`);
 	};
@@ -286,26 +286,13 @@ export default function KeywordPlan() {
 			toast(err.message);
 		}
 	};
-	// A box: anyone ticks; only Team Leaders and the Super Admin untick, everyone else asks them.
+	// A box: everyone ticks and unticks (SPEC.md 6.12). An older request to untick it is answered too.
 	const toggle = async (k, c) => {
 		const on = k.checks && k.checks[c.id];
 		if (!on) return patch(k, { check: { column: c.id, on: true } });
 		const ask = askOf(k, c);
-		if (can) {
-			const sure = ask ? await confirm({ title: `Untick ${c.name}?`, message: `${k.keyword} · ${name(ask.by)} asked to untick it${ask.note ? `: “${ask.note}”` : '.'}`, ok: 'Untick' }) : true;
-			if (sure) patch(k, { check: { column: c.id, on: false } }, 'Unticked');
-			return;
-		}
-		if (ask) return toast(`Already asked — waiting for a Team Leader (${name(ask.by)} asked).`);
-		const note = await confirm({
-			title: 'Ask to untick?',
-			message: `${c.name} · ${k.keyword}. Only a Team Leader or the Super Admin can untick a box; they see your request in their Notifications.`,
-			input: 'Why? (optional)',
-			placeholder: 'e.g. Ticked by mistake',
-			ok: 'Ask to untick',
-		});
-		if (note === null || note === false) return;
-		patch(k, { ask_untick: { column: c.id, note: typeof note === 'string' ? note : '' } }, 'Asked your Team Leaders to untick it');
+		const sure = ask ? await confirm({ title: `Untick ${c.name}?`, message: `${k.keyword} · ${name(ask.by)} asked to untick it${ask.note ? `: “${ask.note}”` : '.'}`, ok: 'Untick' }) : true;
+		if (sure) patch(k, { check: { column: c.id, on: false } }, 'Unticked');
 	};
 	const style = { '--kp-cols': columns.length };
 	const fully = all.filter((k) => doneOf(k, columns) === columns.length).length;
@@ -315,7 +302,7 @@ export default function KeywordPlan() {
 			<section className="dcard kp-card">
 				<div className="kp-bar">
 					<h3>Keyword checklist</h3>
-					<span className="muted">{can ? 'Drag a row between cycles, or pick a deadline' : 'Tick a box when that step is done'}</span>
+					<span className="muted">{can ? 'Drag a row between cycles · tick every box to move it to Past' : 'Tick a box when that step is done'}</span>
 					<span className="lv-sp" />
 					<label className="ld-search ma-search kp-search">
 						<span aria-hidden="true">⌕</span>
@@ -333,7 +320,7 @@ export default function KeywordPlan() {
 					)}
 				</div>
 				{all.length === 0 ? (
-					<p className="d-empty kp-pad">{can ? 'No keywords yet. Add them one per line, or paste a column from your sheet.' : 'No keywords yet. A Team Leader adds them here.'}</p>
+					<p className="d-empty kp-pad">{can ? 'No keywords yet. Add them one per line, or paste a column from your sheet.' : 'No keywords yet. Finish your profile to add them.'}</p>
 				) : (
 					<div className="kp-table" role="table" aria-label="Keyword checklist" style={style}>
 						<div className="kp-row kp-th" role="row">
@@ -350,14 +337,14 @@ export default function KeywordPlan() {
 							<span />
 						</div>
 						{GROUPS.map(([g, label]) => {
-							const list = rows.filter((k) => groupOf(k, p, today) === g);
+							const list = rows.filter((k) => groupOf(k, p, today, columns) === g);
 							return (
 								<div
 									key={g}
 									className={'kp-group' + (over === g ? ' over' : '')}
 									role="rowgroup"
 									aria-label={label}
-									onDragOver={(e) => can && dragId && (e.preventDefault(), setOver(g))}
+									onDragOver={(e) => can && dragId && g !== 'past' && (e.preventDefault(), setOver(g))}
 									onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget) && setOver('')}
 									onDrop={(e) => (e.preventDefault(), drop(g))}
 								>
@@ -382,7 +369,7 @@ export default function KeywordPlan() {
 												{columns.map((c) => {
 													const on = k.checks && k.checks[c.id];
 													const ask = askOf(k, c);
-													const tip = on ? `Ticked by ${name(on.by)} · ${dateTime(on.at)}${ask ? ` · untick asked by ${name(ask.by)}` : can ? ' · click to untick' : ' · ask a Team Leader to untick'}` : locked ? 'Finish your profile first' : `Tick ${c.name}`;
+													const tip = on ? `Ticked by ${name(on.by)} · ${dateTime(on.at)}${ask ? ` · untick asked by ${name(ask.by)}` : ' · click to untick'}` : locked ? 'Finish your profile first' : `Tick ${c.name}`;
 													return (
 														<span key={c.id} role="cell" className="kp-c">
 															<button
@@ -418,7 +405,7 @@ export default function KeywordPlan() {
 											</div>
 										);
 									})}
-									{list.length === 0 && <div className="kp-emptyg">{can ? 'Drag a keyword here' : 'Nothing here'}</div>}
+									{list.length === 0 && <div className="kp-emptyg">{g === 'past' ? 'Keywords with every box ticked show here' : can ? 'Drag a keyword here' : 'Nothing here'}</div>}
 								</div>
 							);
 						})}
@@ -441,7 +428,7 @@ export default function KeywordPlan() {
 						</div>
 					</div>
 				)}
-				<p className="kp-hint">Deadline = the end of the cycle a keyword sits in, or a date you pick. Past the deadline and not all ticked → late. Hover a tick to see who ticked it and when. Only a Team Leader or the Super Admin can untick a box — click a tick to ask them.</p>
+				<p className="kp-hint">Deadline = the end of the cycle a keyword sits in, or a date you pick. Past the deadline and not all ticked → late. Hover a tick to see who ticked it and when. Click a tick to untick it.</p>
 			</section>
 			{dialog === 'add' && <AddDialog project={p} onClose={() => setDialog('')} />}
 			{dialog === 'cols' && <ColumnsDialog project={p} onClose={() => setDialog('')} />}

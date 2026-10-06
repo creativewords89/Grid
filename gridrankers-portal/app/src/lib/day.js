@@ -9,7 +9,6 @@ import { rowsOf } from './store.js';
 import { cycleSetup } from './cycleSetup.js';
 import { isManager } from './roles.js';
 import { untickRequests } from './plan.js';
-import { commentBell } from './comments.js';
 
 // My day (SPEC.md 7.0): what each box shows, as pure functions of the synced data.
 
@@ -176,32 +175,6 @@ export function notices(data, me, today, now = Date.now()) {
 		})
 		.filter(Boolean)
 		.sort((a, b) => String(b.post.created_at).localeCompare(String(a.post.created_at)));
-}
-
-// Everything for the bell: strips (dismissed or not), notices and shout-outs for me, results of my reviewed work.
-export function bellItems(data, me, today, now = Date.now()) {
-	const items = strips(data, me, today, { now, all: true }).map((s) => ({ key: s.key, text: s.title, sub: s.text }));
-	notices(data, me, today, now)
-		.filter((n) => n.tag !== 'shout' || (recipientsOf(n.post) || []).includes(me.id))
-		.forEach((n) => {
-			const by = n.from ? n.from.name : 'A Team Leader';
-			const text = n.tag === 'shout' ? `${by} sent you a shout-out.` : n.tag === 'all' ? `${by} posted a notice${n.post.title ? `: ${n.post.title}` : '.'}` : `${by} sent you a notice${n.post.title ? `: ${n.post.title}` : '.'}`;
-			items.push({ key: `${n.tag === 'shout' ? 'shout' : 'notice'}:${n.post.id}`, text, sub: n.post.body });
-		});
-	reviewsOf(data, me.id, now).forEach((r) => {
-		const by = data.members[r.review.by];
-		items.push({ key: `rv:${r.title}:${r.review.at}`, text: `${r.review.state === 'rejected' ? 'Rejected' : 'Revision requested'}: “${r.title}”`, sub: [by && by.name, r.review.note].filter(Boolean).join(' · ') });
-	});
-	// Comments on submissions I'm part of (SPEC.md 6.6).
-	commentBell(data, me, now).forEach((c) => items.push(c));
-	// Requests to undo In progress (SPEC.md 6.6) reach every Team Leader and the Super Admin.
-	if (isManager(me)) {
-		undoRequests(data).forEach((u) => {
-			items.push({ key: `undo:${u.id}:${u.at}`, text: `${u.who ? u.who.name : 'Someone'} asked to undo “${u.title}”`, sub: `${u.project.name} · In progress → Not started` });
-		});
-	}
-	const seen = dismissedKeys(data, me);
-	return items.map((i) => ({ ...i, unread: !seen.has('seen:' + i.key) }));
 }
 
 // Requests to undo In progress → Not started (SPEC.md 6.6) on meeting tasks and cycle records.
