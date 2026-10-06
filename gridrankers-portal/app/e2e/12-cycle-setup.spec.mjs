@@ -27,6 +27,9 @@ test('assign and review a new cycle', async ({ page }) => {
 	const reminder = box('Notifications').locator('.nf-must-item', { hasText: 'Cycle Co' });
 	await expect(reminder).toContainText(/New cycle for Cycle Co — \d+ unassigned, 3 to review · 3 days left/);
 	await expect(reminder.getByRole('button')).toHaveText(['Open setup']);
+	// Under the filter chips, not above them.
+	const [chips, rem] = [await box('Notifications').locator('.nf-chips').boundingBox(), await reminder.boundingBox()];
+	expect(rem.y).toBeGreaterThan(chips.y + chips.height - 1);
 	await page.locator('.md-bell-btn').click();
 	await expect(page.locator('.md-pop li.must', { hasText: 'New cycle for Cycle Co' })).toHaveClass(/new/);
 	await page.locator('.md-bell-btn').click();

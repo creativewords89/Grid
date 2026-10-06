@@ -2,7 +2,7 @@ import { usePortal } from '../../context.js';
 import { deadlineInfo } from '../../lib/deadline.js';
 import { longDate, localYmd, weekdayDate } from '../../lib/format.js';
 import { isManager } from '../../lib/roles.js';
-import { PRI_LABEL, STATUS_TXT, assigneesOf, progressTotal } from '../../lib/tasks.js';
+import { GENERAL_NAME, PRI_LABEL, STATUS_TXT, assigneesOf, isGeneral, progressTotal } from '../../lib/tasks.js';
 import Avatar from '../Avatar.jsx';
 import Modal from '../Modal.jsx';
 import useTaskActions from './useTaskActions.js';
@@ -104,7 +104,7 @@ export default function TaskDetails({ taskId, onClose }) {
 						<span className={'dt-st s-' + task.status}>{STATUS_TXT[task.status]}</span>
 					</div>
 					<h2 id="grpDetTitle">{task.title}</h2>
-					<p className="muted">{project ? project.name : ''}</p>
+					<p className="muted">{project ? project.name : isGeneral(task) ? GENERAL_NAME : ''}</p>
 				</header>
 				<dl className="dt-grid">
 					<Row k="Meeting">{task.meeting_date ? weekdayDate(task.meeting_date) : ''}</Row>

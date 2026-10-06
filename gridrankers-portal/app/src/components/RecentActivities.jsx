@@ -6,6 +6,7 @@ import Avatar from './Avatar.jsx';
 import Modal from './Modal.jsx';
 import { ROLE, isManager } from '../lib/roles.js';
 import { rowsOf } from '../lib/store.js';
+import { GENERAL, GENERAL_NAME } from '../lib/tasks.js';
 
 const TAG = {
 	add: 'Added',
@@ -87,7 +88,7 @@ export function Trash({ entries, title = 'Recently deleted', hint = 'Kept 30 day
 							<div className="as-main">
 								<b>{e.title || 'Untitled'}</b>
 								<span>
-									{e.type === 'grp_projects' ? 'Project' : project ? project.name : 'Project removed'} · deleted {dateTime(e.deleted_at)}
+									{e.type === 'grp_projects' ? 'Project' : project ? project.name : e.project_id === GENERAL ? GENERAL_NAME : 'Project removed'} · deleted {dateTime(e.deleted_at)}
 									{name(e.deleted_by) ? ' by ' + name(e.deleted_by) : ''}
 								</span>
 							</div>
@@ -127,10 +128,11 @@ export function whenText(at, today) {
 	return `${label} · ${time}`;
 }
 
-// Recent Activities (SPEC.md 7.4), for the selected project: one row per change, filters, and
-// the project's recently deleted tasks behind a button.
-export default function RecentActivities() {
-	const { api, data, me, project, today } = usePortal();
+// Recent Activities (SPEC.md 7.4), for the selected project (or the General tasks, SPEC.md 6.13,
+// with `general`): one row per change, filters, and recently deleted tasks behind a button.
+export default function RecentActivities({ general = false }) {
+	const { api, data, me, project: selected, today } = usePortal();
+	const project = general ? GENERAL : selected;
 	const [rows, setRows] = useState(null);
 	const [error, setError] = useState('');
 	const [filter, setFilter] = useState('all');
@@ -139,13 +141,13 @@ export default function RecentActivities() {
 	const load = useCallback(() => {
 		if (document.hidden) return;
 		api
-			.get('audit', { project })
+			.get('audit', general ? { general: 1 } : { project })
 			.then((r) => {
 				setRows(r);
 				setError('');
 			})
 			.catch((e) => setError(e.message));
-	}, [api, project]);
+	}, [api, project, general]);
 
 	useEffect(() => {
 		load();

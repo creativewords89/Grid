@@ -11,6 +11,7 @@ import { short } from './format.js';
 import { reviewsOf } from './reviews.js';
 import { isManager } from './roles.js';
 import { rowsOf } from './store.js';
+import { boardOf, homeName, isGeneral, liveTask } from './tasks.js';
 
 export const DAY_MS = 86400000;
 // How far back the feed goes.
@@ -37,11 +38,11 @@ export function feedOf(data, me, today, now = Date.now()) {
 	const push = (item) => item.at && out.push({ ...item, at: isoOf(item.at) });
 
 	// New tasks assigned to me by someone else (meeting tasks and recurring tasks).
-	const mineNew = (t) => (t.assignees || []).some((a) => a.id === me.id) && t.created_by && t.created_by !== me.id && recent(t.created_at) && data.projects[t.project_id];
+	const mineNew = (t) => (t.assignees || []).some((a) => a.id === me.id) && t.created_by && t.created_by !== me.id && recent(t.created_at) && liveTask(data, t);
 	rowsOf(data, 'meeting_tasks')
 		.filter((t) => t.status !== 'done' && mineNew(t))
 		.forEach((t) =>
-			push({ key: `new:${t.id}`, cat: 'task', tone: 'blue', icon: '+', title: `New task: “${t.title}”`, sub: `${name(data, t.created_by)} assigned you “${t.title}” · ${data.projects[t.project_id].name}`, at: t.created_at, open: { project_id: t.project_id, tab: 'board', title: t.title } })
+			push({ key: `new:${t.id}`, cat: 'task', tone: 'blue', icon: '+', title: `${isGeneral(t) ? 'New general task' : 'New task'}: “${t.title}”`, sub: `${name(data, t.created_by)} assigned you “${t.title}” · ${homeName(data, t)}`, at: t.created_at, open: { project_id: t.project_id, tab: boardOf(t), title: t.title } })
 		);
 	rowsOf(data, 'monthly_tasks')
 		.filter(mineNew)
@@ -66,8 +67,8 @@ export function feedOf(data, me, today, now = Date.now()) {
 	});
 	const approved = (rv) => rv && rv.state === 'accepted' && !rv.auto && rv.submittedBy === me.id && rv.by && rv.by !== me.id && recent(rv.at);
 	rowsOf(data, 'meeting_tasks')
-		.filter((t) => approved(t.review) && data.projects[t.project_id])
-		.forEach((t) => push({ key: `ok:${t.id}:${t.review.at}`, cat: 'task', tone: 'green', icon: '✓', title: `Approved: “${t.title}”`, sub: `by ${name(data, t.review.by)}`, at: t.review.at, open: { project_id: t.project_id, tab: 'board', title: t.title } }));
+		.filter((t) => approved(t.review) && liveTask(data, t))
+		.forEach((t) => push({ key: `ok:${t.id}:${t.review.at}`, cat: 'task', tone: 'green', icon: '✓', title: `Approved: “${t.title}”`, sub: `by ${name(data, t.review.by)}`, at: t.review.at, open: { project_id: t.project_id, tab: boardOf(t), title: t.title } }));
 	rowsOf(data, 'records').forEach((r) => {
 		const t = data.monthly_tasks[r.task_id];
 		if (t && approved(r.review) && data.projects[t.project_id]) push({ key: `ok:${r.id}:${r.review.at}`, cat: 'task', tone: 'green', icon: '✓', title: `Approved: “${t.title}”`, sub: `by ${name(data, r.review.by)}`, at: r.review.at, open: { project_id: t.project_id, tab: 'monthly', title: t.title } });
@@ -76,8 +77,8 @@ export function feedOf(data, me, today, now = Date.now()) {
 	// Someone asked me to review their work (Team Members; leaders answer it under Waiting for you).
 	const askedMe = (rv) => !isManager(me) && rv && rv.state === 'pending' && rv.reviewer === me.id && recent(rv.submittedAt);
 	rowsOf(data, 'meeting_tasks')
-		.filter((t) => askedMe(t.review) && data.projects[t.project_id])
-		.forEach((t) => push({ key: `ask:${t.id}:${t.review.submittedAt}`, cat: 'task', tone: 'blue', icon: '?', title: `${name(data, t.review.submittedBy)} asked you to review “${t.title}”`, sub: '', at: t.review.submittedAt, open: { project_id: t.project_id, tab: 'board', title: t.title } }));
+		.filter((t) => askedMe(t.review) && liveTask(data, t))
+		.forEach((t) => push({ key: `ask:${t.id}:${t.review.submittedAt}`, cat: 'task', tone: 'blue', icon: '?', title: `${name(data, t.review.submittedBy)} asked you to review “${t.title}”`, sub: '', at: t.review.submittedAt, open: { project_id: t.project_id, tab: boardOf(t), title: t.title } }));
 	rowsOf(data, 'records').forEach((r) => {
 		const t = data.monthly_tasks[r.task_id];
 		if (t && askedMe(r.review) && data.projects[t.project_id]) push({ key: `ask:${r.id}:${r.review.submittedAt}`, cat: 'task', tone: 'blue', icon: '?', title: `${name(data, r.review.submittedBy)} asked you to review “${t.title}”`, sub: '', at: r.review.submittedAt, open: { project_id: t.project_id, tab: 'monthly', title: t.title } });

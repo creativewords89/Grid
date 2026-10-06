@@ -616,7 +616,7 @@ abstract class GRP_REST_Controller {
 		}
 		if ( 'project_id' === $field ) {
 			$project = $value ? GRP_Store::get( 'grp_projects', $value ) : null;
-			return $project ? $project['name'] : '—';
+			return $project ? $project['name'] : ( '' === (string) $value ? 'General' : '—' );
 		}
 		if ( 'deadline' === $field ) {
 			return is_array( $value ) ? (string) ( $value['type'] ?? 'none' ) : 'none';

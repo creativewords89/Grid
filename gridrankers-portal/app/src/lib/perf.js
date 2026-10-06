@@ -3,7 +3,7 @@ import { deadlineInfo, itemDeadline } from './deadline.js';
 import { localYmd, mondayOf, short, toDate } from './format.js';
 import { bornAt, isShared, recordOf, stateOf, typePeople } from './monthly.js';
 import { rowsOf } from './store.js';
-import { PRI } from './tasks.js';
+import { GENERAL, GENERAL_NAME, PRI, boardOf, liveTask } from './tasks.js';
 
 // Team / member page helpers, ported from the reference (perfRange, perfStats, assignedFor,
 // missedWork, calEvents, personEvents). Dates are 'YYYY-MM-DD'.
@@ -55,7 +55,7 @@ const isOn = (t, pid) => (t.assignees || []).some((a) => a.id === pid);
 export function assignedFor(data, pid, today) {
 	const out = [];
 	rowsOf(data, 'meeting_tasks').forEach((i) => {
-		if (!isOn(i, pid) || i.status === 'done' || !data.projects[i.project_id]) return;
+		if (!isOn(i, pid) || i.status === 'done' || !liveTask(data, i)) return;
 		const dl = deadlineInfo(i, today);
 		const target = Math.max(1, i.target || 1);
 		out.push({
@@ -142,7 +142,7 @@ export function calEvents(data, pid, from, to, today) {
 	const spans = [];
 	const dated = [];
 	const seen = new Set();
-	const cname = (id) => (data.projects[id] ? data.projects[id].name : 'Other work');
+	const cname = (id) => (data.projects[id] ? data.projects[id].name : id === GENERAL ? GENERAL_NAME : 'Other work');
 	rowsOf(data, 'monthly_tasks').forEach((t) => {
 		const c = data.projects[t.project_id];
 		if (!c || !isOn(t, pid)) return;
@@ -177,23 +177,23 @@ export function calEvents(data, pid, from, to, today) {
 		}
 	});
 	rowsOf(data, 'meeting_tasks').forEach((i) => {
-		if (!data.projects[i.project_id] || !isOn(i, pid)) return;
+		if (!liveTask(data, i) || !isOn(i, pid)) return;
 		const dl = deadlineInfo(i, today);
 		const stI = i.status === 'done' ? 'done' : dl && dl.overdue ? 'missed' : i.status === 'doing' ? 'doing' : i.priority === 'urgent' ? 'urgent' : 'open';
 		const bar = (a, b, kind, detail) => {
-			if (b >= from && a <= to) spans.push({ start: a, end: b, kind, meeting: true, title: i.title, client: cname(i.project_id), project_id: i.project_id, status: i.status === 'done' ? 'done' : b < today ? 'missed' : stI === 'missed' ? 'open' : stI, detail: `Meeting task · ${detail}`, tab: 'board' });
+			if (b >= from && a <= to) spans.push({ start: a, end: b, kind, meeting: true, title: i.title, client: cname(i.project_id), project_id: i.project_id, status: i.status === 'done' ? 'done' : b < today ? 'missed' : stI === 'missed' ? 'open' : stI, detail: `Meeting task · ${detail}`, tab: boardOf(i) });
 		};
 		if (dl && dl.type === 'weekly') return dl.ranges.forEach((r, k) => bar(r.start, r.end, 'weekly', dl.ranges.length > 1 ? `week ${k + 1} of ${dl.ranges.length}` : 'due this week'));
 		if (dl && dl.type === 'monthly') return bar(dl.start, dl.end, 'monthly', `due ${short(dl.end)}`);
 		if (dl && dl.type === 'dates') return bar(dl.start, dl.end, 'range', `due ${short(dl.start)} – ${short(dl.end)}`);
 		if (dl && dl.type === 'biweekly') return bar(dl.start, dl.end, 'weekly', `due ${short(dl.end)} · 2 weeks`);
 		if (dl && dl.type === 'date') {
-			if (dl.end >= from && dl.end <= to) dated.push({ date: dl.end, kind: 'meeting', title: i.title, client: cname(i.project_id), project_id: i.project_id, status: i.status === 'done' ? 'done' : dl.overdue ? 'missed' : stI, detail: 'Due', tab: 'board' });
+			if (dl.end >= from && dl.end <= to) dated.push({ date: dl.end, kind: 'meeting', title: i.title, client: cname(i.project_id), project_id: i.project_id, status: i.status === 'done' ? 'done' : dl.overdue ? 'missed' : stI, detail: 'Due', tab: boardOf(i) });
 			return;
 		}
 		const d = i.meeting_date || localYmd(i.created_at);
 		if (d < from || d > to) return;
-		dated.push({ date: d, kind: 'meeting', title: i.title, client: cname(i.project_id), project_id: i.project_id, status: i.status === 'done' ? 'done' : i.status === 'doing' ? 'doing' : i.priority === 'urgent' ? 'urgent' : 'open', detail: i.meeting_date ? 'From meeting' : 'Added', tab: 'board' });
+		dated.push({ date: d, kind: 'meeting', title: i.title, client: cname(i.project_id), project_id: i.project_id, status: i.status === 'done' ? 'done' : i.status === 'doing' ? 'doing' : i.priority === 'urgent' ? 'urgent' : 'open', detail: i.meeting_date ? 'From meeting' : 'Added', tab: boardOf(i) });
 	});
 	rowsOf(data, 'activity').forEach((a) => {
 		if (a.kind !== 'manual' || a.member_id !== pid || a.date < from || a.date > to) return;

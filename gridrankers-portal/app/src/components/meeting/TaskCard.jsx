@@ -3,7 +3,7 @@ import { usePortal } from '../../context.js';
 import { deadlineInfo } from '../../lib/deadline.js';
 import { short, localYmd } from '../../lib/format.js';
 import { isManager } from '../../lib/roles.js';
-import { PRI_LABEL, REVIEW_TXT, assigneesOf, canWorkOn, progressTotal } from '../../lib/tasks.js';
+import { assigneesOf, canWorkOn, isGeneral, PRI_LABEL, progressTotal, REVIEW_TXT } from '../../lib/tasks.js';
 import Avatar from '../Avatar.jsx';
 import useTaskActions from './useTaskActions.js';
 
@@ -162,7 +162,7 @@ export default function TaskCard({ task, onDetails, onEdit }) {
 			<div className="co-row">
 				<span className={'freq pr-' + task.priority}>{PRI_LABEL[task.priority] || 'Normal'}</span>
 				{target > 1 && <span className="qty q-strong">Qty {target}</span>}
-				{task.meeting_date && <span className="qty">Meeting {short(task.meeting_date)}</span>}
+				{isGeneral(task) ? <span className="qty">General</span> : task.meeting_date && <span className="qty">Meeting {short(task.meeting_date)}</span>}
 			</div>
 			<h3>{task.title}</h3>
 			<div className="line">

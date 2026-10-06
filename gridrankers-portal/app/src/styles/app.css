@@ -783,3 +783,17 @@ button.ap-title:hover,button.ap-title:focus-visible{text-decoration:underline}
 .pj-head{display:none}
 .pj-cyc,.pj-mon,.pj-team{display:none}
 }
+
+/* General tasks (SPEC.md 6.13, design GT-A) */
+.side-link .side-pill{margin-left:auto;min-width:20px;text-align:center;font-weight:700;font-size:.7rem;padding:2px 6px}
+.side-link .side-pill.red{background:var(--urgent-bg);color:var(--urgent)}
+.gt{display:flex;flex-direction:column;gap:14px}
+.gt-head{display:flex;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 20px}
+.gt-head h2{margin:0;font-family:var(--display);font-size:1.35rem}
+.gt-head p{margin:2px 0 0;font-size:.85rem}
+.gt-head .btn{margin-left:auto}
+.gt-ic{width:42px;height:42px;border-radius:12px;background:var(--ink);color:var(--panel);display:inline-flex;align-items:center;justify-content:center;flex:none}
+.gt-tabs{margin:0;align-self:flex-start}
+@media (max-width:600px){.gt-head{flex-wrap:wrap}.gt-head .btn{margin-left:0;width:100%}}
+.mp-gen{box-shadow:inset 4px 0 0 var(--ink)}
+.mp-nop{font-size:.7rem;font-weight:800;color:var(--ink);background:var(--panel-2);border-radius:99px;padding:1px 8px}

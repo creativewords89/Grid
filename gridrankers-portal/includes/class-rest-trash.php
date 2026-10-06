@@ -90,7 +90,8 @@ class GRP_REST_Trash extends GRP_REST_Controller {
 		if ( GRP_Store::get( $table, $data['id'] ) ) {
 			return self::conflict( __( 'It has already been restored.', 'gridrankers-portal' ) );
 		}
-		if ( 'grp_projects' !== $table && ! GRP_Store::get( 'grp_projects', (string) ( $data['project_id'] ?? '' ) ) ) {
+		$general = 'grp_meeting_tasks' === $table && GRP_REST_Meeting_Tasks::GENERAL === (string) ( $data['project_id'] ?? '' );
+		if ( 'grp_projects' !== $table && ! $general && ! GRP_Store::get( 'grp_projects', (string) ( $data['project_id'] ?? '' ) ) ) {
 			return self::conflict( __( 'Its project was removed. Restore the project first.', 'gridrankers-portal' ), 'grp_project_missing' );
 		}
 		if ( 'grp_projects' === $table && GRP_Store::find( 'grp_projects', array( 'name' => (string) $data['name'] ) ) ) {

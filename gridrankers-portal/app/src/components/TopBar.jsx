@@ -1,5 +1,6 @@
 import { usePortal } from '../context.js';
 import { ROLE } from '../lib/roles.js';
+import { GENERAL_NAME } from '../lib/tasks.js';
 import Avatar from './Avatar.jsx';
 
 export const TABS = [
@@ -15,15 +16,17 @@ export default function TopBar({ onSignOut }) {
 	const dash = view === 'dash';
 	// Your page and the Team area are not about a project: no project name, search or tabs.
 	const people = view === 'team';
-	const p = !dash && !people && project ? data.projects[project] : null;
+	// General tasks (SPEC.md 6.13): its own screen, with task search but no project tabs.
+	const general = view === 'general';
+	const p = !dash && !people && !general && project ? data.projects[project] : null;
 	const suffix = p && p.state !== 'active' ? ` (${p.state})` : '';
-	const title = people ? (teamPerson === me.id || teamPerson === 'all' ? 'My page' : 'Team') : dash ? 'Dashboard' : p ? p.name + suffix : 'GridRankers';
+	const title = people ? (teamPerson === me.id || teamPerson === 'all' ? 'My page' : 'Team') : dash ? 'Dashboard' : general ? GENERAL_NAME : p ? p.name + suffix : 'GridRankers';
 
 	return (
 		<div className="top">
 			<h1>{title}</h1>
 			{!dash && !people && view !== 'plan' && view !== 'details' && <input className="search" type="search" placeholder="Search tasks" aria-label="Search tasks" value={search} onChange={(e) => setSearch(e.target.value)} />}
-			{!people && (
+			{!people && !general && (
 				<div className="tabs" role="tablist" aria-label={dash ? 'Open the selected project' : undefined}>
 					{TABS.map((t) => (
 						<button key={t.view} role="tab" aria-selected={view === t.view} disabled={dash && !p && !project} onClick={() => setView(t.view)}>
