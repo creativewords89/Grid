@@ -91,11 +91,13 @@ class Test_GRP_Billing extends GRP_REST_TestCase {
 		$this->assertSame( GRP_Cycles::cycle_range( $project, -1, $today )['key'], $last['cycle_key'] );
 		$this->assertSame( 0, GRP_Billing::ensure( $today ), 'safe to repeat' );
 
-		// The start date keeps older cycles off the list.
-		update_option( GRP_Billing::SINCE_OPTION, $last['cycle_start'], false );
+		// From the day the tracker starts: the cycle that had just ended, not the older ones.
+		update_option( GRP_Billing::SINCE_OPTION, $today, false );
 		$other = $this->old_project( 'Bright Dental' );
 		GRP_Billing::ensure( $today );
-		$this->assertCount( 1, GRP_Store::find( 'grp_billing', array( 'project_id' => $other['id'] ) ) );
+		$rows = GRP_Store::find( 'grp_billing', array( 'project_id' => $other['id'] ) );
+		$this->assertCount( 1, $rows );
+		$this->assertSame( $last['cycle_key'], $rows[0]['cycle_key'] );
 
 		// The cron job does it too; a new fee is the amount of new rows.
 		GRP_Store::insert(
@@ -114,22 +116,29 @@ class Test_GRP_Billing extends GRP_REST_TestCase {
 		$this->assertSame( '৳', $again['currency'] );
 	}
 
-	public function test_install_starts_with_the_cycles_of_the_last_month() {
+	public function test_install_starts_with_the_cycle_that_just_ended() {
 		delete_option( GRP_Billing::SINCE_OPTION );
 		GRP_Billing::start();
-		$since = get_option( GRP_Billing::SINCE_OPTION );
-		$this->assertSame( gmdate( 'Y-m-d', strtotime( GRP_Cycles::today() . ' -31 days' ) ), $since );
+		$this->assertSame( GRP_Cycles::today(), get_option( GRP_Billing::SINCE_OPTION ) );
 		update_option( GRP_Billing::SINCE_OPTION, '2020-01-01', false );
 		GRP_Billing::start();
 		$this->assertSame( '2020-01-01', get_option( GRP_Billing::SINCE_OPTION ), 'never moved once set' );
 
-		// So the cycle that just ended is on the list, and no older ones.
+		// Started a week ago: each project's cycle that had ended by then, and every one since.
+		$since = gmdate( 'Y-m-d', strtotime( GRP_Cycles::today() . ' -7 days' ) );
 		update_option( GRP_Billing::SINCE_OPTION, $since, false );
 		$project = $this->old_project();
 		GRP_Billing::ensure( GRP_Cycles::today() );
-		$rows = GRP_Store::find( 'grp_billing', array( 'project_id' => $project['id'] ) );
-		$this->assertCount( 1, $rows );
-		$this->assertSame( GRP_Cycles::cycle_range( $project, -1, GRP_Cycles::today() )['key'], $rows[0]['cycle_key'] );
+		$rows  = GRP_Store::find( 'grp_billing', array( 'project_id' => $project['id'] ), array( 'order_by' => 'cycle_end' ) );
+		$older = array_filter(
+			$rows,
+			static function ( $row ) use ( $since ) {
+				return $row['cycle_end'] < $since;
+			}
+		);
+		$this->assertCount( 1, $older, 'one cycle from before the start' );
+		$this->assertSame( $rows[0], reset( $older ) );
+		$this->assertSame( GRP_Cycles::cycle_range( $project, -1, GRP_Cycles::today() )['key'], end( $rows )['cycle_key'] );
 	}
 
 	public function test_billing_reaches_only_the_super_admin_through_sync() {

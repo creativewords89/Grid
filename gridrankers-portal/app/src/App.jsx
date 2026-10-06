@@ -13,13 +13,14 @@ import CompletionDialog from './components/CompletionDialog.jsx';
 import MeetingMinutes from './components/meeting/MeetingMinutes.jsx';
 import MonthlyTasks from './components/monthly/MonthlyTasks.jsx';
 import GeneralTasks from './components/general/GeneralTasks.jsx';
+import Invoices from './components/billing/Invoices.jsx';
 import TeamView from './components/TeamView.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import RecentActivities from './components/RecentActivities.jsx';
 import KeywordPlan from './components/plan/KeywordPlan.jsx';
 import ProjectDetails from './components/plan/ProjectDetails.jsx';
 import { todayYmd } from './lib/cycles.js';
-import { ROLE, canViewDay } from './lib/roles.js';
+import { ROLE, canViewDay, isAdmin } from './lib/roles.js';
 
 const VIEW_KEY = 'grp:view';
 const PROJECT_KEY = 'grp:project';
@@ -158,8 +159,8 @@ export default function App({ config }) {
 		setCycleOff(0);
 		remember(PROJECT_KEY, id);
 		// Picking a project from a screen that isn't a project's (My day, a person's page, General
-		// tasks) opens its Meeting Minutes.
-		if (view === 'team' || view === 'dash' || view === 'general') setView('board');
+		// tasks, Invoices) opens its Meeting Minutes.
+		if (view === 'team' || view === 'dash' || view === 'general' || view === 'invoices') setView('board');
 	};
 
 	// Always show one project: default to the first active one (reference behaviour).
@@ -249,6 +250,8 @@ export default function App({ config }) {
 							<TeamView />
 						) : view === 'general' ? (
 							<GeneralTasks />
+						) : view === 'invoices' ? (
+							isAdmin(me) ? <Invoices /> : <p className="empty">Only the Super Admin keeps the invoices.</p>
 						) : projects.length === 0 ? (
 							<div className="col" style={{ maxWidth: 520 }}>
 								<h2>Start with a project</h2>

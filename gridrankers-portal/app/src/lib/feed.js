@@ -5,7 +5,7 @@
 // shown above it, not in it (design NF-C). Keys are shared with
 // the bell, so reading an item in one place marks it read in the other.
 import { commentBell } from './comments.js';
-import { setupReminders } from './cycleSetup.js';
+import { allReminders } from './cycleSetup.js';
 import { approvals, dismissedKeys, notices, recipientsOf, strips } from './day.js';
 import { short } from './format.js';
 import { reviewsOf } from './reviews.js';
@@ -180,7 +180,7 @@ export function bellItems(data, me, today, now = Date.now()) {
 		keys.add(i.key);
 		out.push({ ...i, unread: i.sticky || !seen.has('seen:' + i.key) });
 	};
-	setupReminders(data, me, today).forEach((r) => add({ key: r.key, text: r.title, sub: r.tone === 'red' ? 'Overdue · until it’s done' : 'Every day until it’s done', sticky: true, tone: r.tone, reminder: r }));
+	allReminders(data, me, today).forEach((r) => add({ key: r.key, text: r.title, sub: r.tone === 'red' ? 'Overdue · until it’s done' : 'Every day until it’s done', sticky: true, tone: r.tone, reminder: r }));
 	strips(data, me, today, { now, all: true })
 		.filter((s) => s.kind !== 'cycle')
 		.forEach((s) => add({ key: s.key, text: s.title, sub: s.text }));

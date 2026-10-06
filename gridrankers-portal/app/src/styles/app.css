@@ -798,3 +798,75 @@ button.ap-title:hover,button.ap-title:focus-visible{text-decoration:underline}
 @media (max-width:600px){.gt-head{flex-wrap:wrap}.gt-head .btn{margin-left:0;width:100%}}
 .mp-gen{box-shadow:inset 4px 0 0 var(--ink)}
 .mp-nop{font-size:.7rem;font-weight:800;color:var(--ink);background:var(--panel-2);border-radius:99px;padding:1px 8px}
+
+/* Invoices (SPEC.md 6.14, designs TR-A and TR-B): the Super Admin's record of what is billed and paid. */
+.top h1:has(+ .top-sub){margin-right:0}
+.top-sub{margin-right:auto;color:var(--ink-2);font-size:.92rem}
+.bl{display:flex;flex-direction:column;gap:14px}
+.bl-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.bl-tile{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.bl-tl{font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2)}
+.bl-tv{display:flex;align-items:baseline;gap:8px;min-width:0}
+.bl-tv b{font-family:var(--display);font-size:1.5rem;line-height:1.1}
+.bl-tv small{color:var(--ink-2);font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.c-amber{color:var(--doing)} .c-blue{color:var(--accent)} .c-red{color:var(--urgent)} .c-green{color:var(--done)}
+.bl-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.bl-seg{display:flex;border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:2px}
+.bl-seg button,.bl-chips button,.bl-methods button{border:0;background:none;color:var(--ink);font:inherit;font-size:.84rem;font-weight:700;cursor:pointer}
+.bl-seg button{height:30px;padding:0 12px;border-radius:8px}
+.bl-seg button[aria-pressed="true"]{background:var(--ink);color:var(--panel)}
+.bl-chips,.bl-legend,.bl-methods{display:flex;flex-wrap:wrap;gap:6px}
+.bl-chips button,.bl-methods button{height:30px;padding:0 12px;border-radius:99px;border:1px solid var(--line);background:var(--panel)}
+.bl-chips button span{opacity:.65;margin-left:2px}
+.bl-chips button[aria-pressed="true"],.bl-methods button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--panel)}
+.bl-acts{margin-left:auto;display:flex;gap:8px}
+.bl-table{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 1px 2px rgba(10,20,35,.04);overflow-x:auto}
+.bl-row{display:grid;grid-template-columns:minmax(140px,1.4fr) minmax(110px,1fr) minmax(80px,.7fr) minmax(170px,1.5fr) minmax(120px,1fr) minmax(140px,1.2fr) 60px;gap:12px;align-items:center;padding:11px 16px;border-top:1px solid var(--line);font-size:.88rem;min-width:860px}
+.bl-head{border-top:0;font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);padding-top:12px;padding-bottom:8px}
+.bl-name{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+.bl-name b{overflow-wrap:anywhere}
+.bl-older{all:unset;cursor:pointer;font-size:.74rem;font-weight:700;color:var(--urgent)}
+.bl-older:hover{text-decoration:underline}
+.bl-older:focus-visible{outline:2px solid var(--accent)}
+.bl-tag{display:inline-flex;align-items:center;gap:6px;border-radius:99px;padding:2px 10px;font-size:.8rem;font-weight:700;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.bl-tag::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.b-to_send{background:var(--doing-bg);color:var(--doing)}
+.b-waiting{background:color-mix(in srgb,var(--accent) 12%,var(--panel));color:var(--accent)}
+.b-partly{background:color-mix(in srgb,#6D3FC9 12%,var(--panel));color:#6D3FC9}
+.b-overdue{background:var(--urgent-bg);color:var(--urgent)}
+.b-paid{background:var(--done-bg);color:var(--done)}
+.b-skipped{background:var(--panel-2);color:var(--ink-2)}
+.bl-tick{display:inline-flex;align-items:center;gap:8px;cursor:pointer;white-space:nowrap}
+.bl-tick input{width:18px;height:18px;accent-color:var(--done);margin:0;cursor:pointer}
+.bl-key{border-radius:99px;padding:3px 10px;font-size:.8rem;font-weight:700}
+.bl-empty,.bl-none{padding:18px}
+.bl-yrow{display:grid;grid-template-columns:minmax(150px,1.4fr) repeat(6,minmax(84px,1fr)) minmax(90px,.9fr);gap:8px;align-items:center;padding:8px 16px;border-top:1px solid var(--line);font-size:.88rem;min-width:860px}
+.bl-yrow.bl-head{border-top:0}
+.bl-ynav{display:flex;align-items:center;gap:8px}
+.bl-step{width:24px;height:24px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer;font-weight:700;line-height:1}
+.bl-step:disabled{opacity:.4;cursor:default}
+.bl-mh{text-align:center}
+.bl-mh small{font-weight:600}
+.bl-owed{text-align:right}
+.bl-cellw{display:flex;flex-direction:column;gap:4px}
+.bl-cell{display:flex;align-items:center;justify-content:center;height:34px;border-radius:9px;border:1.5px solid transparent;font:inherit;font-size:.8rem;font-weight:700;cursor:pointer;padding:0 6px}
+.bl-cell.b-to_send{border-color:var(--doing)} .bl-cell.b-overdue{border-color:var(--urgent)}
+.bl-cell.b-none{border:1.5px dashed var(--line);background:none;color:var(--ink-2);cursor:default;font-weight:400}
+.bl-cell:not(.b-none):hover{filter:brightness(.96)}
+dialog.bl-dlg{width:min(520px,94vw)}
+dialog.bl-fees{width:min(640px,94vw)}
+.bl-sub{margin:-6px 0 0;font-size:.85rem}
+.bl-check{flex-direction:row !important;align-items:center;gap:8px !important;font-weight:500 !important}
+.bl-check input{width:16px;height:16px;margin:0}
+.bl-pays{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.bl-pays-h{display:flex;align-items:center;gap:10px}
+.bl-pays-h .btn{margin-left:auto}
+.bl-pays ul{list-style:none;margin:0;padding:0}
+.bl-pays li{display:grid;grid-template-columns:auto auto 1fr 32px;gap:10px;align-items:center;padding:4px 0;border-top:1px solid var(--line);font-size:.86rem}
+.bl-fee{display:grid;grid-template-columns:minmax(120px,1.4fr) minmax(80px,1fr) 70px 120px;gap:8px;align-items:center}
+.bl-fee-h{font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2)}
+.bl-fee input{min-width:0}
+.bl-days{display:flex;align-items:center;gap:6px;font-size:.85rem}
+.bl-days input{width:60px}
+@media (max-width:900px){.bl-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:600px){.bl-tiles{grid-template-columns:1fr}.bl-acts{margin-left:0}.bl-fee{grid-template-columns:1fr 1fr}.bl-fee-h{display:none}}

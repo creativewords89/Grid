@@ -15,11 +15,11 @@ defined( 'ABSPATH' ) || exit;
  */
 class GRP_Billing {
 
-	/** Option `Y-m-d`: cycles ending before it get no row (set when schema 11 is installed). */
+	/**
+	 * Option `Y-m-d`, the day the tracker started (schema 11): each project's cycle that had just
+	 * ended by then, and every cycle after it, get a row; older cycles don't.
+	 */
 	const SINCE_OPTION = 'grp_billing_since';
-
-	/** Days back from the install date, so the cycle that just ended is on the list at once. */
-	const START_BACK_DAYS = 31;
 
 	/** Ended cycles per project that get a row when it is missing. */
 	const KEEP_BACK = 6;
@@ -39,16 +39,16 @@ class GRP_Billing {
 	const SKIPPED = 'skipped';
 
 	/**
-	 * Schema 11: start the tracker with the cycles that ended in the last month.
+	 * Schema 11: the tracker starts today.
 	 */
 	public static function start() {
 		if ( ! get_option( self::SINCE_OPTION ) ) {
-			update_option( self::SINCE_OPTION, gmdate( 'Y-m-d', strtotime( GRP_Cycles::today() . ' -' . self::START_BACK_DAYS . ' days' ) ), false );
+			update_option( self::SINCE_OPTION, GRP_Cycles::today(), false );
 		}
 	}
 
 	/**
-	 * The first day a cycle may end on to get a row.
+	 * The day the tracker started.
 	 *
 	 * @return string `Y-m-d`.
 	 */
@@ -70,18 +70,28 @@ class GRP_Billing {
 		$made  = 0;
 
 		foreach ( GRP_Store::find( 'grp_projects', array( 'state' => 'active' ) ) as $project ) {
-			$from  = max( $since, substr( (string) $project['created_at'], 0, 10 ) );
-			$ended = array_values(
+			$created = substr( (string) $project['created_at'], 0, 10 );
+			$ended   = array_values(
 				array_filter(
 					GRP_Cycles::periods_of( $project, $today ),
-					static function ( $p ) use ( $today, $from ) {
+					static function ( $p ) use ( $today, $created ) {
 						// A waived transition between two cycle days is not a billing cycle.
 						$waived = $p['transition'] && 'due' !== $p['monthly'];
-						return $p['end'] < $today && $p['end'] >= $from && ! $waived;
+						return $p['end'] < $today && $p['end'] >= $created && ! $waived;
 					}
 				)
 			);
-			$fee   = $fees[ $project['id'] ] ?? null;
+			// From the cycle that had just ended when the tracker started.
+			$before = array_keys(
+				array_filter(
+					$ended,
+					static function ( $p ) use ( $since ) {
+						return $p['end'] < $since;
+					}
+				)
+			);
+			$ended  = array_slice( $ended, $before ? max( $before ) : 0 );
+			$fee    = $fees[ $project['id'] ] ?? null;
 
 			foreach ( array_slice( $ended, -self::KEEP_BACK ) as $period ) {
 				$id = self::row_id( $project['id'], $period['key'] );

@@ -81,6 +81,7 @@ Three portal roles, stored on the team member (`role`): `admin` (Super Admin), `
 | See Team dashboard / everyone's pages | ✔ | ✔ | own page only |
 | Manage members, roles, codes | ✔ (only Super Admin can grant `admin`) | approve new members as Member only | ✘ |
 | Export / import data | ✔ | ✘ | ✘ |
+| Invoices: see and keep fees, invoices sent and payments (6.14) | ✔ | ✘ (not even sent by `/sync`) | ✘ |
 | Log manual work | for anyone | for anyone | for self |
 | See the **Projects** tab of the Dashboard (7.0) | ✔ | ✔ | ✘ |
 | Take / request day leave for self (6.10) | ✘ (no leave in the portal) | ✔ approved straight away | ✔ request (pending) |
@@ -142,6 +143,8 @@ All tables: `id` CHAR(26) ULID (or keep imported string ids, VARCHAR(64)), `crea
 | `grp_keywords` | id, project_id, keyword VARCHAR(191), checks JSON `{columnId: {by, at}}`, note TEXT NULL, deadline DATE NULL, position INT, created_by — *new* (6.12, schema 8) |
 | `grp_files` | id, name, mime, size INT, path (relative to `uploads/grp-private/`, random name), created_by — *new* (6.6, schema 10; not synced) |
 | `grp_comments` | id, ref_kind ENUM(item,record), ref_id, project_id, body TEXT, files JSON `[{id, mime, name, size}]`, created_by, deleted_at NULL — *new* (6.6, schema 10; synced as `comments`) |
+| `grp_billing` | id = `bl_` + md5(project, cycle key), project_id, project_name (as when made), cycle_key, cycle_start DATE, cycle_end DATE, amount DECIMAL(12,2) NULL, currency VARCHAR(8), sent_at DATE NULL, sent_by NULL, ref NULL (own invoice no. or link), skipped TINYINT (Not billed), note NULL, payments JSON `[{id, amount, date, method, ref, by, at}]` — *new* (6.14, schema 11; Super Admin only) |
+| `grp_billing_fees` | id = project id, fee DECIMAL(12,2) NULL, currency VARCHAR(8), remind_days TINYINT (default 3) — *new* (6.14, schema 11; Super Admin only) |
 | `grp_posts` | id, kind ENUM(announcement,shoutout,notice), title NULL, body, to_member NULL (first shout-outs), to_members JSON NULL (chosen people; NULL = everyone), pinned TINYINT, show_until DATE NULL, created_by, soft delete — *new* |
 
 ## 6. Domain logic
@@ -268,6 +271,14 @@ Work that isn't part of any project (training, office, the agency's own website,
 - **My day**: a person's General tasks are their own group in **My projects**, "General tasks · no project" (dark edge), sorted with the rest; "New general task: “…”" in Notifications and on the bell; reviews, approvals, undo requests and comments work as for project tasks and open the General tasks screen.
 - A deleted General task is restored from the trash without a project; the export writes `clientId: ""`.
 
+### 6.14 Invoices (*new*, Super Admin only, designs TR-A and TR-B)
+Not for sending invoices: the Super Admin's own record, so no invoice is forgotten and every payment is tracked.
+- **A line per project per ended cycle**: the day an **active** project's cycle ends (hourly job, the Super Admin's full sync, or opening Invoices), a line is made for it (up to the last 6 ended cycles of a project). The tracker starts on the day of the update (option `grp_billing_since`, schema 11): each project's cycle that had just ended then, and every one after it; nothing older, nothing from before a project was added. A waived cycle-day transition is not billed. The amount is the project's **fee** (⚙ Fees: fee, currency, **payment reminder N days after the invoice is sent, default 3**); a new fee also fills in the amount of cycles not sent yet that have none.
+- **Payment tag** of a line: **Not billed** (ticked "Not billed for this cycle") · **Paid** (payments ≥ amount; with no amount, any payment) · **To send** (invoice not sent) · **Partly paid** (some paid, "· $X left") · **Overdue** (sent N or more days ago, nothing paid; "· N days") · **Waiting** ("· sent {date}").
+- **Sidebar → Invoices** (Super Admin only; no count). Tiles: To send (names), Waiting for payment (amount left per currency), Overdue (the oldest, days), Received this month. **By project** (TR-A): one row per project for its latest cycle — Last cycle, Amount, Payment tag, **Invoice sent** tick (stamps today; unticking asks first), **Payment received** tick (→ a small form: amount, the rest by default; date; method Bank · bKash · PayPal · Wise · Cash; reference; part payments add up), "+N older cycles open" when an earlier cycle is not paid, and **Open ›** (the cycle in full: amount, currency, invoice sent on, invoice no. or link, Not billed + note, payments with ✕, + Record payment). Tag chips filter the rows. **Year view** (TR-B): projects down, six months across (by the month a cycle ends; ‹ › for earlier), every cell the cycle's tag (opens it), **Owed** on the right. **Export CSV** (every line; cells starting with = + - @ are quoted).
+- **Reminders every day until done**, for the Super Admin, with the New cycle setup reminders (Notifications under the chips, and the bell; can't be dismissed): "{project}: send the invoice for {cycle}" (amber, from the day after the cycle ends until Invoice sent or Not billed) and "{project}: payment not received — N days since the invoice" (red, once Overdue; "$X still to come" when partly paid), with **Open invoices**. Also when no fee is set.
+- **Private**: every `/billing` route is Super Admin only (MANAGE_BILLING); `/sync` sends `billing` and `billing_fees` (and their deletions) to nobody else. Not in the export yet.
+
 ## 7. Screens (match the reference file)
 
 ### 7.0 Dashboard (everyone)
@@ -379,6 +390,7 @@ The team sections are tabs of **My page** for leaders and the Super Admin (7.6) 
 | GET `/trash` · POST `/trash/id/restore` · DELETE `/trash/id` | trash |
 | GET/POST/PATCH/DELETE `/members[/id]` · POST `/members/id/code` | team |
 | POST `/notifications/dismiss` | dismissals |
+| GET `/billing` · PUT `/billing/projects/id` `{fee, currency, remind_days}` · PATCH `/billing/id` `{sent?, sent_at?, amount?, currency?, ref?, skipped?, note?}` · POST `/billing/id/payments` `{amount, date?, method?, ref?}` · DELETE `/billing/id/payments/pid` | invoices (6.14, Super Admin only) |
 | GET `/export` · POST `/import` (admin, nonce) | data |
 
 All writes validate input, check permissions (section 3), write the audit row in the same transaction, and return the updated row.
@@ -514,5 +526,7 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 60. (Released as 0.1.25.) Fix: from the General tasks screen, clicking a project in the sidebar opens that project's Meeting Minutes (it stayed on General tasks). Playwright: General tasks → Bright Dental opens Bright Dental.
 
 61. Fix: in Notifications, the Latest items line up on the left with the cards above (their unread dot sits in the left padding instead of taking a column). Playwright: the feed's icons are where the cards' icons are.
+
+62. Invoices (6.14, designs TR-A and TR-B): the Super Admin's record of invoices and payments — schema 11 (`grp_billing`, `grp_billing_fees`), a line per project per ended cycle, payment tags, fees with a 3-day payment reminder by default, sidebar **Invoices** with By project and Year view, payments, CSV, and daily reminders with the setup reminders. **Tests:** PHPUnit (every route Super Admin only, lines made once from the start day, fees fill in amounts, sent / Not billed / payments, tags, `/sync` sends nothing to others), Vitest (tags, totals, latest per project, year months, CSV, reminders on the box and bell), Playwright (Team Leader has no link; reminder → Invoices; fee, Invoice sent, part payment, Paid; Year view).
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).

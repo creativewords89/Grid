@@ -18,15 +18,18 @@ export default function TopBar({ onSignOut }) {
 	const people = view === 'team';
 	// General tasks (SPEC.md 6.13): its own screen, with task search but no project tabs.
 	const general = view === 'general';
-	const p = !dash && !people && !general && project ? data.projects[project] : null;
+	// Invoices (SPEC.md 6.14): the Super Admin's screen, no search or project tabs.
+	const invoices = view === 'invoices';
+	const p = !dash && !people && !general && !invoices && project ? data.projects[project] : null;
 	const suffix = p && p.state !== 'active' ? ` (${p.state})` : '';
-	const title = people ? (teamPerson === me.id || teamPerson === 'all' ? 'My page' : 'Team') : dash ? 'Dashboard' : general ? GENERAL_NAME : p ? p.name + suffix : 'GridRankers';
+	const title = people ? (teamPerson === me.id || teamPerson === 'all' ? 'My page' : 'Team') : dash ? 'Dashboard' : general ? GENERAL_NAME : invoices ? 'Invoices' : p ? p.name + suffix : 'GridRankers';
 
 	return (
 		<div className="top">
 			<h1>{title}</h1>
-			{!dash && !people && view !== 'plan' && view !== 'details' && <input className="search" type="search" placeholder="Search tasks" aria-label="Search tasks" value={search} onChange={(e) => setSearch(e.target.value)} />}
-			{!people && !general && (
+			{!dash && !people && !invoices && view !== 'plan' && view !== 'details' && <input className="search" type="search" placeholder="Search tasks" aria-label="Search tasks" value={search} onChange={(e) => setSearch(e.target.value)} />}
+			{invoices && <span className="top-sub">Your record of what’s billed and paid</span>}
+			{!people && !general && !invoices && (
 				<div className="tabs" role="tablist" aria-label={dash ? 'Open the selected project' : undefined}>
 					{TABS.map((t) => (
 						<button key={t.view} role="tab" aria-selected={view === t.view} disabled={dash && !p && !project} onClick={() => setView(t.view)}>
