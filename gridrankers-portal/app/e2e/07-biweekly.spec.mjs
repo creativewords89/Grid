@@ -38,7 +38,11 @@ test('bi-weekly meeting and monthly tasks', async ({ page }) => {
 	await task.getByRole('button', { name: 'Completed' }).click();
 	await page.getByLabel('What you did').fill('Report sent');
 	await page.getByRole('button', { name: 'Complete', exact: true }).click();
-	await expect(task.locator('.wk.wd')).toHaveCount(1);
-	await expect(task.locator('.wk.wd')).toHaveClass(/cur/);
+	await expect(task.locator('.wk.wkd')).toHaveCount(1);
+	await expect(task.locator('.wk.wkd')).toHaveClass(/cur/);
+	// A finished period keeps its full width and its label on one line (not the 34px weekday button).
+	const [done, open] = [await task.locator('.wk.wkd').boundingBox(), await task.locator('.wk:not(.wkd)').first().boundingBox()];
+	expect(Math.abs(done.width - open.width)).toBeLessThan(2);
+	expect(Math.abs(done.height - open.height)).toBeLessThan(2);
 	noErrors();
 });

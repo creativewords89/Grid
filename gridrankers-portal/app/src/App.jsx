@@ -157,7 +157,9 @@ export default function App({ config }) {
 		setProjectState(id);
 		setCycleOff(0);
 		remember(PROJECT_KEY, id);
-		if (view === 'team' || view === 'dash') setView('board');
+		// Picking a project from a screen that isn't a project's (My day, a person's page, General
+		// tasks) opens its Meeting Minutes.
+		if (view === 'team' || view === 'dash' || view === 'general') setView('board');
 	};
 
 	// Always show one project: default to the first active one (reference behaviour).

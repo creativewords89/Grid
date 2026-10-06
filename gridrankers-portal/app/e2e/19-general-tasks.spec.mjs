@@ -22,6 +22,8 @@ test('general tasks', async ({ page }) => {
 	await dlg.getByRole('button', { name: 'Save task' }).click();
 	await page.getByText('Task added').waitFor();
 	await expect(card(page, title)).toBeVisible();
+	// The Add card is the last box, after the tasks.
+	await expect(page.locator('.mcards > *').last()).toHaveAccessibleName('Add general task');
 	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/general.png' });
 	await signOut(page);
 
@@ -48,6 +50,11 @@ test('general tasks', async ({ page }) => {
 	await page.locator('.gt-tabs').getByRole('tab', { name: 'Recent Activities' }).click();
 	await expect(page.locator('.ra-table')).toContainText(title);
 	await page.locator('.gt-tabs').getByRole('tab', { name: 'Tasks' }).click();
+	// From General tasks, a project in the sidebar opens that project.
+	await page.locator('aside .pick', { hasText: 'Bright Dental' }).click();
+	await expect(page.locator('.top h1')).toHaveText('Bright Dental');
+	await expect(page.locator('.top .tabs').getByRole('tab', { name: 'Meeting Minutes' })).toHaveAttribute('aria-selected', 'true');
+	await side.click();
 	await card(page, title).getByRole('button', { name: 'Edit' }).click();
 	await dlg.getByLabel('Where').selectOption({ label: 'Acme Plumbing' });
 	await dlg.getByRole('button', { name: 'Save changes' }).click();

@@ -1153,7 +1153,7 @@ body.locked .app{display:none!important}
 .seg-cap{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .back-wk{border:0;background:none;padding:0;font-size:.74rem;font-weight:600;color:var(--accent);text-decoration:underline;text-underline-offset:2px}
 .mcard.off-wk .seg-cap span{color:var(--accent)}
-.wk.wd{background:var(--done);border-color:var(--done);color:#fff}
+.wk.wkd{background:var(--done);border-color:var(--done);color:#fff}
 .wk.wp{background:var(--doing-bg);border-color:var(--doing);color:var(--doing)}
 .wk.wl{background:var(--urgent-bg);border-color:var(--urgent);color:var(--urgent)}
 .seg-cap{font-size:.74rem;color:var(--ink-2);margin-top:8px;font-weight:600}
