@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { usePortal } from '../context.js';
 import { rowsOf } from '../lib/store.js';
+import { GENERAL, GENERAL_NAME } from '../lib/tasks.js';
 
 const GROUPS = [
 	{ state: 'active', title: 'Active projects' },
@@ -36,11 +37,13 @@ export default function Sidebar({ syncStatus }) {
 	const current = onProject && data.projects[project];
 
 	const counts = (id) => {
-		if (view === 'monthly') return { n: monthly.filter((t) => t.project_id === id).length, red: false, title: 'Monthly tasks' };
+		if (view === 'monthly' && id !== GENERAL) return { n: monthly.filter((t) => t.project_id === id).length, red: false, title: 'Monthly tasks' };
 		const left = tasks.filter((t) => t.project_id === id && t.status !== 'done');
 		const urgent = left.filter((t) => t.priority === 'urgent').length;
 		return { n: left.length, red: urgent > 0, title: urgent ? `${left.length} open, ${urgent} urgent` : `${left.length} open tasks` };
 	};
+
+	const general = counts(GENERAL);
 
 	return (
 		<aside>
@@ -57,6 +60,19 @@ export default function Sidebar({ syncStatus }) {
 					<path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />
 				</svg>
 				My day
+			</button>
+			{/* General tasks (SPEC.md 6.13): work that isn't part of any project. */}
+			<button type="button" className="side-link" aria-current={view === 'general' ? 'page' : undefined} onClick={() => setView('general')}>
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+					<rect x="4" y="4" width="16" height="16" rx="3" />
+					<path d="M8 9h8M8 13h8M8 17h5" />
+				</svg>
+				{GENERAL_NAME}
+				{general.n > 0 && (
+					<span className={'pill side-pill' + (general.red ? ' red' : '')} title={general.title}>
+						{general.n}
+					</span>
+				)}
 			</button>
 			{GROUPS.map((g) => {
 				const list = projects.filter((p) => p.state === g.state);

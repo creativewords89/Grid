@@ -17,19 +17,21 @@ function ProjectBox({ group, today }) {
 	const [more, setMore] = useState(false);
 	const shown = more ? group.tasks : group.tasks.slice(0, 2);
 	const hidden = group.tasks.length - shown.length;
+	const general = !!group.project.general;
 	const open = (tab, title) => {
 		setProject(group.project.id);
 		setSearch(title || '');
-		setView(tab);
+		setView(general ? 'general' : tab);
 	};
 	const soon = (t) => !t.overdue && !!t.due && daysBetween(today, t.due) <= SOON_DAYS;
 
 	return (
-		<article className={'mp-box e-' + group.flag.tone}>
+		<article className={'mp-box e-' + group.flag.tone + (general ? ' mp-gen' : '')}>
 			<div className="mp-head">
 				<button type="button" className="mp-name" onClick={() => open('board')}>
 					{group.project.name}
 				</button>
+				{general && <span className="mp-nop">no project</span>}
 				<span className="mp-count">
 					{group.tasks.length} task{group.tasks.length === 1 ? '' : 's'}
 				</span>

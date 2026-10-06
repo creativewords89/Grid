@@ -22,7 +22,8 @@ class GRP_REST_Audit extends GRP_REST_Controller {
 	}
 
 	/**
-	 * GET /audit `?project=&from=&to=&page=` (dates inclusive, UTC).
+	 * GET /audit `?project=&general=&from=&to=&page=` (dates inclusive, UTC); `general=1`: the
+	 * General tasks' changes (no project, SPEC.md 6.13).
 	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response|WP_Error
@@ -31,6 +32,9 @@ class GRP_REST_Audit extends GRP_REST_Controller {
 		$where = array();
 		if ( ! empty( $request['project'] ) ) {
 			$where['project_id'] = (string) $request['project'];
+		} elseif ( rest_sanitize_boolean( $request['general'] ?? false ) ) {
+			$where['project_id'] = GRP_REST_Meeting_Tasks::GENERAL;
+			$where['type']       = 'items';
 		}
 
 		$from = self::date( $request['from'] ?? '', 'from date' );

@@ -9,6 +9,7 @@ import { rowsOf } from './store.js';
 import { cycleSetup } from './cycleSetup.js';
 import { isManager } from './roles.js';
 import { untickRequests } from './plan.js';
+import { GENERAL, GENERAL_NAME, boardOf, liveTask } from './tasks.js';
 
 // My day (SPEC.md 7.0): what each box shows, as pure functions of the synced data.
 
@@ -47,7 +48,8 @@ export function myProjects(data, me, today) {
 		.map(([pid, tasks]) => {
 			tasks.sort((a, b) => b.overdue - a.overdue || b.urgent - a.urgent || String(a.due || '9999').localeCompare(String(b.due || '9999')) || a.title.localeCompare(b.title));
 			const flag = flagOf(tasks, today);
-			return { project: data.projects[pid], tasks, flag };
+			// General tasks (SPEC.md 6.13) are one group of their own, "General tasks · no project".
+			return { project: pid === GENERAL ? { id: GENERAL, name: GENERAL_NAME, general: true } : data.projects[pid], tasks, flag };
 		})
 		.sort((a, b) => RANK[a.flag.tone] - RANK[b.flag.tone] || String(a.flag.due || '9999').localeCompare(String(b.flag.due || '9999')) || a.project.name.localeCompare(b.project.name));
 }
@@ -182,7 +184,7 @@ export function undoRequests(data) {
 	const out = [];
 	rowsOf(data, 'meeting_tasks').forEach((t) => {
 		const u = t.undo_request;
-		if (u && u.by && data.projects[t.project_id]) out.push({ kind: 'undo', id: 'item:' + t.id, at: u.at, who: data.members[u.by], undo: u, title: t.title, project: data.projects[t.project_id], tab: 'board', item: t });
+		if (u && u.by && liveTask(data, t)) out.push({ kind: 'undo', id: 'item:' + t.id, at: u.at, who: data.members[u.by], undo: u, title: t.title, project: data.projects[t.project_id] || { id: GENERAL, name: GENERAL_NAME }, tab: boardOf(t), item: t });
 	});
 	rowsOf(data, 'records').forEach((r) => {
 		const u = r.undo_request;

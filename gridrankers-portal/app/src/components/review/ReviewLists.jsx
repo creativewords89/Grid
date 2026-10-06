@@ -1,7 +1,7 @@
 import { usePortal } from '../../context.js';
 import { dateTime } from '../../lib/format.js';
 import { mayDecide, pendingReviews, reviewsOf } from '../../lib/reviews.js';
-import { REVIEW_TXT } from '../../lib/tasks.js';
+import { GENERAL_NAME, REVIEW_TXT } from '../../lib/tasks.js';
 import useReview from './useReview.js';
 
 function useOpen() {
@@ -38,7 +38,7 @@ export function WaitingForReview() {
 								<b>{name(x.review.submittedBy)}</b> completed <b>“{x.title}”</b>
 							</div>
 							<div className="nt-meta">
-								<span>{data.projects[x.project_id].name}</span>
+								<span>{data.projects[x.project_id] ? data.projects[x.project_id].name : GENERAL_NAME}</span>
 								<span>{x.where}</span>
 								<span>{dateTime(x.review.submittedAt)}</span>
 							</div>
@@ -101,7 +101,7 @@ export function ReviewsOfWork({ memberId, self }) {
 								<span className={'rv-tag rv-t-' + x.review.state}>{REVIEW_TXT[x.review.state]}</span> <b>{x.title}</b>
 							</div>
 							<div className="nt-meta">
-								<span>{data.projects[x.project_id].name}</span>
+								<span>{data.projects[x.project_id] ? data.projects[x.project_id].name : GENERAL_NAME}</span>
 								{x.where && <span>{x.where}</span>}
 								{x.review.state !== 'pending' && name(x.review.by) && <span>by {name(x.review.by)}</span>}
 								{x.review.note && <span className="rv-note-i">“{x.review.note}”</span>}

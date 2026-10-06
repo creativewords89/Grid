@@ -57,6 +57,7 @@ Three portal roles, stored on the team member (`role`): `admin` (Super Admin), `
 | Add a project | ✔ | ✔ | ✘ |
 | Move project Active/Paused/Inactive | ✔ | ✔ | ✘ |
 | Review last cycle and send feedback (6.11) | ✔ | ✔ | ✘ |
+| Add a General task, or move a task between General and a project (6.13; locked while the profile is incomplete) | ✔ | ✔ | ✘ (works on the ones assigned to them) |
 | Edit a project's Details: descriptions and links (6.12; locked while the profile is incomplete) | ✔ | ✔ | ✔ |
 | Keyword checklist: add / rename / remove keywords, set deadlines, change the columns (6.12; locked while the profile is incomplete) | ✔ | ✔ | ✔ |
 | Keyword checklist: tick a box, write the note, ask to untick a box (6.12; locked while the profile is incomplete) | ✔ | ✔ | ✔ |
@@ -260,6 +261,13 @@ When an **active** project starts a new cycle, a Team Leader or the Super Admin 
   - Everyone ticks boxes (hover: "Ticked by {name} · {when}"), writes the note (saved on Enter or leaving the field), adds, renames and removes keywords, sets deadlines and changes the columns (not while their profile is incomplete). The footer counts each column and how many keywords are fully done.
 - Keywords stay while their project is in the trash and are deleted with it forever. Both are in the export / import (`clients[].details`, `clients[].kwColumns`, `keywords`).
 
+### 6.13 General tasks (*new*, designs GT-A, GT-B, GT-C)
+Work that isn't part of any project (training, office, the agency's own website, reports). A General task is a meeting task with **no project** (`grp_meeting_tasks.project_id` = `''`), so it has everything a meeting task has — statuses, quantity, deadline (calendar dates: none, weekly, bi-weekly, monthly, a date or a range), people, the submission form, review, Request undo, comments, files, notifications, export / import, trash — and nothing that belongs to a project: no cycle, no New cycle setup, no Monthly / Plan / Details tabs, not in the Projects tab table.
+- **Sidebar**: **General tasks** under My day, with the number of open General tasks (red when one is urgent). It opens the **General tasks** screen: a header card ("Work that isn't part of any project — …", **+ Add task** for Team Leaders and the Super Admin), tabs **Tasks · Recent Activities** (`GET /audit?general=1`), chips **All · Mine · Not started · In progress · Completed · Overdue** with counts, the task search in the top bar, and the same task cards (the card's corner says "General") with an **Add general task** card for leaders. Open first (most urgent), then finished.
+- **Adding / moving**: the task dialog's **Where** lists **General — not part of a project** (Team Leaders and the Super Admin) before the projects; from the General tasks screen it is already picked. Changing Where on Edit moves a task between General and a project; history, review and comments go with it (audit: "Project: General → Acme"). Team Members can't add General tasks (server: ADD_GENERAL_TASK) and work only on the ones assigned to them, like any task (6.6).
+- **My day**: a person's General tasks are their own group in **My projects**, "General tasks · no project" (dark edge), sorted with the rest; "New general task: “…”" in Notifications and on the bell; reviews, approvals, undo requests and comments work as for project tasks and open the General tasks screen.
+- A deleted General task is restored from the trash without a project; the export writes `clientId: ""`.
+
 ## 7. Screens (match the reference file)
 
 ### 7.0 Dashboard (everyone)
@@ -350,7 +358,7 @@ The team sections are tabs of **My page** for leaders and the Super Admin (7.6) 
 | GET `/sync?since=` | all changed rows across tables since cursor (+ deletions) |
 | GET/POST/PATCH/DELETE `/projects[/id]` | projects; PATCH `/projects/id/state`, POST `/projects/id/cycle`, POST `/projects/id/cycle-review` `{task_id (monthly or meeting task), ok, note?, carry?}` (6.11) |
 | PUT `/projects/id/details` `{sections}` · PUT `/projects/id/keyword-columns` `{columns}` · POST `/projects/id/keywords` `{keywords: [..], deadline?}` · PATCH `/keywords/id` `{check: {column, on}}` / `{ask_untick: {column, note?}}` / `{keep: {column}}` / `{note}` / `{keyword}` / `{deadline}` / `{position}` · DELETE `/keywords/id` | project details and keyword checklist (6.12) |
-| GET/POST/PATCH/DELETE `/meeting-tasks[/id]` | tasks; POST `/meeting-tasks/id/status`, `/progress` `{memberId,delta}` |
+| GET/POST/PATCH/DELETE `/meeting-tasks[/id]` | tasks (`project_id: ''` = a General task, 6.13); POST `/meeting-tasks/id/status`, `/progress` `{memberId,delta}` |
 | GET/POST/PATCH/DELETE `/monthly-tasks[/id]` | tasks |
 | POST `/records/tick` `{taskId, periodKey, partId?, memberId?, delta, note?, link?}` · POST `/records/status` | recurring progress |
 | POST `/meeting-tasks/id/undo` `{reason}` · POST `/meeting-tasks/id/undo/decide` `{action: undo|keep, note?}` · POST `/records/undo` `{taskId, periodKey, reason}` · POST `/records/undo/decide` `{taskId, periodKey, action, note?}` | request undo (6.6) |
@@ -367,7 +375,7 @@ The team sections are tabs of **My page** for leaders and the Super Admin (7.6) 
 | GET `/weather` | today's weather for the signed-in person's city (6.10) |
 | PUT `/settings/messages` (Super Admin) | automatic messages |
 | GET/POST/DELETE `/activity` | logged work |
-| GET `/audit?project=&from=&to=` | Recent Activities |
+| GET `/audit?project=&general=&from=&to=` | Recent Activities (`general=1`: the General tasks) |
 | GET `/trash` · POST `/trash/id/restore` · DELETE `/trash/id` | trash |
 | GET/POST/PATCH/DELETE `/members[/id]` · POST `/members/id/code` | team |
 | POST `/notifications/dismiss` | dismissals |
@@ -496,5 +504,7 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 55. (Released as 0.1.23.) Projects tab as a health table (7.0, design PJ-A4): one row per project, worst first, with cycle, monthly progress, the most urgent thing that needs attention (+N for the rest) and the team; the Needs attention box is gone. **Tests:** Vitest (what needs attention in which order, health, the team), Playwright (row with its dot and most urgent item, +N lists them all, menu still moves and deletes).
 
 56. Fix: the New cycle setup reminders sit under the Notifications filter chips (All and To approve), above Waiting for you, not above the chips. Playwright: the reminder comes after the chips.
+
+57. General tasks (6.13, designs GT-A, GT-B, GT-C): meeting tasks with no project; sidebar link with a count, the General tasks screen (tabs, chips, cards, Recent Activities), Where in the task dialog (add and move), My day group, notifications, reviews and undo. **Tests:** PHPUnit (permission row, only leaders add, the person on it works on it, moved to a project and back with the audit, restored from the trash without a project), Vitest (General vs project tasks, the board's order, My day group, new-task notice and review open the General board), Playwright (leader adds from the sidebar screen, member sees it on My day and in Notifications and starts it, Recent Activities, Edit → Where moves it to a project).
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).

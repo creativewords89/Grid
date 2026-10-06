@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { usePortal } from '../../context.js';
 import { addDays } from '../../lib/cycles.js';
 import { monthEnd, mondayOf, short, toDate, weekNo } from '../../lib/format.js';
-import { assigneesOf } from '../../lib/tasks.js';
+import { isManager } from '../../lib/roles.js';
+import { GENERAL, assigneesOf, isGeneral } from '../../lib/tasks.js';
 import { submission } from './useTaskActions.js';
 import { rowsOf } from '../../lib/store.js';
 import { CalendarPicker } from '../DatePicker.jsx';
@@ -119,15 +120,19 @@ function DeadlineField({ value, onChange, today }) {
 	);
 }
 
-// Add / edit a meeting task (SPEC.md 7.2 "Task dialog"). Members can add but not edit.
-export default function TaskDialog({ taskId, onClose }) {
+// The Where field's value for a General task (SPEC.md 6.13); the API gets '' for it.
+const GEN = '__general';
+
+// Add / edit a meeting task (SPEC.md 7.2 "Task dialog"). Members can add but not edit. `general`:
+// opened from the General tasks board, so General is picked.
+export default function TaskDialog({ taskId, onClose, general = false }) {
 	const { api, data, dispatch, toast, me, project, today, askCompletion } = usePortal();
 	const editing = taskId ? data.meeting_tasks[taskId] : null;
 	const members = rowsOf(data, 'members');
 	const projects = rowsOf(data, 'projects').sort((a, b) => a.name.localeCompare(b.name));
 
 	const [f, setF] = useState(() => ({
-		project_id: editing ? editing.project_id : project || '',
+		project_id: editing ? (isGeneral(editing) ? GEN : editing.project_id) : general ? GEN : project || '',
 		title: editing ? editing.title : '',
 		notes: editing ? editing.notes || '' : '',
 		url: editing ? editing.url || '' : '',
@@ -161,10 +166,10 @@ export default function TaskDialog({ taskId, onClose }) {
 	const submit = async (e) => {
 		e.preventDefault();
 		if (!f.title.trim()) return setError('Say what needs to change.');
-		if (!f.project_id) return setError('Pick a project.');
+		if (!f.project_id) return setError('Pick a project, or General.');
 		if (f.url && !/^https?:\/\//i.test(f.url)) return setError('The page URL should start with https://');
 		const body = {
-			project_id: f.project_id,
+			project_id: f.project_id === GEN ? GENERAL : f.project_id,
 			title: f.title.trim(),
 			notes: f.notes,
 			url: f.url.trim(),
@@ -197,16 +202,20 @@ export default function TaskDialog({ taskId, onClose }) {
 			<form onSubmit={submit} noValidate>
 				<h2 id="grpTaskTitle">{editing ? 'Edit task' : 'Add task'}</h2>
 				<label>
-					Client
+					Where
 					<select value={f.project_id} onChange={set('project_id')} required>
 						<option value="" disabled>
 							Pick a project
 						</option>
-						{projects.map((p) => (
-							<option key={p.id} value={p.id}>
-								{p.name}
-							</option>
-						))}
+						{/* General tasks are added and moved by Team Leaders and the Super Admin (SPEC.md 6.13). */}
+						{(isManager(me) || f.project_id === GEN) && <option value={GEN}>General — not part of a project</option>}
+						<optgroup label="Projects">
+							{projects.map((p) => (
+								<option key={p.id} value={p.id}>
+									{p.name}
+								</option>
+							))}
+						</optgroup>
 					</select>
 				</label>
 				<label>

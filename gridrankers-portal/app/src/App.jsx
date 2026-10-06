@@ -12,6 +12,7 @@ import TopBar from './components/TopBar.jsx';
 import CompletionDialog from './components/CompletionDialog.jsx';
 import MeetingMinutes from './components/meeting/MeetingMinutes.jsx';
 import MonthlyTasks from './components/monthly/MonthlyTasks.jsx';
+import GeneralTasks from './components/general/GeneralTasks.jsx';
 import TeamView from './components/TeamView.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import RecentActivities from './components/RecentActivities.jsx';
@@ -244,6 +245,8 @@ export default function App({ config }) {
 							<Dashboard onSignOut={signOut} />
 						) : view === 'team' ? (
 							<TeamView />
+						) : view === 'general' ? (
+							<GeneralTasks />
 						) : projects.length === 0 ? (
 							<div className="col" style={{ maxWidth: 520 }}>
 								<h2>Start with a project</h2>

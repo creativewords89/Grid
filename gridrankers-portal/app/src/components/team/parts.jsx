@@ -5,6 +5,7 @@ import { perfRange, perfShift, projectMix } from '../../lib/perf.js';
 import { isAdmin, isManager } from '../../lib/roles.js';
 import { rowsOf } from '../../lib/store.js';
 import Modal from '../Modal.jsx';
+import { GENERAL, GENERAL_NAME } from '../../lib/tasks.js';
 
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -112,7 +113,7 @@ export function AssignedList({ list, emptyText, limit }) {
 					<div className="as-main">
 						<b>{x.title}</b>
 						<span>
-							{data.projects[x.project_id]?.name} · {x.sub}
+							{x.project_id === GENERAL && x.kind === 'board' ? GENERAL_NAME : data.projects[x.project_id]?.name} · {x.sub}
 							{x.when ? ' · ' + x.when : ''}
 						</span>
 					</div>
@@ -122,7 +123,7 @@ export function AssignedList({ list, emptyText, limit }) {
 						className="btn small"
 						onClick={() => {
 							setProject(x.project_id);
-							setView(x.kind === 'board' ? 'board' : 'monthly');
+							setView(x.kind === 'board' ? (x.project_id === GENERAL ? 'general' : 'board') : 'monthly');
 						}}
 					>
 						Open
