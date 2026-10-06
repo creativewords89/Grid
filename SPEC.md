@@ -511,4 +511,6 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 
 59. General tasks screen: the **Add general task** card comes last, after the tasks (as on Meeting Minutes). Playwright: the last box is the Add card.
 
+60. Fix: from the General tasks screen, clicking a project in the sidebar opens that project's Meeting Minutes (it stayed on General tasks). Playwright: General tasks → Bright Dental opens Bright Dental.
+
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).

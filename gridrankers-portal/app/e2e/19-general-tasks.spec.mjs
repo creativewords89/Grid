@@ -50,6 +50,11 @@ test('general tasks', async ({ page }) => {
 	await page.locator('.gt-tabs').getByRole('tab', { name: 'Recent Activities' }).click();
 	await expect(page.locator('.ra-table')).toContainText(title);
 	await page.locator('.gt-tabs').getByRole('tab', { name: 'Tasks' }).click();
+	// From General tasks, a project in the sidebar opens that project.
+	await page.locator('aside .pick', { hasText: 'Bright Dental' }).click();
+	await expect(page.locator('.top h1')).toHaveText('Bright Dental');
+	await expect(page.locator('.top .tabs').getByRole('tab', { name: 'Meeting Minutes' })).toHaveAttribute('aria-selected', 'true');
+	await side.click();
 	await card(page, title).getByRole('button', { name: 'Edit' }).click();
 	await dlg.getByLabel('Where').selectOption({ label: 'Acme Plumbing' });
 	await dlg.getByRole('button', { name: 'Save changes' }).click();
