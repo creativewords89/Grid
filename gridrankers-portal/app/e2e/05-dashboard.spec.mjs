@@ -1,4 +1,4 @@
-// Dashboard (SPEC.md 7.0): lands on My day; the Projects tab has status tabs, clean cards with a ⋯ menu, adding
+// Dashboard (SPEC.md 7.0): lands on My day; the Projects tab has status tabs, a health table (design PJ-A4) with a ⋯ menu, adding
 // (Super Admin / Team Leader only), deleting and restoring a project (Team → Settings);
 // Recent Activities is per project (7.4).
 import { test, expect } from '@playwright/test';
@@ -6,7 +6,7 @@ import { LEAD, MAX, addMeetingTask, apiCall, card, openProject, openProjectsTab,
 
 test('dashboard, project lifecycle and per-project Recent Activities', async ({ page }) => {
 	const noErrors = watchErrors(page);
-	const pd = (name) => page.locator('.pd-card', { hasText: name });
+	const pd = (name) => page.locator('.pj-row', { hasText: name });
 	const tab = (name) => page.locator('.pd-tabs').getByRole('tab', { name: new RegExp(`^${name}`) });
 	const menu = async (name, item) => {
 		await page.getByRole('button', { name: `Options for ${name}` }).click();
@@ -57,13 +57,20 @@ test('dashboard, project lifecycle and per-project Recent Activities', async ({ 
 	await tab('Active').click();
 	await expect(pd('Harbor Hotel')).toBeVisible();
 	await expect(pd('Harbor Hotel')).toContainText('0/6');
+	// Needs attention: the most urgent item with why, +N for the rest; amber = something to look at.
+	await expect(pd('Harbor Hotel').locator('.pj-item')).toContainText('· nobody assigned');
+	await expect(pd('Harbor Hotel').locator('.pj-dot')).toHaveClass(/h-amber/);
+	await pd('Harbor Hotel').getByRole('button', { name: '5 more for Harbor Hotel' }).click();
+	await expect(page.getByRole('dialog', { name: 'Harbor Hotel: needs attention' }).locator('.pj-pop-i')).toHaveCount(6);
+	await page.keyboard.press('Escape');
+	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/projects-tab.png' });
 
 	// A card opens the project; GridRankers goes back to the Dashboard.
 	await pd('Harbor Hotel').getByRole('button', { name: 'Open Harbor Hotel' }).click();
 	await expect(page.locator('.top h1')).toHaveText('Harbor Hotel');
 	await addMeetingTask(page, 'Fix booking widget', 'Max Member');
 	await page.getByRole('button', { name: /GridRankers/ }).click();
-	await expect(pd('Harbor Hotel')).toContainText('1 open task');
+	await expect(pd('Harbor Hotel').locator('.pj-team .av')).toHaveCount(1);
 
 	// Recent Activities: a table for the selected project, its deleted tasks behind a button.
 	await openProject(page, 'Acme Plumbing');
@@ -116,7 +123,7 @@ test('dashboard, project lifecycle and per-project Recent Activities', async ({ 
 	await page.getByRole('button', { name: /GridRankers/ }).click();
 	await openProjectsTab(page);
 	await expect(pd('Harbor Hotel')).toBeVisible();
-	await expect(pd('Harbor Hotel')).toContainText('1 open task');
+	await expect(pd('Harbor Hotel').locator('.pj-team .av')).toHaveCount(1);
 	await openProject(page, 'Harbor Hotel');
 	await expect(card(page, 'Fix booking widget')).toBeVisible();
 	await signOutOwner(page);

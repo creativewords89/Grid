@@ -14,7 +14,7 @@ test('weekly tasks use cycle weeks', async ({ page }) => {
 	await dlg.getByLabel('Project name').fill('Mid Month Co');
 	await dlg.getByLabel('Cycle start day').selectOption('15');
 	await dlg.getByRole('button', { name: 'Add project' }).click();
-	await page.locator('.pd-card', { hasText: 'Mid Month Co' }).waitFor();
+	await page.locator('.pj-row', { hasText: 'Mid Month Co' }).waitFor();
 
 	await openProject(page, 'Mid Month Co');
 	await page.getByRole('tab', { name: 'Monthly Tasks' }).click();
