@@ -22,6 +22,8 @@ test('general tasks', async ({ page }) => {
 	await dlg.getByRole('button', { name: 'Save task' }).click();
 	await page.getByText('Task added').waitFor();
 	await expect(card(page, title)).toBeVisible();
+	// The Add card is the last box, after the tasks.
+	await expect(page.locator('.mcards > *').last()).toHaveAccessibleName('Add general task');
 	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/general.png' });
 	await signOut(page);
 

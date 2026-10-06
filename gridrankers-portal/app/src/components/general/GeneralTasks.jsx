@@ -80,6 +80,10 @@ export default function GeneralTasks() {
 						))}
 					</div>
 					<div className="mcards">
+						{/* The Add card comes last, after the tasks (as on Meeting Minutes). */}
+						{list.map((t) => (
+							<TaskCard key={t.id} task={t} onDetails={(id) => setDialog({ type: 'details', id })} onEdit={(id) => setDialog({ type: 'edit', id })} />
+						))}
 						{lead && filter === 'all' && (
 							<button type="button" className="card add-card" aria-label="Add general task" onClick={() => setDialog({ type: 'edit', id: null })}>
 								<span className="plus" aria-hidden="true">
@@ -89,9 +93,6 @@ export default function GeneralTasks() {
 								<small>Not part of any project</small>
 							</button>
 						)}
-						{list.map((t) => (
-							<TaskCard key={t.id} task={t} onDetails={(id) => setDialog({ type: 'details', id })} onEdit={(id) => setDialog({ type: 'edit', id })} />
-						))}
 					</div>
 					{list.length === 0 && !(lead && filter === 'all') && <p className="empty">{filter === 'all' ? 'No general tasks yet. A Team Leader or the Super Admin adds them.' : 'Nothing here.'}</p>}
 				</>
