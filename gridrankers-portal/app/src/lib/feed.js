@@ -8,6 +8,7 @@ import { commentBell } from './comments.js';
 import { allReminders } from './cycleSetup.js';
 import { approvals, dismissedKeys, notices, recipientsOf, strips } from './day.js';
 import { short } from './format.js';
+import { requestBell } from './requests.js';
 import { reviewsOf } from './reviews.js';
 import { isManager } from './roles.js';
 import { rowsOf } from './store.js';
@@ -86,6 +87,9 @@ export function feedOf(data, me, today, now = Date.now()) {
 
 	// Comments on submissions I'm part of.
 	commentBell(data, me, now).forEach((c) => push({ key: c.key, cat: 'task', tone: 'blue', icon: '💬', title: c.text, sub: c.sub, at: c.at, open: { project_id: c.project_id, tab: c.tab, title: c.title } }));
+
+	// Client requests I added or wrote in (SPEC.md 6.15): new messages, what the client sent, done.
+	requestBell(data, me, now).forEach((m) => push({ key: m.key, cat: 'message', tone: m.fromClient ? 'amber' : 'blue', icon: m.fromClient ? '✉' : '💬', title: m.text, sub: m.sub, at: m.at, open: { project_id: m.project_id, tab: 'details', title: '', request: m.request } }));
 
 	// Answers to my leave (same keys as the message band).
 	rowsOf(data, 'leave')

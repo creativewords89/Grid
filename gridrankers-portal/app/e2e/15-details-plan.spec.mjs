@@ -23,11 +23,11 @@ test('project details and keyword checklist', async ({ page }) => {
 	await page.locator('.pdx-pop').getByRole('button', { name: 'Add', exact: true }).click();
 	await page.locator('.pdx-card.editing').getByRole('button', { name: 'Save' }).click();
 	await page.getByText('Section added').waitFor();
-	// The first section is the project's header card (design PD-F): no team names in it.
+	// The project line over the sub-tabs, no team names (design DP-F); About carries the links.
+	await expect(page.locator('.pdx-proj')).toContainText(/Acme Plumbing\s*Active · Cycle /);
+	await expect(page.locator('.pdx-proj')).not.toContainText('Max Member');
 	const about = page.locator('.pdx-hero');
 	await expect(about.getByRole('heading', { name: 'About' })).toBeVisible();
-	await expect(about.locator('.pdx-htext span')).toHaveText(/^Acme Plumbing · Active · Cycle /);
-	await expect(about).not.toContainText('Max Member');
 	await expect(about).toContainText('Family plumbing company in Dhaka and Gazipur.');
 	const chip = about.getByRole('link', { name: /Keyword research 2026/ });
 	await expect(chip).toHaveAttribute('href', 'https://docs.google.com/spreadsheets/d/abc/edit');

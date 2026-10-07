@@ -181,6 +181,12 @@ class GRP_REST_Trash extends GRP_REST_Controller {
 					foreach ( GRP_Store::find( 'grp_keywords', array( 'project_id' => $entry['doc_id'] ) ) as $keyword ) {
 						GRP_Store::delete( 'grp_keywords', $keyword['id'] );
 					}
+					// So are its client requests and their messages (SPEC.md 6.15).
+					foreach ( array( 'grp_request_messages', 'grp_client_requests' ) as $table ) {
+						foreach ( GRP_Store::find( $table, array( 'project_id' => $entry['doc_id'] ) ) as $row ) {
+							GRP_Store::delete( $table, $row['id'] );
+						}
+					}
 				}
 			}
 		);

@@ -197,6 +197,12 @@ class GRP_Permissions {
 	/** See and keep the invoice tracker: fees, invoices sent, payments (SPEC.md 6.14). Super Admin only. */
 	const MANAGE_BILLING = 'manage_billing';
 
+	/** Client requests: ask, change the status, write in the thread (SPEC.md 6.15). Everyone. */
+	const CLIENT_REQUEST = 'client_request';
+
+	/** Delete a client request. Context: `{request}`. Whoever added it, or the Super Admin. */
+	const DELETE_CLIENT_REQUEST = 'delete_client_request';
+
 	/**
 	 * Task work that is locked while a Team Leader's or Team Member's required profile is
 	 * incomplete (SPEC.md section 3, Profile lock).
@@ -223,6 +229,8 @@ class GRP_Permissions {
 		self::UPLOAD_FILE,
 		self::EDIT_SUBMISSION,
 		self::COMMENT,
+		self::CLIENT_REQUEST,
+		self::DELETE_CLIENT_REQUEST,
 	);
 
 	/**
@@ -292,6 +300,7 @@ class GRP_Permissions {
 			case self::UNTICK_KEYWORD:
 			case self::UPLOAD_FILE:
 			case self::DOWNLOAD_FILE:
+			case self::CLIENT_REQUEST:
 				return in_array( $role, array( self::ROLE_ADMIN, self::ROLE_LEAD, self::ROLE_MEMBER ), true );
 
 			case self::EDIT_SUBMISSION:
@@ -302,6 +311,9 @@ class GRP_Permissions {
 
 			case self::DELETE_COMMENT:
 				return $admin || self::is_self( $user, ( (array) ( $context['comment'] ?? array() ) )['created_by'] ?? null );
+
+			case self::DELETE_CLIENT_REQUEST:
+				return $admin || self::is_self( $user, ( (array) ( $context['request'] ?? array() ) )['created_by'] ?? null );
 
 			case self::DELETE_PROJECT:
 			case self::REMOVE_MEMBER:

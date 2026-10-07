@@ -15,7 +15,7 @@ class GRP_Install {
 	/**
 	 * Current schema version. Bump it whenever get_schema() or migrations() changes.
 	 */
-	const DB_VERSION = 13;
+	const DB_VERSION = 14;
 
 	/**
 	 * Option that stores the installed schema version.
@@ -35,6 +35,7 @@ class GRP_Install {
  * `grp_files` (private uploads for submissions and comments) and `grp_comments` (SPEC.md 6.6). Schema 11
  * adds `grp_billing` and `grp_billing_fees`, the Super Admin's invoice tracker (SPEC.md 6.14).
  * Schema 12 repairs breakdown people (6.5); schema 13 adds `past` to keywords (moved to Past, 6.12).
+ * Schema 14 adds `grp_client_requests` and `grp_request_messages`: what the team needs from a client (6.15).
 	 *
 	 * @var string[]
 	 */
@@ -59,6 +60,8 @@ class GRP_Install {
 		'grp_comments',
 		'grp_billing',
 		'grp_billing_fees',
+		'grp_client_requests',
+		'grp_request_messages',
 	);
 
 	/**
@@ -639,6 +642,44 @@ class GRP_Install {
 				created_at datetime NOT NULL,
 				updated_at datetime NOT NULL,
 				PRIMARY KEY  (id),
+				KEY updated_at (updated_at)
+			) $collate;",
+
+			"CREATE TABLE {$t['grp_client_requests']} (
+				id varchar(64) NOT NULL,
+				project_id varchar(64) NOT NULL,
+				title varchar(191) NOT NULL,
+				kind enum('images','info','page','access','other') NOT NULL DEFAULT 'other',
+				details text NULL,
+				status enum('needed','asked','received','done') NOT NULL DEFAULT 'needed',
+				asked_via varchar(20) NULL,
+				asked_at datetime NULL,
+				asked_by varchar(64) NULL,
+				done_at datetime NULL,
+				done_by varchar(64) NULL,
+				created_by varchar(64) NULL,
+				created_at datetime NOT NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				KEY project_id (project_id),
+				KEY updated_at (updated_at)
+			) $collate;",
+
+			"CREATE TABLE {$t['grp_request_messages']} (
+				id varchar(64) NOT NULL,
+				request_id varchar(64) NOT NULL,
+				project_id varchar(64) NOT NULL,
+				body text NOT NULL,
+				files json NULL,
+				from_client tinyint(1) NOT NULL DEFAULT 0,
+				via varchar(20) NULL,
+				event varchar(20) NULL,
+				created_by varchar(64) NULL,
+				deleted_at datetime NULL,
+				created_at datetime NOT NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				KEY request_id (request_id),
 				KEY updated_at (updated_at)
 			) $collate;",
 		);

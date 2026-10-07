@@ -104,4 +104,34 @@ foreach ( array( array( 'Cycle blogs', 2, 'tm_max' ), array( 'Cycle pages', 1, n
 		);
 	}
 }
+// Client requests (SPEC.md 6.15): Nia asked Bright Dental for the website login 4 days ago, so it
+// is time to chase the client.
+$bright = GRP_Store::find( 'grp_projects', array( 'name' => 'Bright Dental' ) )[0];
+$asked  = gmdate( 'Y-m-d H:i:s', strtotime( $today . ' -4 days 10:00' ) );
+$login  = GRP_Store::insert(
+	'grp_client_requests',
+	array(
+		'project_id' => $bright['id'],
+		'title'      => 'Website login',
+		'kind'       => 'access',
+		'status'     => 'asked',
+		'asked_via'  => 'email',
+		'asked_at'   => $asked,
+		'asked_by'   => 'tm_nia',
+		'created_by' => 'tm_nia',
+		'created_at' => $asked,
+	)
+);
+GRP_Store::insert(
+	'grp_request_messages',
+	array(
+		'request_id' => $login['id'],
+		'project_id' => $bright['id'],
+		'body'       => '',
+		'event'      => 'asked',
+		'via'        => 'email',
+		'created_by' => 'tm_nia',
+		'created_at' => $asked,
+	)
+);
 echo "e2e site ready\n";
