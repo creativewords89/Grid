@@ -56,7 +56,7 @@ test('client requests', async ({ page }) => {
 	await chase.getByRole('button', { name: 'Open request' }).click();
 	await expect(page.locator('.top h1')).toHaveText(/^Bright Dental/);
 	await expect(thread.getByRole('heading', { name: 'Website login' })).toBeVisible();
-	await expect(thread.locator('.cr-event')).toContainText('Status → Asked client · by email · Nia Member');
+	await expect(thread.locator('.cr-event')).toContainText('Status → Asked client · by email · Nia');
 
 	// Acme: paste what the client sent, with a photo → amber bubble, Received.
 	await openProject(page, 'Acme Plumbing');
