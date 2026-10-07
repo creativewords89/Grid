@@ -44,6 +44,7 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 		'target'       => 'quantity',
 		'assignees'    => 'responsible',
 		'deadline'     => 'deadline',
+		'steps'        => 'steps',
 	);
 
 	/**
@@ -57,6 +58,7 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 		self::route( '/meeting-tasks/(?P<id>[\w-]+)', WP_REST_Server::DELETABLE, 'destroy' );
 		self::route( '/meeting-tasks/(?P<id>[\w-]+)/status', WP_REST_Server::CREATABLE, 'set_status' );
 		self::route( '/meeting-tasks/(?P<id>[\w-]+)/progress', WP_REST_Server::CREATABLE, 'progress' );
+		self::route( '/meeting-tasks/(?P<id>[\w-]+)/step', WP_REST_Server::CREATABLE, 'step' );
 		self::route( '/meeting-tasks/(?P<id>[\w-]+)/undo', WP_REST_Server::CREATABLE, 'request_undo' );
 		self::route( '/meeting-tasks/(?P<id>[\w-]+)/undo/decide', WP_REST_Server::CREATABLE, 'decide_undo' );
 		self::route( '/meeting-tasks/(?P<id>[\w-]+)/submission', 'PATCH', 'edit_submission' );
@@ -137,6 +139,9 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 		if ( ! in_array( $status, self::STATUSES, true ) ) {
 			return self::invalid( __( 'Invalid status.', 'gridrankers-portal' ) );
 		}
+		if ( 'todo' !== $status && ! empty( $fields['steps'] ) ) {
+			return self::invalid( __( 'A task with steps starts at the first step.', 'gridrankers-portal' ) );
+		}
 		if ( 'todo' !== $status && ! self::can(
 			GRP_Permissions::CHANGE_STATUS,
 			array(
@@ -201,6 +206,16 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 		}
 		if ( 'done' === $task['status'] && 'done' !== $status ) {
 			return self::conflict( __( "It's completed — use Revise or Reject in Details to reopen it.", 'gridrankers-portal' ), 'grp_status_locked' );
+		}
+		$steps = array_key_exists( 'steps', $fields ) ? $fields['steps'] : ( $task['steps'] ?? null );
+		if ( $steps && $status !== $task['status'] ) {
+			return self::invalid( __( 'This task has steps — tick the steps instead.', 'gridrankers-portal' ) );
+		}
+		if ( array_key_exists( 'steps', $fields ) || isset( $fields['target'] ) ) {
+			if ( 'done' === $task['status'] && ( $steps ? wp_json_encode( $steps ) : '' ) !== ( GRP_Steps::on( $task ) ? wp_json_encode( $task['steps'] ) : '' ) ) {
+				return self::conflict( __( "It's completed — reopen it before changing its steps.", 'gridrankers-portal' ), 'grp_status_locked' );
+			}
+			$fields['step_done'] = $steps ? GRP_Steps::fit( $steps, $task['step_done'] ?? null, $fields['target'] ?? $task['target'] ) : null;
 		}
 
 		return rest_ensure_response(
@@ -275,6 +290,9 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 		if ( $to === $task['status'] ) {
 			return rest_ensure_response( $task );
 		}
+		if ( GRP_Steps::on( $task ) ) {
+			return self::invalid( __( 'This task has steps — tick the steps instead.', 'gridrankers-portal' ), 'grp_has_steps' );
+		}
 		if ( ! self::can(
 			GRP_Permissions::CHANGE_STATUS,
 			array(
@@ -320,6 +338,9 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 		$delta = (int) $request['delta'];
 		if ( 1 !== abs( $delta ) ) {
 			return self::invalid( __( 'Progress changes one unit at a time.', 'gridrankers-portal' ) );
+		}
+		if ( GRP_Steps::on( $task ) ) {
+			return self::invalid( __( 'This task has steps — tick the steps instead.', 'gridrankers-portal' ), 'grp_has_steps' );
 		}
 
 		$member_id = (string) ( $request['memberId'] ?? '' );
@@ -383,6 +404,89 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 					}
 					GRP_Activity::audit( 'progress', 'items', $updated, self::actor(), self::name_of( $member_id ) . ": $was → $now · $total/$target" );
 
+					return $updated;
+				}
+			)
+		);
+	}
+
+	/**
+	 * POST /meeting-tasks/{id}/step `{step, delta, note?, links?, files?, comment?, reviewer?}` (SPEC.md 6.16).
+	 *
+	 * Moves one step by one unit. A step counts only what the step before has finished; the last
+	 * step's count is the task's, so its last unit completes the task (with the submission form).
+	 * Each unit is credited to the step's person.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function step( WP_REST_Request $request ) {
+		$task = GRP_Store::get( self::TABLE, $request['id'] );
+		if ( ! $task ) {
+			return self::not_found();
+		}
+		if ( ! GRP_Steps::on( $task ) ) {
+			return self::invalid( __( 'This task has no steps.', 'gridrankers-portal' ) );
+		}
+		$delta = (int) $request['delta'];
+		if ( 1 !== abs( $delta ) ) {
+			return self::invalid( __( 'Progress changes one unit at a time.', 'gridrankers-portal' ) );
+		}
+		$steps = array_values( $task['steps'] );
+		$i     = GRP_Steps::index( $steps, (string) $request['step'] );
+		if ( $i < 0 ) {
+			return self::invalid( __( 'That step no longer exists.', 'gridrankers-portal' ) );
+		}
+		$step = $steps[ $i ];
+		if ( ! self::can(
+			GRP_Permissions::TICK_STEP,
+			array(
+				'task'  => $task,
+				'step'  => $step,
+				'delta' => $delta,
+			)
+		) ) {
+			if ( 'done' === $task['status'] ) {
+				return self::forbidden( self::status_denied_message( $task ) );
+			}
+			return self::forbidden(
+				$delta < 0
+					? __( 'Only a Team Leader or Super Admin can count a step back.', 'gridrankers-portal' )
+					/* translators: 1: step name, 2: person's name. */
+					: sprintf( __( '“%1$s” is %2$s’s step.', 'gridrankers-portal' ), $step['name'], self::name_of( $step['member'] ) )
+			);
+		}
+
+		$target = max( 1, (int) $task['target'] );
+		$done   = GRP_Steps::tick( $steps, $task['step_done'] ?? null, $step['id'], $delta, $target, self::actor()['id'] );
+		if ( is_wp_error( $done ) ) {
+			return $done;
+		}
+		$count  = GRP_Steps::count( $steps, $done );
+		$any    = array_sum( array_map( static fn( $s ) => GRP_Steps::n( $done, $s['id'] ), $steps ) ) > 0;
+		$status = $count >= $target ? 'done' : ( $any ? 'doing' : 'todo' );
+		// The last unit of the last step completes the task: the submission form (SPEC.md 6.6).
+		$completion = 'done' === $status ? self::completion( $request, true ) : null;
+		if ( is_wp_error( $completion ) ) {
+			return $completion;
+		}
+
+		return rest_ensure_response(
+			GRP_Store::transaction(
+				static function () use ( $task, $steps, $step, $done, $status, $delta, $completion, $target ) {
+					$changes = array( 'step_done' => $done );
+					if ( $status !== $task['status'] ) {
+						$changes += self::status_changes( $task, $status, $completion, false );
+					}
+					$updated = GRP_Store::update( self::TABLE, $task['id'], $changes );
+					$n       = GRP_Steps::n( $done, $step['id'] );
+					$ref     = GRP_Steps::ref( 'stepi', $task['id'], $step['id'] );
+					if ( $delta > 0 ) {
+						GRP_Activity::credit( $step['member'], $task['project_id'], $task['title'], $step['name'] . " · $n/$target", 1, 'board', $ref );
+					} else {
+						GRP_Activity::uncredit( $ref, 1 );
+					}
+					GRP_Activity::audit( 'progress', 'items', $updated, self::actor(), $step['name'] . ' · ' . self::name_of( $step['member'] ) . ': ' . ( $n - $delta ) . " → $n of $target" );
 					return $updated;
 				}
 			)
@@ -587,6 +691,19 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 				return $assignees;
 			}
 			$out['assignees'] = $assignees;
+		}
+		// Steps in order (SPEC.md 6.16): their people share the whole task.
+		if ( $has( 'steps' ) ) {
+			$steps = GRP_Steps::clean( $request['steps'] );
+			if ( is_wp_error( $steps ) ) {
+				return $steps;
+			}
+			$out['steps'] = $steps;
+		}
+		$steps = array_key_exists( 'steps', $out ) ? $out['steps'] : ( $task['steps'] ?? null );
+		if ( $steps && ( array_key_exists( 'steps', $out ) || isset( $out['target'] ) || isset( $out['assignees'] ) ) ) {
+			$out['team']      = 1;
+			$out['assignees'] = GRP_Steps::assignees( $steps, $out['target'] ?? (int) ( $task['target'] ?? 1 ) );
 		}
 		if ( $has( 'deadline' ) ) {
 			$deadline = self::deadline( $request['deadline'] );

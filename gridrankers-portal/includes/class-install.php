@@ -15,7 +15,7 @@ class GRP_Install {
 	/**
 	 * Current schema version. Bump it whenever get_schema() or migrations() changes.
 	 */
-	const DB_VERSION = 14;
+	const DB_VERSION = 15;
 
 	/**
 	 * Option that stores the installed schema version.
@@ -36,6 +36,7 @@ class GRP_Install {
  * adds `grp_billing` and `grp_billing_fees`, the Super Admin's invoice tracker (SPEC.md 6.14).
  * Schema 12 repairs breakdown people (6.5); schema 13 adds `past` to keywords (moved to Past, 6.12).
  * Schema 14 adds `grp_client_requests` and `grp_request_messages`: what the team needs from a client (6.15).
+ * Schema 15 adds task steps: `steps` on meeting and monthly tasks, `step_done` on meeting tasks and cycle records (6.16).
 	 *
 	 * @var string[]
 	 */
@@ -351,6 +352,8 @@ class GRP_Install {
 				review json NULL,
 				completion json NULL,
 				undo_request json NULL,
+				steps json NULL,
+				step_done json NULL,
 				created_by varchar(64) NULL,
 				created_at datetime NOT NULL,
 				updated_at datetime NOT NULL,
@@ -374,6 +377,7 @@ class GRP_Install {
 				assignees json NULL,
 				team tinyint(1) NOT NULL DEFAULT 0,
 				parts json NULL,
+				steps json NULL,
 				std tinyint(1) NOT NULL DEFAULT 0,
 				created_by varchar(64) NULL,
 				created_at datetime NOT NULL,
@@ -396,6 +400,7 @@ class GRP_Install {
 				review json NULL,
 				completion json NULL,
 				undo_request json NULL,
+				step_done json NULL,
 				done_at datetime NULL,
 				cleared_by varchar(64) NULL,
 				created_at datetime NOT NULL,

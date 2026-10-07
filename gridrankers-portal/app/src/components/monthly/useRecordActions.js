@@ -32,6 +32,28 @@ export default function useRecordActions() {
 		}
 	};
 
+	// Steps (SPEC.md 6.16): one step of this period moves by one unit.
+	const tickStep = async (task, periodKey, row, delta) => {
+		try {
+			const body = { taskId: task.id, periodKey, step: row.id, delta };
+			let res;
+			try {
+				res = await api.post('records/step', body);
+			} catch (err) {
+				// The last unit of the last step completes the task: the submission first (SPEC.md 6.6).
+				if (err.code !== 'grp_completion_required') throw err;
+				const sub = await askCompletion(task.title);
+				if (!sub) return;
+				res = await api.post('records/step', { ...body, ...submission(sub) });
+			}
+			const rec = store(res);
+			if (rec && rec.status === 'done') toast(rec.review && rec.review.state === 'pending' ? 'All steps done — sent for review' : 'All steps done');
+			else toast(delta > 0 ? `${row.name}: ${row.target > 1 ? `${row.n + 1}/${row.target}` : 'done'}${row.next ? ` — ready for ${row.next.name}` : ''}` : `${row.name}: counted back`);
+		} catch (err) {
+			toast(err.message);
+		}
+	};
+
 	const setStatus = async (task, periodKey, to) => {
 		let body = { taskId: task.id, periodKey, status: to };
 		if (to === 'done') {
@@ -111,5 +133,5 @@ export default function useRecordActions() {
 		}
 	};
 
-	return { tick, setStatus, remove, requestUndo, decideUndo };
+	return { tick, tickStep, setStatus, remove, requestUndo, decideUndo };
 }

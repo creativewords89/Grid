@@ -3,7 +3,9 @@ import { deadlineInfo } from '../../lib/deadline.js';
 import { longDate, localYmd, weekdayDate } from '../../lib/format.js';
 import { isManager } from '../../lib/roles.js';
 import { GENERAL_NAME, PRI_LABEL, STATUS_TXT, assigneesOf, isGeneral, progressTotal } from '../../lib/tasks.js';
+import { hasSteps } from '../../lib/steps.js';
 import Avatar from '../Avatar.jsx';
+import StepTrack from '../StepTrack.jsx';
 import Modal from '../Modal.jsx';
 import useTaskActions from './useTaskActions.js';
 import ReviewActions from '../review/ReviewActions.jsx';
@@ -61,7 +63,7 @@ export function ShareSteppers({ task, members, me, onTick }) {
 // Details window (SPEC.md 7.2): header, info grid, progress, details, page link, completion & review.
 export default function TaskDetails({ taskId, onClose }) {
 	const { data, me, today } = usePortal();
-	const { tick } = useTaskActions();
+	const { tick, tickStep } = useTaskActions();
 	const task = data.meeting_tasks[taskId];
 	const members = data.members;
 
@@ -123,11 +125,18 @@ export default function TaskDetails({ taskId, onClose }) {
 							: 'Unassigned'}
 					</Row>
 				</dl>
-				{target > 1 && (
+				{hasSteps(task) ? (
 					<section className="dt-sec">
-						<h4>Progress</h4>
-						<ShareSteppers task={task} members={members} me={me} onTick={tick} />
+						<h4>Steps</h4>
+						<StepTrack task={task} done={task.step_done} status={task.status} onTick={(row, delta) => tickStep(task, row, delta)} />
 					</section>
+				) : (
+					target > 1 && (
+						<section className="dt-sec">
+							<h4>Progress</h4>
+							<ShareSteppers task={task} members={members} me={me} onTick={tick} />
+						</section>
+					)
 				)}
 				{task.notes && (
 					<section className="dt-sec">

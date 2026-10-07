@@ -4,7 +4,9 @@ import { deadlineInfo } from '../../lib/deadline.js';
 import { short, localYmd } from '../../lib/format.js';
 import { isManager } from '../../lib/roles.js';
 import { assigneesOf, canWorkOn, isGeneral, PRI_LABEL, progressTotal, REVIEW_TXT } from '../../lib/tasks.js';
+import { hasSteps } from '../../lib/steps.js';
 import Avatar from '../Avatar.jsx';
+import StepTrack from '../StepTrack.jsx';
 import useTaskActions from './useTaskActions.js';
 
 export function People({ list, members }) {
@@ -120,7 +122,8 @@ export function UnassignedLock({ task, me }) {
 // Compact meeting-task card (SPEC.md 7.2; reference bcard).
 export default function TaskCard({ task, onDetails, onEdit }) {
 	const { data, me, today } = usePortal();
-	const { setStatus, remove, requestUndo, decideUndo } = useTaskActions();
+	const { setStatus, tickStep, remove, requestUndo, decideUndo } = useTaskActions();
+	const steps = hasSteps(task);
 	const members = data.members;
 	const st = task.status;
 	const open = st !== 'done';
@@ -176,7 +179,8 @@ export default function TaskCard({ task, onDetails, onEdit }) {
 				<MiniReview review={task.review} me={me} />
 			</div>
 			<ReviewBadge review={task.review} me={me} members={members} />
-			{target > 1 && (
+			{steps && <StepTrack task={task} done={task.step_done} status={st} onTick={(row, delta) => tickStep(task, row, delta)} />}
+			{!steps && target > 1 && (
 				<div className="mini-prog">
 					<span className="mp-bar">
 						<i style={{ width: Math.round((done / target) * 100) + '%' }} />
@@ -186,11 +190,13 @@ export default function TaskCard({ task, onDetails, onEdit }) {
 					</b>
 				</div>
 			)}
-			<div className="seg" role="group" aria-label={`Status of ${task.title}`}>
-				{seg}
-			</div>
+			{!steps && (
+				<div className="seg" role="group" aria-label={`Status of ${task.title}`}>
+					{seg}
+				</div>
+			)}
 			<UnassignedLock task={task} me={me} />
-			<UndoLine task={task} me={me} locked={locked} onRequest={() => requestUndo(task)} onDecide={(a, note) => decideUndo(task, a, note)} />
+			{!steps && <UndoLine task={task} me={me} locked={locked} onRequest={() => requestUndo(task)} onDecide={(a, note) => decideUndo(task, a, note)} />}
 			<div className="acts">
 				<div className="assign">
 					<People list={people} members={members} />

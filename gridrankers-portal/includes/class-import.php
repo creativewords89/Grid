@@ -407,25 +407,28 @@ class GRP_Import {
 		}
 		$target = max( 1, (int) ( $d['target'] ?? 1 ) );
 
-		return array(
-			'id'           => $id,
-			'project_id'   => (string) ( $d['clientId'] ?? '' ),
-			'title'        => (string) ( $d['title'] ?? '' ),
-			'notes'        => (string) ( $d['notes'] ?? '' ),
-			'url'          => (string) ( $d['url'] ?? '' ),
-			'priority'     => in_array( $d['priority'] ?? '', array( 'urgent', 'high', 'normal', 'low' ), true ) ? $d['priority'] : 'normal',
-			'status'       => in_array( $d['status'] ?? '', array( 'todo', 'doing', 'done' ), true ) ? $d['status'] : 'todo',
-			'meeting_date' => self::ymd( $d['meeting'] ?? null ),
-			'done_at'      => self::time( $d['doneAt'] ?? null ),
-			'target'       => $target,
-			'assignees'    => self::assignees( $d, $target ),
-			'team'         => ! empty( $d['team'] ) ? 1 : 0,
-			'progress'     => self::counts( $d['by'] ?? array() ),
-			'deadline'     => self::deadline( $d ),
-			'review'       => is_array( $d['review'] ?? null ) ? $d['review'] : null,
-			'completion'   => is_array( $d['completion'] ?? null ) ? $d['completion'] : null,
-			'created_by'   => isset( $d['createdBy'] ) ? (string) $d['createdBy'] : null,
-			'created_at'   => self::time( $d['createdAt'] ?? null ),
+		return array_merge(
+			array(
+				'id'           => $id,
+				'project_id'   => (string) ( $d['clientId'] ?? '' ),
+				'title'        => (string) ( $d['title'] ?? '' ),
+				'notes'        => (string) ( $d['notes'] ?? '' ),
+				'url'          => (string) ( $d['url'] ?? '' ),
+				'priority'     => in_array( $d['priority'] ?? '', array( 'urgent', 'high', 'normal', 'low' ), true ) ? $d['priority'] : 'normal',
+				'status'       => in_array( $d['status'] ?? '', array( 'todo', 'doing', 'done' ), true ) ? $d['status'] : 'todo',
+				'meeting_date' => self::ymd( $d['meeting'] ?? null ),
+				'done_at'      => self::time( $d['doneAt'] ?? null ),
+				'target'       => $target,
+				'assignees'    => self::assignees( $d, $target ),
+				'team'         => ! empty( $d['team'] ) ? 1 : 0,
+				'progress'     => self::counts( $d['by'] ?? array() ),
+				'deadline'     => self::deadline( $d ),
+				'review'       => is_array( $d['review'] ?? null ) ? $d['review'] : null,
+				'completion'   => is_array( $d['completion'] ?? null ) ? $d['completion'] : null,
+				'created_by'   => isset( $d['createdBy'] ) ? (string) $d['createdBy'] : null,
+				'created_at'   => self::time( $d['createdAt'] ?? null ),
+			),
+			self::steps_of( $d, $target, true )
 		);
 	}
 
@@ -487,22 +490,25 @@ class GRP_Import {
 			$team      = 0;
 		}
 
-		return array(
-			'id'           => $id,
-			'project_id'   => (string) $d['clientId'],
-			'title'        => (string) ( $d['title'] ?? '' ),
-			'notes'        => (string) ( $d['notes'] ?? '' ),
-			'freq'         => 'biweekly' === $mode ? 'biweekly' : ( $weekly || 'weekly' === $mode ? 'weekly' : 'monthly' ),
-			'due_mode'     => $mode,
-			'due_day'      => ! empty( $d['dueDay'] ) ? (int) $d['dueDay'] : null,
-			'due_from_day' => ! empty( $d['dueFromDay'] ) ? (int) $d['dueFromDay'] : null,
-			'target'       => $target,
-			'assignees'    => $assignees,
-			'team'         => $team,
-			'parts'        => $parts,
-			'std'          => ! empty( $d['std'] ) || str_starts_with( $id, 'std_' ) ? 1 : 0,
-			'created_by'   => isset( $d['createdBy'] ) ? (string) $d['createdBy'] : null,
-			'created_at'   => self::time( $d['createdAt'] ?? null ),
+		return array_merge(
+			array(
+				'id'           => $id,
+				'project_id'   => (string) $d['clientId'],
+				'title'        => (string) ( $d['title'] ?? '' ),
+				'notes'        => (string) ( $d['notes'] ?? '' ),
+				'freq'         => 'biweekly' === $mode ? 'biweekly' : ( $weekly || 'weekly' === $mode ? 'weekly' : 'monthly' ),
+				'due_mode'     => $mode,
+				'due_day'      => ! empty( $d['dueDay'] ) ? (int) $d['dueDay'] : null,
+				'due_from_day' => ! empty( $d['dueFromDay'] ) ? (int) $d['dueFromDay'] : null,
+				'target'       => $target,
+				'assignees'    => $assignees,
+				'team'         => $team,
+				'parts'        => $parts,
+				'std'          => ! empty( $d['std'] ) || str_starts_with( $id, 'std_' ) ? 1 : 0,
+				'created_by'   => isset( $d['createdBy'] ) ? (string) $d['createdBy'] : null,
+				'created_at'   => self::time( $d['createdAt'] ?? null ),
+			),
+			self::steps_of( $d, $target, false )
 		);
 	}
 
@@ -538,6 +544,7 @@ class GRP_Import {
 			'parts'      => is_array( $d['parts'] ?? null ) ? $d['parts'] : null,
 			'review'     => is_array( $d['review'] ?? null ) ? $d['review'] : null,
 			'completion' => is_array( $d['completion'] ?? null ) ? $d['completion'] : null,
+			'step_done'  => self::step_done( $d['stepDone'] ?? null ),
 			'done_at'    => self::time( $d['doneAt'] ?? ( $d['skippedAt'] ?? null ) ),
 			'cleared_by' => isset( $d['clearedBy'] ) ? (string) $d['clearedBy'] : null,
 			'created_at' => self::time( $d['createdAt'] ?? ( $d['updatedAt'] ?? null ) ),
@@ -804,6 +811,68 @@ class GRP_Import {
 			$out[] = array(
 				'id' => (string) $a['id'],
 				'n'  => max( 1, (int) ( $a['n'] ?? $target ) ),
+			);
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Steps of a task (SPEC.md 6.16): `steps` `[{id, name, member}]` and, for meeting tasks,
+	 * `step_done`; with steps, their people share the whole task. Empty when the task has none.
+	 *
+	 * @param array $d       Document.
+	 * @param int   $target  Quantity.
+	 * @param bool  $meeting Meeting task (keeps `step_done`).
+	 * @return array
+	 */
+	private static function steps_of( array $d, $target, $meeting ) {
+		$steps = array();
+		foreach ( is_array( $d['steps'] ?? null ) ? $d['steps'] : array() as $step ) {
+			$step = (array) $step;
+			$id   = self::id( $step['id'] ?? '' );
+			$name = sanitize_text_field( (string) ( $step['name'] ?? '' ) );
+			if ( $id && '' !== $name && ! empty( $step['member'] ) ) {
+				$steps[] = array(
+					'id'     => $id,
+					'name'   => $name,
+					'member' => (string) $step['member'],
+				);
+			}
+		}
+		if ( count( $steps ) < GRP_Steps::MIN ) {
+			return array( 'steps' => null ) + ( $meeting ? array( 'step_done' => null ) : array() );
+		}
+		$out = array(
+			'steps'     => array_slice( $steps, 0, GRP_Steps::MAX ),
+			'team'      => 1,
+			'assignees' => GRP_Steps::assignees( $steps, $target ),
+		);
+		if ( $meeting ) {
+			$out['step_done'] = self::step_done( $d['stepDone'] ?? null );
+		}
+
+		return $out;
+	}
+
+	/**
+	 * `stepDone` `{stepId: {n, at, by}}`.
+	 *
+	 * @param mixed $raw Raw value.
+	 * @return array|null
+	 */
+	private static function step_done( $raw ) {
+		$raw = is_object( $raw ) ? json_decode( wp_json_encode( $raw ), true ) : $raw;
+		if ( ! is_array( $raw ) || ! $raw ) {
+			return null;
+		}
+		$out = array();
+		foreach ( $raw as $k => $v ) {
+			$v                  = (array) $v;
+			$out[ (string) $k ] = array(
+				'n'  => max( 0, (int) ( $v['n'] ?? 0 ) ),
+				'at' => (string) ( $v['at'] ?? '' ),
+				'by' => (string) ( $v['by'] ?? '' ),
 			);
 		}
 

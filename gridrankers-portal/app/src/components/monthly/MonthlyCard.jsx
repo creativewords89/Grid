@@ -4,7 +4,9 @@ import { localYmd, short } from '../../lib/format.js';
 import { bornAt, isShared, isWaived, periodKeyOf, recordOf, stateOf, typePeople } from '../../lib/monthly.js';
 import { isManager } from '../../lib/roles.js';
 import { assigneesOf, canWorkOn, isAssigned } from '../../lib/tasks.js';
+import { hasSteps } from '../../lib/steps.js';
 import Avatar from '../Avatar.jsx';
+import StepTrack from '../StepTrack.jsx';
 import { MiniReview, People, ReviewBadge, UnassignedLock, UndoLine } from '../meeting/TaskCard.jsx';
 import useRecordActions from './useRecordActions.js';
 
@@ -97,7 +99,11 @@ function Stepper({ got, max, label, onMinus, onPlus, can, plusDisabled }) {
 // Progress for the Details window: breakdown rows, per-person shares, or one stepper.
 export function ProgressBox({ task, period }) {
 	const { data, me } = usePortal();
-	const { tick } = useRecordActions();
+	const { tick, tickStep } = useRecordActions();
+	if (hasSteps(task)) {
+		const rec = period.rec && period.rec.status !== 'skipped' ? period.rec : null;
+		return <StepTrack task={task} done={rec && rec.step_done} status={period.st} onTick={(row, delta) => tickStep(task, period.periodKey, row, delta)} />;
+	}
 	const members = data.members;
 	const { periodKey, rec, wk, sel, aw, n, count, st, name, unit } = period;
 	const locked = !canWorkOn(task, me) || st === 'done';
@@ -245,8 +251,9 @@ export function ProgressBox({ task, period }) {
 // Monthly / weekly task card (SPEC.md 7.3).
 export default function MonthlyCard({ task, selWeek, onSelectWeek, missed, onDetails, onEdit }) {
 	const { data, me, cycleOff, today } = usePortal();
-	const { setStatus, remove, requestUndo, decideUndo } = useRecordActions();
+	const { setStatus, tickStep, remove, requestUndo, decideUndo } = useRecordActions();
 	const period = usePeriod(task, selWeek);
+	const steps = hasSteps(task);
 	const { project, wk, aw, sel, slots, name, unit, freqLabel, tag, range, periodKey, st, n, count } = period;
 	const members = data.members;
 	const locked = !canWorkOn(task, me);
@@ -314,7 +321,8 @@ export default function MonthlyCard({ task, selWeek, onSelectWeek, missed, onDet
 			</div>
 			<ReviewBadge review={period.rec && period.rec.review} me={me} members={members} />
 			{weeks}
-			{n > 1 && (
+			{steps && <StepTrack task={task} done={period.rec && period.rec.status !== 'skipped' ? period.rec.step_done : null} status={st} onTick={(row, delta) => tickStep(task, periodKey, row, delta)} />}
+			{!steps && n > 1 && (
 				<div className="mini-prog">
 					<span className="mp-bar">
 						<i style={{ width: Math.round((count / n) * 100) + '%' }} />
@@ -325,17 +333,19 @@ export default function MonthlyCard({ task, selWeek, onSelectWeek, missed, onDet
 					{Array.isArray(task.parts) && task.parts.length > 0 && <small>{task.parts.length} types</small>}
 				</div>
 			)}
-			<div className="seg" role="group" aria-label={`Status of ${task.title}`}>
-				{seg}
-			</div>
+			{!steps && (
+				<div className="seg" role="group" aria-label={`Status of ${task.title}`}>
+					{seg}
+				</div>
+			)}
 			<UnassignedLock task={{ assignees: task.assignees, status: st }} me={me} />
-			<UndoLine
+			{!steps && <UndoLine
 				task={{ status: st, target: n, title: task.title, undo_request: period.rec && period.rec.undo_request }}
 				me={me}
 				locked={locked}
 				onRequest={() => requestUndo(task, periodKey)}
 				onDecide={(a, note) => decideUndo(task, periodKey, a, period.rec && period.rec.undo_request && period.rec.undo_request.reason, note)}
-			/>
+			/>}
 			<div className="acts">
 				<div className="assign">
 					<People list={assigneesOf(task, members)} members={members} />

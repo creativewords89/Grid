@@ -43,8 +43,9 @@ function ProjectBox({ group, today }) {
 						<button type="button" onClick={() => open(t.kind === 'monthly' ? 'monthly' : 'board', t.title)}>
 							<span className="mp-check" aria-hidden="true" />
 							<span className="mp-title">
-								{t.title} <small>· {t.sub}</small>
+								{t.step ? `${t.step} · ${t.title}` : t.title} <small>· {t.sub}</small>
 							</span>
+							{t.turn && <span className={'mp-turn t-' + t.turn}>{t.turn === 'go' ? 'Your turn' : '🔒 Waiting'}</span>}
 							<span className={'mp-flag f-' + (t.overdue || t.urgent ? 'red' : soon(t) ? 'amber' : 'plain')}>{t.urgent && !t.overdue ? 'Urgent · ' + t.dueText : t.dueText}</span>
 						</button>
 					</li>

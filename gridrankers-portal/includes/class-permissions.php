@@ -200,6 +200,12 @@ class GRP_Permissions {
 	/** Client requests: ask, change the status, write in the thread (SPEC.md 6.15). Everyone. */
 	const CLIENT_REQUEST = 'client_request';
 
+	/**
+	 * Tick a step of a task with steps (SPEC.md 6.16). Context: `{task, step, delta}`. Forward: the
+	 * step's own person, or managers; back: managers only. Never on completed work.
+	 */
+	const TICK_STEP = 'tick_step';
+
 	/** Delete a client request. Context: `{request}`. Whoever added it, or the Super Admin. */
 	const DELETE_CLIENT_REQUEST = 'delete_client_request';
 
@@ -231,6 +237,7 @@ class GRP_Permissions {
 		self::COMMENT,
 		self::CLIENT_REQUEST,
 		self::DELETE_CLIENT_REQUEST,
+		self::TICK_STEP,
 	);
 
 	/**
@@ -337,6 +344,16 @@ class GRP_Permissions {
 
 			case self::TICK_PROGRESS:
 				return self::can_tick_progress( $user, $manager, $context );
+
+			case self::TICK_STEP:
+				$task = (array) ( $context['task'] ?? array() );
+				if ( 'done' === ( $task['status'] ?? '' ) || ! self::may_work_on( $user, $manager, $task ) ) {
+					return false;
+				}
+				if ( (int) ( $context['delta'] ?? 0 ) < 0 ) {
+					return $manager;
+				}
+				return $manager || self::is_self( $user, ( (array) ( $context['step'] ?? array() ) )['member'] ?? null );
 
 			case self::REOPEN_TASK:
 				// Completed tasks reopen only through review actions.

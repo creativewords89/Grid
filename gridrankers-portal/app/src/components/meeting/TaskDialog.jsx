@@ -9,6 +9,8 @@ import { rowsOf } from '../../lib/store.js';
 import { CalendarPicker } from '../DatePicker.jsx';
 import Modal from '../Modal.jsx';
 import PeoplePicker, { evenSplit } from '../PeoplePicker.jsx';
+import StepsEditor, { WhoToggle, presetRows } from '../StepsEditor.jsx';
+import { cleanSteps, hasSteps, stepsError } from '../../lib/steps.js';
 
 const TYPES = [
 	['none', 'No deadline'],
@@ -143,9 +145,17 @@ export default function TaskDialog({ taskId, onClose, general = false }) {
 		deadline: editing && editing.deadline ? editing.deadline : { type: 'none' },
 		assignees: editing ? assigneesOf(editing, data.members) : [],
 	}));
+	// Steps in order (SPEC.md 6.16): off by default.
+	const [stepsOn, setStepsOn] = useState(() => hasSteps(editing));
+	const [steps, setSteps] = useState(() => (hasSteps(editing) ? editing.steps.map((x) => ({ ...x })) : []));
 	const [error, setError] = useState('');
 	const [busy, setBusy] = useState(false);
 	const set = (k) => (e) => setF({ ...f, [k]: e && e.target ? e.target.value : e });
+	const toggleSteps = (on) => {
+		setStepsOn(on);
+		if (on && !steps.length) setSteps(presetRows(['Write', 'Edit']));
+		if (on) setF((x) => ({ ...x, status: editing ? x.status : 'todo' }));
+	};
 
 	const setQty = (e) => {
 		const q = Math.max(1, Math.min(999, parseInt(e.target.value, 10) || 1));
@@ -168,6 +178,7 @@ export default function TaskDialog({ taskId, onClose, general = false }) {
 		if (!f.title.trim()) return setError('Say what needs to change.');
 		if (!f.project_id) return setError('Pick a project, or General.');
 		if (f.url && !/^https?:\/\//i.test(f.url)) return setError('The page URL should start with https://');
+		if (stepsOn && stepsError(steps)) return setError(stepsError(steps));
 		const body = {
 			project_id: f.project_id === GEN ? GENERAL : f.project_id,
 			title: f.title.trim(),
@@ -178,8 +189,10 @@ export default function TaskDialog({ taskId, onClose, general = false }) {
 			target: f.target,
 			meeting_date: f.meeting_date || '',
 			deadline: deadlinePayload(),
-			assignees: f.assignees,
+			assignees: stepsOn ? [] : f.assignees,
+			steps: stepsOn ? cleanSteps(steps) : [],
 		};
+		if (stepsOn) delete body.status;
 		if (f.status === 'done' && (!editing || editing.status !== 'done')) {
 			const sub = await askCompletion(body.title);
 			if (!sub) return;
@@ -242,7 +255,7 @@ export default function TaskDialog({ taskId, onClose, general = false }) {
 					</label>
 					<label>
 						Status
-						<select value={f.status} onChange={set('status')} disabled={!!editing && editing.status === 'done'}>
+						<select value={f.status} onChange={set('status')} disabled={(!!editing && editing.status === 'done') || stepsOn} title={stepsOn ? 'A task with steps moves as its steps are ticked' : undefined}>
 							<option value="todo">Not started</option>
 							<option value="doing">In progress</option>
 							<option value="done">Completed</option>
@@ -261,10 +274,18 @@ export default function TaskDialog({ taskId, onClose, general = false }) {
 				</div>
 				<DeadlineField value={f.deadline} onChange={set('deadline')} today={today} />
 				<div className="pk-wrap">
-					<span className="pk-label">
-						Responsible <small>tick one or more</small>
+					<span className="pk-label stp-label">
+						Who does it
+						<WhoToggle on={stepsOn} onChange={toggleSteps} disabled={!!editing && editing.status === 'done'} />
 					</span>
-					<PeoplePicker members={members} value={f.assignees} onChange={set('assignees')} counts={f.target > 1} target={f.target} />
+					{stepsOn ? (
+						<StepsEditor members={members} value={steps} onChange={setSteps} disabled={!!editing && editing.status === 'done'} />
+					) : (
+						<>
+							<small className="muted">Responsible — tick one or more</small>
+							<PeoplePicker members={members} value={f.assignees} onChange={set('assignees')} counts={f.target > 1} target={f.target} />
+						</>
+					)}
 				</div>
 				{editing && editing.status === 'done' && <p className="hint">It's completed — use Revise or Reject in Details to reopen it.</p>}
 				<p className="err" role="alert">

@@ -28,6 +28,7 @@ class GRP_REST_Monthly_Tasks extends GRP_REST_Controller {
 		'target'       => 'quantity',
 		'parts'        => 'breakdown',
 		'assignees'    => 'responsible',
+		'steps'        => 'steps',
 	);
 
 	/**
@@ -197,6 +198,28 @@ class GRP_REST_Monthly_Tasks extends GRP_REST_Controller {
 				return $due;
 			}
 			$out += $due;
+		}
+
+		// Steps in order (SPEC.md 6.16) instead of a breakdown: their people share the whole task.
+		if ( $has( 'steps' ) ) {
+			$steps = GRP_Steps::clean( $request['steps'] );
+			if ( is_wp_error( $steps ) ) {
+				return $steps;
+			}
+			$out['steps'] = $steps;
+		}
+		$steps = array_key_exists( 'steps', $out ) ? $out['steps'] : ( $task['steps'] ?? null );
+		if ( $steps ) {
+			if ( ! empty( $request['parts'] ) ) {
+				return self::invalid( __( 'Use steps or a breakdown, not both.', 'gridrankers-portal' ) );
+			}
+			$target = self::int( $has( 'target' ) ? $request['target'] : ( $task['target'] ?? 1 ), 1, 99, 1 );
+			return $out + array(
+				'target'    => $target,
+				'parts'     => null,
+				'team'      => 1,
+				'assignees' => GRP_Steps::assignees( $steps, $target ),
+			);
 		}
 
 		if ( $has( 'target' ) || $has( 'parts' ) || $has( 'assignees' ) || $has( 'team' ) ) {

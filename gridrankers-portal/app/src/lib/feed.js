@@ -8,7 +8,10 @@ import { commentBell } from './comments.js';
 import { allReminders } from './cycleSetup.js';
 import { approvals, dismissedKeys, notices, recipientsOf, strips } from './day.js';
 import { short } from './format.js';
+import { activeSlot, isSplit } from './cycles.js';
+import { recordOf } from './monthly.js';
 import { requestBell } from './requests.js';
+import { hasSteps, readyItems } from './steps.js';
 import { reviewsOf } from './reviews.js';
 import { isManager } from './roles.js';
 import { rowsOf } from './store.js';
@@ -87,6 +90,19 @@ export function feedOf(data, me, today, now = Date.now()) {
 
 	// Comments on submissions I'm part of.
 	commentBell(data, me, now).forEach((c) => push({ key: c.key, cat: 'task', tone: 'blue', icon: '💬', title: c.text, sub: c.sub, at: c.at, open: { project_id: c.project_id, tab: c.tab, title: c.title } }));
+
+	// Steps (SPEC.md 6.16): the step before mine finished something — ready for me.
+	rowsOf(data, 'meeting_tasks')
+		.filter((t) => hasSteps(t) && t.status !== 'done' && liveTask(data, t))
+		.forEach((t) => readyItems(t, t.step_done, me, data.members, now).forEach((x) => push({ ...x, cat: 'task', tone: 'blue', icon: '→', open: { project_id: t.project_id, tab: boardOf(t), title: t.title } })));
+	rowsOf(data, 'monthly_tasks')
+		.filter((t) => hasSteps(t) && data.projects[t.project_id] && (data.projects[t.project_id].state || 'active') === 'active')
+		.forEach((t) => {
+			const c = data.projects[t.project_id];
+			const rec = recordOf(data.records, t, c, isSplit(t) ? activeSlot(t, c, 0, today) : undefined, 0, today);
+			if (!rec || rec.status === 'done' || rec.status === 'skipped') return;
+			readyItems({ ...t, id: rec.id }, rec.step_done, me, data.members, now).forEach((x) => push({ ...x, cat: 'task', tone: 'blue', icon: '→', open: { project_id: t.project_id, tab: 'monthly', title: t.title } }));
+		});
 
 	// Client requests I added or wrote in (SPEC.md 6.15): new messages, what the client sent, done.
 	requestBell(data, me, now).forEach((m) => push({ key: m.key, cat: 'message', tone: m.fromClient ? 'amber' : 'blue', icon: m.fromClient ? '✉' : '💬', title: m.text, sub: m.sub, at: m.at, open: { project_id: m.project_id, tab: 'details', title: '', request: m.request } }));
