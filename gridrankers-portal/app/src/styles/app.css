@@ -836,6 +836,7 @@ button.ap-title:hover,button.ap-title:focus-visible{text-decoration:underline}
 .b-overdue{background:var(--urgent-bg);color:var(--urgent)}
 .b-paid{background:var(--done-bg);color:var(--done)}
 .b-skipped{background:var(--panel-2);color:var(--ink-2)}
+.b-current{background:color-mix(in srgb,var(--ink) 8%,var(--panel));color:var(--ink)}
 .bl-tick{display:inline-flex;align-items:center;gap:8px;cursor:pointer;white-space:nowrap}
 .bl-tick input{width:18px;height:18px;accent-color:var(--done);margin:0;cursor:pointer}
 .bl-key{border-radius:99px;padding:3px 10px;font-size:.8rem;font-weight:700}

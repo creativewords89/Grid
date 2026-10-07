@@ -150,12 +150,12 @@ export default function Invoices() {
 			</div>
 
 			{!rows.length ? (
-				<p className="empty bl-empty">No ended cycles yet. Each active project gets a line here the day its cycle ends.</p>
+				<p className="empty bl-empty">No active projects yet. Each active project gets a line here with its current cycle.</p>
 			) : mode === 'project' ? (
 				<div className="bl-table" role="table" aria-label="Invoices by project">
 					<div className="bl-row bl-head" role="row">
 						<span role="columnheader">Project</span>
-						<span role="columnheader">Last cycle</span>
+						<span role="columnheader">Cycle</span>
 						<span role="columnheader">Amount</span>
 						<span role="columnheader">Payment</span>
 						<span role="columnheader">Invoice sent</span>
@@ -171,7 +171,7 @@ export default function Invoices() {
 								<b>{r.name}</b>
 								{r.older.length > 0 && (
 									<button type="button" className="bl-older" onClick={() => setMode('year')}>
-										+{r.older.length} older {r.older.length === 1 ? 'cycle' : 'cycles'} open
+										+{r.older.length} more {r.older.length === 1 ? 'cycle' : 'cycles'} open
 									</button>
 								)}
 							</span>

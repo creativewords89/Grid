@@ -69,7 +69,7 @@ class Test_GRP_Billing extends GRP_REST_TestCase {
 		$this->assertNull( GRP_Store::get( 'grp_billing', $row['id'] )['sent_at'], 'refused calls changed nothing' );
 	}
 
-	public function test_rows_are_made_for_ended_cycles_only_once() {
+	public function test_rows_are_made_for_the_current_and_ended_cycles_only_once() {
 		$project = $this->old_project();
 		$paused  = $this->old_project( 'Paused Co' );
 		GRP_Store::update( 'grp_projects', $paused['id'], array( 'state' => 'paused' ) );
@@ -78,10 +78,15 @@ class Test_GRP_Billing extends GRP_REST_TestCase {
 		$made = GRP_Billing::ensure( $today );
 		$rows = GRP_Store::find( 'grp_billing', array(), array( 'order_by' => 'cycle_end' ) );
 		$this->assertSame( count( $rows ), $made );
-		$this->assertGreaterThanOrEqual( 3, $made, 'four months back gives at least three ended cycles' );
+		$this->assertGreaterThanOrEqual( 4, $made, 'four months back: at least three ended cycles and the current one' );
 		$this->assertSame( array( $project['id'] ), array_values( array_unique( array_column( $rows, 'project_id' ) ) ), 'paused projects get no new rows' );
+		// The current cycle is on the list from day one, tagged This cycle (no reminder yet).
+		$current = array_pop( $rows );
+		$this->assertSame( GRP_Cycles::cycle_range( $project, 0, $today )['key'], $current['cycle_key'] );
+		$this->assertSame( GRP_Billing::CURRENT, GRP_Billing::status( $current, 3, $today ) );
 		foreach ( $rows as $row ) {
 			$this->assertLessThan( $today, $row['cycle_end'] );
+			$this->assertSame( GRP_Billing::TO_SEND, GRP_Billing::status( $row, 3, $today ) );
 			$this->assertSame( 'Acme Plumbing', $row['project_name'] );
 			$this->assertNull( $row['amount'] );
 			$this->assertSame( '$', $row['currency'] );
@@ -95,9 +100,13 @@ class Test_GRP_Billing extends GRP_REST_TestCase {
 		update_option( GRP_Billing::SINCE_OPTION, $today, false );
 		$other = $this->old_project( 'Bright Dental' );
 		GRP_Billing::ensure( $today );
-		$rows = GRP_Store::find( 'grp_billing', array( 'project_id' => $other['id'] ) );
-		$this->assertCount( 1, $rows );
-		$this->assertSame( $last['cycle_key'], $rows[0]['cycle_key'] );
+		$rows = GRP_Store::find( 'grp_billing', array( 'project_id' => $other['id'] ), array( 'order_by' => 'cycle_end' ) );
+		$this->assertSame( array( $last['cycle_key'], $current['cycle_key'] ), array_column( $rows, 'cycle_key' ) );
+
+		// A project added today still has its current cycle.
+		$new = $this->project( 'New Client' );
+		GRP_Billing::ensure( $today );
+		$this->assertSame( array( $current['cycle_key'] ), array_column( GRP_Store::find( 'grp_billing', array( 'project_id' => $new['id'] ) ), 'cycle_key' ) );
 
 		// The cron job does it too; a new fee is the amount of new rows.
 		GRP_Store::insert(
@@ -138,7 +147,7 @@ class Test_GRP_Billing extends GRP_REST_TestCase {
 		);
 		$this->assertCount( 1, $older, 'one cycle from before the start' );
 		$this->assertSame( $rows[0], reset( $older ) );
-		$this->assertSame( GRP_Cycles::cycle_range( $project, -1, GRP_Cycles::today() )['key'], end( $rows )['cycle_key'] );
+		$this->assertSame( GRP_Cycles::cycle_range( $project, 0, GRP_Cycles::today() )['key'], end( $rows )['cycle_key'] );
 	}
 
 	public function test_billing_reaches_only_the_super_admin_through_sync() {
@@ -318,6 +327,20 @@ class Test_GRP_Billing extends GRP_REST_TestCase {
 			'payments' => array(),
 		);
 		$this->assertSame( GRP_Billing::TO_SEND, GRP_Billing::status( $row, 3, $today ) );
+		$this->assertSame( GRP_Billing::CURRENT, GRP_Billing::status( array( 'cycle_end' => '2026-10-31' ) + $row, 3, $today ), 'still running, not sent' );
+		$this->assertSame( GRP_Billing::TO_SEND, GRP_Billing::status( array( 'cycle_end' => '2026-10-09' ) + $row, 3, $today ), 'ended yesterday' );
+		$this->assertSame(
+			GRP_Billing::WAITING,
+			GRP_Billing::status(
+				array(
+					'cycle_end' => '2026-10-31',
+					'sent_at'   => '2026-10-09',
+				) + $row,
+				3,
+				$today
+			),
+			'billed early'
+		);
 		$this->assertSame( GRP_Billing::WAITING, GRP_Billing::status( array( 'sent_at' => '2026-10-08' ) + $row, 3, $today ) );
 		$this->assertSame( GRP_Billing::OVERDUE, GRP_Billing::status( array( 'sent_at' => '2026-10-07' ) + $row, 3, $today ), 'three days after the invoice' );
 		$this->assertSame( GRP_Billing::WAITING, GRP_Billing::status( array( 'sent_at' => '2026-10-07' ) + $row, 10, $today ), 'per-project reminder days' );

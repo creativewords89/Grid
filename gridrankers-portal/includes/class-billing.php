@@ -21,7 +21,7 @@ class GRP_Billing {
 	 */
 	const SINCE_OPTION = 'grp_billing_since';
 
-	/** Ended cycles per project that get a row when it is missing. */
+	/** Ended cycles per project that get a row when it is missing (plus the current one). */
 	const KEEP_BACK = 6;
 
 	/** Default days after the invoice is sent before an unpaid invoice is Overdue. */
@@ -30,7 +30,8 @@ class GRP_Billing {
 	/** Default currency symbol. */
 	const CURRENCY = '$';
 
-	/** Payment tags. */
+	/** Payment tags. CURRENT: the cycle is still running and its invoice isn't sent yet. */
+	const CURRENT = 'current';
 	const TO_SEND = 'to_send';
 	const WAITING = 'waiting';
 	const PARTLY  = 'partly';
@@ -59,7 +60,8 @@ class GRP_Billing {
 	}
 
 	/**
-	 * Creates the missing rows for active projects' ended cycles. Safe to repeat.
+	 * Creates the missing rows for active projects: their current cycle (so every active project is
+	 * on the list from day one, to bill early if wanted) and their ended cycles. Safe to repeat.
 	 *
 	 * @param string $today `Y-m-d`.
 	 * @return int Rows created.
@@ -71,29 +73,29 @@ class GRP_Billing {
 
 		foreach ( GRP_Store::find( 'grp_projects', array( 'state' => 'active' ) ) as $project ) {
 			$created = substr( (string) $project['created_at'], 0, 10 );
-			$ended   = array_values(
+			$cycles  = array_values(
 				array_filter(
 					GRP_Cycles::periods_of( $project, $today ),
 					static function ( $p ) use ( $today, $created ) {
 						// A waived transition between two cycle days is not a billing cycle.
 						$waived = $p['transition'] && 'due' !== $p['monthly'];
-						return $p['end'] < $today && $p['end'] >= $created && ! $waived;
+						return $p['start'] <= $today && $p['end'] >= $created && ! $waived;
 					}
 				)
 			);
 			// From the cycle that had just ended when the tracker started.
 			$before = array_keys(
 				array_filter(
-					$ended,
+					$cycles,
 					static function ( $p ) use ( $since ) {
 						return $p['end'] < $since;
 					}
 				)
 			);
-			$ended  = array_slice( $ended, $before ? max( $before ) : 0 );
+			$cycles = array_slice( $cycles, $before ? max( $before ) : 0 );
 			$fee    = $fees[ $project['id'] ] ?? null;
 
-			foreach ( array_slice( $ended, -self::KEEP_BACK ) as $period ) {
+			foreach ( array_slice( $cycles, -self::KEEP_BACK - 1 ) as $period ) {
 				$id = self::row_id( $project['id'], $period['key'] );
 				if ( GRP_Store::get( 'grp_billing', $id ) ) {
 					continue;
@@ -176,7 +178,7 @@ class GRP_Billing {
 			return self::PAID;
 		}
 		if ( empty( $row['sent_at'] ) ) {
-			return self::TO_SEND;
+			return (string) ( $row['cycle_end'] ?? '' ) >= $today ? self::CURRENT : self::TO_SEND;
 		}
 		if ( $paid > 0 ) {
 			return self::PARTLY;

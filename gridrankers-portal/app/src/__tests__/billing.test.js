@@ -32,6 +32,10 @@ describe('payment tags', () => {
 	const row = { amount: 500, sent_at: null, skipped: 0, payments: [] };
 	it('follows the server rules, with a 3-day payment reminder by default', () => {
 		expect(statusOf(row, 3, TODAY)).toBe('to_send');
+		expect(statusOf({ ...row, cycle_end: '2026-10-31' }, 3, TODAY)).toBe('current');
+		expect(statusOf({ ...row, cycle_end: '2026-10-10' }, 3, TODAY)).toBe('current');
+		expect(statusOf({ ...row, cycle_end: '2026-10-09' }, 3, TODAY)).toBe('to_send');
+		expect(statusOf({ ...row, cycle_end: '2026-10-31', sent_at: '2026-10-09' }, 3, TODAY)).toBe('waiting');
 		expect(statusOf({ ...row, sent_at: '2026-10-08' }, 3, TODAY)).toBe('waiting');
 		expect(statusOf({ ...row, sent_at: '2026-10-07' }, 3, TODAY)).toBe('overdue');
 		expect(statusOf({ ...row, sent_at: '2026-10-07' }, 10, TODAY)).toBe('waiting');
@@ -63,11 +67,21 @@ describe('rows, by project and year view', () => {
 		expect(tagText({ ...by.b2, status: 'overdue' })).toBe('Overdue · 9 days');
 	});
 
-	it('shows each project’s latest cycle with its older open cycles', () => {
-		const latest = latestByProject(billingRows(data(), TODAY));
-		expect(latest.map((r) => r.id)).toEqual(['a2', 'b2', 'gone']);
+	it('shows each project’s oldest cycle that needs something, else its latest (This cycle)', () => {
+		const d = data();
+		d.billing.a3 = bill('a3', 'a', '2026-10-31');
+		d.billing.c1 = bill('c1', 'c', '2026-10-31', { project_name: 'Coastal' });
+		const rows = billingRows(d, TODAY);
+		expect(rows.find((r) => r.id === 'a3')).toMatchObject({ status: 'current', left: 0 });
+		expect(tagText(rows.find((r) => r.id === 'a3'))).toBe('This cycle · ends Oct 31');
+		const latest = latestByProject(rows);
+		expect(latest.map((r) => r.id)).toEqual(['a2', 'b1', 'c1', 'gone']);
 		expect(latest[0].older).toEqual([]);
-		expect(latest[1].older.map((r) => r.id)).toEqual(['b1']);
+		expect(latest[1].older.map((r) => r.id)).toEqual(['b2']);
+		expect(latest[2].status).toBe('current');
+		// This cycle is no reminder and nothing owed yet.
+		expect(billingReminders(d, ADMIN, TODAY).some((r) => r.row === 'a3' || r.row === 'c1')).toBe(false);
+		expect(owedOf(rows.filter((r) => r.project_id === 'c'))).toBe('');
 	});
 
 	it('adds up the tiles and what is owed', () => {
