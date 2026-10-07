@@ -24,6 +24,7 @@ require_once GRP_PLUGIN_DIR . 'includes/class-ids.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-permissions.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-cycles.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-people.php';
+require_once GRP_PLUGIN_DIR . 'includes/class-time.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-weather.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-auth.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-store.php';

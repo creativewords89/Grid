@@ -16,7 +16,7 @@ class Test_GRP_Install extends WP_UnitTestCase {
 	 * @var array<string, string[]>
 	 */
 	const EXPECTED_COLUMNS = array(
-		'grp_members'       => array( 'id', 'name', 'role', 'color', 'photo', 'title', 'email', 'phone', 'address', 'drive_url', 'notes', 'code_hash', 'code_salt', 'code_set_at', 'wp_user_id', 'active', 'birthday', 'birth_year', 'location', 'weekly_off' ),
+		'grp_members'       => array( 'id', 'name', 'role', 'color', 'photo', 'title', 'email', 'phone', 'address', 'drive_url', 'notes', 'code_hash', 'code_salt', 'code_set_at', 'wp_user_id', 'active', 'birthday', 'birth_year', 'location', 'weekly_off', 'work_hours' ),
 		'grp_sessions'      => array( 'id', 'member_id', 'token_hash', 'expires_at', 'ip', 'user_agent' ),
 		'grp_projects'      => array( 'id', 'name', 'state', 'cycle_day', 'cycle_set', 'cycle_changes', 'cycle_log', 'std_cycle', 'cycle_reviews', 'details', 'kw_columns' ),
 		'grp_meeting_tasks' => array( 'id', 'project_id', 'title', 'notes', 'url', 'priority', 'status', 'meeting_date', 'done_at', 'target', 'assignees', 'team', 'progress', 'deadline', 'review', 'completion', 'undo_request', 'created_by' ),
@@ -36,6 +36,8 @@ class Test_GRP_Install extends WP_UnitTestCase {
 		'grp_comments'      => array( 'id', 'ref_kind', 'ref_id', 'project_id', 'body', 'files', 'created_by', 'deleted_at' ),
 		'grp_billing'       => array( 'id', 'project_id', 'project_name', 'cycle_key', 'cycle_start', 'cycle_end', 'amount', 'currency', 'sent_at', 'sent_by', 'ref', 'skipped', 'note', 'payments' ),
 		'grp_billing_fees'  => array( 'id', 'fee', 'currency', 'remind_days' ),
+		'grp_time_entries'  => array( 'id', 'member_id', 'project_id', 'ref_kind', 'ref_id', 'period_key', 'started_at', 'ended_at', 'seconds', 'idle_seconds', 'source', 'note', 'device_id', 'flags', 'synced_at', 'edited_by', 'deleted_at' ),
+		'grp_devices'       => array( 'id', 'member_id', 'name', 'platform', 'app_version', 'token_hash', 'expires_at', 'last_seen_at', 'ip', 'revoked_at' ),
 	);
 
 	/**

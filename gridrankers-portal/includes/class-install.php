@@ -15,7 +15,7 @@ class GRP_Install {
 	/**
 	 * Current schema version. Bump it whenever get_schema() or migrations() changes.
 	 */
-	const DB_VERSION = 13;
+	const DB_VERSION = 14;
 
 	/**
 	 * Option that stores the installed schema version.
@@ -35,6 +35,7 @@ class GRP_Install {
  * `grp_files` (private uploads for submissions and comments) and `grp_comments` (SPEC.md 6.6). Schema 11
  * adds `grp_billing` and `grp_billing_fees`, the Super Admin's invoice tracker (SPEC.md 6.14).
  * Schema 12 repairs breakdown people (6.5); schema 13 adds `past` to keywords (moved to Past, 6.12).
+ * Schema 14 adds the time tracker (6.15): `grp_time_entries`, `grp_devices` and members' `work_hours`.
 	 *
 	 * @var string[]
 	 */
@@ -59,6 +60,8 @@ class GRP_Install {
 		'grp_comments',
 		'grp_billing',
 		'grp_billing_fees',
+		'grp_time_entries',
+		'grp_devices',
 	);
 
 	/**
@@ -287,6 +290,7 @@ class GRP_Install {
 				birth_year smallint(4) unsigned NULL,
 				location varchar(191) NULL,
 				weekly_off json NULL,
+				work_hours json NULL,
 				created_at datetime NOT NULL,
 				updated_at datetime NOT NULL,
 				PRIMARY KEY  (id),
@@ -640,6 +644,51 @@ class GRP_Install {
 				updated_at datetime NOT NULL,
 				PRIMARY KEY  (id),
 				KEY updated_at (updated_at)
+			) $collate;",
+
+			"CREATE TABLE {$t['grp_time_entries']} (
+				id varchar(64) NOT NULL,
+				member_id varchar(64) NOT NULL,
+				project_id varchar(64) NULL,
+				ref_kind enum('item','record','none') NOT NULL DEFAULT 'none',
+				ref_id varchar(128) NULL,
+				period_key varchar(32) NULL,
+				started_at datetime NOT NULL,
+				ended_at datetime NULL,
+				seconds int(11) NOT NULL DEFAULT 0,
+				idle_seconds int(11) NOT NULL DEFAULT 0,
+				source enum('desktop','web','manual') NOT NULL DEFAULT 'web',
+				note text NULL,
+				device_id varchar(64) NULL,
+				flags json NULL,
+				synced_at datetime NULL,
+				edited_by varchar(64) NULL,
+				deleted_at datetime NULL,
+				created_at datetime NOT NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				KEY member_started (member_id,started_at),
+				KEY project_id (project_id),
+				KEY ended_at (ended_at),
+				KEY updated_at (updated_at)
+			) $collate;",
+
+			"CREATE TABLE {$t['grp_devices']} (
+				id varchar(64) NOT NULL,
+				member_id varchar(64) NOT NULL,
+				name varchar(191) NOT NULL DEFAULT '',
+				platform varchar(32) NOT NULL DEFAULT '',
+				app_version varchar(32) NOT NULL DEFAULT '',
+				token_hash char(64) NOT NULL,
+				expires_at datetime NOT NULL,
+				last_seen_at datetime NULL,
+				ip varchar(45) NOT NULL DEFAULT '',
+				revoked_at datetime NULL,
+				created_at datetime NOT NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				UNIQUE KEY token_hash (token_hash),
+				KEY member_id (member_id)
 			) $collate;",
 		);
 	}

@@ -1406,4 +1406,263 @@ class Test_GRP_Permissions extends WP_UnitTestCase {
 			)
 		);
 	}
+
+	public function test_track_own_time_only() {
+		$this->assert_matrix(
+			GRP_Permissions::TRACK_TIME,
+			fn ( $role ) => array( 'member_id' => $this->users[ $role ]['id'] ),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => true,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::TRACK_TIME,
+			array( 'member_id' => 'm-other' ),
+			array(
+				'admin'  => false,
+				'lead'   => false,
+				'member' => false,
+			)
+		);
+		$this->assertContains( GRP_Permissions::TRACK_TIME, GRP_Permissions::PROFILE_LOCKED );
+	}
+
+	public function test_edit_own_time() {
+		$now = '2026-10-07 12:00:00';
+		$this->assert_matrix(
+			GRP_Permissions::EDIT_TIME,
+			fn ( $role ) => array(
+				'member_id'  => $this->users[ $role ]['id'],
+				'role'       => $role,
+				'started_at' => '2026-10-01 09:00:00',
+				'now'        => $now,
+			),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => true,
+			)
+		);
+		// Started more than 7 days ago: only managers still change their own.
+		$this->assert_matrix(
+			GRP_Permissions::EDIT_TIME,
+			fn ( $role ) => array(
+				'member_id'  => $this->users[ $role ]['id'],
+				'role'       => $role,
+				'started_at' => '2026-09-30 11:59:59',
+				'now'        => $now,
+			),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => false,
+			)
+		);
+		$this->assertTrue(
+			GRP_Permissions::can(
+				$this->users['member'],
+				GRP_Permissions::EDIT_TIME,
+				array(
+					'member_id'  => 'm-member',
+					'role'       => 'member',
+					'started_at' => '2026-09-30 12:00:00',
+					'now'        => $now,
+				)
+			),
+			'exactly 7 days ago is still editable'
+		);
+		$this->assertContains( GRP_Permissions::EDIT_TIME, GRP_Permissions::PROFILE_LOCKED );
+	}
+
+	public function test_edit_someone_elses_time() {
+		$started = gmdate( 'Y-m-d H:i:s' );
+		$this->assert_matrix(
+			GRP_Permissions::EDIT_TIME,
+			array(
+				'member_id'  => 'm-other',
+				'role'       => 'member',
+				'started_at' => $started,
+			),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => false,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::EDIT_TIME,
+			array(
+				'member_id'  => 'm-other-lead',
+				'role'       => 'lead',
+				'started_at' => $started,
+			),
+			array(
+				'admin'  => true,
+				'lead'   => false,
+				'member' => false,
+			)
+		);
+	}
+
+	public function test_view_time() {
+		$this->assert_matrix(
+			GRP_Permissions::VIEW_TIME,
+			fn ( $role ) => array(
+				'member_id' => $this->users[ $role ]['id'],
+				'role'      => $role,
+			),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => true,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::VIEW_TIME,
+			array(
+				'member_id' => 'm-other',
+				'role'      => 'member',
+			),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => false,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::VIEW_TIME,
+			array(
+				'member_id' => 'm-other-lead',
+				'role'      => 'lead',
+			),
+			array(
+				'admin'  => true,
+				'lead'   => false,
+				'member' => false,
+			)
+		);
+		$this->assertNotContains( GRP_Permissions::VIEW_TIME, GRP_Permissions::PROFILE_LOCKED, 'viewing still works' );
+	}
+
+	public function test_set_work_hours() {
+		$this->assert_matrix(
+			GRP_Permissions::SET_WORK_HOURS,
+			null,
+			array(
+				'admin'  => true,
+				'lead'   => false,
+				'member' => false,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::SET_WORK_HOURS,
+			array(
+				'member_id' => 'm-other',
+				'role'      => 'member',
+			),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => false,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::SET_WORK_HOURS,
+			array(
+				'member_id' => 'm-other-lead',
+				'role'      => 'lead',
+			),
+			array(
+				'admin'  => true,
+				'lead'   => false,
+				'member' => false,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::SET_WORK_HOURS,
+			fn ( $role ) => array(
+				'member_id' => $this->users[ $role ]['id'],
+				'role'      => $role,
+			),
+			array(
+				'admin'  => true,
+				'lead'   => false,
+				'member' => false,
+			)
+		);
+	}
+
+	public function test_manage_devices() {
+		$this->assert_matrix(
+			GRP_Permissions::MANAGE_DEVICES,
+			fn ( $role ) => array(
+				'member_id' => $this->users[ $role ]['id'],
+				'role'      => $role,
+			),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => true,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::MANAGE_DEVICES,
+			array(
+				'member_id' => 'm-other',
+				'role'      => 'member',
+			),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => false,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::MANAGE_DEVICES,
+			array(
+				'member_id' => 'm-other-lead',
+				'role'      => 'lead',
+			),
+			array(
+				'admin'  => true,
+				'lead'   => false,
+				'member' => false,
+			)
+		);
+	}
+
+	public function test_incomplete_profile_locks_time_but_not_the_super_admin() {
+		$lead = array(
+			'id'     => 'm-lead2',
+			'role'   => 'lead',
+			'active' => 1,
+			'name'   => 'Lead Two',
+		);
+		$this->assertFalse( GRP_Permissions::can( $lead, GRP_Permissions::TRACK_TIME, array( 'member_id' => 'm-lead2' ) ) );
+		$this->assertFalse(
+			GRP_Permissions::can(
+				$lead,
+				GRP_Permissions::EDIT_TIME,
+				array(
+					'member_id' => 'm-other',
+					'role'      => 'member',
+				)
+			)
+		);
+		$this->assertTrue(
+			GRP_Permissions::can(
+				$lead,
+				GRP_Permissions::VIEW_TIME,
+				array(
+					'member_id' => 'm-lead2',
+					'role'      => 'lead',
+				)
+			)
+		);
+
+		$admin = array_diff_key( $this->users['admin'], GRP_REST_TestCase::FULL_PROFILE );
+		$this->assertTrue( GRP_Permissions::can( $admin, GRP_Permissions::TRACK_TIME, array( 'member_id' => 'm-admin' ) ) );
+	}
 }

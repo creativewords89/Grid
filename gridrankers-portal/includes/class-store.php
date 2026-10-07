@@ -19,7 +19,7 @@ class GRP_Store {
 	 * JSON columns per table.
 	 */
 	const JSON_COLUMNS = array(
-		'grp_members'       => array( 'weekly_off' ),
+		'grp_members'       => array( 'weekly_off', 'work_hours' ),
 		'grp_posts'         => array( 'to_members' ),
 		'grp_projects'      => array( 'cycle_changes', 'cycle_log', 'cycle_reviews', 'details', 'kw_columns' ),
 		'grp_keywords'      => array( 'checks', 'past' ),
@@ -31,6 +31,7 @@ class GRP_Store {
 		'grp_trash'         => array( 'data' ),
 		'grp_settings'      => array( 'value' ),
 		'grp_billing'       => array( 'payments' ),
+		'grp_time_entries'  => array( 'flags' ),
 	);
 
 	/**
@@ -58,6 +59,8 @@ class GRP_Store {
 		'size',
 		'skipped',
 		'remind_days',
+		'seconds',
+		'idle_seconds',
 	);
 
 	/**

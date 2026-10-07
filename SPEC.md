@@ -23,6 +23,7 @@ This document is the single source of truth for rebuilding the GridRankers team 
 | Live updates | Client polls `GET /sync?since=<cursor>` every 10 s while visible (pause when tab hidden). Server returns changed rows since cursor. |
 | Scheduled jobs | `grp_daily` action. Registered with WP-Cron **and** called by a real Hostinger cron hitting `wp-cron.php` (document both). Runs hourly-safe. |
 | Files | PDF reports generated client-side (jsPDF + autotable bundled locally, no CDN) |
+| Desktop tracker | *new* (6.15): `gridrankers-tracker/` beside the plugin — an Electron + Vite + React app for Windows and macOS. It talks only to the plugin's REST API with a device token; it keeps no data of its own beyond an offline copy. |
 | Caching | Plugin sends `Cache-Control: no-store` on its page and API. README tells admin to exclude the portal page and `/wp-json/gr-portal/*` from LiteSpeed/Hostinger cache. |
 
 ### Plugin structure
@@ -102,10 +103,16 @@ Three portal roles, stored on the team member (`role`): `admin` (Super Admin), `
 | Approve / send back a review someone asked **you** for | ✔ | ✔ | ✔ (only that task) |
 | Set own profile, incl. location and date of birth | ✔ | ✔ | ✔ |
 | Work on tasks while the profile is incomplete (6.10) | ✔ (reminder only) | ✘ | ✘ |
+| Track own time: start / stop / switch the timer, sync offline entries (6.15) | ✔ | ✔ | ✔ |
+| Edit / delete own time entries (6.15) | ✔ | ✔ | ✔ started in the last 7 days |
+| Add / edit / delete someone else's time (6.15) | anyone | Team Members only | ✘ |
+| See someone's time and time reports (6.15) | anyone | Team Members only (and their own) | their own only |
+| Set work hours (6.15) | team default + anyone | Team Members only | ✘ |
+| See / revoke signed-in desktop devices (6.15) | anyone | Team Members (and their own) | their own |
 
 Every REST endpoint calls `GRP_Permissions::can($user, $action, $object)`. Unit-test every row above.
 
-**Profile lock** (*new*): while a Team Leader's or Team Member's required profile (6.10) is incomplete, every task action is refused (add / edit / delete a task, change status, tick progress, review, ask for or answer a review, log work, skip a period, upload a file, edit a submission, comment) with `grp_profile_incomplete` and the missing fields. Viewing, leave and editing their own profile still work.
+**Profile lock** (*new*): while a Team Leader's or Team Member's required profile (6.10) is incomplete, every task action is refused (add / edit / delete a task, change status, tick progress, review, ask for or answer a review, log work, skip a period, upload a file, edit a submission, comment, track or edit time) with `grp_profile_incomplete` and the missing fields. Viewing, leave and editing their own profile still work.
 
 ## 4. Authentication
 
@@ -127,7 +134,7 @@ All tables: `id` CHAR(26) ULID (or keep imported string ids, VARCHAR(64)), `crea
 
 | Table | Key columns |
 |---|---|
-| `grp_members` | id, name, role ENUM(admin,lead,member), color, photo (media id/url), title, email, phone, address, drive_url, notes, code_hash, code_salt (legacy), code_set_at, wp_user_id NULL, active TINYINT, birthday CHAR(5) NULL (`MM-DD`), birth_year SMALLINT NULL (managers and self only), location VARCHAR(191) NULL (city, for the weather), weekly_off JSON NULL (own weekly day off, weekdays 0–6; NULL = the team's) |
+| `grp_members` | id, name, role ENUM(admin,lead,member), color, photo (media id/url), title, email, phone, address, drive_url, notes, code_hash, code_salt (legacy), code_set_at, wp_user_id NULL, active TINYINT, birthday CHAR(5) NULL (`MM-DD`), birth_year SMALLINT NULL (managers and self only), location VARCHAR(191) NULL (city, for the weather), work_hours JSON NULL (own `{start, end}`, 6.15), weekly_off JSON NULL (own weekly day off, weekdays 0–6; NULL = the team's) |
 | `grp_sessions` | id, member_id, token_hash, expires_at, ip, user_agent |
 | `grp_projects` | id, name UNIQUE, state ENUM(active,paused,inactive), cycle_day TINYINT 1–28, cycle_set TINYINT, cycle_changes JSON, cycle_log JSON, std_cycle VARCHAR (last cycle key the standard tasks were checked), cycle_reviews JSON `{cycleKey: {taskId: {ok, note, to, by, at}}}` (last 3 cycles, 6.11), details JSON NULL `{sections: [{id, title, text, links: [{id, title, url, kind: sheet|doc|drive|other}]}]}` and kw_columns JSON NULL `[{id, name}]` (6.12, schema 8) |
 | `grp_meeting_tasks` | id, project_id, title, notes, url, priority ENUM(urgent,high,normal,low), status ENUM(todo,doing,done), meeting_date DATE, done_at, target INT (quantity, default 1), assignees JSON `[{id,n}]`, team TINYINT, progress JSON `{memberId: count}`, deadline JSON (6.3), review JSON (6.6), completion JSON (6.6), created_by |
@@ -138,7 +145,7 @@ All tables: `id` CHAR(26) ULID (or keep imported string ids, VARCHAR(64)), `crea
 | `grp_trash` | id, type, doc_id, data JSON (full row), title, project_id, deleted_at, deleted_by — purge after 30 days |
 | `grp_dismissals` | member_id, key, at — per-person dismissed notifications |
 | `grp_requests` | access requests (only if a public request flow is wanted; otherwise skip) |
-| `grp_settings` | key, value JSON (e.g. `workweek`; `weekly_off` = team weekly day off `{days: [0–6]}`, default `{days: [5]}` (Friday); `messages` = `{birthday, day_off, leave_approved}` texts with `{name}`) |
+| `grp_settings` | key, value JSON (e.g. `workweek`; `weekly_off` = team weekly day off `{days: [0–6]}`, default `{days: [5]}` (Friday); `messages` = `{birthday, day_off, leave_approved}` texts with `{name}`; `work_hours` = team work hours `{start: "09:00", end: "17:00"}`, 6.15) |
 | `grp_leave` | id, member_id, type ENUM(day,sick), from_date DATE, to_date DATE, days TINYINT (working days in the range, 6.10), reason, status ENUM(pending,approved,rejected,cancelled), decided_by NULL, decided_at NULL, message (approver's note), created_by — *new* |
 | `grp_days_off` | id, kind ENUM(event,seasonal), name, from_date DATE, to_date DATE (= from_date for an event), created_by — whole team — *new* |
 | `grp_keywords` | id, project_id, keyword VARCHAR(191), checks JSON `{columnId: {by, at}}`, note TEXT NULL, deadline DATE NULL, position INT, created_by — *new* (6.12, schema 8) |
@@ -146,6 +153,8 @@ All tables: `id` CHAR(26) ULID (or keep imported string ids, VARCHAR(64)), `crea
 | `grp_comments` | id, ref_kind ENUM(item,record), ref_id, project_id, body TEXT, files JSON `[{id, mime, name, size}]`, created_by, deleted_at NULL — *new* (6.6, schema 10; synced as `comments`) |
 | `grp_billing` | id = `bl_` + md5(project, cycle key), project_id, project_name (as when made), cycle_key, cycle_start DATE, cycle_end DATE, amount DECIMAL(12,2) NULL, currency VARCHAR(8), sent_at DATE NULL, sent_by NULL, ref NULL (own invoice no. or link), skipped TINYINT (Not billed), note NULL, payments JSON `[{id, amount, date, method, ref, by, at}]` — *new* (6.14, schema 11; Super Admin only) |
 | `grp_billing_fees` | id = project id, fee DECIMAL(12,2) NULL, currency VARCHAR(8), remind_days TINYINT (default 3) — *new* (6.14, schema 11; Super Admin only) |
+| `grp_time_entries` | id (ULID made by the client, so a retried upload is never saved twice), member_id, project_id NULL, ref_kind ENUM(item,record,none), ref_id NULL (meeting task id or monthly task id), period_key NULL (monthly tasks), started_at DATETIME, ended_at DATETIME NULL (NULL = running), seconds INT, idle_seconds INT, source ENUM(desktop,web,manual), note NULL, device_id NULL, flags JSON NULL `{auto_stopped, day_off, late_sync, clock_skew}`, synced_at DATETIME NULL, edited_by NULL, deleted_at NULL — *new* (6.15, schema 14) |
+| `grp_devices` | id, member_id, name, platform VARCHAR(32), app_version VARCHAR(32), token_hash CHAR(64) UNIQUE, expires_at, last_seen_at NULL, ip, revoked_at NULL — *new* (6.15, schema 14; never synced) |
 | `grp_posts` | id, kind ENUM(announcement,shoutout,notice), title NULL, body, to_member NULL (first shout-outs), to_members JSON NULL (chosen people; NULL = everyone), pinned TINYINT, show_until DATE NULL, created_by, soft delete — *new* |
 
 ## 6. Domain logic
@@ -280,6 +289,26 @@ Not for sending invoices: the Super Admin's own record, so no invoice is forgott
 - **Reminders every day until done**, for the Super Admin, with the New cycle setup reminders (Notifications under the chips, and the bell; can't be dismissed): "{project}: send the invoice for {cycle}" (amber, from the day after the cycle ends until Invoice sent or Not billed) and "{project}: payment not received — N days since the invoice" (red, once Overdue; "$X still to come" when partly paid), with **Open invoices**. Also when no fee is set.
 - **Private**: every `/billing` route is Super Admin only (MANAGE_BILLING); `/sync` sends `billing` and `billing_fees` (and their deletions) to nobody else. Not in the export yet.
 
+### 6.15 Time tracker (*new*, desktop app + portal)
+*Not in the reference portal.* A desktop app that records how long people work on their tasks. Time only: no screenshots, keystrokes, apps or websites are recorded. Hours are not used by Invoices (6.14).
+- **Sign in with the employee code** (4.2, same lockout and error). The app gets a **device token** (random 32 bytes, stored hashed in `grp_devices`, 30-day expiry renewed on use) and, in the same answer, everything it needs: the person's name, photo and role, their work hours, their schedule (below) for the next 14 days, their tasks (My day: projects, monthly tasks, General tasks) and their running timer if any. The token is kept in the OS keychain. **Set code**, **Remove member** and **Revoke** on the device end it (401); entries not yet sent stay on the computer and upload after the next sign-in. A person receives only their own data.
+- **Device token rules**: sent as `Authorization: Bearer …`; no nonce (nothing for a browser to forge); accepted only on `/auth/me`, `/auth/device`, `/timer/*` and `/time-entries*` — every other route still needs the browser session.
+- **Everything comes from the web portal**: work hours, days off, leave and tasks are set only on the portal, by the people section 3 allows; the app cannot change them. It refreshes them on every sync (every few minutes while online) and keeps the last copy for offline use.
+- **Work hours**: the team's (`grp_settings.work_hours`, default 09:00–17:00, set by the Super Admin) or the person's own (`grp_members.work_hours`, set by the Super Admin, or a Team Leader for Team Members). Site time zone.
+- **Schedule**: for each date, *working* or *not* with the reason, in this order: a team **event** or **seasonal** day off (its name), the person's **weekly day off** (own, else the team's; the weekday's name), **approved leave** ("Leave", never the type or reason). Pending leave is a working day.
+- **One timer per person**: starting a timer stops the running one (also one started on the web or another computer). A person's entries never overlap; touching ends are fine. An entry is linked to a meeting task, a monthly task (+ period) or nothing ("No task"), always with its project if any.
+- **Never loses time offline**: the app writes start / stop to its own database first, with the entry id made on the computer, and saves a heartbeat every 30 s while a timer runs (so a crash loses at most 30 s; on the next start: "Your timer stopped unexpectedly at {time} — Keep until {time} / Discard / Keep running"). Changes wait in an **outbox** and go up with `POST /time-entries/batch` when the connection is back (retries 5 s, 15 s, 1 min, 5 min). The server answers per entry *saved*, *already there* (same id: ignored) or *refused* with the reason; one refusal never blocks the others, and a refused entry is shown to the person under **Needs attention**, never dropped. An entry is marked sent only after the server confirms it.
+- **Server checks** on every entry: the person may track (section 3, profile lock), end after start, at most **12 hours** (the hourly job stops a timer still running after 12 h and flags it `auto_stopped`), no overlap with the person's other entries, not in the future (2 minutes' grace). Entries on a non-working day are kept and flagged `day_off`; entries sent more than a day after they ended are flagged `late_sync`; when the computer's clock is more than 2 minutes off the server's, the app sends the difference and the entry is flagged `clock_skew`.
+- **Tray status**: green (online), orange "Offline · N entries waiting to sync", "Synced N entries" when back.
+- **Reminders** (desktop notifications), only between the start and end of work hours on a **working day** of the person's schedule — none on any day off or approved leave, worked out from the saved schedule even offline:
+  - no timer running: 5 minutes after the start ("It's 9:05 — start your timer"), then every 15 minutes;
+  - app offline: every 15 minutes ("Tracker isn't connected — your time is saved, check your internet");
+  - away (no keyboard or mouse for 10 minutes) with a timer running: once ("You've been away 10 min — Keep / Discard"); after sleep: "You were away {n} min — Keep / Discard";
+  - timer still running at the end of work hours: at the end and once 30 minutes later ("It's 5:00 — stop your timer?").
+  Every reminder has **Snooze 15 min**; reminders cannot be turned off during work hours. The timer itself works on any day.
+- **Portal**: the timer chip in the top bar (what is running, Stop, switch), a **Time** tab on the member page (week grid, daily totals, edit entries, PDF), team hours per person per project per cycle (admin/lead), and the person's devices with **Revoke**. A stopped entry linked to a task also writes a `grp_activity` row with its `minutes`.
+- **Desktop app**: Windows and macOS installers, signed; starts with the computer; updates itself.
+
 ## 7. Screens (match the reference file)
 
 ### 7.0 Dashboard (everyone)
@@ -392,11 +421,15 @@ The team sections are tabs of **My page** for leaders and the Super Admin (7.6) 
 | GET/POST/PATCH/DELETE `/members[/id]` · POST `/members/id/code` | team |
 | POST `/notifications/dismiss` | dismissals |
 | GET `/billing` · PUT `/billing/projects/id` `{fee, currency, remind_days}` · PATCH `/billing/id` `{sent?, sent_at?, amount?, currency?, ref?, skipped?, note?}` · POST `/billing/id/payments` `{amount, date?, method?, ref?}` · DELETE `/billing/id/payments/pid` | invoices (6.14, Super Admin only) |
+| POST `/auth/device` `{code, device_name, platform, app_version}` → `{token, member, work_hours, schedule, tasks, timer}` · DELETE `/devices/id` · GET `/devices?member=` | desktop sign-in and devices (6.15) |
+| GET `/timer` · POST `/timer/start` `{id, project_id, ref_kind, ref_id, period_key?, note?, started_at?}` · POST `/timer/stop` `{ended_at?, idle_seconds?}` · GET `/timer/schedule?days=14` · GET `/timer/tasks` | the running timer, schedule and tasks (6.15) |
+| GET `/time-entries?member=&from=&to=` · POST/PATCH/DELETE `/time-entries[/id]` · POST `/time-entries/batch` `{entries: [..≤200], clock_offset?}` · GET `/time/report?member=&month=` | time entries (6.15) |
+| PUT `/settings/work-hours` `{start, end}` (Super Admin) · PATCH `/members/id` `{work_hours}` | work hours (6.15) |
 | GET `/export` · POST `/import` (admin, nonce) | data |
 
 All writes validate input, check permissions (section 3), write the audit row in the same transaction, and return the updated row.
 
-`/sync` also carries the new tables. Leave privacy is enforced there: a Team Member receives their own leave rows in full and, for other people, only approved leave as `{member_id, from_date, to_date}` (enough for Who's out today) — never the type, reason or message. Team Leaders and the Super Admin receive all leave rows.
+`/sync` also carries the new tables (`time_entries`: a Team Member receives only their own, a Team Leader their own and Team Members'; `grp_devices` is never synced). Leave privacy is enforced there: a Team Member receives their own leave rows in full and, for other people, only approved leave as `{member_id, from_date, to_date}` (enough for Who's out today) — never the type, reason or message. Team Leaders and the Super Admin receive all leave rows.
 
 ## 9. Non-functional
 
@@ -539,5 +572,18 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 66. (Released as 0.1.29.) Plan: keywords can be dragged into **Past** (or ⋯ → Move to Past) and back out; their boxes stay as they are, the row says who moved it and when, and it's never late. **Tests:** PHPUnit (PATCH `past` for everyone, who/when kept, back out with a deadline, profile lock, export round trip), Vitest (Past by hand, not late), Playwright (drag into Past and back, ⋯ Move to Past).
 
 67. (Released as 0.1.29.) Deadline calendar (6.3, 6.4): today is marked with a ring when the calendar opens; once a date — or both ends of a range, or a day / days of the cycle on monthly tasks — is picked, the calendar folds into one line ("📅 Due … · Change"), and Change opens it again. **Tests:** Playwright (today marked, folds after a date and after a range, Change reopens it with the pick shown, monthly days fold too).
+
+**Time tracker (6.15) — one step per task:**
+
+68. Schema 14: `grp_time_entries`, `grp_devices`, `grp_members.work_hours`; the section 3 rows for time (profile lock included); `GRP_Time` pure functions: work hours, the schedule (working day or the reason), entry length and overlaps. **Tests:** activation creates the tables; every new permission row; Friday / own day off / event / seasonal / approved leave are not working days and pending leave is; own work hours beat the team's; overlaps and the 12-hour limit.
+69. Device sign-in: `POST /auth/device` with the code (same lockout), bearer tokens limited to the tracker routes, revoke on Set code / Remove member / Revoke. **Tests:** wrong code gives nothing; a revoked or expired token gets 401; a token cannot reach `/projects`; the answer carries only the person's own data.
+70. REST `/timer` and `/time-entries` (one timer per person, batch with per-entry answers, overlap, 12-hour auto-stop in the hourly job, flags, activity minutes), `/timer/schedule`, `/timer/tasks`, `/settings/work-hours`. **Tests** for every rule and permission.
+71. `/sync`, export / import and trash for time entries. **Tests:** a Team Member never receives another person's time.
+72. Portal: the timer chip in the top bar. Playwright.
+73. Portal: member page Time tab, team hours, devices, work-hours settings, PDF. Playwright.
+74. Desktop: `gridrankers-tracker/` scaffold (Electron + Vite + React), sign in with the code, tray, start / stop.
+75. Desktop: task picker, local database, outbox, heartbeat and batch sync; crash recovery.
+76. Desktop: reminders from the saved schedule, idle and sleep, snooze, start with the computer.
+77. Desktop: signed Windows / macOS installers, auto-update, README.
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).

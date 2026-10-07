@@ -197,6 +197,28 @@ class GRP_Permissions {
 	/** See and keep the invoice tracker: fees, invoices sent, payments (SPEC.md 6.14). Super Admin only. */
 	const MANAGE_BILLING = 'manage_billing';
 
+	/** Start, stop or switch one's own timer and send offline entries (SPEC.md 6.15). Context: `{member_id}`. Self only. */
+	const TRACK_TIME = 'track_time';
+
+	/**
+	 * Add, edit or delete a time entry (SPEC.md 6.15). Context: `{member_id, role, started_at?, now?}` of the
+	 * entry and its person. The Super Admin anyone's; a Team Leader their own and Team Members'; a Team Member
+	 * their own started in the last 7 days.
+	 */
+	const EDIT_TIME = 'edit_time';
+
+	/** See a person's time entries and time reports (SPEC.md 6.15). Context: `{member_id, role}`. As VIEW_MEMBER_PAGE. */
+	const VIEW_TIME = 'view_time';
+
+	/**
+	 * Set work hours (SPEC.md 6.15). Context: `{member_id, role}` of the person, or nothing for the team's.
+	 * The Super Admin the team's and anyone's; a Team Leader Team Members'.
+	 */
+	const SET_WORK_HOURS = 'set_work_hours';
+
+	/** See or revoke a person's signed-in desktop devices (SPEC.md 6.15). Context: `{member_id, role}`. As VIEW_MEMBER_PAGE. */
+	const MANAGE_DEVICES = 'manage_devices';
+
 	/**
 	 * Task work that is locked while a Team Leader's or Team Member's required profile is
 	 * incomplete (SPEC.md section 3, Profile lock).
@@ -223,6 +245,8 @@ class GRP_Permissions {
 		self::UPLOAD_FILE,
 		self::EDIT_SUBMISSION,
 		self::COMMENT,
+		self::TRACK_TIME,
+		self::EDIT_TIME,
 	);
 
 	/**
@@ -331,6 +355,8 @@ class GRP_Permissions {
 				return false;
 
 			case self::VIEW_MEMBER_PAGE:
+			case self::VIEW_TIME:
+			case self::MANAGE_DEVICES:
 				return self::is_self( $user, $context['member_id'] ?? null ) || $admin || ( $manager && self::ROLE_MEMBER === ( $context['role'] ?? '' ) );
 
 			case self::TOUR_MEMBER:
@@ -338,6 +364,24 @@ class GRP_Permissions {
 					return false;
 				}
 				return $admin || ( $manager && self::ROLE_MEMBER === ( $context['role'] ?? '' ) );
+
+			case self::TRACK_TIME:
+				return self::is_self( $user, $context['member_id'] ?? null );
+
+			case self::EDIT_TIME:
+				if ( $admin ) {
+					return true;
+				}
+				if ( self::is_self( $user, $context['member_id'] ?? null ) ) {
+					return $manager || GRP_Time::owner_may_edit( (string) ( $context['started_at'] ?? '' ), (string) ( $context['now'] ?? gmdate( 'Y-m-d H:i:s' ) ) );
+				}
+				return $manager && self::ROLE_MEMBER === ( $context['role'] ?? '' );
+
+			case self::SET_WORK_HOURS:
+				if ( $admin ) {
+					return true;
+				}
+				return $manager && ! self::is_self( $user, $context['member_id'] ?? null ) && self::ROLE_MEMBER === ( $context['role'] ?? '' );
 
 			case self::LOG_WORK:
 				return $manager || self::is_self( $user, $context['member_id'] ?? null );
