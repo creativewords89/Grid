@@ -149,6 +149,21 @@ class Test_GRP_Import_Export extends GRP_REST_TestCase {
 			$pages['parts'][0]['people'],
 			'legacy part.who'
 		);
+		$this->assertSame( array( 'tm_max', 'tm_nia' ), array_column( $pages['assignees'], 'id' ), 'the people on the rows are responsible' );
+
+		// A task whose people are only on its breakdown rows still reaches them (My day, ticking).
+		$export = $this->fixture();
+		foreach ( $export['data']['monthly'] as &$m ) {
+			if ( 'm_pages' === $m['id'] ) {
+				$m['assignees'] = array();
+				$m['team']      = true;
+			}
+		}
+		unset( $m );
+		GRP_Import::run( $export );
+		$pages = GRP_Store::get( 'grp_monthly_tasks', 'm_pages' );
+		$this->assertSame( array( 'tm_max', 'tm_nia' ), array_column( $pages['assignees'], 'id' ) );
+		$this->assertSame( 0, $pages['team'] );
 		$this->assertSame( 'weekly', GRP_Store::get( 'grp_monthly_tasks', 'm_social' )['freq'] );
 		$this->assertSame( 10, GRP_Store::get( 'grp_monthly_tasks', 'm_blogs' )['due_from_day'] );
 		$this->assertSame( 'date', GRP_Store::get( 'grp_monthly_tasks', 'm_legacy' )['due_mode'], 'legacy dueDay without dueMode' );

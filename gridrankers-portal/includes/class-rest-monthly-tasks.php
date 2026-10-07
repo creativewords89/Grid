@@ -283,6 +283,37 @@ class GRP_REST_Monthly_Tasks extends GRP_REST_Controller {
 	}
 
 	/**
+	 * The people on a task's breakdown rows, summed per person (`[{id, n}]`). Rows keep their people
+	 * in `people`, or a legacy single `who` (old exports). Empty when no row has anyone.
+	 *
+	 * @param mixed $parts Breakdown rows.
+	 * @return array
+	 */
+	public static function breakdown_people( $parts ) {
+		$by = array();
+		foreach ( is_array( $parts ) ? $parts : array() as $part ) {
+			$part   = (array) $part;
+			$people = ! empty( $part['people'] ) && is_array( $part['people'] ) ? $part['people'] : ( ! empty( $part['who'] ) ? array( array( 'id' => $part['who'] ) ) : array() );
+			foreach ( $people as $person ) {
+				$person = (array) $person;
+				$id     = (string) ( $person['id'] ?? '' );
+				if ( '' !== $id ) {
+					$by[ $id ] = ( $by[ $id ] ?? 0 ) + max( 1, (int) ( $person['n'] ?? $part['n'] ?? 1 ) );
+				}
+			}
+		}
+		$list = array();
+		foreach ( $by as $id => $n ) {
+			$list[] = array(
+				'id' => $id,
+				'n'  => $n,
+			);
+		}
+
+		return $list;
+	}
+
+	/**
 	 * Quantity, breakdown and responsible people (SPEC.md 6.5).
 	 *
 	 * Without a breakdown: quantity as given, responsible people share the whole task

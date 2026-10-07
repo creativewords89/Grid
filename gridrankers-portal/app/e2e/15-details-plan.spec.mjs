@@ -122,6 +122,20 @@ test('project details and keyword checklist', async ({ page }) => {
 	await row('emergency plumber dhaka').getByRole('checkbox', { name: 'GBP post for emergency plumber dhaka' }).click();
 	await expect(group('This cycle')).toContainText('emergency plumber dhaka');
 	await expect(group('Past').locator('.kp-row')).toHaveCount(0);
+	// Dragged into Past by hand: its boxes stay as they are; dragging it back to This cycle brings it out.
+	await row('blocked drain gazipur').dragTo(group('Past').locator('.kp-gh'));
+	await page.getByText('Moved to Past').first().waitFor();
+	await expect(group('Past')).toContainText('blocked drain gazipur');
+	await expect(row('blocked drain gazipur')).toContainText('Moved to Past by');
+	await expect(row('blocked drain gazipur')).toContainText('0/4');
+	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/plan-past.png' });
+	await row('blocked drain gazipur').dragTo(group('This cycle').locator('.kp-gh'));
+	await expect(group('This cycle')).toContainText('blocked drain gazipur');
+	await expect(group('Past').locator('.kp-row')).toHaveCount(0);
+	// The ⋯ menu does the same without dragging.
+	await row('water heater repair').getByRole('button', { name: 'More for water heater repair' }).click();
+	await page.getByRole('menuitem', { name: 'Move to Past' }).click();
+	await expect(group('Past')).toContainText('water heater repair');
 	await signOut(page);
 	noErrors();
 });

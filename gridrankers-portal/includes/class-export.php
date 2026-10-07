@@ -440,6 +440,7 @@ class GRP_Export {
 				'checks'    => $r['checks'] ? $r['checks'] : new stdClass(),
 				'note'      => $r['note'],
 				'deadline'  => $r['deadline'],
+				'past'      => $r['past'],
 				'position'  => (int) $r['position'],
 				'by'        => $r['created_by'],
 				'createdAt' => self::iso( $r['created_at'] ),

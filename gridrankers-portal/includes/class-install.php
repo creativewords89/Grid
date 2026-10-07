@@ -15,7 +15,7 @@ class GRP_Install {
 	/**
 	 * Current schema version. Bump it whenever get_schema() or migrations() changes.
 	 */
-	const DB_VERSION = 11;
+	const DB_VERSION = 13;
 
 	/**
 	 * Option that stores the installed schema version.
@@ -34,6 +34,7 @@ class GRP_Install {
  * Member's request to undo In progress, SPEC.md 6.6) to meeting tasks and cycle records. Schema 10 adds
  * `grp_files` (private uploads for submissions and comments) and `grp_comments` (SPEC.md 6.6). Schema 11
  * adds `grp_billing` and `grp_billing_fees`, the Super Admin's invoice tracker (SPEC.md 6.14).
+ * Schema 12 repairs breakdown people (6.5); schema 13 adds `past` to keywords (moved to Past, 6.12).
 	 *
 	 * @var string[]
 	 */
@@ -124,6 +125,7 @@ class GRP_Install {
 			3  => array( __CLASS__, 'migrate_weekly_records' ),
 			7  => array( __CLASS__, 'start_cycle_setup' ),
 			11 => array( 'GRP_Billing', 'start' ),
+			12 => array( __CLASS__, 'sync_breakdown_people' ),
 		);
 	}
 
@@ -142,6 +144,34 @@ class GRP_Install {
 				)
 			);
 		}
+	}
+
+	/**
+	 * Schema 12: a monthly task's people on its breakdown rows are its people responsible (SPEC.md
+	 * 6.5), as saving it in the portal does. Imported tasks could have them only on the rows, so
+	 * they never reached those people's My day and stayed locked for them.
+	 *
+	 * @return int Tasks fixed.
+	 */
+	public static function sync_breakdown_people() {
+		$fixed = 0;
+		foreach ( GRP_Store::find( 'grp_monthly_tasks' ) as $task ) {
+			$by = GRP_REST_Monthly_Tasks::breakdown_people( $task['parts'] ?? array() );
+			if ( ! $by || GRP_Store::canonical( $by ) === GRP_Store::canonical( (array) ( $task['assignees'] ?? array() ) ) ) {
+				continue;
+			}
+			GRP_Store::update(
+				'grp_monthly_tasks',
+				$task['id'],
+				array(
+					'assignees' => $by,
+					'team'      => 0,
+				)
+			);
+			++$fixed;
+		}
+
+		return $fixed;
 	}
 
 	/**
@@ -539,6 +569,7 @@ class GRP_Install {
 				checks json NULL,
 				note text NULL,
 				deadline date NULL,
+				past json NULL,
 				position int(11) NOT NULL DEFAULT 0,
 				created_by varchar(64) NULL,
 				created_at datetime NOT NULL,

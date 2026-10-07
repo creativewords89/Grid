@@ -31,7 +31,7 @@ class Test_GRP_Install extends WP_UnitTestCase {
 		'grp_leave'         => array( 'id', 'member_id', 'type', 'from_date', 'to_date', 'days', 'reason', 'status', 'decided_by', 'decided_at', 'message', 'created_by' ),
 		'grp_days_off'      => array( 'id', 'kind', 'name', 'from_date', 'to_date', 'created_by' ),
 		'grp_posts'         => array( 'id', 'kind', 'title', 'body', 'to_member', 'to_members', 'pinned', 'show_until', 'created_by', 'deleted_at' ),
-		'grp_keywords'      => array( 'id', 'project_id', 'keyword', 'checks', 'note', 'deadline', 'position', 'created_by' ),
+		'grp_keywords'      => array( 'id', 'project_id', 'keyword', 'checks', 'note', 'deadline', 'past', 'position', 'created_by' ),
 		'grp_files'         => array( 'id', 'name', 'mime', 'size', 'path', 'created_by' ),
 		'grp_comments'      => array( 'id', 'ref_kind', 'ref_id', 'project_id', 'body', 'files', 'created_by', 'deleted_at' ),
 		'grp_billing'       => array( 'id', 'project_id', 'project_name', 'cycle_key', 'cycle_start', 'cycle_end', 'amount', 'currency', 'sent_at', 'sent_by', 'ref', 'skipped', 'note', 'payments' ),
@@ -178,6 +178,96 @@ class Test_GRP_Install extends WP_UnitTestCase {
 		$this->assertSame(
 			10,
 			has_action( 'activate_' . plugin_basename( GRP_PLUGIN_FILE ), array( 'GRP_Install', 'activate' ) )
+		);
+	}
+
+	public function test_schema_12_gives_breakdown_people_their_tasks() {
+		GRP_Install::install();
+		$task  = GRP_Store::insert(
+			'grp_monthly_tasks',
+			array(
+				'project_id' => 'p1',
+				'title'      => 'Blogs',
+				'target'     => 3,
+				'team'       => 1,
+				'assignees'  => array(),
+				'parts'      => array(
+					array(
+						'id'     => 'a',
+						'name'   => 'Long blogs',
+						'n'      => 2,
+						'people' => array(
+							array(
+								'id' => 'tm_irfan',
+								'n'  => 2,
+							),
+						),
+					),
+					array(
+						'id'   => 'b',
+						'name' => 'Short blog',
+						'n'    => 1,
+						'who'  => 'tm_nia',
+					),
+				),
+			)
+		);
+		$plain = GRP_Store::insert(
+			'grp_monthly_tasks',
+			array(
+				'project_id' => 'p1',
+				'title'      => 'GBP posts',
+				'assignees'  => array(
+					array(
+						'id' => 'tm_max',
+						'n'  => 1,
+					),
+				),
+			)
+		);
+
+		$this->assertSame( 1, GRP_Install::sync_breakdown_people() );
+		$fixed = GRP_Store::get( 'grp_monthly_tasks', $task['id'] );
+		$this->assertSame(
+			array(
+				array(
+					'id' => 'tm_irfan',
+					'n'  => 2,
+				),
+				array(
+					'id' => 'tm_nia',
+					'n'  => 1,
+				),
+			),
+			$fixed['assignees']
+		);
+		$this->assertSame( 0, $fixed['team'] );
+		$this->assertSame( $plain['updated_at'], GRP_Store::get( 'grp_monthly_tasks', $plain['id'] )['updated_at'], 'tasks without breakdown people are left alone' );
+		$this->assertSame( 0, GRP_Install::sync_breakdown_people(), 'safe to repeat' );
+		$this->assertTrue(
+			GRP_Permissions::can(
+				array(
+					'id'         => 'tm_irfan',
+					'role'       => 'member',
+					'active'     => 1,
+					'location'   => 'x',
+					'birthday'   => '01-01',
+					'birth_year' => 1990,
+					'phone'      => '1',
+					'photo'      => 'p',
+					'name'       => 'Irfan',
+				),
+				GRP_Permissions::TICK_PROGRESS,
+				array(
+					'task'        => array(
+						'status'    => 'todo',
+						'assignees' => $fixed['assignees'],
+					),
+					'member_id'   => 'tm_irfan',
+					'delta'       => 1,
+					'total_after' => 1,
+				)
+			)
 		);
 	}
 }

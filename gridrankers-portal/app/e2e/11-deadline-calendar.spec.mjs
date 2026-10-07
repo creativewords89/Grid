@@ -24,9 +24,19 @@ test('pick deadlines on a calendar', async ({ page }) => {
 	await dlg.getByLabel('What needs to change').fill('Launch landing page');
 	await dlg.locator('.dl-opts').getByText('Specific date').click();
 	await expect(dlg.locator('.dp')).toBeVisible();
+	// Today is marked when it opens.
+	await expect(dlg.locator('.dp-day[aria-current="date"]')).toHaveCount(1);
+	await expect(dlg.locator('.dp-day.today')).toHaveAttribute('title', 'Today');
+	if (process.env.SHOTS) await dlg.locator('.dp').screenshot({ path: process.env.SHOTS + '/cal-today.png' });
 	await dlg.getByRole('button', { name: 'Next month' }).click();
 	await day(10).click();
+	// Picked: the calendar folds into one line; Change opens it again with the day picked.
+	await expect(dlg.locator('.dp')).toHaveCount(0);
+	await expect(dlg.locator('.dp-chosen')).toContainText('Due');
+	await dlg.locator('.dp-chosen').getByRole('button', { name: 'Change' }).click();
 	await expect(day(10)).toHaveAttribute('aria-pressed', 'true');
+	await day(10).click();
+	await expect(dlg.locator('.dp')).toHaveCount(0);
 	await dlg.getByRole('button', { name: 'Save task' }).click();
 	await page.getByText('Task added').waitFor();
 
@@ -38,9 +48,11 @@ test('pick deadlines on a calendar', async ({ page }) => {
 	await day(1).click();
 	await expect(dlg.locator('.dp-foot')).toContainText('now pick the last day');
 	await day(5).click();
-	await expect(dlg.locator('.dp-day.in')).toHaveCount(3);
-	await expect(dlg.locator('.dp-foot')).toContainText('(5 days)');
+	await expect(dlg.locator('.dp')).toHaveCount(0);
+	await expect(dlg.locator('.dp-chosen')).toContainText('(5 days)');
 	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/cal-range.png' });
+	await dlg.locator('.dp-chosen').getByRole('button', { name: 'Change' }).click();
+	await expect(dlg.locator('.dp-day.in')).toHaveCount(3);
 	await dlg.getByRole('button', { name: 'Save task' }).click();
 	await page.getByText('Task added').waitFor();
 
@@ -57,7 +69,7 @@ test('pick deadlines on a calendar', async ({ page }) => {
 	await dlg.locator('.dl-opts').getByText('Range').click();
 	await dlg.getByRole('button', { name: 'Day 1', exact: true }).click();
 	await dlg.getByRole('button', { name: 'Day 5', exact: true }).click();
-	await expect(dlg.locator('.dp-foot')).toContainText('between day 1 and day 5');
+	await expect(dlg.locator('.dp-chosen')).toContainText('between day 1 and day 5');
 	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/cal-days.png' });
 	// Nobody responsible: not saved (SPEC.md 6.11).
 	await dlg.getByRole('button', { name: 'Save task' }).click();
