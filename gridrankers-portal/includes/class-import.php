@@ -473,6 +473,16 @@ class GRP_Import {
 			}
 		}
 
+		// People on the breakdown rows are the people responsible, as when the task is saved in the
+		// portal; old exports may list them only on the rows.
+		$assignees = self::assignees( $d, $target );
+		$team      = ! empty( $d['team'] ) ? 1 : 0;
+		$by        = GRP_REST_Monthly_Tasks::breakdown_people( $parts );
+		if ( $by ) {
+			$assignees = $by;
+			$team      = 0;
+		}
+
 		return array(
 			'id'           => $id,
 			'project_id'   => (string) $d['clientId'],
@@ -483,8 +493,8 @@ class GRP_Import {
 			'due_day'      => ! empty( $d['dueDay'] ) ? (int) $d['dueDay'] : null,
 			'due_from_day' => ! empty( $d['dueFromDay'] ) ? (int) $d['dueFromDay'] : null,
 			'target'       => $target,
-			'assignees'    => self::assignees( $d, $target ),
-			'team'         => ! empty( $d['team'] ) ? 1 : 0,
+			'assignees'    => $assignees,
+			'team'         => $team,
 			'parts'        => $parts,
 			'std'          => ! empty( $d['std'] ) || str_starts_with( $id, 'std_' ) ? 1 : 0,
 			'created_by'   => isset( $d['createdBy'] ) ? (string) $d['createdBy'] : null,
