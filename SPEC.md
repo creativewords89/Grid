@@ -538,4 +538,6 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 
 66. Plan: keywords can be dragged into **Past** (or ⋯ → Move to Past) and back out; their boxes stay as they are, the row says who moved it and when, and it's never late. **Tests:** PHPUnit (PATCH `past` for everyone, who/when kept, back out with a deadline, profile lock, export round trip), Vitest (Past by hand, not late), Playwright (drag into Past and back, ⋯ Move to Past).
 
+67. Deadline calendar (6.3, 6.4): today is marked with a ring when the calendar opens; once a date — or both ends of a range, or a day / days of the cycle on monthly tasks — is picked, the calendar folds into one line ("📅 Due … · Change"), and Change opens it again. **Tests:** Playwright (today marked, folds after a date and after a range, Change reopens it with the pick shown, monthly days fold too).
+
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).

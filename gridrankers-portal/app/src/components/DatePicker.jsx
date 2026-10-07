@@ -13,6 +13,22 @@ const shiftMonth = (first, k) => {
 const monthLabel = (first) => new Date(first + 'T00:00:00').toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 const longDate = (ymd) => new Date(ymd + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
+// Once a date (or both ends of a range) is picked the calendar folds into one line with Change,
+// so it doesn't stay open under the rest of the form; it opens again on Change.
+function Chosen({ text, onChange }) {
+	return (
+		<div className="dp-chosen">
+			<span className="dp-ic" aria-hidden="true">
+				📅
+			</span>
+			<span className="dl-note">{text}</span>
+			<button type="button" className="linkbtn" onClick={onChange}>
+				Change
+			</button>
+		</div>
+	);
+}
+
 // A month calendar (SPEC.md 6.3): one date (`range` false) or a range (`range` true: the first
 // click sets the start, the second the end). Weeks run Monday – Sunday like the Weekly deadlines.
 // `value` is {date} or {from, to}; `onChange` gets the same shape.
@@ -20,6 +36,8 @@ export function CalendarPicker({ range, value, onChange, today }) {
 	const anchor = (range ? value.from : value.date) || today;
 	const [month, setMonth] = useState(monthStart(anchor));
 	const [hover, setHover] = useState('');
+	const done = range ? !!(value.from && value.to) : !!value.date;
+	const [open, setOpen] = useState(!done);
 	// Range: waiting for the end date after the start was picked.
 	const picking = range && value.from && !value.to;
 
@@ -28,8 +46,9 @@ export function CalendarPicker({ range, value, onChange, today }) {
 	const weeks = days[35].slice(0, 7) === month.slice(0, 7) ? 6 : 5;
 
 	const pick = (d) => {
-		if (!range) return onChange({ date: d });
+		if (!range) return setOpen(false), onChange({ date: d });
 		if (!value.from || value.to) return onChange({ from: d, to: '' });
+		setOpen(false);
 		return d < value.from ? onChange({ from: d, to: value.from }) : onChange({ from: value.from, to: d });
 	};
 	const end = picking && hover ? hover : value.to;
@@ -41,6 +60,8 @@ export function CalendarPicker({ range, value, onChange, today }) {
 	else if (!value.from) summary = 'Pick the first day.';
 	else if (!value.to) summary = `From ${short(value.from)} — now pick the last day.`;
 	else summary = `Due ${short(value.from)} – ${short(value.to)} (${daysBetween(value.from, value.to) + 1} day${value.from === value.to ? '' : 's'})`;
+
+	if (done && !open) return <Chosen text={summary} onChange={() => (setMonth(monthStart(anchor)), setOpen(true))} />;
 
 	return (
 		<div className="dp" onMouseLeave={() => setHover('')}>
@@ -65,7 +86,7 @@ export function CalendarPicker({ range, value, onChange, today }) {
 					const inside = lo && d > lo && d < hi;
 					const cls = ['dp-day', out && 'out', d === today && 'today', on && 'on', inside && 'in', lo && d === lo && 'lo', hi && d === hi && 'hi', d < today && 'past'].filter(Boolean).join(' ');
 					return (
-						<button key={d} type="button" className={cls} aria-label={longDate(d)} aria-pressed={!!on} onClick={() => pick(d)} onMouseEnter={() => picking && setHover(d)}>
+						<button key={d} type="button" className={cls} aria-label={longDate(d) + (d === today ? ' (today)' : '')} aria-current={d === today ? 'date' : undefined} title={d === today ? 'Today' : undefined} aria-pressed={!!on} onClick={() => pick(d)} onMouseEnter={() => picking && setHover(d)}>
 							{+d.slice(8)}
 						</button>
 					);
@@ -91,10 +112,13 @@ export function CalendarPicker({ range, value, onChange, today }) {
 // Days of the project's cycle (SPEC.md 6.4): one day N, or a range of days A–B, picked the same way.
 export function CycleDayPicker({ range, from, to, day, onChange }) {
 	const [hover, setHover] = useState(0);
+	const done = range ? !!(from && to) : !!day;
+	const [open, setOpen] = useState(!done);
 	const picking = range && from && !to;
 	const pick = (n) => {
-		if (!range) return onChange({ day: n });
+		if (!range) return setOpen(false), onChange({ day: n });
 		if (!from || to) return onChange({ from: n, to: 0 });
+		setOpen(false);
 		return n < from ? onChange({ from: n, to: from }) : onChange({ from, to: n });
 	};
 	const end = picking && hover ? hover : to;
@@ -106,6 +130,8 @@ export function CycleDayPicker({ range, from, to, day, onChange }) {
 	else if (!from) summary = 'Pick the first day of the cycle.';
 	else if (!to) summary = `From day ${from} — now pick the last day.`;
 	else summary = `Due between day ${from} and day ${to} of each cycle (${to - from + 1} day${from === to ? '' : 's'}).`;
+
+	if (done && !open) return <Chosen text={summary} onChange={() => setOpen(true)} />;
 
 	return (
 		<div className="dp" onMouseLeave={() => setHover(0)}>
