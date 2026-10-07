@@ -624,6 +624,15 @@ abstract class GRP_REST_Controller {
 		if ( 'status' === $field ) {
 			return GRP_REST_Meeting_Tasks::STATUS_TEXT[ $value ] ?? (string) $value;
 		}
+		if ( 'steps' === $field ) {
+			$names = array_map(
+				static function ( $step ) {
+					return ( $step['name'] ?? '' ) . ' (' . self::name_of( $step['member'] ?? '' ) . ')';
+				},
+				(array) $value
+			);
+			return $names ? implode( ' → ', $names ) : 'one step';
+		}
 		if ( 'parts' === $field ) {
 			$names = wp_list_pluck( (array) $value, 'name' );
 			return $names ? implode( ', ', $names ) : 'none';

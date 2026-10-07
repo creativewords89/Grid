@@ -94,7 +94,12 @@ class GRP_REST_Review extends GRP_REST_Controller {
 					$q       = (int) $task['target'] > 1;
 					$sub     = (string) ( $review['submittedBy'] ?? '' );
 
-					if ( 'revision' === $action ) {
+					if ( GRP_Steps::on( $task ) && in_array( $action, array( 'revision', 'reject' ), true ) ) {
+						// Steps (SPEC.md 6.16): Revise gives back the last step's last unit, Reject clears them all.
+						self::steps_back( $task['steps'], $task['step_done'] ?? null, 'stepi', $task['id'], $action, $changes );
+						$changes['status']  = 'revision' === $action ? 'doing' : 'todo';
+						$changes['done_at'] = null;
+					} elseif ( 'revision' === $action ) {
 						$changes['status']  = 'doing';
 						$changes['done_at'] = null;
 						if ( $q ) {
@@ -160,7 +165,14 @@ class GRP_REST_Review extends GRP_REST_Controller {
 				static function () use ( $rec, $task, $n, $by, $review, $action, $note ) {
 					$changes = array( 'review' => self::decided( $review, $action, $note ) );
 
-					if ( 'revision' === $action ) {
+					if ( GRP_Steps::on( $task ) && in_array( $action, array( 'revision', 'reject' ), true ) ) {
+						self::steps_back( $task['steps'], $rec['step_done'] ?? null, 'stepr', $rec['id'], $action, $changes );
+						$changes += array(
+							'count'   => GRP_Steps::count( $task['steps'], $changes['step_done'] ),
+							'status'  => 'revision' === $action ? 'doing' : 'todo',
+							'done_at' => null,
+						);
+					} elseif ( 'revision' === $action ) {
 						$k = self::unit_owner( $by, (string) ( $review['submittedBy'] ?? '' ) );
 						if ( null !== $k ) {
 							$by[ $k ] = (int) $by[ $k ] - 1;
@@ -267,6 +279,32 @@ class GRP_REST_Review extends GRP_REST_Controller {
 		}
 
 		return self::can( GRP_Permissions::REVIEW ) ? null : self::forbidden( __( 'Only a Super Admin or Team Leader can review work.', 'gridrankers-portal' ) );
+	}
+
+	/**
+	 * Revise or Reject on a task with steps: the last step gives back one unit, or every step is
+	 * cleared, with their activity credit.
+	 *
+	 * @param array  $steps   Steps.
+	 * @param mixed  $done    `step_done`.
+	 * @param string $prefix  Credit ref prefix (`stepi` / `stepr`).
+	 * @param string $id      Task or record id.
+	 * @param string $action  revision or reject.
+	 * @param array  $changes Column changes (gets `step_done`).
+	 */
+	private static function steps_back( array $steps, $done, $prefix, $id, $action, array &$changes ) {
+		if ( 'revision' === $action ) {
+			$last = end( $steps );
+			if ( GRP_Steps::n( $done, $last['id'] ) > 0 ) {
+				GRP_Activity::uncredit( GRP_Steps::ref( $prefix, $id, $last['id'] ), 1 );
+			}
+			$changes['step_done'] = GRP_Steps::revise( $steps, $done );
+			return;
+		}
+		foreach ( $steps as $step ) {
+			GRP_Activity::uncredit( GRP_Steps::ref( $prefix, $id, $step['id'] ) );
+		}
+		$changes['step_done'] = array();
 	}
 
 	/**

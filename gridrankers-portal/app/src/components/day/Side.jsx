@@ -9,6 +9,7 @@ import { useDismiss } from './DayHeader.jsx';
 import { short } from '../../lib/format.js';
 import { dayOffName, teamWeekly, whosOut } from '../../lib/people.js';
 import { rowsOf } from '../../lib/store.js';
+import { openRequest } from '../../lib/requests.js';
 import Avatar from '../Avatar.jsx';
 import Modal from '../Modal.jsx';
 
@@ -214,6 +215,7 @@ export function Notifications() {
 		setProject(i.open.project_id);
 		setSearch(i.open.title);
 		setView(i.open.tab);
+		if (i.open.request) openRequest(i.open.request);
 	};
 
 	return (
@@ -287,7 +289,7 @@ export function Notifications() {
 									</span>
 									{i.open && (
 										<button type="button" className="linkbtn nf-open" onClick={() => open(i)}>
-											Open task ›
+											{i.open.request ? 'Open request ›' : 'Open task ›'}
 										</button>
 									)}
 								</span>

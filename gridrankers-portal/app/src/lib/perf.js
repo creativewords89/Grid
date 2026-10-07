@@ -2,6 +2,7 @@ import { activeSlot, addDays, cycleRange, daysBetween, dueAt, isSplit, parts, sl
 import { deadlineInfo, itemDeadline } from './deadline.js';
 import { localYmd, mondayOf, short, toDate } from './format.js';
 import { bornAt, isShared, recordOf, stateOf, typePeople } from './monthly.js';
+import { hasSteps, myStep, stepLine } from './steps.js';
 import { rowsOf } from './store.js';
 import { GENERAL, GENERAL_NAME, PRI, boardOf, liveTask } from './tasks.js';
 
@@ -58,15 +59,21 @@ export function assignedFor(data, pid, today) {
 		if (!isOn(i, pid) || i.status === 'done' || !liveTask(data, i)) return;
 		const dl = deadlineInfo(i, today);
 		const target = Math.max(1, i.target || 1);
+		// Steps (SPEC.md 6.16): listed with this person's next step until their part is done.
+		const step = hasSteps(i) ? myStep(i, i.step_done, pid) : null;
+		if (hasSteps(i) && !step) return;
 		out.push({
 			kind: 'board',
 			id: i.id,
 			project_id: i.project_id,
 			title: i.title,
 			priority: i.priority || 'normal',
-			group: i.status === 'doing' ? 'doing' : 'todo',
-			sub:
-				(target > 1 ? `${(i.progress || {})[pid] || 0}/${shareOf(i, pid) || target} done${(i.assignees || []).length > 1 ? ' (your share)' : ''} · ` : '') +
+			group: step ? (step.state === 'go' ? 'doing' : 'todo') : i.status === 'doing' ? 'doing' : 'todo',
+			step: step ? step.name : '',
+			turn: step ? step.state : '',
+			sub: step
+				? stepLine(i, i.step_done, pid, data.members)
+				: (target > 1 ? `${(i.progress || {})[pid] || 0}/${shareOf(i, pid) || target} done${(i.assignees || []).length > 1 ? ' (your share)' : ''} · ` : '') +
 				(i.status === 'doing' ? 'In progress' : 'Not started'),
 			when: dl ? (dl.overdue ? 'Overdue · ' : '') + dl.label : i.meeting_date ? `From meeting ${short(i.meeting_date)}` : '',
 			sort: dl && dl.overdue ? -1 : PRI[i.priority] ?? 2,
@@ -83,7 +90,9 @@ export function assignedFor(data, pid, today) {
 		const st = stateOf(t, rec);
 		const shared = isShared(t);
 		const mineDone = ((rec && rec.by_person) || {})[pid] || 0;
-		if (st === 'done' || (shared && mineDone >= shareOf(t, pid))) return;
+		const stepDone = rec && rec.status !== 'skipped' ? rec.step_done : null;
+		const step = hasSteps(t) ? myStep(t, stepDone, pid) : null;
+		if (st === 'done' || (shared && mineDone >= shareOf(t, pid)) || (hasSteps(t) && !step)) return;
 		const n = shared ? shareOf(t, pid) : Math.max(1, t.target || 1);
 		const cnt = shared ? mineDone : rec && rec.status !== 'skipped' ? rec.count || 0 : 0;
 		const due = dueAt(t, c, w, 0, today);
@@ -94,8 +103,10 @@ export function assignedFor(data, pid, today) {
 			project_id: t.project_id,
 			title: t.title,
 			priority: late ? 'urgent' : 'normal',
-			group: st === 'doing' || cnt > 0 ? 'doing' : 'todo',
-			sub: `${isSplit(t) ? slotLabel(t, slotRange(t, c, w, 0, today), w) : 'This cycle'}${n > 1 ? ` · ${cnt}/${n} done${shared ? ' (your share)' : ''}` : shared ? ' · shared' : ''}`,
+			group: step ? (step.state === 'go' ? 'doing' : 'todo') : st === 'doing' || cnt > 0 ? 'doing' : 'todo',
+			step: step ? step.name : '',
+			turn: step ? step.state : '',
+			sub: step ? `${isSplit(t) ? slotLabel(t, slotRange(t, c, w, 0, today), w) : 'This cycle'} · ${stepLine(t, stepDone, pid, data.members)}` : `${isSplit(t) ? slotLabel(t, slotRange(t, c, w, 0, today), w) : 'This cycle'}${n > 1 ? ` · ${cnt}/${n} done${shared ? ' (your share)' : ''}` : shared ? ' · shared' : ''}`,
 			when: late ? `Overdue since ${short(due)}` : `Due ${short(due)}`,
 			due,
 			sort: late ? 0 : 1.5,

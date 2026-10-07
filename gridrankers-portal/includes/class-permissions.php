@@ -197,6 +197,18 @@ class GRP_Permissions {
 	/** See and keep the invoice tracker: fees, invoices sent, payments (SPEC.md 6.14). Super Admin only. */
 	const MANAGE_BILLING = 'manage_billing';
 
+	/** Client requests: ask, change the status, write in the thread (SPEC.md 6.15). Everyone. */
+	const CLIENT_REQUEST = 'client_request';
+
+	/**
+	 * Tick a step of a task with steps (SPEC.md 6.16). Context: `{task, step, delta}`. Forward: the
+	 * step's own person, or managers; back: managers only. Never on completed work.
+	 */
+	const TICK_STEP = 'tick_step';
+
+	/** Delete a client request. Context: `{request}`. Whoever added it, or the Super Admin. */
+	const DELETE_CLIENT_REQUEST = 'delete_client_request';
+
 	/**
 	 * Task work that is locked while a Team Leader's or Team Member's required profile is
 	 * incomplete (SPEC.md section 3, Profile lock).
@@ -223,6 +235,9 @@ class GRP_Permissions {
 		self::UPLOAD_FILE,
 		self::EDIT_SUBMISSION,
 		self::COMMENT,
+		self::CLIENT_REQUEST,
+		self::DELETE_CLIENT_REQUEST,
+		self::TICK_STEP,
 	);
 
 	/**
@@ -292,6 +307,7 @@ class GRP_Permissions {
 			case self::UNTICK_KEYWORD:
 			case self::UPLOAD_FILE:
 			case self::DOWNLOAD_FILE:
+			case self::CLIENT_REQUEST:
 				return in_array( $role, array( self::ROLE_ADMIN, self::ROLE_LEAD, self::ROLE_MEMBER ), true );
 
 			case self::EDIT_SUBMISSION:
@@ -302,6 +318,9 @@ class GRP_Permissions {
 
 			case self::DELETE_COMMENT:
 				return $admin || self::is_self( $user, ( (array) ( $context['comment'] ?? array() ) )['created_by'] ?? null );
+
+			case self::DELETE_CLIENT_REQUEST:
+				return $admin || self::is_self( $user, ( (array) ( $context['request'] ?? array() ) )['created_by'] ?? null );
 
 			case self::DELETE_PROJECT:
 			case self::REMOVE_MEMBER:
@@ -325,6 +344,16 @@ class GRP_Permissions {
 
 			case self::TICK_PROGRESS:
 				return self::can_tick_progress( $user, $manager, $context );
+
+			case self::TICK_STEP:
+				$task = (array) ( $context['task'] ?? array() );
+				if ( 'done' === ( $task['status'] ?? '' ) || ! self::may_work_on( $user, $manager, $task ) ) {
+					return false;
+				}
+				if ( (int) ( $context['delta'] ?? 0 ) < 0 ) {
+					return $manager;
+				}
+				return $manager || self::is_self( $user, ( (array) ( $context['step'] ?? array() ) )['member'] ?? null );
 
 			case self::REOPEN_TASK:
 				// Completed tasks reopen only through review actions.

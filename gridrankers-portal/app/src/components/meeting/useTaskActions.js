@@ -48,6 +48,26 @@ export default function useTaskActions() {
 		}
 	};
 
+	// Steps (SPEC.md 6.16): one step moves by one unit; the last unit of the last step completes the
+	// task, so it asks for the submission first.
+	const tickStep = async (task, row, delta) => {
+		let extra = {};
+		const last = row.i === task.steps.length - 1;
+		if (delta > 0 && last && row.n + 1 >= row.target && task.status !== 'done') {
+			const sub = await askCompletion(task.title);
+			if (!sub) return;
+			extra = submission(sub);
+		}
+		try {
+			const saved = await api.post(`meeting-tasks/${task.id}/step`, { step: row.id, delta, ...extra });
+			save(saved);
+			if (saved.status === 'done' && task.status !== 'done') toast(saved.review && saved.review.state === 'pending' ? 'All steps done — sent for review' : 'All steps done — completed');
+			else toast(delta > 0 ? `${row.name}: ${row.target > 1 ? `${row.n + 1}/${row.target}` : 'done'}${row.next && row.n + 1 > 0 ? ` — ready for ${row.next.name}` : ''}` : `${row.name}: counted back`);
+		} catch (err) {
+			toast(err.message);
+		}
+	};
+
 	const remove = async (task) => {
 		const ok = await confirm({ title: 'Delete this task?', message: `“${task.title}” is removed from the board. You can undo this for 30 days.`, ok: 'Delete', danger: true });
 		if (!ok) return;
@@ -114,5 +134,5 @@ export default function useTaskActions() {
 		}
 	};
 
-	return { setStatus, tick, remove, requestUndo, decideUndo };
+	return { setStatus, tick, tickStep, remove, requestUndo, decideUndo };
 }

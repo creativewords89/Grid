@@ -19,18 +19,19 @@ class GRP_Store {
 	 * JSON columns per table.
 	 */
 	const JSON_COLUMNS = array(
-		'grp_members'       => array( 'weekly_off' ),
-		'grp_posts'         => array( 'to_members' ),
-		'grp_projects'      => array( 'cycle_changes', 'cycle_log', 'cycle_reviews', 'details', 'kw_columns' ),
-		'grp_keywords'      => array( 'checks', 'past' ),
-		'grp_comments'      => array( 'files' ),
-		'grp_meeting_tasks' => array( 'assignees', 'progress', 'deadline', 'review', 'completion', 'undo_request' ),
-		'grp_monthly_tasks' => array( 'assignees', 'parts' ),
-		'grp_cycle_records' => array( 'by_person', 'parts', 'review', 'completion', 'undo_request' ),
-		'grp_audit'         => array( 'changes' ),
-		'grp_trash'         => array( 'data' ),
-		'grp_settings'      => array( 'value' ),
-		'grp_billing'       => array( 'payments' ),
+		'grp_members'          => array( 'weekly_off' ),
+		'grp_posts'            => array( 'to_members' ),
+		'grp_projects'         => array( 'cycle_changes', 'cycle_log', 'cycle_reviews', 'details', 'kw_columns' ),
+		'grp_keywords'         => array( 'checks', 'past' ),
+		'grp_comments'         => array( 'files' ),
+		'grp_meeting_tasks'    => array( 'assignees', 'progress', 'deadline', 'review', 'completion', 'undo_request', 'steps', 'step_done' ),
+		'grp_monthly_tasks'    => array( 'assignees', 'parts', 'steps' ),
+		'grp_cycle_records'    => array( 'by_person', 'parts', 'review', 'completion', 'undo_request', 'step_done' ),
+		'grp_audit'            => array( 'changes' ),
+		'grp_trash'            => array( 'data' ),
+		'grp_settings'         => array( 'value' ),
+		'grp_billing'          => array( 'payments' ),
+		'grp_request_messages' => array( 'files' ),
 	);
 
 	/**
@@ -58,6 +59,7 @@ class GRP_Store {
 		'size',
 		'skipped',
 		'remind_days',
+		'from_client',
 	);
 
 	/**
@@ -88,6 +90,8 @@ class GRP_Store {
 		'grp_comments',
 		'grp_billing',
 		'grp_billing_fees',
+		'grp_client_requests',
+		'grp_request_messages',
 	);
 
 	/**

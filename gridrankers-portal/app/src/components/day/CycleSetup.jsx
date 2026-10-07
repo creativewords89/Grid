@@ -7,6 +7,7 @@ import { short } from '../../lib/format.js';
 import Avatar from '../Avatar.jsx';
 import Modal from '../Modal.jsx';
 import { TAG_LABEL } from '../monthly/MonthlyCard.jsx';
+import { openRequest } from '../../lib/requests.js';
 
 const dueText = (c) => {
 	if (c.done) return ['Done', 'f-green'];
@@ -198,6 +199,12 @@ export function useReminderAction() {
 			setView('invoices');
 			return;
 		}
+		if (r.kind === 'chase') {
+			setProject(r.project.id);
+			setView('details');
+			openRequest(r.request);
+			return;
+		}
 		if (r.kind === 'unassigned') {
 			setProject(r.project.id);
 			setView('monthly');
@@ -219,7 +226,7 @@ export function SetupReminders() {
 			{list.map((r) => (
 				<div key={r.key} className={'nf-must-item t-' + r.tone}>
 					<span className="nf-ic" aria-hidden="true">
-						{r.kind === 'unassigned' ? '👤' : r.kind === 'invoice' ? '🧾' : '!'}
+						{r.kind === 'unassigned' ? '👤' : r.kind === 'invoice' ? '🧾' : r.kind === 'chase' ? '✉' : '!'}
 					</span>
 					<span className="nf-body">
 						<span className="nf-top">

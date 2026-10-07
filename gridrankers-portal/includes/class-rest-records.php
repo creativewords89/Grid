@@ -23,6 +23,7 @@ class GRP_REST_Records extends GRP_REST_Controller {
 	public static function register_routes() {
 		self::route( '/records', WP_REST_Server::READABLE, 'index' );
 		self::route( '/records/tick', WP_REST_Server::CREATABLE, 'tick' );
+		self::route( '/records/step', WP_REST_Server::CREATABLE, 'step' );
 		self::route( '/records/status', WP_REST_Server::CREATABLE, 'set_status' );
 		self::route( '/records/undo', WP_REST_Server::CREATABLE, 'request_undo' );
 		self::route( '/records/undo/decide', WP_REST_Server::CREATABLE, 'decide_undo' );
@@ -95,6 +96,9 @@ class GRP_REST_Records extends GRP_REST_Controller {
 		$delta = (int) $request['delta'];
 		if ( 1 !== abs( $delta ) ) {
 			return self::invalid( __( 'Progress changes one unit at a time.', 'gridrankers-portal' ) );
+		}
+		if ( GRP_Steps::on( $task ) ) {
+			return self::invalid( __( 'This task has steps — tick the steps instead.', 'gridrankers-portal' ), 'grp_has_steps' );
 		}
 
 		$n         = max( 1, (int) $task['target'] );
@@ -193,6 +197,106 @@ class GRP_REST_Records extends GRP_REST_Controller {
 	}
 
 	/**
+	 * POST /records/step `{taskId, periodKey, step, delta, note?, links?, files?, comment?, reviewer?}`
+	 * (SPEC.md 6.16): one step of this period moves by one unit. Same rules as a meeting task's steps.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function step( WP_REST_Request $request ) {
+		$ctx = self::context( $request );
+		if ( is_wp_error( $ctx ) ) {
+			return $ctx;
+		}
+		list( $task, $period_key, $week, $rec ) = $ctx;
+		if ( ! GRP_Steps::on( $task ) ) {
+			return self::invalid( __( 'This task has no steps.', 'gridrankers-portal' ) );
+		}
+		$delta = (int) $request['delta'];
+		if ( 1 !== abs( $delta ) ) {
+			return self::invalid( __( 'Progress changes one unit at a time.', 'gridrankers-portal' ) );
+		}
+		if ( $rec && 'skipped' === $rec['status'] ) {
+			return self::invalid( __( 'This period was skipped.', 'gridrankers-portal' ) );
+		}
+		$steps = array_values( $task['steps'] );
+		$i     = GRP_Steps::index( $steps, (string) $request['step'] );
+		if ( $i < 0 ) {
+			return self::invalid( __( 'That step no longer exists.', 'gridrankers-portal' ) );
+		}
+		$step = $steps[ $i ];
+		if ( ! self::can(
+			GRP_Permissions::TICK_STEP,
+			array(
+				'task'  => self::as_task( $task, $rec ),
+				'step'  => $step,
+				'delta' => $delta,
+			)
+		) ) {
+			if ( 'done' === self::state( $task, $rec ) ) {
+				return self::forbidden( self::denied_message( $task, $rec ) );
+			}
+			return self::forbidden(
+				$delta < 0
+					? __( 'Only a Team Leader or Super Admin can count a step back.', 'gridrankers-portal' )
+					/* translators: 1: step name, 2: person's name. */
+					: sprintf( __( '“%1$s” is %2$s’s step.', 'gridrankers-portal' ), $step['name'], self::name_of( $step['member'] ) )
+			);
+		}
+
+		$n    = max( 1, (int) $task['target'] );
+		$done = GRP_Steps::tick( $steps, GRP_Steps::fit( $steps, $rec['step_done'] ?? null, $n ), $step['id'], $delta, $n, self::actor()['id'] );
+		if ( is_wp_error( $done ) ) {
+			return $done;
+		}
+		$count      = GRP_Steps::count( $steps, $done );
+		$finishes   = $count >= $n && self::count_of( $rec ) < $n;
+		$completion = self::completion( $request, $finishes );
+		if ( is_wp_error( $completion ) ) {
+			return $completion;
+		}
+
+		return rest_ensure_response(
+			GRP_Store::transaction(
+				static function () use ( $task, $period_key, $week, $rec, $steps, $step, $done, $count, $n, $delta, $completion ) {
+					$id   = GRP_Cycles::record_id( $task['id'], $period_key );
+					$prev = $rec ? $rec : array();
+					$any  = array_sum( array_map( static fn( $s ) => GRP_Steps::n( $done, $s['id'] ), $steps ) ) > 0;
+					$row  = array(
+						'task_id'      => $task['id'],
+						'project_id'   => $task['project_id'],
+						'period_key'   => $period_key,
+						'week'         => $week,
+						'step_done'    => $done,
+						'count'        => $count,
+						'status'       => $count >= $n ? 'done' : ( $any ? 'doing' : 'todo' ),
+						'done_at'      => $count >= $n ? ( $prev['done_at'] ?? GRP_Ids::now() ) : null,
+						'undo_request' => null,
+					);
+					if ( $count >= $n ) {
+						$row['review']     = (int) ( $prev['count'] ?? 0 ) >= $n && ! empty( $prev['review'] ) ? $prev['review'] : self::new_review();
+						$row['completion'] = $completion ? $completion : ( $prev['completion'] ?? null );
+					} else {
+						$review        = $prev['review'] ?? null;
+						$row['review'] = is_array( $review ) && in_array( $review['state'] ?? '', array( 'revision', 'rejected' ), true ) ? $review : null;
+					}
+
+					$k   = GRP_Steps::n( $done, $step['id'] );
+					$ref = GRP_Steps::ref( 'stepr', $id, $step['id'] );
+					if ( $delta > 0 ) {
+						GRP_Activity::credit( $step['member'], $task['project_id'], $task['title'], $step['name'] . ' · ' . self::period_label( $task, $week ) . " · $k/$n", 1, 'monthly', $ref );
+					} else {
+						GRP_Activity::uncredit( $ref, 1 );
+					}
+					GRP_Activity::audit( $count >= $n ? 'done' : 'progress', 'monthly', $task, self::actor(), self::period_label( $task, $week ) . ' · ' . $step['name'] . ' · ' . self::name_of( $step['member'] ) . ': ' . ( $k - $delta ) . " → $k of $n" );
+
+					return self::save( $id, $prev, $row );
+				}
+			)
+		);
+	}
+
+	/**
 	 * POST /records/status `{taskId, periodKey, status, note?, link?}`.
 	 *
 	 * @param WP_REST_Request $request Request.
@@ -219,6 +323,8 @@ class GRP_REST_Records extends GRP_REST_Controller {
 			if ( ! self::can( GRP_Permissions::SKIP_PERIOD ) || 'done' === $state ) {
 				return self::forbidden( __( 'Only a Super Admin or Team Leader can skip open work.', 'gridrankers-portal' ) );
 			}
+		} elseif ( GRP_Steps::on( $task ) && ! ( 'skipped' === $state && 'todo' === $to ) ) {
+			return self::invalid( __( 'This task has steps — tick the steps instead.', 'gridrankers-portal' ), 'grp_has_steps' );
 		} elseif ( ! self::can(
 			GRP_Permissions::CHANGE_STATUS,
 			array(
@@ -396,6 +502,13 @@ class GRP_REST_Records extends GRP_REST_Controller {
 		);
 
 		if ( 'skipped' === $status ) {
+			// Skipping takes back what the steps had done this period (SPEC.md 6.16).
+			if ( GRP_Steps::on( $task ) ) {
+				foreach ( $task['steps'] as $step ) {
+					GRP_Activity::uncredit( GRP_Steps::ref( 'stepr', $id, $step['id'] ) );
+				}
+				$base['step_done'] = null;
+			}
 			GRP_Activity::audit( 'progress', 'monthly', $task, self::actor(), "$where · skipped" );
 			return self::save(
 				$id,

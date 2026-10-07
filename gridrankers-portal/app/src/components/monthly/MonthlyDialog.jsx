@@ -6,6 +6,8 @@ import Avatar from '../Avatar.jsx';
 import { CycleDayPicker } from '../DatePicker.jsx';
 import Modal from '../Modal.jsx';
 import PeoplePicker, { evenSplit } from '../PeoplePicker.jsx';
+import StepsEditor, { WhoToggle, presetRows } from '../StepsEditor.jsx';
+import { cleanSteps, hasSteps, stepsError } from '../../lib/steps.js';
 
 const MODES = [
 	['none', 'No deadline'],
@@ -141,7 +143,16 @@ export default function MonthlyDialog({ taskId, onClose }) {
 	const [add, setAdd] = useState({ name: '', n: 1, who: '' });
 	const [error, setError] = useState('');
 	const [busy, setBusy] = useState(false);
+	// Steps in order (SPEC.md 6.16) instead of a breakdown: off by default.
+	const [stepsOn, setStepsOn] = useState(() => hasSteps(editing));
+	const [steps, setSteps] = useState(() => (hasSteps(editing) ? editing.steps.map((x) => ({ ...x })) : []));
 	const set = (k) => (e) => setF({ ...f, [k]: e && e.target ? e.target.value : e });
+	const toggleSteps = (on) => {
+		if (on && f.parts.length) return setError('Remove the breakdown first — a task has steps or a breakdown, not both.');
+		setError('');
+		setStepsOn(on);
+		if (on && !steps.length) setSteps(presetRows(['Write', 'Edit']));
+	};
 
 	const total = f.parts.reduce((a, x) => a + (x.n || 0), 0);
 	const fromParts = (() => {
@@ -169,8 +180,9 @@ export default function MonthlyDialog({ taskId, onClose }) {
 		if (f.due_mode === 'date' && !f.due_day) return setError('Pick the day of the cycle it is due.');
 		if (f.due_mode === 'dates' && (!f.from_day || !f.to_day)) return setError('Pick the first and last day of the cycle it is due.');
 		const parts = f.parts.filter((x) => x.name.trim()).map((x) => ({ id: x.id, name: x.name.trim(), n: x.n, people: (x.people || []).filter((a) => a.n > 0) }));
+		if (stepsOn && stepsError(steps)) return setError(stepsError(steps));
 		// Every monthly task has someone responsible (SPEC.md 6.11); the server checks again.
-		if (!f.assignees.length && !parts.some((x) => x.people.length)) return setError('A monthly task needs at least one person responsible.');
+		if (!stepsOn && !f.assignees.length && !parts.some((x) => x.people.length)) return setError('A monthly task needs at least one person responsible.');
 		const body = {
 			project_id: f.project_id,
 			title: f.title.trim(),
@@ -179,9 +191,10 @@ export default function MonthlyDialog({ taskId, onClose }) {
 			due_day: f.due_mode === 'date' ? +f.due_day : f.due_mode === 'dates' ? +f.to_day : null,
 			due_from_day: f.due_mode === 'dates' ? +f.from_day : null,
 			target: parts.length ? parts.reduce((a, x) => a + x.n, 0) : Math.max(1, Math.min(99, parseInt(f.target, 10) || 1)),
-			parts,
-			assignees: f.assignees,
+			parts: stepsOn ? [] : parts,
+			assignees: stepsOn ? [] : f.assignees,
 			team: true,
+			steps: stepsOn ? cleanSteps(steps) : [],
 		};
 		setBusy(true);
 		try {
@@ -265,6 +278,7 @@ export default function MonthlyDialog({ taskId, onClose }) {
 						<input type="number" min={1} max={999} value={f.parts.length ? total : f.target} disabled={f.parts.length > 0} onChange={set('target')} required />
 					</label>
 				</div>
+				{!stepsOn && (
 				<div className="bd-wrap">
 					<span className="pk-label">
 						Breakdown <small>optional — what types, and how many of each</small>
@@ -324,11 +338,15 @@ export default function MonthlyDialog({ taskId, onClose }) {
 					</div>
 					<span className="pk-total">{f.parts.length ? `Total ${total} — quantity is set from the breakdown` : ''}</span>
 				</div>
+				)}
 				<div className="pk-wrap">
-					<span className="pk-label">
-						Responsible <span className="req" aria-hidden="true">*</span> <small>tick the team members responsible for this task — at least one</small>
+					<span className="pk-label stp-label">
+						Who does it
+						<WhoToggle on={stepsOn} onChange={toggleSteps} />
 					</span>
-					{fromParts.length > 0 ? (
+					{stepsOn ? (
+						<StepsEditor members={members} value={steps} onChange={setSteps} />
+					) : fromParts.length > 0 ? (
 						<>
 							<p className="hint bd-note">
 								{unpicked > 0
@@ -338,7 +356,12 @@ export default function MonthlyDialog({ taskId, onClose }) {
 							<PeoplePicker members={members} value={fromParts.map((a) => ({ id: a.id }))} onChange={() => {}} disabled />
 						</>
 					) : (
-						<PeoplePicker members={members} value={f.assignees} onChange={set('assignees')} />
+						<>
+							<small className="muted">
+								Responsible <span className="req" aria-hidden="true">*</span> — tick the team members responsible for this task, at least one
+							</small>
+							<PeoplePicker members={members} value={f.assignees} onChange={set('assignees')} />
+						</>
 					)}
 				</div>
 				<label>

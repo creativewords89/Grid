@@ -4,6 +4,10 @@ import { LINK_LABEL, isWebUrl, linkKind, sectionsOf } from '../../lib/plan.js';
 import { cycleRange } from '../../lib/cycles.js';
 import { short } from '../../lib/format.js';
 import { profileLocked } from '../../lib/people.js';
+import { openCount, openSummary, takePendingRequest } from '../../lib/requests.js';
+import ClientRequests from './ClientRequests.jsx';
+
+const TAB_KEY = 'grp:details-tab';
 
 const ICON = { sheet: '▦', doc: '≣', drive: '▲', other: '↗' };
 const newId = () => 'n' + Math.random().toString(36).slice(2, 10);
@@ -52,7 +56,10 @@ function Chip({ link, onRemove, drag, wide }) {
 			</span>
 			<span className="pdx-wname">
 				<b>{link.title}</b>
-				<small>{TYPE_LABEL[link.kind] || TYPE_LABEL.other}</small>
+				<small>{link.kind === 'other' ? hostOf(link.url) : TYPE_LABEL[link.kind]}</small>
+			</span>
+			<span className="pdx-go" aria-hidden="true">
+				↗
 			</span>
 		</>
 	) : (
@@ -146,33 +153,38 @@ function Section({ section, can, editing, onEdit, onSave, onCancel, onRemove, on
 	if (!editing && hero) {
 		return (
 			<section className="dcard pdx-hero" aria-label={section.title}>
-				<div className="pdx-band">
-					<span className="pdx-mark" aria-hidden="true">
-						{hero.mark}
-					</span>
-					<div className="pdx-htext">
-						<h2>{section.title}</h2>
-						<span>{hero.meta}</span>
-					</div>
+				<div className="pdx-head">
+					<h2 className="pdx-label">{section.title}</h2>
 					{can && (
-						<button type="button" className="pdx-bandbtn" onClick={onEdit} aria-label={`Edit ${section.title}`}>
+						<button type="button" className="linkbtn" onClick={onEdit} aria-label={`Edit ${section.title}`}>
 							Edit
 						</button>
 					)}
 				</div>
-				<Text text={section.text} className="pdx-pad" />
+				<Text text={section.text} />
 				{(section.links.length > 0 || can) && (
-					<div className="pdx-chips pdx-pad">
-						{section.links.map((l) => (
-							<Chip key={l.id} link={l} wide />
-						))}
-						{can && (
-							<span className="pdx-addwrap">
-								<button type="button" className="pdx-chip add wide" onClick={() => setAdding(true)}>
-									+ Add link
-								</button>
-								{adding && <AddLink onAdd={onQuickAdd} onClose={() => setAdding(false)} />}
-							</span>
+					<div className="pdx-links">
+						<div className="pdx-head">
+							<h3 className="pdx-label">
+								Links <span className="muted">{section.links.length}</span>
+							</h3>
+							{can && (
+								<span className="pdx-addwrap">
+									<button type="button" className="linkbtn" onClick={() => setAdding(true)}>
+										+ Add link
+									</button>
+									{adding && <AddLink onAdd={onQuickAdd} onClose={() => setAdding(false)} />}
+								</span>
+							)}
+						</div>
+						{section.links.length > 0 ? (
+							<div className="pdx-tiles">
+								{section.links.map((l) => (
+									<Chip key={l.id} link={l} wide />
+								))}
+							</div>
+						) : (
+							<p className="muted pdx-hint">Sheets, Drive folders and docs the team needs — + Add link.</p>
 						)}
 					</div>
 				)}
@@ -274,10 +286,11 @@ const hostOf = (url) => {
 	}
 };
 
-// Project → Details (SPEC.md 6.12, design PD-D): descriptions with their links as chips.
-// Everyone edits and reads (SPEC.md 6.12): Team Members, Team Leaders and the Super Admin; the
-// server refuses edits while a profile is incomplete.
-export default function ProjectDetails() {
+// Details → Overview (SPEC.md 6.12, design DP-F): About with its links as tiles, then Goals, Notes
+// for the team and any other sections side by side, and a line pointing to open client requests.
+// Everyone edits and reads: Team Members, Team Leaders and the Super Admin; the server refuses
+// edits while a profile is incomplete.
+function Overview({ onRequests }) {
 	const { api, data, project, dispatch, toast, confirm, me, today } = usePortal();
 	const p = data.projects[project];
 	const can = !profileLocked(data.members[me.id] || me, me);
@@ -297,8 +310,7 @@ export default function ProjectDetails() {
 		}
 	};
 	const replace = (id, s) => sections.map((x) => (x.id === id ? s : x));
-	const cycle = cycleRange(p, 0, today);
-	const hero = { mark: initials(p.name), meta: [p.name, p.state.charAt(0).toUpperCase() + p.state.slice(1), cycle ? `Cycle ${short(cycle.start)} – ${short(cycle.end)}` : ''].filter(Boolean).join(' · ') };
+	const summary = openSummary(data, p.id, today);
 	const blank = { id: 'new', title: sections.length ? '' : 'About', text: '', links: [] };
 
 	return (
@@ -319,7 +331,7 @@ export default function ProjectDetails() {
 					<Section
 						key={s.id}
 						section={s}
-						hero={i === 0 ? hero : null}
+						hero={i === 0}
 						can={can}
 						editing={editing === s.id}
 						onEdit={() => setEditing(s.id)}
@@ -359,7 +371,15 @@ export default function ProjectDetails() {
 						</section>
 					);
 				});
-				return [...sections.slice(0, 1).map((s) => card(s, 0)), ...standard, ...sections.map((s, i) => (i === 0 || isStd(s, i) ? null : card(s, i)))];
+				return (
+					<>
+						{sections.slice(0, 1).map((s) => card(s, 0))}
+						<div className="pdx-grid">
+							{standard}
+							{sections.map((s, i) => (i === 0 || isStd(s, i) ? null : card(s, i)))}
+						</div>
+					</>
+				);
 			})()}
 			{editing === 'new' && <Section section={blank} can editing onCancel={() => setEditing('')} onSave={(d) => save([...sections, { ...d, id: '' }], 'Section added')} />}
 			{can && sections.length > 0 && editing !== 'new' && (
@@ -367,6 +387,90 @@ export default function ProjectDetails() {
 					+ Add a section
 				</button>
 			)}
+			{summary && (
+				<div className="dcard pdx-open">
+					<span className="cr-dot s-needed" aria-hidden="true" />
+					<span>
+						<b>
+							{summary.count} open client request{summary.count === 1 ? '' : 's'}
+						</b>
+						{summary.text && <span className="muted"> · {summary.text}</span>}
+					</span>
+					<button type="button" className="linkbtn" onClick={onRequests}>
+						Open Client requests →
+					</button>
+				</div>
+			)}
+		</div>
+	);
+}
+
+// Project → Details (SPEC.md 6.12, 6.15): the project's name, status and cycle, then two sub-tabs —
+// Overview and Client requests (with the number still open).
+export default function ProjectDetails() {
+	const { data, project, today } = usePortal();
+	const p = data.projects[project];
+	const [tab, setTab] = useState(() => {
+		try {
+			return window.sessionStorage.getItem(TAB_KEY) === 'requests' ? 'requests' : 'overview';
+		} catch (e) {
+			return 'overview';
+		}
+	});
+	const [openId, setOpenId] = useState(() => takePendingRequest());
+	const show = (t) => {
+		setTab(t);
+		try {
+			window.sessionStorage.setItem(TAB_KEY, t);
+		} catch (e) {
+			/* the tab isn't remembered */
+		}
+	};
+	useEffect(() => {
+		if (openId) show('requests');
+		const on = () => {
+			const id = takePendingRequest();
+			if (id) {
+				setOpenId(id);
+				show('requests');
+			}
+		};
+		window.addEventListener('grp:open-request', on);
+		return () => window.removeEventListener('grp:open-request', on);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
+	// Another project: back to its list.
+	useEffect(() => setOpenId((id) => (id && data.client_requests[id] && data.client_requests[id].project_id === project ? id : '')), [project]); // eslint-disable-line react-hooks/exhaustive-deps
+
+	if (!p) return null;
+	const cycle = cycleRange(p, 0, today);
+	const meta = [p.state.charAt(0).toUpperCase() + p.state.slice(1), cycle ? `Cycle ${short(cycle.start)} – ${short(cycle.end)}` : ''].filter(Boolean).join(' · ');
+	const open = openCount(data, p.id);
+	return (
+		<div className="pdx-page">
+			<div className="pdx-proj">
+				<span className="pdx-mark" aria-hidden="true">
+					{initials(p.name)}
+				</span>
+				<div>
+					<h2>{p.name}</h2>
+					<span className="muted">{meta}</span>
+				</div>
+			</div>
+			<div className="pdx-tabs" role="tablist" aria-label="Details">
+				<button type="button" role="tab" aria-selected={tab === 'overview'} onClick={() => show('overview')}>
+					Overview
+				</button>
+				<button type="button" role="tab" aria-selected={tab === 'requests'} onClick={() => (show('requests'), setOpenId(''))}>
+					Client requests
+					{open > 0 && (
+						<span className="pdx-count" aria-label={`${open} open`}>
+							{open}
+						</span>
+					)}
+				</button>
+			</div>
+			{tab === 'overview' ? <Overview onRequests={() => show('requests')} /> : <ClientRequests openId={openId} setOpenId={setOpenId} />}
 		</div>
 	);
 }
