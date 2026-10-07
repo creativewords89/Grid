@@ -339,6 +339,10 @@ class GRP_Import {
 			'checks'     => is_array( $d['checks'] ?? null ) && $d['checks'] ? $d['checks'] : new stdClass(),
 			'note'       => isset( $d['note'] ) ? mb_substr( (string) $d['note'], 0, 500 ) : null,
 			'deadline'   => self::ymd( $d['deadline'] ?? null ),
+			'past'       => is_array( $d['past'] ?? null ) && ! empty( $d['past']['by'] ) ? array(
+				'by' => (string) $d['past']['by'],
+				'at' => (string) ( $d['past']['at'] ?? '' ),
+			) : null,
 			'position'   => (int) ( $d['position'] ?? 0 ),
 			'created_by' => ! empty( $d['by'] ) ? (string) $d['by'] : null,
 			'created_at' => self::time( $d['createdAt'] ?? null ),

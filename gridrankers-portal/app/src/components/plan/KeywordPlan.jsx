@@ -70,8 +70,8 @@ function DeadlinePill({ kw, project, columns, can, onSet }) {
 	);
 }
 
-// The ⋯ menu of a keyword: Rename, Remove (everyone).
-function RowMenu({ kw, onRename, onRemove }) {
+// The ⋯ menu of a keyword: Move to Past / Back to This cycle, Rename, Remove (everyone).
+function RowMenu({ kw, onRename, onRemove, onPast }) {
 	const [open, setOpen] = useState(false);
 	const ref = useDismiss(open, () => setOpen(false));
 	return (
@@ -81,6 +81,9 @@ function RowMenu({ kw, onRename, onRemove }) {
 			</button>
 			{open && (
 				<span className="kp-menu right" role="menu">
+					<button type="button" role="menuitem" onClick={() => (setOpen(false), onPast(!kw.past))}>
+						{kw.past ? 'Back to This cycle' : 'Move to Past'}
+					</button>
 					<button type="button" role="menuitem" onClick={() => (setOpen(false), onRename())}>
 						Rename
 					</button>
@@ -252,7 +255,7 @@ export default function KeywordPlan() {
 	const rows = all.filter((k) => !query || [k.keyword, k.note].join(' ').toLowerCase().includes(query));
 	const cur = cycleRange(p, 0, today);
 	const next = cycleRange(p, 1, today);
-	const sub = { this: `${short(cur.start)} – ${short(cur.end)} · deadline ${short(cur.end)}`, next: `${short(next.start)} – ${short(next.end)} · deadline ${short(next.end)}`, past: 'every box ticked' };
+	const sub = { this: `${short(cur.start)} – ${short(cur.end)} · deadline ${short(cur.end)}`, next: `${short(next.start)} – ${short(next.end)} · deadline ${short(next.end)}`, past: 'every box ticked, or moved here' };
 	const name = (id) => (data.members[id] ? data.members[id].name : 'someone');
 
 	const patch = async (kw, body, done) => {
@@ -268,10 +271,14 @@ export default function KeywordPlan() {
 		const kw = data.keywords[dragId];
 		setDragId('');
 		setOver('');
-		if (!kw || group === 'past' || groupOf(kw, p, today, columns) === group) return;
+		if (!kw || groupOf(kw, p, today, columns) === group) return;
+		if (group === 'past') return patch(kw, { past: true }, 'Moved to Past');
+		// Out of Past: it was moved there by hand, or every box is ticked (then it stays until one is unticked).
 		const deadline = deadlineFor(group, p, today);
-		patch(kw, { deadline }, `Moved to ${GROUPS.find((g) => g[0] === group)[1].toLowerCase()}`);
+		if (!kw.past && doneOf(kw, columns) === columns.length) return toast('Every box is ticked — untick one to bring it back.');
+		patch(kw, { past: false, deadline }, `Moved to ${GROUPS.find((g) => g[0] === group)[1].toLowerCase()}`);
 	};
+	const setPast = (kw, on) => (on ? patch(kw, { past: true }, 'Moved to Past') : patch(kw, { past: false, deadline: deadlineFor('this', p, today) }, 'Moved to this cycle'));
 	const rename = async (kw) => {
 		const value = await confirm({ title: 'Rename keyword', message: kw.keyword, input: 'Keyword', value: kw.keyword, ok: 'Save' });
 		if (typeof value === 'string' && value.trim() && value.trim() !== kw.keyword) patch(kw, { keyword: value.trim() }, 'Renamed');
@@ -302,7 +309,7 @@ export default function KeywordPlan() {
 			<section className="dcard kp-card">
 				<div className="kp-bar">
 					<h3>Keyword checklist</h3>
-					<span className="muted">{can ? 'Drag a row between cycles · tick every box to move it to Past' : 'Tick a box when that step is done'}</span>
+					<span className="muted">{can ? 'Drag a row between cycles or into Past · ticking every box moves it to Past' : 'Tick a box when that step is done'}</span>
 					<span className="lv-sp" />
 					<label className="ld-search ma-search kp-search">
 						<span aria-hidden="true">⌕</span>
@@ -344,7 +351,7 @@ export default function KeywordPlan() {
 									className={'kp-group' + (over === g ? ' over' : '')}
 									role="rowgroup"
 									aria-label={label}
-									onDragOver={(e) => can && dragId && g !== 'past' && (e.preventDefault(), setOver(g))}
+									onDragOver={(e) => can && dragId && (e.preventDefault(), setOver(g))}
 									onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget) && setOver('')}
 									onDrop={(e) => (e.preventDefault(), drop(g))}
 								>
@@ -365,6 +372,11 @@ export default function KeywordPlan() {
 												</span>
 												<b role="cell" className="kp-kw">
 													{k.keyword}
+													{k.past && (
+														<small className="kp-moved" title={dateTime(k.past.at)}>
+															Moved to Past by {name(k.past.by)} · {short(String(k.past.at).slice(0, 10))}
+														</small>
+													)}
 												</b>
 												{columns.map((c) => {
 													const on = k.checks && k.checks[c.id];
@@ -401,11 +413,11 @@ export default function KeywordPlan() {
 												<span role="cell">
 													<Note kw={k} disabled={locked} onSave={(v) => patch(k, { note: v })} />
 												</span>
-												<span role="cell">{can && <RowMenu kw={k} onRename={() => rename(k)} onRemove={() => remove(k)} />}</span>
+												<span role="cell">{can && <RowMenu kw={k} onRename={() => rename(k)} onRemove={() => remove(k)} onPast={(on) => setPast(k, on)} />}</span>
 											</div>
 										);
 									})}
-									{list.length === 0 && <div className="kp-emptyg">{g === 'past' ? 'Keywords with every box ticked show here' : can ? 'Drag a keyword here' : 'Nothing here'}</div>}
+									{list.length === 0 && <div className="kp-emptyg">{g === 'past' ? (can ? 'Keywords with every box ticked show here — or drag one here' : 'Keywords with every box ticked show here') : can ? 'Drag a keyword here' : 'Nothing here'}</div>}
 								</div>
 							);
 						})}

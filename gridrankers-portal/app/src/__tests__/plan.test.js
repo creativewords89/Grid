@@ -45,6 +45,11 @@ describe('Keyword checklist (SPEC.md 6.12)', () => {
 		expect(groupOf({ deadline: null, checks: all }, P, TODAY)).toBe('past');
 		expect(groupOf({ deadline: '2026-10-01', checks: { ...all, c4: undefined } }, P, TODAY)).toBe('this');
 		expect(groupOf({ checks: { x: 1 } }, P, TODAY, [{ id: 'x', name: 'GBP' }])).toBe('past');
+		// Moved to Past by hand: there whatever its boxes, and never late.
+		const moved = { deadline: '2026-10-01', checks: {}, past: { by: 'm', at: '2026-10-07 09:00:00' } };
+		expect(groupOf(moved, P, TODAY)).toBe('past');
+		expect(isLate(moved, columnsOf(P), TODAY)).toBe(false);
+		expect(isLate({ ...moved, past: null }, columnsOf(P), TODAY)).toBe(true);
 	});
 	it('a drop sets the deadline to the end of that cycle', () => {
 		expect(deadlineFor('this', P, TODAY)).toBe('2026-11-04');

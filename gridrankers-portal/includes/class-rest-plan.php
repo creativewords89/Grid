@@ -273,7 +273,8 @@ class GRP_REST_Plan extends GRP_REST_Controller {
 	 * PATCH /keywords/{id}. Everyone: `{check: {column, on: true}}`, `{note}`, and
 	 * `{ask_untick: {column, note?}}` on a ticked box. Team Leaders and the Super Admin also:
 	 * `{check: {column, on: false}}` (untick), `{keep: {column}}` (keep it ticked, the request
-	 * answered), `{keyword}`, `{deadline}` (YYYY-MM-DD or '' for none), `{position}`.
+	 * answered), `{keyword}`, `{deadline}` (YYYY-MM-DD or '' for none), `{position}`, `{past}`
+	 * (true: moved to Past by hand, its boxes as they are; false: back out of Past).
 	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response|WP_Error
@@ -291,7 +292,7 @@ class GRP_REST_Plan extends GRP_REST_Controller {
 		$params  = is_array( $params ) ? $params : $request->get_params();
 		$changes = array();
 
-		$managed = array_intersect( array_keys( $params ), array( 'keyword', 'deadline', 'position' ) );
+		$managed = array_intersect( array_keys( $params ), array( 'keyword', 'deadline', 'position', 'past' ) );
 		if ( $managed && ! self::can( GRP_Permissions::MANAGE_KEYWORDS ) ) {
 			return self::forbidden( __( 'Only a Team Leader or the Super Admin can change keywords and deadlines.', 'gridrankers-portal' ) );
 		}
@@ -322,6 +323,15 @@ class GRP_REST_Plan extends GRP_REST_Controller {
 				return $deadline;
 			}
 			$changes['deadline'] = $deadline;
+		}
+		if ( array_key_exists( 'past', $params ) ) {
+			// Who moved it and when; moving it again keeps the first.
+			$changes['past'] = rest_sanitize_boolean( $params['past'] )
+				? ( is_array( $row['past'] ) && ! empty( $row['past']['by'] ) ? $row['past'] : array(
+					'by' => self::actor()['id'],
+					'at' => GRP_Ids::now(),
+				) )
+				: null;
 		}
 		if ( array_key_exists( 'position', $params ) ) {
 			$changes['position'] = self::int( $params['position'], 0, 1000000, (int) $row['position'] );

@@ -97,6 +97,26 @@ class Test_GRP_REST_Plan extends GRP_REST_TestCase {
 		$this->assertSame( 'grp_keyword_taken', $this->api_as( 'lead', 'PATCH', "/keywords/{$id}", array( 'keyword' => 'Drain Cleaning' ) )->get_data()['code'] );
 		$this->assertSame( 7, (int) $this->api_as( 'lead', 'PATCH', "/keywords/{$id}", array( 'position' => 7 ) )->get_data()['position'] );
 
+		// Moved to Past by hand (dragged there): boxes stay as they are; who and when are kept.
+		$past = $this->api_as( 'member', 'PATCH', "/keywords/{$id}", array( 'past' => true ) )->get_data()['past'];
+		$this->assertSame( $this->team['member']['id'], $past['by'] );
+		$this->assertNotEmpty( $past['at'] );
+		$this->assertSame( array(), (array) GRP_Store::get( 'grp_keywords', $id )['checks'], 'nothing ticked by moving it' );
+		$this->assertSame( $past, $this->api_as( 'lead', 'PATCH', "/keywords/{$id}", array( 'past' => true ) )->get_data()['past'], 'moving it again keeps the first' );
+		$back = $this->api_as(
+			'member',
+			'PATCH',
+			"/keywords/{$id}",
+			array(
+				'past'     => false,
+				'deadline' => '2026-12-31',
+			)
+		)->get_data();
+		$this->assertNull( $back['past'] );
+		$this->assertSame( '2026-12-31', $back['deadline'] );
+		GRP_Store::update( 'grp_members', $this->team['other']['id'], array( 'location' => null ) );
+		$this->assertSame( 'grp_profile_incomplete', $this->api_as( 'other', 'PATCH', "/keywords/{$id}", array( 'past' => true ) )->get_data()['code'] );
+
 		// Removing: everyone; /sync reports the deletion.
 		$this->assertStatus( 200, $this->api_as( 'member', 'DELETE', "/keywords/{$id}" ) );
 		$this->assertNull( GRP_Store::get( 'grp_keywords', $id ) );
@@ -249,6 +269,7 @@ class Test_GRP_REST_Plan extends GRP_REST_TestCase {
 		$this->api_as( 'admin', 'PUT', "/projects/{$project['id']}/details", $this->details() );
 		$row = $this->api_as( 'lead', 'POST', "/projects/{$project['id']}/keywords", array( 'keywords' => array( 'kw one' ) ) )->get_data()[0];
 		$this->api_as( 'member', 'PATCH', "/keywords/{$row['id']}", array( 'note' => 'hello' ) );
+		$this->api_as( 'member', 'PATCH', "/keywords/{$row['id']}", array( 'past' => true ) );
 
 		$export = GRP_Export::build();
 		$this->assertSame( 'kw one', $export['data']['keywords'][0]['keyword'] );
@@ -259,6 +280,7 @@ class Test_GRP_REST_Plan extends GRP_REST_TestCase {
 		GRP_Store::update( 'grp_projects', $project['id'], array( 'details' => null ) );
 		GRP_Import::run( $export );
 		$this->assertSame( 'hello', GRP_Store::get( 'grp_keywords', $row['id'] )['note'] );
+		$this->assertSame( $this->team['member']['id'], GRP_Store::get( 'grp_keywords', $row['id'] )['past']['by'], 'moved to Past survives the round trip' );
 		$this->assertSame( 'About', GRP_Store::get( 'grp_projects', $project['id'] )['details']['sections'][0]['title'] );
 
 		// Deleted forever from the trash: the checklist goes too.

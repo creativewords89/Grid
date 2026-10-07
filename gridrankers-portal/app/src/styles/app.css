@@ -562,6 +562,7 @@ a.pdx-chip:hover{border-color:var(--accent);color:var(--accent)}
 .kp-row.dragging{opacity:.45}
 .kp-handle{color:var(--ink-3,#9AA8BA);letter-spacing:-2px}
 .kp-kw{overflow-wrap:anywhere}
+.kp-moved{display:block;font-size:.72rem;font-weight:600;color:var(--ink-2)}
 .kp-gh{display:flex;align-items:center;gap:8px;padding:8px 16px;background:var(--panel-2);border-bottom:1px solid var(--line);font-size:.86rem;min-width:880px}
 .kp-gh i{width:9px;height:9px;border-radius:50%;background:var(--accent)}
 .kp-gh.g-next i{background:#7C3AED}.kp-gh.g-past i{background:#16A34A}

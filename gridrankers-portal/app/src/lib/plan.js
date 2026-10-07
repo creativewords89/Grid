@@ -42,17 +42,18 @@ export const keywordsOf = (data, projectId) =>
 // Ticked columns of a keyword (only the project's current columns count).
 export const doneOf = (kw, columns) => columns.filter((c) => kw.checks && kw.checks[c.id]).length;
 
-// Past: every box ticked — the keyword is done, whatever its deadline. The rest: Next cycle
-// (deadline after this cycle's end) or This cycle (no deadline, due this cycle, or late).
+// Past: moved there by hand (dragged, boxes as they are) or every box ticked — the keyword is
+// done, whatever its deadline. The rest: Next cycle (deadline after this cycle's end) or This
+// cycle (no deadline, due this cycle, or late).
 export function groupOf(kw, project, today, columns = columnsOf(project)) {
-	if (columns.length && doneOf(kw, columns) === columns.length) return 'past';
+	if (kw.past || (columns.length && doneOf(kw, columns) === columns.length)) return 'past';
 	const cur = cycleRange(project, 0, today);
 	if (kw.deadline && cur && kw.deadline > cur.end) return 'next';
 	return 'this';
 }
 
 // The deadline a keyword gets when dropped into This or Next cycle: the end of that cycle.
-// Past is reached by ticking every box, not by a drop.
+// Dropped into Past it keeps its deadline (it is marked as moved there instead).
 export function deadlineFor(group, project, today) {
 	if (group === 'this') return cycleRange(project, 0, today).end;
 	if (group === 'next') return cycleRange(project, 1, today).end;
@@ -60,7 +61,7 @@ export function deadlineFor(group, project, today) {
 }
 
 // Late: the deadline has passed and not every box is ticked.
-export const isLate = (kw, columns, today) => !!kw.deadline && kw.deadline < today && doneOf(kw, columns) < columns.length;
+export const isLate = (kw, columns, today) => !kw.past && !!kw.deadline && kw.deadline < today && doneOf(kw, columns) < columns.length;
 
 // Several keywords pasted at once: one per line (or comma / tab separated), blanks dropped.
 export const splitKeywords = (text) =>

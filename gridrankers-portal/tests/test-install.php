@@ -31,7 +31,7 @@ class Test_GRP_Install extends WP_UnitTestCase {
 		'grp_leave'         => array( 'id', 'member_id', 'type', 'from_date', 'to_date', 'days', 'reason', 'status', 'decided_by', 'decided_at', 'message', 'created_by' ),
 		'grp_days_off'      => array( 'id', 'kind', 'name', 'from_date', 'to_date', 'created_by' ),
 		'grp_posts'         => array( 'id', 'kind', 'title', 'body', 'to_member', 'to_members', 'pinned', 'show_until', 'created_by', 'deleted_at' ),
-		'grp_keywords'      => array( 'id', 'project_id', 'keyword', 'checks', 'note', 'deadline', 'position', 'created_by' ),
+		'grp_keywords'      => array( 'id', 'project_id', 'keyword', 'checks', 'note', 'deadline', 'past', 'position', 'created_by' ),
 		'grp_files'         => array( 'id', 'name', 'mime', 'size', 'path', 'created_by' ),
 		'grp_comments'      => array( 'id', 'ref_kind', 'ref_id', 'project_id', 'body', 'files', 'created_by', 'deleted_at' ),
 		'grp_billing'       => array( 'id', 'project_id', 'project_name', 'cycle_key', 'cycle_start', 'cycle_end', 'amount', 'currency', 'sent_at', 'sent_by', 'ref', 'skipped', 'note', 'payments' ),

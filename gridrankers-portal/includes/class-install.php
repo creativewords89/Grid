@@ -15,7 +15,7 @@ class GRP_Install {
 	/**
 	 * Current schema version. Bump it whenever get_schema() or migrations() changes.
 	 */
-	const DB_VERSION = 12;
+	const DB_VERSION = 13;
 
 	/**
 	 * Option that stores the installed schema version.
@@ -34,6 +34,7 @@ class GRP_Install {
  * Member's request to undo In progress, SPEC.md 6.6) to meeting tasks and cycle records. Schema 10 adds
  * `grp_files` (private uploads for submissions and comments) and `grp_comments` (SPEC.md 6.6). Schema 11
  * adds `grp_billing` and `grp_billing_fees`, the Super Admin's invoice tracker (SPEC.md 6.14).
+ * Schema 12 repairs breakdown people (6.5); schema 13 adds `past` to keywords (moved to Past, 6.12).
 	 *
 	 * @var string[]
 	 */
@@ -568,6 +569,7 @@ class GRP_Install {
 				checks json NULL,
 				note text NULL,
 				deadline date NULL,
+				past json NULL,
 				position int(11) NOT NULL DEFAULT 0,
 				created_by varchar(64) NULL,
 				created_at datetime NOT NULL,

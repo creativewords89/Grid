@@ -22,7 +22,7 @@ class GRP_Store {
 		'grp_members'       => array( 'weekly_off' ),
 		'grp_posts'         => array( 'to_members' ),
 		'grp_projects'      => array( 'cycle_changes', 'cycle_log', 'cycle_reviews', 'details', 'kw_columns' ),
-		'grp_keywords'      => array( 'checks' ),
+		'grp_keywords'      => array( 'checks', 'past' ),
 		'grp_comments'      => array( 'files' ),
 		'grp_meeting_tasks' => array( 'assignees', 'progress', 'deadline', 'review', 'completion', 'undo_request' ),
 		'grp_monthly_tasks' => array( 'assignees', 'parts' ),
