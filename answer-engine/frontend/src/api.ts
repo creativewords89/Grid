@@ -31,6 +31,9 @@ export type StoredFile = {
   page_count: number | null;
   sheet_count: number | null;
   chunk_count: number;
+  ocr_pages: number;
+  progress_done: number | null;
+  progress_total: number | null;
   version: number;
   previous_file_id: string | null;
   uploaded_by: { id: string; name: string } | null;

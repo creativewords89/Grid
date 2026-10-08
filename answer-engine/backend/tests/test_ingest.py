@@ -10,10 +10,24 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Chunk, FileStatus, Job, JobState, Role, StoredFile, User
+from app.ai.ocr_client import KeyRejected, Transcript
+from app.ai.pricing import cost_usd
+from app.db.models import (
+    Chunk,
+    FileStatus,
+    Job,
+    JobState,
+    Role,
+    StoredFile,
+    UsageDaily,
+    UsageKind,
+    User,
+)
 from app.files import service
+from app.files.ocr import KEY_REFUSED
 from app.jobs.queue import enqueue
 from tests.conftest import RunJobs, UserFactory, sign_in
+from tests.fakes import FakeOcr
 from tests.files import samples
 from tests.files.build import LOREM, image_page, locked_pdf, page_break, pdf, text, word
 from tests.test_extract_sheet import FIXTURES
@@ -104,7 +118,7 @@ def test_a_word_document_is_read_into_chunks(
     assert listed(client, file["id"])["page_count"] == 2
 
 
-def test_scanned_pages_are_reported_on_the_file(
+def test_without_an_api_key_scanned_pages_are_skipped_with_a_warning(
     client: TestClient, owner: User, db: Session, run_jobs: RunJobs, tmp_path: Path
 ) -> None:
     path = pdf(tmp_path / "Mixed.pdf", lambda p: text(p, 60, LOREM), image_page, image_page)
@@ -115,9 +129,106 @@ def test_scanned_pages_are_reported_on_the_file(
     row = listed(client, file["id"])
     assert row["status"] == "ready"
     assert row["warning"] == (
-        "2 pages look scanned and will be read once scanned-page reading is switched on."
+        "2 scanned pages can't be read until the Claude API key is set up "
+        "(Owner: add ANTHROPIC_API_KEY)."
     )
     assert len(chunks(db, file["id"])) == 1
+
+
+def test_scanned_pages_are_read_with_claude_in_page_order(
+    client: TestClient,
+    owner: User,
+    db: Session,
+    run_jobs: RunJobs,
+    tmp_path: Path,
+    fake_ocr: FakeOcr,
+) -> None:
+    path = pdf(
+        tmp_path / "Contract.pdf",
+        image_page,
+        lambda p: text(p, 60, "Typed page two. " + LOREM),
+        image_page,
+    )
+
+    file = upload(client, path)
+    run_jobs()
+
+    [chunk] = chunks(db, file["id"])
+    assert chunk.text.index("Scanned page") < chunk.text.index("Typed page two")
+    assert chunk.text.count("This is the text Claude read") == 2
+    assert chunk.from_ocr is True
+    assert (chunk.page_from, chunk.page_to) == (1, 3)
+    assert len(fake_ocr.calls) == 2
+    row = listed(client, file["id"])
+    assert (row["warning"], row["ocr_pages"], row["page_count"]) == (None, 2, 3)
+    assert (row["progress_done"], row["progress_total"]) == (None, None)
+    spent = db.scalars(select(UsageDaily)).one()
+    assert (spent.user_id, spent.kind, spent.requests) == (owner.id, UsageKind.OCR, 2)
+    assert spent.cost_usd == pytest.approx(cost_usd("claude-opus-5-5", 3000, 600))
+
+
+def test_pages_claude_could_not_read_are_named(
+    client: TestClient,
+    owner: User,
+    run_jobs: RunJobs,
+    tmp_path: Path,
+    fake_ocr: FakeOcr,
+) -> None:
+    fake_ocr.answer = lambda n: Transcript("", "refused", "claude-opus-5-5", 1000, 0)
+    file = upload(client, pdf(tmp_path / "Scan.pdf", image_page, image_page))
+
+    run_jobs()
+
+    row = listed(client, file["id"])
+    assert row["status"] == "ready"
+    assert row["warning"] == "Pages 1 and 2 couldn't be read."
+
+
+def test_a_photo_is_read_with_claude(
+    client: TestClient,
+    owner: User,
+    db: Session,
+    run_jobs: RunJobs,
+    tmp_path: Path,
+    fake_ocr: FakeOcr,
+) -> None:
+    from PIL import Image
+
+    photo = tmp_path / "whiteboard.jpg"
+    Image.new("RGB", (3000, 2000), "white").save(photo)
+
+    file = upload(client, photo)
+    run_jobs()
+
+    [chunk] = chunks(db, file["id"])
+    assert chunk.text.startswith("# Scanned page 1")
+    assert fake_ocr.calls[0][1] == "image/png"
+    row = listed(client, file["id"])
+    assert (row["page_count"], row["ocr_pages"], row["warning"]) == (1, 1, None)
+
+
+def test_a_refused_api_key_fails_the_file_so_it_can_be_retried(
+    client: TestClient,
+    owner: User,
+    db: Session,
+    run_jobs: RunJobs,
+    tmp_path: Path,
+    fake_ocr: FakeOcr,
+) -> None:
+    fake_ocr.answer = lambda n: KeyRejected("invalid x-api-key")
+    file = upload(client, pdf(tmp_path / "Scan.pdf", image_page))
+
+    run_jobs()
+
+    row = listed(client, file["id"])
+    assert row["status"] == "failed"
+    assert row["error"] == KEY_REFUSED
+    assert db.scalars(select(Job)).one().attempts == 3  # failed at once, no retries
+
+    fake_ocr.answer = lambda n: Transcript("Now it works.", "ok", "claude-opus-5-5", 10, 5)
+    client.post(f"/api/files/{file['id']}/retry")
+    run_jobs()
+    assert listed(client, file["id"])["status"] == "ready"
 
 
 def test_a_pdf_with_no_text_at_all_says_so(
@@ -126,7 +237,7 @@ def test_a_pdf_with_no_text_at_all_says_so(
     file = upload(client, pdf(tmp_path / "Scan.pdf", image_page))
     run_jobs()
 
-    assert listed(client, file["id"])["warning"].startswith("1 page looks scanned")
+    assert listed(client, file["id"])["warning"].startswith("1 scanned page can't be read")
 
 
 def test_a_word_file_with_no_text_says_so(
@@ -155,7 +266,7 @@ def test_a_password_protected_pdf_fails_at_once(
     assert (job.state, job.attempts) == (JobState.FAILED, 3)  # no pointless retries
 
 
-def test_images_wait_for_scanned_page_reading(
+def test_without_an_api_key_images_are_skipped_with_a_warning(
     client: TestClient, owner: User, run_jobs: RunJobs, tmp_path: Path
 ) -> None:
     photo = tmp_path / "scan.png"
@@ -165,7 +276,7 @@ def test_images_wait_for_scanned_page_reading(
     run_jobs()
 
     assert listed(client, file["id"])["warning"] == (
-        "Images will be read once scanned-page reading is switched on."
+        "Images can't be read until the Claude API key is set up (Owner: add ANTHROPIC_API_KEY)."
     )
 
 

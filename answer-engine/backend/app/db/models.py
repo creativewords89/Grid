@@ -2,19 +2,22 @@
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
+    UniqueConstraint,
     func,
     text,
 )
@@ -153,6 +156,9 @@ class StoredFile(TimestampMixin, Base):
     sheet_count: Mapped[int | None] = mapped_column(Integer)  # Excel workbooks only
     chunk_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     ocr_pages: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Shown as "Processing 3/10" while scanned pages are being read.
+    progress_done: Mapped[int | None] = mapped_column(Integer)
+    progress_total: Mapped[int | None] = mapped_column(Integer)
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     previous_file_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("files.id", ondelete="SET NULL")
@@ -290,4 +296,32 @@ class Setting(Base):
     value: Mapped[Any] = mapped_column(JSONB)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class UsageKind(enum.StrEnum):
+    ANSWER = "answer"
+    CHECK = "check"
+    OCR = "ocr"
+    DRAFT = "draft"
+
+
+class UsageDaily(Base):
+    """Claude usage per day, person and kind (SPEC sections 5 and 9.5)."""
+
+    __tablename__ = "usage_daily"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    date: Mapped[date] = mapped_column(Date)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    kind: Mapped[UsageKind] = mapped_column(_enum(UsageKind, "usage_kind"))
+    requests: Mapped[int] = mapped_column(Integer, default=0)
+    tokens_in: Mapped[int] = mapped_column(BigInteger, default=0)
+    tokens_out: Mapped[int] = mapped_column(BigInteger, default=0)
+    cost_usd: Mapped[float] = mapped_column(Numeric(12, 6, asdecimal=False), default=0)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "date", "user_id", "kind", name="uq_usage_daily_day", postgresql_nulls_not_distinct=True
+        ),
     )

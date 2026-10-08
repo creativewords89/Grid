@@ -4,10 +4,13 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.20.0",
+    "anthropic>=1.12.1",
     "argon2-cffi>=25.1.0",
     "email-validator>=2.3.0",
     "fastapi>=0.143.0",
     "openpyxl>=3.1.5",
+    "pillow>=12.3.0",
+    "pillow-heif>=1.8.0",
     "psycopg[binary]>=3.3.6",
     "pydantic-settings>=2.15.0",
     "pymupdf>=1.28.2",
@@ -45,7 +48,7 @@ plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 # PyMuPDF ships without type hints for most of its API.
-module = ["app.files.extract_pdf", "tests.files.build"]
+module = ["app.files.extract_pdf", "app.files.ocr", "tests.files.build"]
 disallow_untyped_calls = false
 
 [tool.pytest.ini_options]

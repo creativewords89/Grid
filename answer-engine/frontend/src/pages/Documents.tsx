@@ -351,7 +351,12 @@ function FileRow({
       <td className="hide-narrow">{file.type}</td>
       <td className="hide-narrow">{extent(file)}</td>
       <td>
-        <span className={`pill pill-file-${file.status}`}>{STATUS_LABEL[file.status]}</span>
+        <span className={`pill pill-file-${file.status}`}>
+          {STATUS_LABEL[file.status]}
+          {file.status === "processing" && file.progress_total
+            ? ` ${file.progress_done ?? 0}/${file.progress_total}`
+            : ""}
+        </span>
         {file.status === "failed" && file.error && <div className="field-error">{file.error}</div>}
         {file.status === "ready" && file.warning && (
           <div className="file-warning">{file.warning}</div>

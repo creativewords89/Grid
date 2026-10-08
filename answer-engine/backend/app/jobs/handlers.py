@@ -3,10 +3,12 @@
 import uuid
 from datetime import timedelta
 
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.orm import Session
 
 from app import trash
+from app.ai import usage
+from app.ai.ocr_client import get_ocr
 from app.auth.tokens import now
 from app.chunking import chunk_blocks, chunk_sheet
 from app.db.models import (
@@ -18,6 +20,7 @@ from app.db.models import (
     JobState,
     LoginAttempt,
     StoredFile,
+    UsageKind,
     User,
 )
 from app.files import service as files
@@ -31,6 +34,7 @@ def _fail_file(db: Session, payload: Payload, message: str) -> None:
     if record is not None and record.deleted_at is None:
         record.status = FileStatus.FAILED
         record.error = message
+        record.progress_done = record.progress_total = None
 
 
 @job(files.INGEST, on_failure=_fail_file)
@@ -51,7 +55,17 @@ def ingest_file(db: Session, payload: Payload) -> None:
     path = storage.absolute(record.storage_path)
     if not path.is_file():
         raise UserFacingError("The uploaded file is missing from storage. Upload it again.")
-    result = extract(path, record.mime)
+    file_id = record.id
+
+    def progress(done: int, total: int) -> None:
+        db.execute(
+            update(StoredFile)
+            .where(StoredFile.id == file_id)
+            .values(progress_done=done, progress_total=total)
+        )
+        db.commit()
+
+    result = extract(path, record.mime, get_ocr(), progress)
     pieces = chunk_blocks(result.blocks)
     pieces += [piece for sheet in result.sheets for piece in chunk_sheet(record.name, sheet)]
 
@@ -74,6 +88,9 @@ def ingest_file(db: Session, payload: Payload) -> None:
         )
         for n, piece in enumerate(pieces)
     )
+    record.progress_done = record.progress_total = None
+    record.ocr_pages = result.ocr_pages
+    usage.record(db, record.uploaded_by, UsageKind.OCR, result.usage)
     record.page_count = result.page_count
     record.sheet_count = result.sheet_count
     record.chunk_count = len(pieces)

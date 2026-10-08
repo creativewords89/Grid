@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     # Original uploads live here, under random names (SPEC section 2).
     upload_dir: str = "/data/uploads"
 
+    # Claude (SPEC section 9). Without a key, scanned pages and images are skipped with a
+    # warning instead of being read.
+    anthropic_api_key: str = ""
+    ocr_model: str = "claude-opus-5-5"
+
     # Email (SPEC section 2). Empty SMTP_HOST means email is not configured: links are
     # logged and, where the Owner asked for them, returned to the Owner instead.
     smtp_host: str = ""

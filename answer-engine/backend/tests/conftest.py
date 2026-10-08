@@ -12,6 +12,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from alembic import command
@@ -41,6 +42,8 @@ def upload_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path
     """Every test stores uploads in its own temporary folder."""
     folder = tmp_path / "uploads"
     monkeypatch.setenv("UPLOAD_DIR", str(folder))
+    # Never call the real Claude API from tests, whatever key the developer has set.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
     get_settings.cache_clear()
     yield folder
     get_settings.cache_clear()
@@ -189,6 +192,9 @@ def sign_in(client: TestClient, email: str, password: str = PASSWORD) -> dict[st
     return body
 
 
+if TYPE_CHECKING:
+    from tests.fakes import FakeOcr
+
 RunJobs = Callable[[], int]
 
 
@@ -203,3 +209,15 @@ def run_jobs(clean_engine: Engine) -> RunJobs:
         return count
 
     return run
+
+
+@pytest.fixture
+def fake_ocr(monkeypatch: pytest.MonkeyPatch) -> "FakeOcr":
+    """Read scanned pages with a stand-in for Claude."""
+    from app.jobs import handlers as job_handlers
+    from tests.fakes import FakeOcr
+
+    fake = FakeOcr()
+    monkeypatch.setattr(job_handlers, "get_ocr", lambda: fake)
+    monkeypatch.setattr("app.files.ocr.RETRY_WAIT", (0.0, 0.0))
+    return fake

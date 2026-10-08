@@ -48,6 +48,9 @@ class FileOut(BaseModel):
     page_count: int | None
     sheet_count: int | None
     chunk_count: int
+    ocr_pages: int
+    progress_done: int | None
+    progress_total: int | None
     version: int
     previous_file_id: uuid.UUID | None
     uploaded_by: PersonOut | None
@@ -69,6 +72,9 @@ class FileOut(BaseModel):
             warning=record.warning,
             page_count=record.page_count,
             sheet_count=record.sheet_count,
+            ocr_pages=record.ocr_pages,
+            progress_done=record.progress_done,
+            progress_total=record.progress_total,
             chunk_count=record.chunk_count,
             version=record.version,
             previous_file_id=record.previous_file_id,

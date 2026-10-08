@@ -17,6 +17,9 @@ function makeFile(overrides: Partial<StoredFile> = {}): StoredFile {
     warning: null,
     page_count: 3,
     sheet_count: null,
+    ocr_pages: 0,
+    progress_done: null,
+    progress_total: null,
     chunk_count: 0,
     version: 1,
     previous_file_id: null,
@@ -106,6 +109,20 @@ test("lists documents with their status and only the actions allowed", async () 
   expect(within(rows[1]!).getByText("v2")).toBeVisible();
   expect(screen.getByText(/2 files · 3 pages/)).toBeVisible();
   expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+});
+
+test("scanned pages being read show their progress", async () => {
+  mockApi({
+    "GET /auth/me": me("user"),
+    "GET /files": [
+      200,
+      listing([makeFile({ status: "processing", progress_done: 3, progress_total: 10 })]),
+    ],
+  });
+
+  render(<App />);
+
+  expect(await screen.findByText("Processing 3/10")).toBeVisible();
 });
 
 test("workbooks show their sheets instead of pages", async () => {
