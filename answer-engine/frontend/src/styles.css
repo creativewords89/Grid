@@ -704,6 +704,42 @@ a {
   color: var(--ok);
 }
 
+.sync-pill {
+  margin-left: 4px;
+}
+
+.facts {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.facts div {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 12px;
+}
+
+.facts dt {
+  color: var(--muted);
+}
+
+.facts dd {
+  margin: 0;
+}
+
+code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.92em;
+}
+
+@media (max-width: 760px) {
+  .facts div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+
 .nowrap {
   white-space: nowrap;
 }

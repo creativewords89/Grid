@@ -7,3 +7,8 @@ export function formatSize(bytes: number): string {
 export function formatDate(value: string): string {
   return new Date(value).toLocaleDateString(undefined, { dateStyle: "medium" });
 }
+
+/** "1 file", "3 files". */
+export function plural(count: number, one: string, many = `${one}s`): string {
+  return `${count} ${count === 1 ? one : many}`;
+}

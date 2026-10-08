@@ -34,6 +34,7 @@ export type StoredFile = {
   ocr_pages: number;
   progress_done: number | null;
   progress_total: number | null;
+  sync_pending: boolean;
   version: number;
   previous_file_id: string | null;
   uploaded_by: { id: string; name: string } | null;
@@ -63,6 +64,27 @@ export type TrashItem = {
   reason: string | null;
 };
 export type LinkResult = { email_sent: boolean; link: string | null };
+export type KbStatus = {
+  configured: boolean;
+  index: string;
+  files_ready: number;
+  chunks: number;
+  pending_ops: number;
+  pending_records: number;
+  oldest_pending_at: string | null;
+  retrying: boolean;
+  last_error: string | null;
+  last_check: {
+    at: string;
+    expected: number;
+    in_pinecone: number;
+    missing: number;
+    extra: number;
+    rebuild: boolean;
+    error: string | null;
+  } | null;
+};
+
 export type Health = { status: "ok" | "error"; version: string; checks: Record<string, string> };
 
 export class ApiError extends Error {
@@ -210,6 +232,9 @@ export const api = {
   listTrash: () => request<TrashItem[]>("GET", "/trash"),
   restoreTrash: (id: string) => request<void>("POST", `/trash/${id}/restore`),
   purgeTrash: (id: string) => request<void>("DELETE", `/trash/${id}`),
+
+  kbStatus: () => request<KbStatus>("GET", "/kb/status"),
+  kbRebuild: () => request<{ message: string }>("POST", "/kb/rebuild"),
 
   health: () => request<Health>("GET", "/health"),
 };

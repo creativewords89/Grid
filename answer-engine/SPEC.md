@@ -146,7 +146,7 @@ All tables have `id` (UUID v7 unless stated), `created_at` and `updated_at` (`ti
 | `platforms` | slug UNIQUE (reddit, facebook, …), name, enabled BOOL, parser ENUM(reddit, facebook, generic), style_prompt TEXT, disclosure_line TEXT NULL, position |
 | `communities` | platform_id, name (e.g. `r/SEO`), notes TEXT (e.g. "no links") |
 | `notifications` | user_id, kind (answer_reviewed, needs_info, thread_draft_ready, reply_corrected_after_post, …), ref_kind, ref_id, title, body, read_at NULL |
-| `kb_ops` | outbox for Pinecone (section 6.4): op ENUM(upsert, delete), namespace, record_ids TEXT[], payload JSONB NULL, state ENUM(pending, done, failed), attempts, next_attempt_at, last_error |
+| `kb_ops` | outbox for Pinecone (section 6.4): seq BIGINT IDENTITY (sending order; UUID v7 isn't ordered within a millisecond), op ENUM(upsert, delete), namespace, record_ids TEXT[] (at most 1000), file_id NULL (for "Sync pending"), state ENUM(pending, done), attempts, next_attempt_at, last_error. Done ops are kept 7 days. |
 | `jobs` | kind, payload JSONB, state ENUM(queued, running, done, failed), attempts, run_after, locked_by, locked_at, last_error, dedupe_key UNIQUE NULL (scheduled jobs use `kind:YYYY-MM-DD` so each runs once per slot) |
 | `trash` | kind ENUM(file, verified_answer, thread, conversation), ref_id, title, data JSONB, deleted_by, deleted_at. Purged after 30 days. |
 | `audit` | actor_id NULL (system), action, entity, entity_id, title (what it was called at the time), changes JSONB `[{field, from, to}]`, at |
@@ -216,10 +216,14 @@ Postgres is the master copy and Pinecone is the search copy. **No code calls Pin
 | Verified answer created / edited / enabled / restored | upsert `va_{id}` into `verified` |
 | Verified answer disabled / expired / deleted | delete `va_{id}` from `verified` |
 
-- The **sync worker** processes `kb_ops` in order, upserting in batches of 96 records. On failure it retries with backoff (10 s, 1 min, 5 min, 30 min, then hourly). The item stays **Sync pending** in the UI until done. After 24 h of failures the Owner gets a notification.
+- The **sync worker** (every 10 s, inside the worker process) sends `kb_ops` strictly in `seq` order, upserting in batches of 96 records and deleting in batches of 1000. An upsert reads its records from Postgres when it is sent, so anything deleted since is skipped. On failure the op is retried with backoff (10 s, 1 min, 5 min, 30 min, then hourly) and **every later op waits**, so a delete can never overtake an earlier upsert (or the other way round). The file shows **Sync pending** in the UI until done. After 24 h of failures the Owner gets a notification (build step 12).
+- **Not configured** (`PINECONE_API_KEY` empty): ops wait in the outbox and are sent once a key is set.
+- Records: `_id` = chunk id, `text` = context line + chunk text (spreadsheet chunks already carry `File: … — Sheet: …`), `file_id`, `file_name`, `page_from`, `page_to`, `sheet`. Fields that are empty are left out, because Pinecone metadata can't hold nulls.
 - Search treats a pending delete as already applied. Results whose ID belongs to a deleted or disabled item in Postgres are dropped before they reach Claude, so a deleted item is **never used in an answer, even while Pinecone is catching up**.
-- **Nightly check (03:00 server time):** for each namespace, the worker lists all Pinecone IDs and compares them with Postgres. Missing IDs are upserted, extra IDs are deleted, and the counts are written to the audit log.
-- **Rebuild index** (Owner, Settings → Knowledge base): re-upserts every active chunk and verified answer from Postgres, then deletes any other ID. It shows progress, and answering keeps working during the rebuild.
+- **Nightly check (03:00 UTC, or at the worker's first start after 03:00):** the worker lists all Pinecone IDs and compares them with Postgres. Upserts are queued for missing IDs and deletes for extra ones. The counts are stored (setting `kb_last_check`, shown in Settings) and written to the audit log.
+- **Rebuild index** (Owner, Settings → Knowledge base, after a confirmation): a `kb_rebuild` job queues an upsert of every live record and a delete of any other ID. Answering keeps working during the rebuild.
+- **Settings → Knowledge base** shows the index name, searchable files and chunks, what is waiting to sync (and since when), the last check's counts, the last error while retrying, and set-up instructions when Pinecone isn't configured.
+- **Setup:** `python -m app.cli setup-pinecone` creates the index with integrated embedding (`PINECONE_EMBED_MODEL`, default `llama-text-embed-v2`, field `text`) in `PINECONE_CLOUD`/`PINECONE_REGION` (default aws / us-east-1) and prints its host. Optionally set `PINECONE_HOST` to that host, which saves a lookup per start. The embedding model is fixed when the index is created, so it is an environment setting rather than an Owner setting.
 
 ### 6.5 Answering a question
 
@@ -527,7 +531,7 @@ Every route checks the session, the CSRF token (for writes) and `permissions.can
 | `monthly_cost_alert_usd` | 100 |
 | `thread_auto_close_days` | 14 |
 | `trash_days` | 30 |
-| `embed_model` / `rerank_model` | `llama-text-embed-v2` / `bge-reranker-v2-m3` |
+| `rerank_model` | `bge-reranker-v2-m3` (the embedding model is the env setting `PINECONE_EMBED_MODEL`, fixed at index creation) |
 | `platforms` | Reddit (parser reddit, style "short, plain, helpful, no sales tone, links only if useful"), Facebook (parser facebook, style "friendly, conversational, soft mention allowed where the group permits") |
 | `disclosure_line` (per platform) | "(I work at GridRankers.)" — appended to drafts that mention GridRankers (open decision 1) |
 
@@ -564,7 +568,7 @@ Every route checks the session, the CSRF token (for writes) and `permissions.can
 - A record `answers.gridrankers.com` → VPS IP. Caddy gets the certificate automatically.
 
 ### 13.3 `.env` (on the server only; `.env.example` lists the keys)
-`DATABASE_URL`, `SECRET_KEY`, `APP_URL`, `ANTHROPIC_API_KEY`, `PINECONE_API_KEY`, `PINECONE_INDEX`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `ANSWER_MODEL`, `REWRITE_MODEL`, `CHECK_MODEL`, `OCR_MODEL`, `BACKUP_TARGET`.
+`DATABASE_URL`, `SECRET_KEY`, `APP_URL`, `ANTHROPIC_API_KEY`, `PINECONE_API_KEY`, `PINECONE_INDEX`, `PINECONE_HOST` (optional), `PINECONE_CLOUD`, `PINECONE_REGION`, `PINECONE_EMBED_MODEL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `ANSWER_MODEL`, `REWRITE_MODEL`, `CHECK_MODEL`, `OCR_MODEL`, `BACKUP_TARGET`.
 
 ### 13.4 Install and update
 - **Install:** `git clone` → copy `.env.example` to `.env` and fill it in → `docker compose up -d` → `docker compose exec api python -m app.cli create-owner --email … --name …` → `docker compose exec api python -m app.cli setup-pinecone` (creates the index) → `… setup-telegram` (registers the webhook).

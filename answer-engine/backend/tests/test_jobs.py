@@ -216,16 +216,19 @@ def test_daily_jobs_are_queued_once_per_day_after_their_time(db: Session) -> Non
     def kinds() -> list[str]:
         return sorted(job.dedupe_key or "" for job in jobs(db))
 
-    enqueue_due(db, datetime(2026, 10, 8, 3, 59, tzinfo=UTC))
+    enqueue_due(db, datetime(2026, 10, 8, 2, 59, tzinfo=UTC))
     assert kinds() == []
 
+    enqueue_due(db, datetime(2026, 10, 8, 3, 0, tzinfo=UTC))
     enqueue_due(db, datetime(2026, 10, 8, 4, 0, tzinfo=UTC))
     enqueue_due(db, datetime(2026, 10, 8, 4, 30, tzinfo=UTC))
-    assert kinds() == ["trash_purge:2026-10-08"]
+    assert kinds() == ["kb_check:2026-10-08", "trash_purge:2026-10-08"]
 
     enqueue_due(db, datetime(2026, 10, 8, 23, 0, tzinfo=UTC))
     enqueue_due(db, datetime(2026, 10, 9, 5, 0, tzinfo=UTC))
     assert kinds() == [
+        "kb_check:2026-10-08",
+        "kb_check:2026-10-09",
         "session_cleanup:2026-10-08",
         "session_cleanup:2026-10-09",
         "trash_purge:2026-10-08",

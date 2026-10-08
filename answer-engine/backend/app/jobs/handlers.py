@@ -18,6 +18,8 @@ from app.db.models import (
     FileStatus,
     Job,
     JobState,
+    KbOp,
+    KbOpState,
     LoginAttempt,
     StoredFile,
     UsageKind,
@@ -27,6 +29,9 @@ from app.files import service as files
 from app.files import storage
 from app.files.extract import extract
 from app.jobs.queue import Payload, UserFacingError, job
+from app.kb import outbox
+from app.kb.reconcile import reconcile
+from app.kb.store import DOCS, get_store
 
 
 def _fail_file(db: Session, payload: Payload, message: str) -> None:
@@ -72,6 +77,7 @@ def ingest_file(db: Session, payload: Payload) -> None:
     db.refresh(record, with_for_update=True)
     if record.deleted_at is not None:
         return
+    old_ids = set(outbox.file_chunk_ids(db, record.id))
     db.execute(delete(Chunk).where(Chunk.file_id == record.id))  # a retry starts afresh
     db.add_all(
         Chunk(
@@ -98,6 +104,9 @@ def ingest_file(db: Session, payload: Payload) -> None:
     if not pieces and not record.warning:
         record.warning = "No text was found in this file."
     record.status = FileStatus.READY
+    new_ids = {Chunk.make_id(record.id, n) for n in range(len(pieces))}
+    outbox.delete(db, DOCS, old_ids - new_ids, record.id)  # a re-read produced fewer chunks
+    outbox.upsert(db, DOCS, new_ids, record.id)
     if record.previous_file_id is not None:
         previous = db.get(StoredFile, record.previous_file_id)
         if previous is not None and previous.deleted_at is None:
@@ -124,8 +133,26 @@ def session_cleanup(db: Session, payload: Payload) -> None:
     db.execute(
         delete(Job).where(Job.state == JobState.DONE, Job.updated_at < current - timedelta(days=14))
     )
+    db.execute(
+        delete(KbOp).where(
+            KbOp.state == KbOpState.DONE, KbOp.updated_at < current - timedelta(days=7)
+        )
+    )
     # Failed jobs stay for 90 days so the Owner can see them in Settings → System.
     old_failed = select(Job.id).where(
         Job.state == JobState.FAILED, Job.updated_at < current - timedelta(days=90)
     )
     db.execute(delete(Job).where(Job.id.in_(old_failed)))
+
+
+@job("kb_check")
+def kb_check(db: Session, payload: Payload) -> None:
+    """Nightly: compare Pinecone with Postgres and queue the fixes."""
+    reconcile(db, get_store(), rebuild=False, by=None)
+
+
+@job("kb_rebuild")
+def kb_rebuild(db: Session, payload: Payload) -> None:
+    """Owner's Rebuild: send every record again and remove anything extra."""
+    by = db.get(User, uuid.UUID(payload["user_id"])) if payload.get("user_id") else None
+    reconcile(db, get_store(), rebuild=True, by=by)

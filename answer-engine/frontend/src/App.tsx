@@ -5,6 +5,7 @@ import { Forgot } from "./pages/Forgot";
 import { Placeholder } from "./pages/Placeholder";
 import { Profile } from "./pages/Profile";
 import { SetPassword } from "./pages/SetPassword";
+import { Settings } from "./pages/Settings";
 import { SignIn } from "./pages/SignIn";
 import { Users } from "./pages/Users";
 import { usePath } from "./router";
@@ -16,7 +17,6 @@ const PLACEHOLDERS: Record<string, [string, number]> = {
   "/verified": ["Verified Answers", 11],
   "/reviews": ["Review Queue", 10],
   "/answer-log": ["Answer Log", 9],
-  "/settings": ["Settings", 14],
 };
 
 function Routes() {
@@ -33,6 +33,7 @@ function Routes() {
   if (path === "/users" && user.role === "owner") page = <Users />;
   else if (path === "/profile") page = <Profile />;
   else if (path === "/documents") page = <Documents />;
+  else if (path === "/settings" && user.role === "owner") page = <Settings />;
   else {
     const [title, step] = PLACEHOLDERS[path] ?? PLACEHOLDERS["/"]!;
     page = <Placeholder title={title} step={step} />;

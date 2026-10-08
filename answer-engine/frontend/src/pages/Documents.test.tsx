@@ -20,6 +20,7 @@ function makeFile(overrides: Partial<StoredFile> = {}): StoredFile {
     ocr_pages: 0,
     progress_done: null,
     progress_total: null,
+    sync_pending: false,
     chunk_count: 0,
     version: 1,
     previous_file_id: null,
@@ -123,6 +124,17 @@ test("scanned pages being read show their progress", async () => {
   render(<App />);
 
   expect(await screen.findByText("Processing 3/10")).toBeVisible();
+});
+
+test("a ready file that hasn't reached search yet says so", async () => {
+  mockApi({
+    "GET /auth/me": me("user"),
+    "GET /files": [200, listing([makeFile({ sync_pending: true })])],
+  });
+
+  render(<App />);
+
+  expect(await screen.findByText("Sync pending")).toBeVisible();
 });
 
 test("workbooks show their sheets instead of pages", async () => {

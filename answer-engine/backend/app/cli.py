@@ -43,6 +43,23 @@ def create_owner(email: str, name: str, password_from_stdin: bool) -> None:
     print(f"Owner {name} <{email}> created. They can sign in now.")
 
 
+def setup_pinecone() -> None:
+    from app.config import get_settings
+    from app.kb.store import PineconeStore
+
+    settings = get_settings()
+    if not settings.pinecone_api_key:
+        raise SystemExit("Set PINECONE_API_KEY in .env first.")
+    store = PineconeStore(settings.pinecone_api_key, settings.pinecone_index)
+    print(
+        store.ensure_index(
+            settings.pinecone_cloud, settings.pinecone_region, settings.pinecone_embed_model
+        )
+    )
+    print("Optional: put that host in .env as PINECONE_HOST.")
+    print("Next: Settings → Knowledge base → Rebuild sends every document to it.")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -52,9 +69,12 @@ def main(argv: list[str] | None = None) -> None:
     owner.add_argument(
         "--password-stdin", action="store_true", help="read the password from standard input"
     )
+    commands.add_parser("setup-pinecone", help="create the Pinecone index if it doesn't exist")
     args = parser.parse_args(argv)
     if args.command == "create-owner":
         create_owner(args.email, args.name, args.password_stdin)
+    elif args.command == "setup-pinecone":
+        setup_pinecone()
 
 
 if __name__ == "__main__":

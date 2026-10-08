@@ -15,6 +15,7 @@ from app.db.models import FileStatus, StoredFile, TrashItem, TrashKind, User
 from app.errors import ApiError
 from app.files import sniff, storage
 from app.jobs.queue import enqueue
+from app.kb import outbox
 
 INGEST = "ingest_file"
 
@@ -135,6 +136,7 @@ def pending_version(db: Session, current: StoredFile) -> StoredFile | None:
 def to_trash(db: Session, record: StoredFile, by: User | None, reason: str = "delete") -> None:
     """Soft-delete: it stops being used at once and can be restored for 30 days."""
     record.deleted_at = now()
+    outbox.file_removed(db, record.id)
     db.add(
         TrashItem(
             kind=TrashKind.FILE,
@@ -157,6 +159,8 @@ def restore(db: Session, record: StoredFile, by: User) -> None:
             f"A copy of this file is already in the knowledge base: {existing.name}",
         )
     record.deleted_at = None
+    if record.status == FileStatus.READY:
+        outbox.file_searchable(db, record.id)
     if record.status in (FileStatus.QUEUED, FileStatus.PROCESSING):
         # It was deleted before it finished: read it again.
         record.status = FileStatus.QUEUED
@@ -167,6 +171,7 @@ def restore(db: Session, record: StoredFile, by: User) -> None:
 def purge(db: Session, record: StoredFile, by: User | None) -> None:
     """Delete forever, including the original on disk."""
     audit.record(db, by, "purge", "file", record.id, record.name)
+    outbox.file_removed(db, record.id)  # normally already gone; makes sure
     path = record.storage_path
     db.delete(record)
     db.flush()

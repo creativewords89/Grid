@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, joinedload
 from app import settings_store
 from app.auth.deps import CurrentUser, Db
 from app.auth.tokens import now
-from app.db.models import FileStatus, StoredFile, User
+from app.db.models import FileStatus, KbOp, KbOpState, StoredFile, User
 from app.errors import ApiError
 from app.files import service, sniff, storage
 from app.jobs.queue import enqueue
@@ -51,6 +51,7 @@ class FileOut(BaseModel):
     ocr_pages: int
     progress_done: int | None
     progress_total: int | None
+    sync_pending: bool  # waiting to reach Pinecone
     version: int
     previous_file_id: uuid.UUID | None
     uploaded_by: PersonOut | None
@@ -58,7 +59,7 @@ class FileOut(BaseModel):
     can_delete: bool
 
     @classmethod
-    def of(cls, record: StoredFile, viewer: User) -> "FileOut":
+    def of(cls, record: StoredFile, viewer: User, sync_pending: bool = False) -> "FileOut":
         file_type = sniff.BY_MIME.get(record.mime)
         uploader = record.uploader
         return cls(
@@ -75,6 +76,7 @@ class FileOut(BaseModel):
             ocr_pages=record.ocr_pages,
             progress_done=record.progress_done,
             progress_total=record.progress_total,
+            sync_pending=sync_pending,
             chunk_count=record.chunk_count,
             version=record.version,
             previous_file_id=record.previous_file_id,
@@ -146,8 +148,13 @@ def list_files(
             StoredFile.created_at >= month_start
         )
     )
+    pending = set(
+        db.scalars(
+            select(KbOp.file_id).where(KbOp.state == KbOpState.PENDING, KbOp.file_id.isnot(None))
+        ).all()
+    )
     return FileListOut(
-        files=[FileOut.of(record, me) for record in records],
+        files=[FileOut.of(record, me, record.id in pending) for record in records],
         totals=Totals(files=count, pages=pages, ocr_pages_this_month=ocr or 0),
     )
 

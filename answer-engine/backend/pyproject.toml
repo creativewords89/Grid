@@ -11,6 +11,7 @@ dependencies = [
     "openpyxl>=3.1.5",
     "pillow>=12.3.0",
     "pillow-heif>=1.8.0",
+    "pinecone>=10.0.0",
     "psycopg[binary]>=3.3.6",
     "pydantic-settings>=2.15.0",
     "pymupdf>=1.28.2",

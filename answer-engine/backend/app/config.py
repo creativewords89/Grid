@@ -25,6 +25,16 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     ocr_model: str = "claude-opus-5-5"
 
+    # Pinecone (SPEC section 6.3). Without a key, changes wait in the outbox (kb_ops).
+    pinecone_api_key: str = ""
+    pinecone_index: str = "answer-engine"
+    # Optional: the index's host (printed by setup-pinecone). Saves a lookup per start.
+    pinecone_host: str = ""
+    pinecone_cloud: str = "aws"
+    pinecone_region: str = "us-east-1"
+    # Fixed when the index is created; changing it means a new index and a rebuild.
+    pinecone_embed_model: str = "llama-text-embed-v2"
+
     # Email (SPEC section 2). Empty SMTP_HOST means email is not configured: links are
     # logged and, where the Owner asked for them, returned to the Owner instead.
     smtp_host: str = ""

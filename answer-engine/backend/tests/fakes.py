@@ -1,7 +1,7 @@
 """A stand-in for Claude's OCR so tests never call the real API."""
 
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 
 from app.ai.ocr_client import Transcript
@@ -31,3 +31,37 @@ class FakeOcr:
         if isinstance(result, Exception):
             raise result
         return result
+
+
+@dataclass
+class FakeStore:
+    """An in-memory Pinecone. Set `fail` to make the next N calls raise."""
+
+    data: dict[str, dict[str, dict[str, object]]] = field(default_factory=dict)
+    calls: list[tuple[str, str, int]] = field(default_factory=list)  # (call, namespace, size)
+    fail: int = 0
+
+    def _maybe_fail(self) -> None:
+        if self.fail:
+            self.fail -= 1
+            raise ConnectionError("Pinecone is unreachable")
+
+    def upsert(self, namespace: str, records: list[dict[str, object]]) -> None:
+        self._maybe_fail()
+        self.calls.append(("upsert", namespace, len(records)))
+        space = self.data.setdefault(namespace, {})
+        for record in records:
+            space[str(record["_id"])] = record
+
+    def delete(self, namespace: str, ids: list[str]) -> None:
+        self._maybe_fail()
+        self.calls.append(("delete", namespace, len(ids)))
+        for record_id in ids:
+            self.data.get(namespace, {}).pop(record_id, None)
+
+    def list_ids(self, namespace: str) -> Iterator[str]:
+        self._maybe_fail()
+        yield from list(self.data.get(namespace, {}))
+
+    def ids(self, namespace: str = "docs") -> set[str]:
+        return set(self.data.get(namespace, {}))

@@ -358,6 +358,11 @@ function FileRow({
             : ""}
         </span>
         {file.status === "failed" && file.error && <div className="field-error">{file.error}</div>}
+        {file.status === "ready" && file.sync_pending && (
+          <span className="pill pill-file-queued sync-pill" title="Waiting to reach search">
+            Sync pending
+          </span>
+        )}
         {file.status === "ready" && file.warning && (
           <div className="file-warning">{file.warning}</div>
         )}

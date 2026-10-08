@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.jobs.queue import enqueue
 
 DAILY: dict[str, time] = {
+    "kb_check": time(3, 0),
     "trash_purge": time(4, 0),
     "session_cleanup": time(5, 0),
 }

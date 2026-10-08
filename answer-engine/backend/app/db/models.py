@@ -12,6 +12,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Identity,
     Index,
     Integer,
     Numeric,
@@ -21,7 +22,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -324,4 +325,43 @@ class UsageDaily(Base):
         UniqueConstraint(
             "date", "user_id", "kind", name="uq_usage_daily_day", postgresql_nulls_not_distinct=True
         ),
+    )
+
+
+class KbOpKind(enum.StrEnum):
+    UPSERT = "upsert"
+    DELETE = "delete"
+
+
+class KbOpState(enum.StrEnum):
+    PENDING = "pending"
+    DONE = "done"
+
+
+class KbOp(TimestampMixin, Base):
+    """The Pinecone outbox (SPEC section 6.4): written in the same transaction as the change
+    it reflects, sent to Pinecone in order by the worker."""
+
+    __tablename__ = "kb_ops"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    # Sending order. A sequence, not the id: UUID v7 isn't ordered within a millisecond.
+    seq: Mapped[int] = mapped_column(BigInteger, Identity(), unique=True)
+    op: Mapped[KbOpKind] = mapped_column(_enum(KbOpKind, "kb_op_kind"))
+    namespace: Mapped[str] = mapped_column(String(50))
+    record_ids: Mapped[list[str]] = mapped_column(ARRAY(String(100)))
+    # The file the records belong to, so Documents can show "Sync pending".
+    file_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("files.id", ondelete="SET NULL"))
+    state: Mapped[KbOpState] = mapped_column(
+        _enum(KbOpState, "kb_op_state"), default=KbOpState.PENDING
+    )
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    last_error: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        Index("ix_kb_ops_pending", "seq", postgresql_where=text("state = 'pending'")),
+        Index("ix_kb_ops_file_id", "file_id"),
     )
