@@ -46,6 +46,7 @@ class FileOut(BaseModel):
     error: str | None
     warning: str | None
     page_count: int | None
+    sheet_count: int | None
     chunk_count: int
     version: int
     previous_file_id: uuid.UUID | None
@@ -67,6 +68,7 @@ class FileOut(BaseModel):
             error=record.error,
             warning=record.warning,
             page_count=record.page_count,
+            sheet_count=record.sheet_count,
             chunk_count=record.chunk_count,
             version=record.version,
             previous_file_id=record.previous_file_id,

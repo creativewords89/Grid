@@ -16,6 +16,7 @@ function makeFile(overrides: Partial<StoredFile> = {}): StoredFile {
     error: null,
     warning: null,
     page_count: 3,
+    sheet_count: null,
     chunk_count: 0,
     version: 1,
     previous_file_id: null,
@@ -105,6 +106,21 @@ test("lists documents with their status and only the actions allowed", async () 
   expect(within(rows[1]!).getByText("v2")).toBeVisible();
   expect(screen.getByText(/2 files · 3 pages/)).toBeVisible();
   expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+});
+
+test("workbooks show their sheets instead of pages", async () => {
+  mockApi({
+    "GET /auth/me": me("user"),
+    "GET /files": [
+      200,
+      listing([makeFile({ name: "Fees.xlsx", type: "Excel", page_count: null, sheet_count: 2 })]),
+    ],
+  });
+
+  render(<App />);
+
+  const row = (await screen.findAllByRole("row"))[1]!;
+  expect(within(row).getByText("2 sheets")).toBeVisible();
 });
 
 test("a file that was only partly read says why", async () => {

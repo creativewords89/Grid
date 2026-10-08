@@ -1,12 +1,14 @@
 """Pick the reader for a file type and describe anything it had to skip."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.files import sniff
 from app.files.blocks import Block, Extracted
 from app.files.extract_docx import extract_docx
 from app.files.extract_pdf import extract_pdf
+from app.files.extract_sheet import extract_csv, extract_xlsx
+from app.files.sheets import Sheet
 
 
 @dataclass
@@ -14,6 +16,8 @@ class Result:
     blocks: list[Block]
     page_count: int | None
     warning: str | None
+    sheets: list[Sheet] = field(default_factory=list)
+    sheet_count: int | None = None
 
 
 def _pages(count: int) -> str:
@@ -35,7 +39,7 @@ def extract(path: Path, mime: str) -> Result:
         found = extract_docx(path)
         return Result(found.blocks, found.page_count, None)
     if mime in (sniff.XLSX.mime, sniff.CSV.mime):
-        return Result(
-            [], None, "Spreadsheets will be read once spreadsheet reading is switched on."
-        )
+        book = extract_xlsx(path) if mime == sniff.XLSX.mime else extract_csv(path)
+        count = len(book.sheets) if mime == sniff.XLSX.mime else None
+        return Result([], None, book.warning, book.sheets, count)
     return Result([], None, "Images will be read once scanned-page reading is switched on.")

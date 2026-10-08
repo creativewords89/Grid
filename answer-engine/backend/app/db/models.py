@@ -150,6 +150,7 @@ class StoredFile(TimestampMixin, Base):
     # Ready, but something was skipped (e.g. "3 pages look scanned …").
     warning: Mapped[str | None] = mapped_column(Text)
     page_count: Mapped[int | None] = mapped_column(Integer)
+    sheet_count: Mapped[int | None] = mapped_column(Integer)  # Excel workbooks only
     chunk_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     ocr_pages: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")

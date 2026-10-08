@@ -46,6 +46,9 @@ BY_MIME = {t.mime: t for t in ALL_TYPES}
 UNSUPPORTED = "This file type isn't supported. Save it as PDF, Word (.docx) or Excel (.xlsx)."
 OLD_OFFICE = "Old Word and Excel files (.doc, .xls) aren't supported. Save it as .docx or .xlsx."
 EMPTY = "This file is empty."
+PROTECTED = "This file is password-protected. Remove the password and upload it again."
+# A password-protected .docx/.xlsx is an old-style Office container holding this stream.
+_ENCRYPTED_PACKAGE = "EncryptedPackage".encode("utf-16-le")
 
 _HEIC_BRANDS = {b"heic", b"heix", b"heim", b"heis", b"hevc", b"hevx", b"mif1", b"msf1"}
 
@@ -68,7 +71,7 @@ def _from_magic(head: bytes, path: Path) -> FileType | None:
     if head[4:8] == b"ftyp" and head[8:12] in _HEIC_BRANDS:
         return HEIC
     if head.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
-        raise SniffError(OLD_OFFICE)
+        raise SniffError(PROTECTED if _ENCRYPTED_PACKAGE in path.read_bytes() else OLD_OFFICE)
     if head.startswith(b"PK\x03\x04"):
         return _office_type(path)
     return None

@@ -16,6 +16,7 @@ from app.jobs.queue import enqueue
 from tests.conftest import RunJobs, UserFactory, sign_in
 from tests.files import samples
 from tests.files.build import LOREM, image_page, locked_pdf, page_break, pdf, text, word
+from tests.test_extract_sheet import FIXTURES
 
 
 @pytest.fixture
@@ -154,21 +155,54 @@ def test_a_password_protected_pdf_fails_at_once(
     assert (job.state, job.attempts) == (JobState.FAILED, 3)  # no pointless retries
 
 
-def test_spreadsheets_and_images_wait_for_their_readers(
+def test_images_wait_for_scanned_page_reading(
     client: TestClient, owner: User, run_jobs: RunJobs, tmp_path: Path
 ) -> None:
-    sheet = tmp_path / "Fees.xlsx"
-    sheet.write_bytes(samples.XLSX)
     photo = tmp_path / "scan.png"
     photo.write_bytes(samples.PNG)
-    files = [upload(client, sheet), upload(client, photo)]
+    file = upload(client, photo)
 
     run_jobs()
 
-    assert [listed(client, f["id"])["warning"] for f in files] == [
-        "Spreadsheets will be read once spreadsheet reading is switched on.",
-        "Images will be read once scanned-page reading is switched on.",
+    assert listed(client, file["id"])["warning"] == (
+        "Images will be read once scanned-page reading is switched on."
+    )
+
+
+def test_an_excel_workbook_is_read_sheet_by_sheet(
+    client: TestClient, owner: User, db: Session, run_jobs: RunJobs, tmp_path: Path
+) -> None:
+    path = tmp_path / "Fees 2026.xlsx"
+    path.write_bytes((FIXTURES / "fees-calculated.xlsx").read_bytes())
+    file = upload(client, path)
+
+    run_jobs()
+
+    found = chunks(db, file["id"])
+    assert [(c.sheet, c.heading) for c in found] == [
+        ("Fees 2026", "Fees 2026"),
+        ("Contacts", "Contacts"),
     ]
+    assert "Row 7: Client: Bright Dental; Plan: Agency; Monthly fee: $2,000" in found[0].text
+    row = listed(client, file["id"])
+    assert (row["sheet_count"], row["page_count"], row["warning"]) == (2, None, None)
+
+
+def test_a_csv_file_is_read(
+    client: TestClient, owner: User, db: Session, run_jobs: RunJobs, tmp_path: Path
+) -> None:
+    path = tmp_path / "leads.csv"
+    path.write_text("Name,Source\nAnn,Reddit\nBo,Facebook\n")
+    file = upload(client, path)
+
+    run_jobs()
+
+    [chunk] = chunks(db, file["id"])
+    assert chunk.text == (
+        "File: leads.csv\nColumns: Name; Source\n\n"
+        "Row 2: Name: Ann; Source: Reddit\nRow 3: Name: Bo; Source: Facebook"
+    )
+    assert listed(client, file["id"])["sheet_count"] is None
 
 
 def test_reading_a_file_again_replaces_its_chunks(

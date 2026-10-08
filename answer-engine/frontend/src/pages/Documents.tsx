@@ -10,6 +10,14 @@ const ACCEPT = ".pdf,.docx,.xlsx,.csv,.png,.jpg,.jpeg,.webp,.tif,.tiff,.heic";
 const MAX_BATCH = 20;
 const POLL_MS = 3000;
 
+/** Pages for documents, sheets for Excel workbooks. */
+function extent(file: StoredFile): string {
+  if (file.page_count !== null) return String(file.page_count);
+  if (file.sheet_count !== null)
+    return file.sheet_count === 1 ? "1 sheet" : `${file.sheet_count} sheets`;
+  return "—";
+}
+
 const STATUS_LABEL = {
   queued: "Queued",
   processing: "Processing",
@@ -198,7 +206,7 @@ function Files() {
               <tr>
                 <th>Name</th>
                 <th>Type</th>
-                <th>Pages</th>
+                <th>Pages / sheets</th>
                 <th>Status</th>
                 <th>Uploaded by</th>
                 <th>Date</th>
@@ -341,7 +349,7 @@ function FileRow({
         <div className="muted small">{formatSize(file.size)}</div>
       </td>
       <td className="hide-narrow">{file.type}</td>
-      <td className="hide-narrow">{file.page_count ?? "—"}</td>
+      <td className="hide-narrow">{extent(file)}</td>
       <td>
         <span className={`pill pill-file-${file.status}`}>{STATUS_LABEL[file.status]}</span>
         {file.status === "failed" && file.error && <div className="field-error">{file.error}</div>}

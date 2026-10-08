@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app import trash
 from app.auth.tokens import now
-from app.chunking import chunk_blocks
+from app.chunking import chunk_blocks, chunk_sheet
 from app.db.models import (
     AuthSession,
     AuthToken,
@@ -53,6 +53,7 @@ def ingest_file(db: Session, payload: Payload) -> None:
         raise UserFacingError("The uploaded file is missing from storage. Upload it again.")
     result = extract(path, record.mime)
     pieces = chunk_blocks(result.blocks)
+    pieces += [piece for sheet in result.sheets for piece in chunk_sheet(record.name, sheet)]
 
     db.refresh(record, with_for_update=True)
     if record.deleted_at is not None:
@@ -66,6 +67,7 @@ def ingest_file(db: Session, payload: Payload) -> None:
             page_from=piece.page_from,
             page_to=piece.page_to,
             heading=piece.heading,
+            sheet=piece.sheet,
             text=piece.text,
             token_count=piece.token_count,
             from_ocr=piece.from_ocr,
@@ -73,6 +75,7 @@ def ingest_file(db: Session, payload: Payload) -> None:
         for n, piece in enumerate(pieces)
     )
     record.page_count = result.page_count
+    record.sheet_count = result.sheet_count
     record.chunk_count = len(pieces)
     record.warning = result.warning
     if not pieces and not record.warning:

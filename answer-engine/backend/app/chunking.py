@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from app.files.blocks import Block
+from app.files.sheets import Sheet
 
 TARGET = 600
 MAX = 800
@@ -84,6 +85,7 @@ class Chunk:
     page_to: int | None
     token_count: int
     from_ocr: bool
+    sheet: str | None = None
 
 
 @dataclass
@@ -275,4 +277,55 @@ def chunk_blocks(blocks: Iterable[Block]) -> list[Chunk]:
         current.append(piece)
     flush_section_end()
     flush()
+    return chunks
+
+
+# --- spreadsheets ----------------------------------------------------------------------
+
+
+def row_text(number: int, headers: list[str], cells: list[str]) -> str:
+    """`Row 7: Client: Acme; Fee: $500` (empty cells left out)."""
+    pairs = [f"{h}: {c}" for h, c in zip(headers, cells, strict=False) if c]
+    return f"Row {number}: " + "; ".join(pairs)
+
+
+def sheet_intro(file_name: str, sheet: Sheet) -> str:
+    title = f"File: {file_name}" + (f" \u2014 Sheet: {sheet.name}" if sheet.name else "")
+    lines = [title, *sheet.notes, "Columns: " + "; ".join(sheet.headers)]
+    return "\n".join(lines)
+
+
+def chunk_sheet(file_name: str, sheet: Sheet) -> list[Chunk]:
+    """Rows grouped into chunks; each chunk starts with the file, sheet and column names so
+    it can be understood on its own (SPEC section 6.3). Rows never overlap."""
+    intro = sheet_intro(file_name, sheet)
+    budget = MAX - count_tokens(intro) - 1
+    lines: list[str] = []
+    for number, cells in sheet.rows:
+        line = row_text(number, sheet.headers, cells)
+        if count_tokens(line) <= budget:
+            lines.append(line)
+            continue
+        # A row with a very long cell: split it between words, keeping the row number.
+        for n, part in enumerate(_split_words(line, budget - 10)):
+            lines.append(part if n == 0 else f"Row {number} (continued): {part}")
+
+    chunks: list[Chunk] = []
+    current: list[str] = []
+
+    def flush() -> None:
+        text = intro + "\n\n" + "\n".join(current)
+        chunks.append(Chunk(text, sheet.name, None, None, count_tokens(text), False, sheet.name))
+
+    for line in lines:
+        size = count_tokens(intro + "\n\n" + "\n".join([*current, line]))
+        if current and (size > MAX or count_tokens("\n".join(current)) >= TARGET):
+            flush()
+            current = []
+        current.append(line)
+    if current:
+        flush()
+    elif not chunks and sheet.headers:
+        # A sheet with column names but no rows still tells search the columns exist.
+        chunks.append(Chunk(intro, sheet.name, None, None, count_tokens(intro), False, sheet.name))
     return chunks

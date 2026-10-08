@@ -29,6 +29,7 @@ export type StoredFile = {
   error: string | null;
   warning: string | null;
   page_count: number | null;
+  sheet_count: number | null;
   chunk_count: number;
   version: number;
   previous_file_id: string | null;
