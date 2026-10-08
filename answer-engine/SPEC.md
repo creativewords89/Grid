@@ -46,8 +46,9 @@ It is a **separate product** from the GridRankers team portal (the WordPress plu
 ```
 answer-engine/
   SPEC.md                  this file
+  CLAUDE.md, README.md
   docker-compose.yml       caddy, api, worker, db
-  Caddyfile
+  caddy/                   Caddyfile + Dockerfile (builds the React app, serves it with Caddy)
   .env.example             every variable, no values
   backend/
     app/
@@ -66,6 +67,7 @@ answer-engine/
       notifications/       in-app, email, telegram
       jobs/                worker loop, job handlers, schedules
       audit.py, trash.py
+    alembic.ini, Dockerfile, docker-entrypoint.sh (api: migrate + serve; worker)
     tests/                 pytest (permissions, url parser, chunking, confidence, sync, flows)
   frontend/
     src/                   React app
