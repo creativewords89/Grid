@@ -345,9 +345,12 @@ function FileRow({
       <td>
         <span className={`pill pill-file-${file.status}`}>{STATUS_LABEL[file.status]}</span>
         {file.status === "failed" && file.error && <div className="field-error">{file.error}</div>}
+        {file.status === "ready" && file.warning && (
+          <div className="file-warning">{file.warning}</div>
+        )}
       </td>
       <td className="hide-narrow">{file.uploaded_by?.name ?? "—"}</td>
-      <td className="hide-narrow">{formatDate(file.created_at)}</td>
+      <td className="hide-narrow nowrap">{formatDate(file.created_at)}</td>
       <td className="actions">
         <a
           className="button button-small"

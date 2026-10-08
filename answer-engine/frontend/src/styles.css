@@ -704,6 +704,17 @@ a {
   color: var(--ok);
 }
 
+.nowrap {
+  white-space: nowrap;
+}
+
+.file-warning {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--warn);
+  max-width: 260px;
+}
+
 .pill-file-failed {
   background: var(--error-bg);
   color: var(--error);

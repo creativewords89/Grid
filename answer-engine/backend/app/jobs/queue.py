@@ -54,6 +54,10 @@ class UserFacingError(Exception):
     """A failure whose message can be shown as is (e.g. as a file's error)."""
 
 
+class PermanentError(UserFacingError):
+    """Retrying can't help (e.g. a password-protected PDF): fail at once."""
+
+
 def enqueue(
     db: Session,
     kind: str,
@@ -127,6 +131,7 @@ def run_next(session_factory: Callable[[], Session], worker_id: str) -> bool:
 
     job_type = REGISTRY.get(kind)
     error: str | None = None
+    permanent = False
     message = "Something went wrong. Try again, or ask the Owner to check the server."
     with session_factory() as db:
         try:
@@ -139,6 +144,7 @@ def run_next(session_factory: Callable[[], Session], worker_id: str) -> bool:
             error = traceback.format_exc()
             if isinstance(exc, UserFacingError):
                 message = str(exc)
+            permanent = isinstance(exc, PermanentError)
             log.warning("%s job %s failed: %s", kind, job_id, exc)
 
     with session_factory() as db:
@@ -151,6 +157,8 @@ def run_next(session_factory: Callable[[], Session], worker_id: str) -> bool:
             found.last_error = None
             db.commit()
             return True
+        if permanent:
+            found.attempts = MAX_ATTEMPTS
         final = _settle_failure(db, found, error)
         db.commit()
     if final:

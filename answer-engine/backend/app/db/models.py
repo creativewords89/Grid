@@ -147,6 +147,8 @@ class StoredFile(TimestampMixin, Base):
         _enum(FileStatus, "file_status"), default=FileStatus.QUEUED
     )
     error: Mapped[str | None] = mapped_column(Text)
+    # Ready, but something was skipped (e.g. "3 pages look scanned …").
+    warning: Mapped[str | None] = mapped_column(Text)
     page_count: Mapped[int | None] = mapped_column(Integer)
     chunk_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     ocr_pages: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
@@ -175,6 +177,29 @@ class StoredFile(TimestampMixin, Base):
     @property
     def owner_ids(self) -> frozenset[uuid.UUID]:
         return frozenset({self.uploaded_by}) if self.uploaded_by else frozenset()
+
+
+class Chunk(Base):
+    """A piece of a document as it is searched (SPEC sections 5 and 6.3)."""
+
+    __tablename__ = "chunks"
+
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)  # doc_{file_id}_{n}
+    file_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("files.id", ondelete="CASCADE"))
+    position: Mapped[int] = mapped_column(Integer)
+    page_from: Mapped[int | None] = mapped_column(Integer)
+    page_to: Mapped[int | None] = mapped_column(Integer)
+    sheet: Mapped[str | None] = mapped_column(String(255))
+    heading: Mapped[str | None] = mapped_column(Text)
+    text: Mapped[str] = mapped_column(Text)
+    token_count: Mapped[int] = mapped_column(Integer)
+    from_ocr: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
+    __table_args__ = (Index("ix_chunks_file_id_position", "file_id", "position"),)
+
+    @staticmethod
+    def make_id(file_id: uuid.UUID, position: int) -> str:
+        return f"doc_{file_id}_{position}"
 
 
 class JobState(enum.StrEnum):

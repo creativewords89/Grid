@@ -27,6 +27,7 @@ export type StoredFile = {
   size: number;
   status: FileStatus;
   error: string | null;
+  warning: string | null;
   page_count: number | null;
   chunk_count: number;
   version: number;

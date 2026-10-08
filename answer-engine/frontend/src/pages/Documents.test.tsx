@@ -14,6 +14,7 @@ function makeFile(overrides: Partial<StoredFile> = {}): StoredFile {
     size: 2048,
     status: "ready",
     error: null,
+    warning: null,
     page_count: 3,
     chunk_count: 0,
     version: 1,
@@ -104,6 +105,25 @@ test("lists documents with their status and only the actions allowed", async () 
   expect(within(rows[1]!).getByText("v2")).toBeVisible();
   expect(screen.getByText(/2 files · 3 pages/)).toBeVisible();
   expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+});
+
+test("a file that was only partly read says why", async () => {
+  mockApi({
+    "GET /auth/me": me("user"),
+    "GET /files": [
+      200,
+      listing([
+        makeFile({
+          warning:
+            "2 pages look scanned and will be read once scanned-page reading is switched on.",
+        }),
+      ]),
+    ],
+  });
+
+  render(<App />);
+
+  expect(await screen.findByText(/2 pages look scanned/)).toBeVisible();
 });
 
 test("each uploaded file gets its own result", async () => {

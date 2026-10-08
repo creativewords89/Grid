@@ -132,7 +132,7 @@ All tables have `id` (UUID v7 unless stated), `created_at` and `updated_at` (`ti
 | `sessions` | user_id, token_hash, csrf_token, expires_at, ip, user_agent |
 | `auth_tokens` | user_id, kind ENUM(invite, reset, telegram_link), token_hash, expires_at, used_at |
 | `login_attempts` | email, ip, at, ok BOOL |
-| `files` | name, mime, size, sha256, storage_path, status ENUM(queued, processing, ready, failed), error TEXT NULL, page_count, chunk_count, ocr_pages INT, version INT, previous_file_id NULL (the version it replaced), uploaded_by, deleted_at NULL |
+| `files` | name, mime, size, sha256, storage_path, status ENUM(queued, processing, ready, failed), error TEXT NULL, warning TEXT NULL (Ready, but something was skipped), page_count, chunk_count, ocr_pages INT, version INT, previous_file_id NULL (the version it replaced), uploaded_by, deleted_at NULL |
 | `chunks` | id TEXT `doc_{file_id}_{n}`, file_id, position, page_from, page_to, sheet NULL, heading NULL, text, token_count, from_ocr BOOL |
 | `verified_answers` | question, answer, status ENUM(active, disabled, expired), expires_at NULL, origin ENUM(review, admin, marketing), origin_answer_id NULL, source_file_ids UUID[], needs_check BOOL, needs_check_reason NULL, created_by, approved_by, deleted_at NULL |
 | `verified_answer_versions` | verified_answer_id, version, question, answer, changed_by, at |
@@ -165,8 +165,8 @@ All tables have `id` (UUID v7 unless stated), `created_at` and `updated_at` (`ti
 
 | Type | Extraction |
 |---|---|
-| PDF | `pymupdf`, page by page. A page with fewer than 30 characters of text, or one that is mostly an image, is a **scanned page**. It is rendered at 200 DPI and sent to OCR. |
-| DOCX | `python-docx`: paragraphs with heading levels, plus tables as Markdown tables. Embedded images are ignored in v1. |
+| PDF | `pymupdf`, page by page. A page with fewer than 30 characters of text, or one at least 70% covered by images with under 200 characters, is a **scanned page**. It is rendered at 200 DPI and sent to OCR. Headings are lines noticeably larger (or bold and short) than the body text; their levels rank the heading sizes used in that document. Text blocks are split where the font style changes, because PDF writers often put a heading and its paragraph in one block. Tables are built from PyMuPDF's ruled grid only (it may guess a header from the heading above a table). Lines repeated in the top or bottom 8% of at least half the pages (running headers, page numbers) are dropped, and words hyphenated across lines are re-joined. A password-protected or damaged PDF fails at once, without retries. **Licence:** PyMuPDF is AGPL-3.0 (or a paid Artifex licence). Running it on our own server for staff is fine; offering the Answer Engine to outside clients would need the source offered to them or a commercial licence. |
+| DOCX | `python-docx`: paragraphs with heading levels (the Title style sits one level above Heading 1), list items as `- …`, and tables as Markdown tables (merged cells once). Page numbers come from the page breaks Word records when it saves; the page count is read from the file only when Microsoft Word wrote it (other writers leave a placeholder). Embedded images, text boxes, headers and footers are ignored in v1. |
 | XLSX / CSV | `openpyxl` (`data_only=True`, so cached formula values are used) / `csv`. Each sheet is read separately. The header row is the first non-empty row. Empty rows and columns are skipped. Hidden sheets are included. |
 | Images | HEIC/TIFF are converted to PNG with Pillow and down-scaled so the long side is ≤ 2000 px, then sent to OCR |
 
@@ -180,7 +180,10 @@ All tables have `id` (UUID v7 unless stated), `created_at` and `updated_at` (`ti
 ### 6.3 Chunking and the Pinecone layout
 
 **Chunking** (`chunking.py`, pure functions, unit-tested):
-- Target 600 tokens and maximum 800 per chunk, with 100 tokens of overlap. Splits happen at headings, then paragraphs, then sentences, never mid-sentence.
+- Target 600 tokens and maximum 800 per chunk, with 100 tokens of overlap (whole sentences, only within a section). Splits happen at headings, then paragraphs, then sentences, never mid-sentence; a sentence longer than a chunk is split between words.
+- Tokens are estimated as characters ÷ 4 (a little high for English), keeping chunks well inside the embedding model's input limit.
+- A heading starts a new chunk once the current chunk has 100+ tokens of content. A shorter section end (e.g. a 4-item checklist) joins the chunk before it when it fits, rather than starting the next section's chunk. A heading with nothing under it at the very end is dropped.
+- A chunk's `heading` is the heading path its content shares (`Handbook › Pricing`).
 - A Markdown table is never split across chunks unless it alone exceeds 800 tokens. In that case it is split by rows and the header row is repeated.
 - **Excel:** each row becomes `Header1: value; Header2: value; …`. Rows are grouped into chunks of at most 800 tokens, and every chunk starts with `File: {name} — Sheet: {sheet}` and the column list.
 - Every chunk is prefixed with a context line (`{file name} › {heading}`) before embedding, so search knows where the chunk comes from.

@@ -8,9 +8,11 @@ from sqlalchemy.orm import Session
 
 from app import trash
 from app.auth.tokens import now
+from app.chunking import chunk_blocks
 from app.db.models import (
     AuthSession,
     AuthToken,
+    Chunk,
     FileStatus,
     Job,
     JobState,
@@ -20,6 +22,7 @@ from app.db.models import (
 )
 from app.files import service as files
 from app.files import storage
+from app.files.extract import extract
 from app.jobs.queue import Payload, UserFacingError, job
 
 
@@ -32,24 +35,48 @@ def _fail_file(db: Session, payload: Payload, message: str) -> None:
 
 @job(files.INGEST, on_failure=_fail_file)
 def ingest_file(db: Session, payload: Payload) -> None:
-    """Read an uploaded file (SPEC section 6.1).
+    """Read an uploaded file into chunks (SPEC section 6.1).
 
-    Text extraction, OCR, chunking and Pinecone arrive in build steps 4-7; for now the
-    file is checked and marked Ready.
+    OCR of scanned pages and images (step 6), spreadsheets (step 5) and Pinecone (step 7)
+    are added in later build steps.
     """
     record = db.get(StoredFile, uuid.UUID(payload["file_id"]), with_for_update=True)
     if record is None or record.deleted_at is not None:
         return  # deleted while waiting
     record.status = FileStatus.PROCESSING
     record.error = None
+    record.warning = None
     db.commit()
 
-    if not storage.absolute(record.storage_path).is_file():
+    path = storage.absolute(record.storage_path)
+    if not path.is_file():
         raise UserFacingError("The uploaded file is missing from storage. Upload it again.")
+    result = extract(path, record.mime)
+    pieces = chunk_blocks(result.blocks)
 
     db.refresh(record, with_for_update=True)
     if record.deleted_at is not None:
         return
+    db.execute(delete(Chunk).where(Chunk.file_id == record.id))  # a retry starts afresh
+    db.add_all(
+        Chunk(
+            id=Chunk.make_id(record.id, n),
+            file_id=record.id,
+            position=n,
+            page_from=piece.page_from,
+            page_to=piece.page_to,
+            heading=piece.heading,
+            text=piece.text,
+            token_count=piece.token_count,
+            from_ocr=piece.from_ocr,
+        )
+        for n, piece in enumerate(pieces)
+    )
+    record.page_count = result.page_count
+    record.chunk_count = len(pieces)
+    record.warning = result.warning
+    if not pieces and not record.warning:
+        record.warning = "No text was found in this file."
     record.status = FileStatus.READY
     if record.previous_file_id is not None:
         previous = db.get(StoredFile, record.previous_file_id)

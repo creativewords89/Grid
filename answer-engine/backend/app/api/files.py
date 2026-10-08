@@ -44,6 +44,7 @@ class FileOut(BaseModel):
     size: int
     status: FileStatus
     error: str | None
+    warning: str | None
     page_count: int | None
     chunk_count: int
     version: int
@@ -64,6 +65,7 @@ class FileOut(BaseModel):
             size=record.size,
             status=record.status,
             error=record.error,
+            warning=record.warning,
             page_count=record.page_count,
             chunk_count=record.chunk_count,
             version=record.version,
