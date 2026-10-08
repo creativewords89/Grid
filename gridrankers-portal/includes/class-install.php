@@ -15,7 +15,7 @@ class GRP_Install {
 	/**
 	 * Current schema version. Bump it whenever get_schema() or migrations() changes.
 	 */
-	const DB_VERSION = 15;
+	const DB_VERSION = 16;
 
 	/**
 	 * Option that stores the installed schema version.
@@ -37,6 +37,7 @@ class GRP_Install {
  * Schema 12 repairs breakdown people (6.5); schema 13 adds `past` to keywords (moved to Past, 6.12).
  * Schema 14 adds `grp_client_requests` and `grp_request_messages`: what the team needs from a client (6.15).
  * Schema 15 adds task steps: `steps` on meeting and monthly tasks, `step_done` on meeting tasks and cycle records (6.16).
+ * Schema 16 adds `files` (attachments added with the task) to meeting and monthly tasks (6.17).
 	 *
 	 * @var string[]
 	 */
@@ -354,6 +355,7 @@ class GRP_Install {
 				undo_request json NULL,
 				steps json NULL,
 				step_done json NULL,
+				files json NULL,
 				created_by varchar(64) NULL,
 				created_at datetime NOT NULL,
 				updated_at datetime NOT NULL,
@@ -378,6 +380,7 @@ class GRP_Install {
 				team tinyint(1) NOT NULL DEFAULT 0,
 				parts json NULL,
 				steps json NULL,
+				files json NULL,
 				std tinyint(1) NOT NULL DEFAULT 0,
 				created_by varchar(64) NULL,
 				created_at datetime NOT NULL,

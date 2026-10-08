@@ -409,4 +409,108 @@ class Test_GRP_Steps extends GRP_REST_TestCase {
 		$this->assertSame( 1, $back['step_done']['write']['n'] );
 		$this->assertSame( 1, $back['team'] );
 	}
+
+	public function test_each_step_has_a_status_and_hands_over_when_completed() {
+		$task = $this->item( 1 );
+		$move = function ( $who, $step, $to ) use ( $task ) {
+			return $this->api_as(
+				$who,
+				'POST',
+				"/meeting-tasks/{$task['id']}/step",
+				array(
+					'step'   => $step,
+					'status' => $to,
+					'note'   => 'All checked',
+				)
+			);
+		};
+
+		// Edit can't start or finish before Write is completed.
+		$this->assertSame( 'grp_step_waiting', $move( 'other', 'edit', 'doing' )->get_data()['code'] );
+		$this->assertStatus( 400, $move( 'member', 'write', 'paused' ) );
+
+		// Max: Write → In progress (the task too), then Completed.
+		$doing = $move( 'member', 'write', 'doing' )->get_data();
+		$this->assertSame( 'doing', $doing['status'] );
+		$this->assertSame( array( 0, true ), array( $doing['step_done']['write']['n'], $doing['step_done']['write']['started'] ) );
+		$this->assertStatus( 403, $move( 'member', 'write', 'todo' ), 'Team Members only move forward' );
+		$this->assertSame( 1, $move( 'member', 'write', 'done' )->get_data()['step_done']['write']['n'] );
+		$this->assertCount( 1, $this->credits( $this->team['member']['id'] ) );
+
+		// Edit is now ready: Completed straight away; a leader moves it back to In progress.
+		$this->assertStatus( 403, $move( 'member', 'edit', 'done' ), 'not his step' );
+		$this->assertStatus( 200, $move( 'other', 'edit', 'done' ) );
+		$this->assertSame( 'grp_step_waiting', $move( 'lead', 'write', 'todo' )->get_data()['code'], 'Edit already used it' );
+		$back = $move( 'lead', 'edit', 'doing' )->get_data();
+		$this->assertSame( array( 0, true ), array( $back['step_done']['edit']['n'], $back['step_done']['edit']['started'] ) );
+		$this->assertSame( array(), $this->credits( $this->team['other']['id'] ) );
+		$move( 'other', 'edit', 'done' );
+
+		// The last step's Completed asks for the submission and completes the task.
+		$this->assertSame(
+			'grp_completion_required',
+			$this->api_as(
+				'lead',
+				'POST',
+				"/meeting-tasks/{$task['id']}/step",
+				array(
+					'step'   => 'proof',
+					'status' => 'done',
+				)
+			)->get_data()['code']
+		);
+		$done = $move( 'lead', 'proof', 'done' )->get_data();
+		$this->assertSame( array( 'done', 'All checked' ), array( $done['status'], $done['completion']['note'] ) );
+	}
+
+	public function test_each_step_has_its_own_deadline() {
+		$chain           = $this->chain();
+		$chain[0]['due'] = '2026-10-03';
+		$chain[1]['due'] = '2026-10-07';
+		$chain[2]['due'] = '2026-10-10';
+		$base            = array(
+			'project_id' => $this->acme['id'],
+			'title'      => 'Dated chain',
+			'deadline'   => array( 'type' => 'none' ),
+		);
+		$task            = $this->api_as( 'member', 'POST', '/meeting-tasks', $base + array( 'steps' => $chain ) )->get_data();
+		$this->assertSame( array( '2026-10-03', '2026-10-07', '2026-10-10' ), wp_list_pluck( $task['steps'], 'due' ) );
+		$this->assertEquals(
+			array(
+				'type' => 'date',
+				'date' => '2026-10-10',
+			),
+			$task['deadline'],
+			'the last step’s date is the task’s deadline'
+		);
+
+		$wrong           = $chain;
+		$wrong[1]['due'] = '2026-10-01';
+		$this->assertStatus( 400, $this->api_as( 'member', 'POST', '/meeting-tasks', $base + array( 'steps' => $wrong ) ), 'Edit before Write' );
+		$bad           = $chain;
+		$bad[0]['due'] = '2026-02-30';
+		$this->assertStatus( 400, $this->api_as( 'member', 'POST', '/meeting-tasks', $base + array( 'steps' => $bad ) ) );
+		$open           = $chain;
+		$open[1]['due'] = null;
+		$this->assertStatus( 201, $this->api_as( 'member', 'POST', '/meeting-tasks', $base + array( 'steps' => $open ) ), 'a step without a date is fine' );
+
+		// Monthly tasks: days of the cycle; the last one is the task's due day.
+		$days           = array_slice( $this->chain(), 0, 2 );
+		$days[0]['due'] = 3;
+		$days[1]['due'] = 7;
+		$monthly        = $this->api_as(
+			'lead',
+			'POST',
+			'/monthly-tasks',
+			array(
+				'project_id' => $this->acme['id'],
+				'title'      => 'Blog posts',
+				'steps'      => $days,
+			)
+		)->get_data();
+		$this->assertSame( array( 3, 7 ), wp_list_pluck( $monthly['steps'], 'due' ) );
+		$this->assertSame( array( 'date', 7 ), array( $monthly['due_mode'], $monthly['due_day'] ) );
+		$days[1]['due'] = 40;
+		$this->assertStatus( 400, $this->api_as( 'lead', 'PATCH', "/monthly-tasks/{$monthly['id']}", array( 'steps' => $days ) ) );
+	}
 }

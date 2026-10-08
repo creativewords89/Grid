@@ -10,6 +10,7 @@ import { CalendarPicker } from '../DatePicker.jsx';
 import Modal from '../Modal.jsx';
 import PeoplePicker, { evenSplit } from '../PeoplePicker.jsx';
 import StepsEditor, { WhoToggle, presetRows } from '../StepsEditor.jsx';
+import AttachField from '../AttachField.jsx';
 import { cleanSteps, hasSteps, stepsError } from '../../lib/steps.js';
 
 const TYPES = [
@@ -144,6 +145,7 @@ export default function TaskDialog({ taskId, onClose, general = false }) {
 		meeting_date: editing ? editing.meeting_date || '' : today,
 		deadline: editing && editing.deadline ? editing.deadline : { type: 'none' },
 		assignees: editing ? assigneesOf(editing, data.members) : [],
+		files: editing && Array.isArray(editing.files) ? editing.files : [],
 	}));
 	// Steps in order (SPEC.md 6.16): off by default.
 	const [stepsOn, setStepsOn] = useState(() => hasSteps(editing));
@@ -188,9 +190,10 @@ export default function TaskDialog({ taskId, onClose, general = false }) {
 			status: f.status,
 			target: f.target,
 			meeting_date: f.meeting_date || '',
-			deadline: deadlinePayload(),
+			deadline: stepsOn ? { type: 'none' } : deadlinePayload(),
 			assignees: stepsOn ? [] : f.assignees,
 			steps: stepsOn ? cleanSteps(steps) : [],
+			files: f.files.map((x) => x.id),
 		};
 		if (stepsOn) delete body.status;
 		if (f.status === 'done' && (!editing || editing.status !== 'done')) {
@@ -239,6 +242,7 @@ export default function TaskDialog({ taskId, onClose, general = false }) {
 					Details
 					<textarea value={f.notes} onChange={set('notes')} maxLength={4000} placeholder="Context from the meeting, exact wording, links…" />
 				</label>
+				<AttachField value={f.files} onChange={(files) => setF((x) => ({ ...x, files }))} />
 				<label>
 					Page URL
 					<input type="url" value={f.url} onChange={set('url')} placeholder="https://client.com/page" />
@@ -272,14 +276,14 @@ export default function TaskDialog({ taskId, onClose, general = false }) {
 						<input type="date" value={f.meeting_date} onChange={set('meeting_date')} />
 					</label>
 				</div>
-				<DeadlineField value={f.deadline} onChange={set('deadline')} today={today} />
+				{stepsOn ? <p className="hint stp-dl-note">Deadline: each step has its own due date below; the last one is the task’s deadline.</p> : <DeadlineField value={f.deadline} onChange={set('deadline')} today={today} />}
 				<div className="pk-wrap">
 					<span className="pk-label stp-label">
 						Who does it
 						<WhoToggle on={stepsOn} onChange={toggleSteps} disabled={!!editing && editing.status === 'done'} />
 					</span>
 					{stepsOn ? (
-						<StepsEditor members={members} value={steps} onChange={setSteps} disabled={!!editing && editing.status === 'done'} />
+						<StepsEditor members={members} value={steps} onChange={setSteps} disabled={!!editing && editing.status === 'done'} dueKind="date" />
 					) : (
 						<>
 							<small className="muted">Responsible — tick one or more</small>

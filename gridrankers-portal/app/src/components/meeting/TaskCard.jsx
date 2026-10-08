@@ -6,7 +6,7 @@ import { isManager } from '../../lib/roles.js';
 import { assigneesOf, canWorkOn, isGeneral, PRI_LABEL, progressTotal, REVIEW_TXT } from '../../lib/tasks.js';
 import { hasSteps } from '../../lib/steps.js';
 import Avatar from '../Avatar.jsx';
-import StepTrack from '../StepTrack.jsx';
+import { StepCard } from '../StepTrack.jsx';
 import useTaskActions from './useTaskActions.js';
 
 export function People({ list, members }) {
@@ -122,7 +122,7 @@ export function UnassignedLock({ task, me }) {
 // Compact meeting-task card (SPEC.md 7.2; reference bcard).
 export default function TaskCard({ task, onDetails, onEdit }) {
 	const { data, me, today } = usePortal();
-	const { setStatus, tickStep, remove, requestUndo, decideUndo } = useTaskActions();
+	const { setStatus, tickStep, setStep, remove, requestUndo, decideUndo } = useTaskActions();
 	const steps = hasSteps(task);
 	const members = data.members;
 	const st = task.status;
@@ -177,9 +177,14 @@ export default function TaskCard({ task, onDetails, onEdit }) {
 					</span>
 				)}
 				<MiniReview review={task.review} me={me} />
+				{(task.files || []).length > 0 && (
+					<span className="att-chip" title={task.files.map((f) => f.name).join(', ')}>
+						📎 {task.files.length}
+					</span>
+				)}
 			</div>
 			<ReviewBadge review={task.review} me={me} members={members} />
-			{steps && <StepTrack task={task} done={task.step_done} status={st} onTick={(row, delta) => tickStep(task, row, delta)} />}
+			{steps && <StepCard task={task} done={task.step_done} status={st} onStatus={(row, to) => setStep(task, row, to)} onTick={(row, delta) => tickStep(task, row, delta)} />}
 			{!steps && target > 1 && (
 				<div className="mini-prog">
 					<span className="mp-bar">

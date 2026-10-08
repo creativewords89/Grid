@@ -6,7 +6,7 @@ import Avatar from '../Avatar.jsx';
 import Modal from '../Modal.jsx';
 import { DueChip, ProgressBox, usePeriod } from './MonthlyCard.jsx';
 import ReviewActions from '../review/ReviewActions.jsx';
-import Submission from '../review/Submission.jsx';
+import Submission, { FileRow } from '../review/Submission.jsx';
 
 export default function MonthlyDetails({ taskId, week, missed, onClose }) {
 	const { data } = usePortal();
@@ -84,6 +84,14 @@ export default function MonthlyDetails({ taskId, week, missed, onClose }) {
 					<section className="dt-sec">
 						<h4>Details</h4>
 						<p className="dt-notes">{task.notes}</p>
+					</section>
+				)}
+				{(task.files || []).length > 0 && (
+					<section className="dt-sec">
+						<h4>Attachments</h4>
+						{task.files.map((f) => (
+							<FileRow key={f.id} file={f} />
+						))}
 					</section>
 				)}
 				<section className="dt-sec">

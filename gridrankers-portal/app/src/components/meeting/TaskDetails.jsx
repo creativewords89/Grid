@@ -9,7 +9,7 @@ import StepTrack from '../StepTrack.jsx';
 import Modal from '../Modal.jsx';
 import useTaskActions from './useTaskActions.js';
 import ReviewActions from '../review/ReviewActions.jsx';
-import Submission from '../review/Submission.jsx';
+import Submission, { FileRow } from '../review/Submission.jsx';
 
 export function ShareSteppers({ task, members, me, onTick }) {
 	const target = Math.max(1, task.target || 1);
@@ -63,7 +63,7 @@ export function ShareSteppers({ task, members, me, onTick }) {
 // Details window (SPEC.md 7.2): header, info grid, progress, details, page link, completion & review.
 export default function TaskDetails({ taskId, onClose }) {
 	const { data, me, today } = usePortal();
-	const { tick, tickStep } = useTaskActions();
+	const { tick, tickStep, setStep } = useTaskActions();
 	const task = data.meeting_tasks[taskId];
 	const members = data.members;
 
@@ -128,7 +128,7 @@ export default function TaskDetails({ taskId, onClose }) {
 				{hasSteps(task) ? (
 					<section className="dt-sec">
 						<h4>Steps</h4>
-						<StepTrack task={task} done={task.step_done} status={task.status} onTick={(row, delta) => tickStep(task, row, delta)} />
+						<StepTrack task={task} done={task.step_done} status={task.status} onStatus={(row, to) => setStep(task, row, to)} onTick={(row, delta) => tickStep(task, row, delta)} />
 					</section>
 				) : (
 					target > 1 && (
@@ -150,6 +150,14 @@ export default function TaskDetails({ taskId, onClose }) {
 						<a className="url" href={safeUrl} target="_blank" rel="noopener noreferrer">
 							{safeUrl}
 						</a>
+					</section>
+				)}
+				{(task.files || []).length > 0 && (
+					<section className="dt-sec">
+						<h4>Attachments</h4>
+						{task.files.map((f) => (
+							<FileRow key={f.id} file={f} />
+						))}
 					</section>
 				)}
 				<section className="dt-sec">
