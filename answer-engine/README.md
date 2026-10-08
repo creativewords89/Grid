@@ -28,5 +28,12 @@ docker compose up -d --build
 curl http://localhost/api/health   # {"status":"ok",...}
 ```
 
-Then open http://localhost. Server installation on the Hostinger VPS is documented in build
+Create the first Owner, then open http://localhost and sign in:
+
+```sh
+docker compose exec api python -m app.cli create-owner --email you@example.com --name "Your Name"
+```
+
+While SMTP is not set up in `.env`, invites and password resets show the Owner a link to pass on
+instead of emailing it. Server installation on the Hostinger VPS is documented in build
 step 16 (`ops/deploy.md`).

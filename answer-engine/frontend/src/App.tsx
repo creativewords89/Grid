@@ -1,22 +1,48 @@
-import { HealthStatus } from "./HealthStatus";
+import { useState } from "react";
+import { AuthProvider, useAuth } from "./auth";
+import { Forgot } from "./pages/Forgot";
+import { Placeholder } from "./pages/Placeholder";
+import { Profile } from "./pages/Profile";
+import { SetPassword } from "./pages/SetPassword";
+import { SignIn } from "./pages/SignIn";
+import { Users } from "./pages/Users";
+import { usePath } from "./router";
+import { Shell } from "./Shell";
 
-// Shell only: sign-in, sidebar and screens arrive from build step 2 onwards (SPEC section 7).
+const PLACEHOLDERS: Record<string, [string, number]> = {
+  "/": ["Ask", 8],
+  "/documents": ["Documents", 3],
+  "/marketing": ["Marketing", 13],
+  "/verified": ["Verified Answers", 11],
+  "/reviews": ["Review Queue", 10],
+  "/answer-log": ["Answer Log", 9],
+  "/settings": ["Settings", 14],
+};
+
+function Routes() {
+  const path = usePath();
+  const { user, loading } = useAuth();
+  const [notice, setNotice] = useState("");
+
+  if (path === "/invite") return <SetPassword mode="invite" onReset={setNotice} />;
+  if (path === "/reset") return <SetPassword mode="reset" onReset={setNotice} />;
+  if (loading) return <p className="loading">Loading…</p>;
+  if (!user) return path === "/forgot" ? <Forgot /> : <SignIn notice={notice} />;
+
+  let page;
+  if (path === "/users" && user.role === "owner") page = <Users />;
+  else if (path === "/profile") page = <Profile />;
+  else {
+    const [title, step] = PLACEHOLDERS[path] ?? PLACEHOLDERS["/"]!;
+    page = <Placeholder title={title} step={step} />;
+  }
+  return <Shell path={path}>{page}</Shell>;
+}
+
 export function App() {
   return (
-    <div className="shell">
-      <header className="topbar">
-        <span className="mark" aria-hidden="true">
-          GR
-        </span>
-        <h1>GridRankers Answer Engine</h1>
-      </header>
-      <main className="content">
-        <section className="card">
-          <h2>Setting up</h2>
-          <p>The Answer Engine is being built. Sign-in and the chat arrive in the next steps.</p>
-          <HealthStatus />
-        </section>
-      </main>
-    </div>
+    <AuthProvider>
+      <Routes />
+    </AuthProvider>
   );
 }

@@ -2,8 +2,8 @@
 
 from fastapi import FastAPI
 
-from app import __version__
-from app.api import health
+from app import __version__, errors
+from app.api import auth, health, me, users
 from app.config import get_settings
 
 
@@ -17,7 +17,9 @@ def create_app() -> FastAPI:
         redoc_url=None,
         openapi_url=None if settings.is_production else "/api/openapi.json",
     )
-    app.include_router(health.router, prefix="/api")
+    errors.install(app)
+    for module in (health, auth, users, me):
+        app.include_router(module.router, prefix="/api")
     return app
 
 

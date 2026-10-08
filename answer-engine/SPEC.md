@@ -114,10 +114,10 @@ Every API endpoint calls `permissions.can(user, action, obj)`. **pytest covers e
 
 ## 4. Authentication
 
-- **Accounts:** email + password. The Owner invites people from **Users → Invite** (name, email, role). The invite email contains a single-use link valid for 72 h, where the person sets a password.
-- **Passwords:** minimum 10 characters, hashed with **Argon2id** (`argon2-cffi`). Common or breached passwords are refused using a bundled top-10k list.
+- **Accounts:** email + password. The Owner invites people from **Users → Invite** (name, email, role). The invite email contains a single-use link valid for 72 h, where the person sets a password. While email is not configured, the Owner is shown the link to pass on another way. Links put the secret after `#` (`/invite#…`, `/reset#…`) so it never reaches server logs.
+- **Passwords:** minimum 10 characters, hashed with **Argon2id** (`argon2-cffi`). Common passwords are refused using a bundled list: the 10+ character entries of SecLists' top-100k list (the top-10k list has only 51 entries that long, so it would miss passwords like `password123`).
 - **Sign-in screen:** GridRankers logo, "Sign in to the Answer Engine", Email, Password, **Sign in** button, and a "Forgot password?" link that sends a reset email (single use, 1 h). The response is always "If that email exists, we've sent a link", whether or not the account exists.
-- **Lockout:** 5 failed attempts per email+IP leads to a 15-minute lock. The error is always "Email or password is incorrect."
+- **Lockout:** 5 failed attempts per email+IP within 15 minutes lock that pair for 15 minutes from the fifth failure; a successful sign-in resets the count. A wrong email and a wrong password both get "Email or password is incorrect." While locked, sign-in returns 429 "Too many attempts. Wait 15 minutes, then try again." (this says nothing about whether the account exists).
 - **Sessions:** random 32-byte token, stored as a SHA-256 hash in `sessions`. The cookie is `HttpOnly; Secure; SameSite=Lax` and expires after 30 days (sliding). Sign out deletes the session. A password reset or deactivation revokes all of that person's sessions.
 - **CSRF:** every state-changing request needs header `X-CSRF-Token`, matching a per-session token returned by `GET /api/auth/me`.
 - Nothing renders before sign-in. Every `/api/*` route except `/api/auth/*`, `/api/health` and `/api/telegram/webhook` returns 401 without a session.

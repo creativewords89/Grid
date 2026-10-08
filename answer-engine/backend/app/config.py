@@ -17,9 +17,24 @@ class Settings(BaseSettings):
         description="SQLAlchemy URL, always the psycopg (v3) driver.",
     )
 
+    # Email (SPEC section 2). Empty SMTP_HOST means email is not configured: links are
+    # logged and, where the Owner asked for them, returned to the Owner instead.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
+
+    @property
+    def email_configured(self) -> bool:
+        return bool(self.smtp_host and self.smtp_from)
+
+    def link(self, path: str) -> str:
+        return self.app_url.rstrip("/") + path
 
 
 @lru_cache
