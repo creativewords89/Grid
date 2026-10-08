@@ -1,6 +1,7 @@
 // Task steps (SPEC.md 6.16, designs DEP-A..C): Write → Edit → Proofread, each with its own person.
 // Same rules as GRP_Steps on the server: a step counts only what the step before has finished, the
 // task's count is its last step's; forward is the step's person (or a leader), back is leaders only.
+import { addDays, cycleRange, daysBetween } from './cycles.js';
 import { isManager } from './roles.js';
 
 export const MIN_STEPS = 2;
@@ -15,6 +16,36 @@ export const hasSteps = (t) => !!t && Array.isArray(t.steps) && t.steps.length >
 
 export const stepN = (done, id) => +((done || {})[id] || {}).n || 0;
 
+// A step's status (same as GRP_Steps::state): done (Completed), doing (In progress: started or part
+// of its quantity done) or todo (Not started).
+export function stepStatus(done, id, target) {
+	const n = stepN(done, id);
+	if (n >= Math.max(1, +target || 1)) return 'done';
+	return n > 0 || ((done || {})[id] || {}).started ? 'doing' : 'todo';
+}
+
+// A step's due date: the date on meeting tasks; on monthly tasks its day of the current cycle
+// (a day past the end of a short cycle falls on its last day).
+export function stepDue(task, step, project, today) {
+	if (!step || step.due == null || step.due === '') return null;
+	if (typeof step.due === 'string') return step.due;
+	if (!project) return null;
+	const range = cycleRange(project, 0, today);
+	const day = addDays(range.start, +step.due - 1);
+	return day > range.end ? range.end : day;
+}
+
+// "Due Oct 7" / "Due today" / "Oct 7 · 2 days late" and its tone for the badge.
+export function dueBadge(date, today, done) {
+	if (!date) return null;
+	const left = daysBetween(today, date);
+	const day = new Date(date + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+	if (done) return { text: `Due ${day}`, tone: 'ok' };
+	if (left < 0) return { text: `${day} · ${-left} day${left === -1 ? '' : 's'} late`, tone: 'late' };
+	if (left === 0) return { text: 'Due today', tone: 'soon' };
+	return { text: `Due ${day}`, tone: left <= 2 ? 'soon' : 'plain', left };
+}
+
 // One row per step: what it finished, the most it may have finished, and its state —
 // done (all of it), go (something is ready for it) or wait (nothing ready yet).
 export function stepRows(task, done) {
@@ -23,7 +54,7 @@ export function stepRows(task, done) {
 		const n = stepN(done, s.id);
 		const ready = i === 0 ? target : Math.min(target, stepN(done, task.steps[i - 1].id));
 		const state = n >= target ? 'done' : ready > n ? 'go' : 'wait';
-		return { ...s, i, n, ready, waiting: ready - n, target, state, prev: i > 0 ? task.steps[i - 1] : null, next: task.steps[i + 1] || null };
+		return { ...s, i, n, ready, waiting: ready - n, target, state, status: stepStatus(done, s.id, target), prev: i > 0 ? task.steps[i - 1] : null, next: task.steps[i + 1] || null };
 	});
 }
 
@@ -38,6 +69,24 @@ export function canTickStep(me, row, delta, status) {
 	if (!me || status === 'done') return false;
 	if (delta < 0) return isManager(me) && row.n > 0;
 	return (isManager(me) || row.member === me.id) && row.n < row.ready;
+}
+
+// The step the task is on: the first one not completed (null when all are).
+export const currentStep = (task, done) => stepRows(task, done).find((r) => r.status !== 'done') || null;
+
+// Who may move a step to a status (same rules as the server): forward is the step's person or a
+// leader — In progress once something is ready, Completed once the step before is completed in full;
+// back is leaders only, never below what the next step already used.
+export function canSetStep(me, row, to, status, done) {
+	if (!me || status === 'done' || to === row.status) return false;
+	const order = { todo: 0, doing: 1, done: 2 };
+	if (order[to] < order[row.status]) {
+		const keep = to === 'doing' ? Math.min(row.n, row.target - 1) : 0;
+		return isManager(me) && (!row.next || stepN(done, row.next.id) <= keep);
+	}
+	if (!isManager(me) && row.member !== me.id) return false;
+	if (to === 'done') return row.ready >= row.target;
+	return row.status !== 'todo' || row.ready > 0;
 }
 
 // This person's step that comes next (their first one not finished), or null when their part is done.
@@ -82,7 +131,8 @@ export function readyItems(task, done, me, members, now = Date.now()) {
 }
 
 // Steps from the dialog's rows, as the server takes them: names trimmed, empty rows dropped.
-export const cleanSteps = (rows) => rows.filter((r) => r.name.trim() || r.member).map((r) => ({ id: r.id, name: r.name.trim(), member: r.member }));
+export const cleanSteps = (rows) =>
+	rows.filter((r) => r.name.trim() || r.member).map((r) => ({ id: r.id, name: r.name.trim(), member: r.member, due: r.due === '' || r.due == null ? null : typeof r.due === 'string' && !/^\d{4}-/.test(r.due) ? +r.due : r.due }));
 
 // What's wrong with the dialog's steps, or ''.
 export function stepsError(rows) {
@@ -93,6 +143,13 @@ export function stepsError(rows) {
 	if (bad) return 'Name every step, e.g. Write, Edit, Proofread.';
 	const nobody = list.find((s) => !s.member);
 	if (nobody) return `Pick who does “${nobody.name}”.`;
+	let last = null;
+	for (const s of list) {
+		if (s.due == null) continue;
+		if (typeof s.due === 'number' && (s.due < 1 || s.due > 31)) return `“${s.name}”: pick a day of the cycle, 1 to 31.`;
+		if (last && s.due < last.due) return `“${s.name}” is due before “${last.name}” — each step’s date must be on or after the one before.`;
+		last = s;
+	}
 	return '';
 }
 

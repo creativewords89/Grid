@@ -29,6 +29,7 @@ class GRP_REST_Monthly_Tasks extends GRP_REST_Controller {
 		'parts'        => 'breakdown',
 		'assignees'    => 'responsible',
 		'steps'        => 'steps',
+		'files'        => 'files',
 	);
 
 	/**
@@ -191,6 +192,14 @@ class GRP_REST_Monthly_Tasks extends GRP_REST_Controller {
 		if ( $has( 'notes' ) ) {
 			$out['notes'] = self::textarea( $request['notes'] );
 		}
+		// Files added with the task (SPEC.md 6.17): the brief, screenshots, the client's documents.
+		if ( null !== $request->get_param( 'files' ) ) {
+			$files = self::attached_files( $request['files'] );
+			if ( is_wp_error( $files ) ) {
+				return $files;
+			}
+			$out['files'] = $files;
+		}
 
 		if ( $has( 'due_mode' ) ) {
 			$due = self::due( $request );
@@ -202,7 +211,7 @@ class GRP_REST_Monthly_Tasks extends GRP_REST_Controller {
 
 		// Steps in order (SPEC.md 6.16) instead of a breakdown: their people share the whole task.
 		if ( $has( 'steps' ) ) {
-			$steps = GRP_Steps::clean( $request['steps'] );
+			$steps = GRP_Steps::clean( $request['steps'], 'day' );
 			if ( is_wp_error( $steps ) ) {
 				return $steps;
 			}
@@ -214,6 +223,12 @@ class GRP_REST_Monthly_Tasks extends GRP_REST_Controller {
 				return self::invalid( __( 'Use steps or a breakdown, not both.', 'gridrankers-portal' ) );
 			}
 			$target = self::int( $has( 'target' ) ? $request['target'] : ( $task['target'] ?? 1 ), 1, 99, 1 );
+			// The last step's day is the task's deadline in each cycle (SPEC.md 6.16).
+			if ( GRP_Steps::last_due( $steps ) && ! GRP_Cycles::is_weekly( $out + (array) $task ) && ! GRP_Cycles::is_biweekly( $out + (array) $task ) ) {
+				$out['due_mode']     = 'date';
+				$out['due_day']      = (int) GRP_Steps::last_due( $steps );
+				$out['due_from_day'] = null;
+			}
 			return $out + array(
 				'target'    => $target,
 				'parts'     => null,

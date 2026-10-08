@@ -624,6 +624,10 @@ abstract class GRP_REST_Controller {
 		if ( 'status' === $field ) {
 			return GRP_REST_Meeting_Tasks::STATUS_TEXT[ $value ] ?? (string) $value;
 		}
+		if ( 'files' === $field ) {
+			$names = wp_list_pluck( (array) $value, 'name' );
+			return $names ? implode( ', ', $names ) : 'none';
+		}
 		if ( 'steps' === $field ) {
 			$names = array_map(
 				static function ( $step ) {

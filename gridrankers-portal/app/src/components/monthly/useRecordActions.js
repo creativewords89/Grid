@@ -54,6 +54,27 @@ export default function useRecordActions() {
 		}
 	};
 
+	// A step's status this period (SPEC.md 6.16).
+	const setStep = async (task, periodKey, row, to) => {
+		try {
+			const body = { taskId: task.id, periodKey, step: row.id, status: to };
+			let res;
+			try {
+				res = await api.post('records/step', body);
+			} catch (err) {
+				if (err.code !== 'grp_completion_required') throw err;
+				const sub = await askCompletion(task.title);
+				if (!sub) return;
+				res = await api.post('records/step', { ...body, ...submission(sub) });
+			}
+			const rec = store(res);
+			if (rec && rec.status === 'done') toast(rec.review && rec.review.state === 'pending' ? 'All steps done — sent for review' : 'All steps done');
+			else toast(to === 'done' ? `${row.name}: completed${row.next ? ` — ${row.next.name} is next` : ''}` : `${row.name}: ${to === 'doing' ? 'in progress' : 'not started'}`);
+		} catch (err) {
+			toast(err.message);
+		}
+	};
+
 	const setStatus = async (task, periodKey, to) => {
 		let body = { taskId: task.id, periodKey, status: to };
 		if (to === 'done') {
@@ -133,5 +154,5 @@ export default function useRecordActions() {
 		}
 	};
 
-	return { tick, tickStep, setStatus, remove, requestUndo, decideUndo };
+	return { tick, tickStep, setStep, setStatus, remove, requestUndo, decideUndo };
 }

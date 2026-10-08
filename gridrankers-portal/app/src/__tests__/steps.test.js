@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { feedOf } from '../lib/feed.js';
 import { assignedFor } from '../lib/perf.js';
-import { canTickStep, cleanSteps, hasSteps, myStep, readyItems, stepCount, stepLine, stepRows, stepsError } from '../lib/steps.js';
+import { canSetStep, canTickStep, cleanSteps, currentStep, dueBadge, hasSteps, myStep, readyItems, stepCount, stepDue, stepLine, stepRows, stepStatus, stepsError } from '../lib/steps.js';
 import { emptyData } from '../lib/store.js';
 
 const TODAY = '2026-10-10';
@@ -67,7 +67,10 @@ describe('the dialog', () => {
 			{ id: 'a', name: ' Write ', member: 'max' },
 			{ id: 'b', name: '', member: '' },
 		];
-		expect(cleanSteps(rows)).toEqual([{ id: 'a', name: 'Write', member: 'max' }]);
+		expect(cleanSteps(rows)).toEqual([{ id: 'a', name: 'Write', member: 'max', due: null }]);
+		expect(cleanSteps([{ id: 'a', name: 'Write', member: 'max', due: '7' }])[0].due).toBe(7);
+		expect(stepsError([{ id: 'a', name: 'Write', member: 'max', due: '2026-10-07' }, { id: 'b', name: 'Edit', member: 'nia', due: '2026-10-03' }])).toBe('“Edit” is due before “Write” — each step’s date must be on or after the one before.');
+		expect(stepsError([{ id: 'a', name: 'Write', member: 'max', due: 3 }, { id: 'b', name: 'Edit', member: 'nia', due: 40 }])).toBe('“Edit”: pick a day of the cycle, 1 to 31.');
 		expect(stepsError(rows)).toBe('Add at least 2 steps, or switch to One step.');
 		expect(stepsError([...rows.slice(0, 1), { id: 'b', name: 'Edit', member: '' }])).toBe('Pick who does “Edit”.');
 		expect(stepsError([...rows.slice(0, 1), { id: 'b', name: '', member: 'nia' }])).toBe('Name every step, e.g. Write, Edit, Proofread.');
@@ -108,5 +111,50 @@ describe('My day and notifications', () => {
 		// In the Notifications feed, opening the task.
 		const feed = feedOf(d, NIA, TODAY, NOW).find((x) => x.key === 'ready:t1:e:3');
 		expect(feed).toMatchObject({ cat: 'task', icon: '→', open: { project_id: 'a', tab: 'board', title: 'Blog posts' } });
+	});
+});
+
+describe('status and deadline of each step', () => {
+	it('is Not started, In progress or Completed, and moves by the server’s rules', () => {
+		const one = task({ target: 1 });
+		expect(stepStatus({}, 'w', 1)).toBe('todo');
+		expect(stepStatus({ w: { n: 0, started: true } }, 'w', 1)).toBe('doing');
+		expect(stepStatus({ w: at(1, 'max') }, 'w', 1)).toBe('done');
+		const [w, e, p] = stepRows(one, {});
+		expect(canSetStep(MAX, w, 'doing', 'todo', {})).toBe(true);
+		expect(canSetStep(MAX, w, 'done', 'todo', {})).toBe(true);
+		expect(canSetStep(NIA, w, 'doing', 'todo', {})).toBe(false);
+		expect(canSetStep(NIA, e, 'doing', 'todo', {})).toBe(false);
+		const doneW = { w: at(1, 'max') };
+		const rows = stepRows(one, doneW);
+		expect(canSetStep(NIA, rows[1], 'done', 'doing', doneW)).toBe(true);
+		expect(canSetStep(MAX, rows[0], 'todo', 'doing', doneW)).toBe(false);
+		expect(canSetStep(LEE, rows[0], 'todo', 'doing', doneW)).toBe(true);
+		expect(canSetStep(LEE, stepRows(one, { w: at(1, 'max'), e: at(1, 'nia') })[0], 'todo', 'doing', { w: at(1, 'max'), e: at(1, 'nia') })).toBe(false);
+		expect(canSetStep(LEE, p, 'done', 'done', {})).toBe(false);
+		expect(currentStep(one, doneW).name).toBe('Edit');
+		expect(currentStep(one, { w: at(1, 'max'), e: at(1, 'nia'), p: at(1, 'lee') })).toBe(null);
+	});
+
+	it('has its own due date (a day of the cycle on monthly tasks)', () => {
+		const project = { id: 'a', cycle_day: 1, cycle_set: 1 };
+		expect(stepDue(task(), { due: '2026-10-07' }, project, TODAY)).toBe('2026-10-07');
+		expect(stepDue(task(), { due: 7 }, project, TODAY)).toBe('2026-10-07');
+		expect(stepDue(task(), { due: 31 }, { ...project, cycle_day: 15 }, '2026-02-20')).toBe('2026-03-14');
+		expect(stepDue(task(), { due: null }, project, TODAY)).toBe(null);
+		expect(dueBadge('2026-10-07', TODAY)).toEqual({ text: 'Oct 7 · 3 days late', tone: 'late' });
+		expect(dueBadge('2026-10-11', TODAY)).toMatchObject({ text: 'Due Oct 11', tone: 'soon', left: 1 });
+		expect(dueBadge('2026-10-20', TODAY)).toMatchObject({ tone: 'plain' });
+		expect(dueBadge('2026-10-10', TODAY)).toEqual({ text: 'Due today', tone: 'soon' });
+		expect(dueBadge('2026-10-03', TODAY, true)).toEqual({ text: 'Due Oct 3', tone: 'ok' });
+	});
+
+	it('puts each person’s step date on My day', () => {
+		const d = emptyData();
+		d.members = { max: MAX, nia: NIA, lee: LEE };
+		d.projects = { a: { id: 'a', name: 'Acme', state: 'active', cycle_day: 1, cycle_set: 1 } };
+		d.meeting_tasks = { t1: task({ target: 1, steps: [{ ...STEPS[0], due: '2026-10-03' }, { ...STEPS[1], due: '2026-10-12' }, { ...STEPS[2], due: '2026-10-15' }], step_done: { w: at(1, 'max') } }) };
+		expect(assignedFor(d, 'nia', TODAY).find((x) => x.id === 't1')).toMatchObject({ due: '2026-10-12', when: 'Due Oct 12' });
+		expect(assignedFor(d, 'lee', TODAY).find((x) => x.id === 't1')).toMatchObject({ due: '2026-10-15', turn: 'wait' });
 	});
 });

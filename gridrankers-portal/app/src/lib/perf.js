@@ -2,7 +2,7 @@ import { activeSlot, addDays, cycleRange, daysBetween, dueAt, isSplit, parts, sl
 import { deadlineInfo, itemDeadline } from './deadline.js';
 import { localYmd, mondayOf, short, toDate } from './format.js';
 import { bornAt, isShared, recordOf, stateOf, typePeople } from './monthly.js';
-import { hasSteps, myStep, stepLine } from './steps.js';
+import { hasSteps, myStep, stepDue, stepLine } from './steps.js';
 import { rowsOf } from './store.js';
 import { GENERAL, GENERAL_NAME, PRI, boardOf, liveTask } from './tasks.js';
 
@@ -62,6 +62,8 @@ export function assignedFor(data, pid, today) {
 		// Steps (SPEC.md 6.16): listed with this person's next step until their part is done.
 		const step = hasSteps(i) ? myStep(i, i.step_done, pid) : null;
 		if (hasSteps(i) && !step) return;
+		// A step's own date (SPEC.md 6.16) is what this person is due by.
+		const stepDate = step ? stepDue(i, step, null, today) : null;
 		out.push({
 			kind: 'board',
 			id: i.id,
@@ -75,9 +77,9 @@ export function assignedFor(data, pid, today) {
 				? stepLine(i, i.step_done, pid, data.members)
 				: (target > 1 ? `${(i.progress || {})[pid] || 0}/${shareOf(i, pid) || target} done${(i.assignees || []).length > 1 ? ' (your share)' : ''} · ` : '') +
 				(i.status === 'doing' ? 'In progress' : 'Not started'),
-			when: dl ? (dl.overdue ? 'Overdue · ' : '') + dl.label : i.meeting_date ? `From meeting ${short(i.meeting_date)}` : '',
-			sort: dl && dl.overdue ? -1 : PRI[i.priority] ?? 2,
-			due: itemDeadline(i)?.end || null,
+			when: stepDate ? (stepDate < today ? 'Overdue · ' : '') + `Due ${short(stepDate)}` : dl ? (dl.overdue ? 'Overdue · ' : '') + dl.label : i.meeting_date ? `From meeting ${short(i.meeting_date)}` : '',
+			sort: (stepDate ? stepDate < today : dl && dl.overdue) ? -1 : PRI[i.priority] ?? 2,
+			due: step ? stepDate : itemDeadline(i)?.end || null,
 		});
 	});
 	rowsOf(data, 'monthly_tasks').forEach((t) => {
@@ -95,7 +97,7 @@ export function assignedFor(data, pid, today) {
 		if (st === 'done' || (shared && mineDone >= shareOf(t, pid)) || (hasSteps(t) && !step)) return;
 		const n = shared ? shareOf(t, pid) : Math.max(1, t.target || 1);
 		const cnt = shared ? mineDone : rec && rec.status !== 'skipped' ? rec.count || 0 : 0;
-		const due = dueAt(t, c, w, 0, today);
+		const due = (step && stepDue(t, step, c, today)) || dueAt(t, c, w, 0, today);
 		const late = due < today;
 		out.push({
 			kind: 'monthly',

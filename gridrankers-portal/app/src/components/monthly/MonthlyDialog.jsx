@@ -7,6 +7,7 @@ import { CycleDayPicker } from '../DatePicker.jsx';
 import Modal from '../Modal.jsx';
 import PeoplePicker, { evenSplit } from '../PeoplePicker.jsx';
 import StepsEditor, { WhoToggle, presetRows } from '../StepsEditor.jsx';
+import AttachField from '../AttachField.jsx';
 import { cleanSteps, hasSteps, stepsError } from '../../lib/steps.js';
 
 const MODES = [
@@ -138,6 +139,7 @@ export default function MonthlyDialog({ taskId, onClose }) {
 		target: editing ? editing.target : 1,
 		parts: editing && Array.isArray(editing.parts) ? editing.parts.map((x) => ({ ...x, people: typePeople(x, data.members) })) : [],
 		assignees: editing ? (editing.assignees || []).filter((a) => data.members[a.id]).map((a) => ({ id: a.id })) : [],
+		files: editing && Array.isArray(editing.files) ? editing.files : [],
 	}));
 	const [open, setOpen] = useState(-1);
 	const [add, setAdd] = useState({ name: '', n: 1, who: '' });
@@ -195,6 +197,7 @@ export default function MonthlyDialog({ taskId, onClose }) {
 			assignees: stepsOn ? [] : f.assignees,
 			team: true,
 			steps: stepsOn ? cleanSteps(steps) : [],
+			files: f.files.map((x) => x.id),
 		};
 		setBusy(true);
 		try {
@@ -345,7 +348,7 @@ export default function MonthlyDialog({ taskId, onClose }) {
 						<WhoToggle on={stepsOn} onChange={toggleSteps} />
 					</span>
 					{stepsOn ? (
-						<StepsEditor members={members} value={steps} onChange={setSteps} />
+						<StepsEditor members={members} value={steps} onChange={setSteps} dueKind={f.due_mode === 'weekly' || f.due_mode === 'biweekly' ? 'none' : 'day'} />
 					) : fromParts.length > 0 ? (
 						<>
 							<p className="hint bd-note">
@@ -364,6 +367,7 @@ export default function MonthlyDialog({ taskId, onClose }) {
 						</>
 					)}
 				</div>
+				<AttachField value={f.files} onChange={(files) => setF((x) => ({ ...x, files }))} />
 				<label>
 					Details
 					<textarea value={f.notes} onChange={set('notes')} maxLength={2000} placeholder="How it's done, where the report goes, logins location…" />

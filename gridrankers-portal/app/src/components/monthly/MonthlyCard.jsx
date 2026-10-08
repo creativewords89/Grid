@@ -6,7 +6,7 @@ import { isManager } from '../../lib/roles.js';
 import { assigneesOf, canWorkOn, isAssigned } from '../../lib/tasks.js';
 import { hasSteps } from '../../lib/steps.js';
 import Avatar from '../Avatar.jsx';
-import StepTrack from '../StepTrack.jsx';
+import StepTrack, { StepCard } from '../StepTrack.jsx';
 import { MiniReview, People, ReviewBadge, UnassignedLock, UndoLine } from '../meeting/TaskCard.jsx';
 import useRecordActions from './useRecordActions.js';
 
@@ -99,10 +99,10 @@ function Stepper({ got, max, label, onMinus, onPlus, can, plusDisabled }) {
 // Progress for the Details window: breakdown rows, per-person shares, or one stepper.
 export function ProgressBox({ task, period }) {
 	const { data, me } = usePortal();
-	const { tick, tickStep } = useRecordActions();
+	const { tick, tickStep, setStep } = useRecordActions();
 	if (hasSteps(task)) {
 		const rec = period.rec && period.rec.status !== 'skipped' ? period.rec : null;
-		return <StepTrack task={task} done={rec && rec.step_done} status={period.st} onTick={(row, delta) => tickStep(task, period.periodKey, row, delta)} />;
+		return <StepTrack task={task} done={rec && rec.step_done} status={period.st} project={period.project} onStatus={(row, to) => setStep(task, period.periodKey, row, to)} onTick={(row, delta) => tickStep(task, period.periodKey, row, delta)} />;
 	}
 	const members = data.members;
 	const { periodKey, rec, wk, sel, aw, n, count, st, name, unit } = period;
@@ -251,7 +251,7 @@ export function ProgressBox({ task, period }) {
 // Monthly / weekly task card (SPEC.md 7.3).
 export default function MonthlyCard({ task, selWeek, onSelectWeek, missed, onDetails, onEdit }) {
 	const { data, me, cycleOff, today } = usePortal();
-	const { setStatus, tickStep, remove, requestUndo, decideUndo } = useRecordActions();
+	const { setStatus, tickStep, setStep, remove, requestUndo, decideUndo } = useRecordActions();
 	const period = usePeriod(task, selWeek);
 	const steps = hasSteps(task);
 	const { project, wk, aw, sel, slots, name, unit, freqLabel, tag, range, periodKey, st, n, count } = period;
@@ -318,10 +318,15 @@ export default function MonthlyCard({ task, selWeek, onSelectWeek, missed, onDet
 			<div className="line">
 				<DueChip task={task} period={period} missed={missed} />
 				<MiniReview review={period.rec && period.rec.review} me={me} />
+				{(task.files || []).length > 0 && (
+					<span className="att-chip" title={task.files.map((f) => f.name).join(', ')}>
+						📎 {task.files.length}
+					</span>
+				)}
 			</div>
 			<ReviewBadge review={period.rec && period.rec.review} me={me} members={members} />
 			{weeks}
-			{steps && <StepTrack task={task} done={period.rec && period.rec.status !== 'skipped' ? period.rec.step_done : null} status={st} onTick={(row, delta) => tickStep(task, periodKey, row, delta)} />}
+			{steps && <StepCard task={task} done={period.rec && period.rec.status !== 'skipped' ? period.rec.step_done : null} status={st} project={project} onStatus={(row, to) => setStep(task, periodKey, row, to)} onTick={(row, delta) => tickStep(task, periodKey, row, delta)} />}
 			{!steps && n > 1 && (
 				<div className="mini-prog">
 					<span className="mp-bar">

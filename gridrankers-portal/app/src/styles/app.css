@@ -970,25 +970,48 @@ dialog.bl-fees{width:min(640px,94vw)}
 
 /* Task steps (SPEC.md 6.16, designs DEP-A..C): the step track on cards, the dialog editor, My day. */
 .stp{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border-top:1px solid var(--line)}
-.stp-row{display:grid;grid-template-columns:22px minmax(0,1fr) auto 60px auto;grid-template-areas:"mark name who bar btns" "mark note note n btns";column-gap:8px;row-gap:1px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:.84rem}
-.stp-mark{grid-area:mark;width:20px;height:20px;border-radius:50%;display:inline-grid;place-items:center;font-size:.68rem;font-weight:800;background:var(--accent);color:var(--accent-ink)}
+.stp-row{display:flex;flex-direction:column;gap:6px;padding:9px 0;border-bottom:1px solid var(--line);font-size:.84rem}
+.stp-head{display:flex;align-items:center;gap:8px}
+.stp-mark{width:20px;height:20px;border-radius:50%;display:inline-grid;place-items:center;font-size:.68rem;font-weight:800;background:var(--accent);color:var(--accent-ink);flex-shrink:0}
 .stp-row.s-done .stp-mark{background:var(--done);color:#fff}
 .stp-row.s-wait .stp-mark{background:var(--panel-2);color:var(--ink-2);font-size:.62rem}
-.stp-name{grid-area:name;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stp-name{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .stp-row.s-wait .stp-name{color:var(--ink-2)}
-.stp-who{grid-area:who;display:inline-flex;align-items:center;gap:5px;font-size:.78rem;color:var(--ink-2);white-space:nowrap}
-.stp-bar{grid-area:bar;height:6px;border-radius:99px;background:var(--panel-2);overflow:hidden}
-.stp-bar.empty{background:none}
+.stp-who{display:inline-flex;align-items:center;gap:5px;font-size:.78rem;color:var(--ink-2);white-space:nowrap}
+.stp-head .stp-due{margin-left:auto}
+.stp-due{font-size:.72rem;font-weight:800;border-radius:6px;padding:2px 7px;white-space:nowrap;background:var(--panel-2);color:var(--ink-2)}
+.stp-due.t-soon{background:var(--doing-bg);color:var(--doing)}
+.stp-due.t-late{background:var(--urgent-bg);color:var(--urgent)}
+.stp-due.t-ok{background:var(--done-bg);color:var(--done)}
+.stp-note{font-size:.74rem;color:var(--ink-2)}
+.stp-seg{margin:0}
+.stp-seg.locked{opacity:.55}
+.stp-count{display:flex;align-items:center;gap:6px}
+.stp-bar{flex:1;height:6px;border-radius:99px;background:var(--panel-2);overflow:hidden}
 .stp-bar i{display:block;height:100%;background:var(--accent)}
-.stp-row.s-done .stp-bar i{background:var(--done)}
-.stp-n{grid-area:n;font-size:.72rem;color:var(--ink-2);text-align:right}
-.stp-note{grid-area:note;font-size:.74rem;color:var(--ink-2)}
-.stp-row.s-go .stp-note{color:var(--accent);font-weight:700}
-.stp-row.s-done .stp-note{color:var(--done);font-weight:700}
-.stp-btns{grid-area:btns;display:inline-flex;gap:4px}
-.stp-btn{min-width:30px;height:28px;padding:0 7px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:inherit;font-size:.8rem;font-weight:800;cursor:pointer}
+.stp-n{font-size:.74rem;color:var(--ink-2);white-space:nowrap}
+.stp-btn{min-width:30px;height:26px;padding:0 7px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:inherit;font-size:.8rem;font-weight:800;cursor:pointer}
 .stp-btn.go{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .stp-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* The card (design DEP-K4): STEP 2 OF 3 + bar, the current step in a soft box, who is next. */
+.stpc{display:flex;flex-direction:column;gap:8px}
+.stpc-top{display:flex;align-items:center;gap:8px}
+.stpc-badge{font-size:.68rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--doing);background:var(--doing-bg);border-radius:6px;padding:2px 7px;white-space:nowrap}
+.stpc.done .stpc-badge{color:var(--done);background:var(--done-bg)}
+.stp-segs{flex:1;display:flex;gap:3px}
+.stp-segs i{flex:1;height:5px;border-radius:99px;background:var(--line)}
+.stp-segs i.b-done{background:var(--done)} .stp-segs i.b-now{background:var(--doing)} .stp-segs i.b-late{background:var(--urgent)}
+.stpc-box{display:flex;flex-direction:column;gap:8px;padding:9px 10px;border-radius:10px;background:color-mix(in srgb,var(--doing) 7%,var(--panel));border:1px solid color-mix(in srgb,var(--doing) 30%,var(--line))}
+.stpc-box.late{background:color-mix(in srgb,var(--urgent) 6%,var(--panel));border-color:color-mix(in srgb,var(--urgent) 35%,var(--line))}
+.stpc-who{display:flex;align-items:center;gap:8px;min-width:0}
+.stpc-who>span{display:flex;flex-direction:column;min-width:0}
+.stpc-who b{font-size:.9rem}
+.stpc-who small{font-size:.74rem;color:var(--ink-2)}
+.stpc-who small.late{color:var(--urgent);font-weight:700}
+.stpc-next{display:flex;align-items:center;gap:4px;font-size:.76rem;color:var(--ink-2);border-top:1px dashed var(--line);padding-top:6px}
+.stpc-next b{color:var(--ink)}
+.stpc-next span{margin-left:auto}
+.stpc-sum{font-size:.8rem;color:var(--ink-2)}
 .stp-label{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .stp-toggle{margin-left:auto;display:inline-flex;border:1px solid var(--line);border-radius:9px;padding:2px;background:var(--panel)}
 .stp-toggle button{border:0;background:none;border-radius:7px;padding:4px 10px;font:inherit;font-size:.8rem;font-weight:700;color:var(--ink-2);cursor:pointer}
@@ -996,7 +1019,9 @@ dialog.bl-fees{width:min(640px,94vw)}
 .stp-toggle button:disabled{cursor:not-allowed;opacity:.6}
 .stp-edit{display:flex;flex-direction:column;gap:8px}
 .stp-edit ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
-.stp-edit li{display:grid;grid-template-columns:22px minmax(0,1fr) minmax(0,1fr) auto;gap:8px;align-items:center}
+.stp-edit li{display:grid;grid-template-columns:22px minmax(0,1fr) minmax(0,1fr) auto auto;gap:8px;align-items:center}
+.stp-edit .stp-due-in{width:9.5em;min-width:0}
+.stp-edit input[type=number].stp-due-in{width:5em}
 .stp-edit li input,.stp-edit li select{min-width:0}
 .stp-num{width:22px;height:22px;border-radius:50%;background:var(--panel-2);display:inline-grid;place-items:center;font-size:.72rem;font-weight:800;color:var(--ink-2)}
 .stp-moves{display:inline-flex;gap:2px}
@@ -1007,4 +1032,10 @@ dialog.bl-fees{width:min(640px,94vw)}
 .stp-more .linkbtn{font-weight:700}
 .mp-turn{font-size:.72rem;font-weight:800;border-radius:99px;padding:2px 8px;white-space:nowrap;background:var(--panel-2);color:var(--ink-2)}
 .mp-turn.t-go{background:color-mix(in srgb,var(--accent) 14%,var(--panel));color:var(--accent)}
-@media (max-width:600px){.stp-edit li{grid-template-columns:22px minmax(0,1fr);}.stp-edit li select{grid-column:2}.stp-moves{grid-column:2}}
+@media (max-width:600px){.stp-edit li{grid-template-columns:22px minmax(0,1fr);}.stp-edit li select,.stp-edit .stp-due-in,.stp-moves{grid-column:2}}
+
+/* Files added with a task (SPEC.md 6.17). */
+.att-field{display:flex;flex-direction:column;gap:6px;border:1.5px dashed var(--line);border-radius:12px;padding:10px 12px}
+.att-field.over{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 6%,var(--panel))}
+.att-add{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:.78rem}
+.att-chip{font-size:.72rem;font-weight:700;color:var(--ink-2);background:var(--panel-2);border-radius:6px;padding:2px 7px;white-space:nowrap}

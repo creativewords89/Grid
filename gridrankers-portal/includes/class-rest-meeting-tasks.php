@@ -45,6 +45,7 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 		'assignees'    => 'responsible',
 		'deadline'     => 'deadline',
 		'steps'        => 'steps',
+		'files'        => 'files',
 	);
 
 	/**
@@ -428,16 +429,18 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 		if ( ! GRP_Steps::on( $task ) ) {
 			return self::invalid( __( 'This task has no steps.', 'gridrankers-portal' ) );
 		}
-		$delta = (int) $request['delta'];
-		if ( 1 !== abs( $delta ) ) {
-			return self::invalid( __( 'Progress changes one unit at a time.', 'gridrankers-portal' ) );
+		$change = GRP_Steps::change( $request );
+		if ( is_wp_error( $change ) ) {
+			return $change;
 		}
 		$steps = array_values( $task['steps'] );
 		$i     = GRP_Steps::index( $steps, (string) $request['step'] );
 		if ( $i < 0 ) {
 			return self::invalid( __( 'That step no longer exists.', 'gridrankers-portal' ) );
 		}
-		$step = $steps[ $i ];
+		$step   = $steps[ $i ];
+		$target = max( 1, (int) $task['target'] );
+		$delta  = GRP_Steps::direction( $change, $task['step_done'] ?? null, $step['id'], $target );
 		if ( ! self::can(
 			GRP_Permissions::TICK_STEP,
 			array(
@@ -451,21 +454,19 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 			}
 			return self::forbidden(
 				$delta < 0
-					? __( 'Only a Team Leader or Super Admin can count a step back.', 'gridrankers-portal' )
+					? __( 'Only a Team Leader or Super Admin can move a step back.', 'gridrankers-portal' )
 					/* translators: 1: step name, 2: person's name. */
 					: sprintf( __( '“%1$s” is %2$s’s step.', 'gridrankers-portal' ), $step['name'], self::name_of( $step['member'] ) )
 			);
 		}
 
-		$target = max( 1, (int) $task['target'] );
-		$done   = GRP_Steps::tick( $steps, $task['step_done'] ?? null, $step['id'], $delta, $target, self::actor()['id'] );
+		$done = GRP_Steps::apply( $steps, $task['step_done'] ?? null, $step['id'], $change, $target, self::actor()['id'] );
 		if ( is_wp_error( $done ) ) {
 			return $done;
 		}
 		$count  = GRP_Steps::count( $steps, $done );
-		$any    = array_sum( array_map( static fn( $s ) => GRP_Steps::n( $done, $s['id'] ), $steps ) ) > 0;
-		$status = $count >= $target ? 'done' : ( $any ? 'doing' : 'todo' );
-		// The last unit of the last step completes the task: the submission form (SPEC.md 6.6).
+		$status = $count >= $target ? 'done' : ( GRP_Steps::begun( $steps, $done, $target ) ? 'doing' : 'todo' );
+		// The last step completes the task: the submission form (SPEC.md 6.6).
 		$completion = 'done' === $status ? self::completion( $request, true ) : null;
 		if ( is_wp_error( $completion ) ) {
 			return $completion;
@@ -473,20 +474,26 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 
 		return rest_ensure_response(
 			GRP_Store::transaction(
-				static function () use ( $task, $steps, $step, $done, $status, $delta, $completion, $target ) {
+				static function () use ( $task, $step, $done, $status, $completion, $target ) {
 					$changes = array( 'step_done' => $done );
 					if ( $status !== $task['status'] ) {
 						$changes += self::status_changes( $task, $status, $completion, false );
 					}
 					$updated = GRP_Store::update( self::TABLE, $task['id'], $changes );
+					$was     = GRP_Steps::n( $task['step_done'] ?? null, $step['id'] );
 					$n       = GRP_Steps::n( $done, $step['id'] );
 					$ref     = GRP_Steps::ref( 'stepi', $task['id'], $step['id'] );
-					if ( $delta > 0 ) {
-						GRP_Activity::credit( $step['member'], $task['project_id'], $task['title'], $step['name'] . " · $n/$target", 1, 'board', $ref );
-					} else {
-						GRP_Activity::uncredit( $ref, 1 );
+					if ( $n > $was ) {
+						GRP_Activity::credit( $step['member'], $task['project_id'], $task['title'], $step['name'] . " · $n/$target", $n - $was, 'board', $ref );
+					} elseif ( $n < $was ) {
+						GRP_Activity::uncredit( $ref, $was - $n );
 					}
-					GRP_Activity::audit( 'progress', 'items', $updated, self::actor(), $step['name'] . ' · ' . self::name_of( $step['member'] ) . ': ' . ( $n - $delta ) . " → $n of $target" );
+					$text = array(
+						'todo'  => 'Not started',
+						'doing' => 'In progress',
+						'done'  => 'Completed',
+					);
+					GRP_Activity::audit( 'progress', 'items', $updated, self::actor(), $step['name'] . ' · ' . self::name_of( $step['member'] ) . ': ' . $text[ GRP_Steps::state( $task['step_done'] ?? null, $step['id'], $target ) ] . ' → ' . $text[ GRP_Steps::state( $done, $step['id'], $target ) ] . ( $target > 1 ? " · $n of $target" : '' ) );
 					return $updated;
 				}
 			)
@@ -657,6 +664,14 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 		if ( $has( 'notes' ) ) {
 			$out['notes'] = self::textarea( $request['notes'] );
 		}
+		// Files added with the task (SPEC.md 6.17): the brief, screenshots, the client's documents.
+		if ( null !== $request->get_param( 'files' ) ) {
+			$files = self::attached_files( $request['files'] );
+			if ( is_wp_error( $files ) ) {
+				return $files;
+			}
+			$out['files'] = $files;
+		}
 		if ( $has( 'url' ) ) {
 			$url = self::url( $request['url'], 'page URL' );
 			if ( is_wp_error( $url ) ) {
@@ -694,18 +709,25 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 		}
 		// Steps in order (SPEC.md 6.16): their people share the whole task.
 		if ( $has( 'steps' ) ) {
-			$steps = GRP_Steps::clean( $request['steps'] );
+			$steps = GRP_Steps::clean( $request['steps'], 'date' );
 			if ( is_wp_error( $steps ) ) {
 				return $steps;
 			}
 			$out['steps'] = $steps;
 		}
 		$steps = array_key_exists( 'steps', $out ) ? $out['steps'] : ( $task['steps'] ?? null );
+		// The last step's date is the task's deadline (SPEC.md 6.16).
+		if ( $steps && GRP_Steps::last_due( $steps ) ) {
+			$out['deadline'] = array(
+				'type' => 'date',
+				'date' => GRP_Steps::last_due( $steps ),
+			);
+		}
 		if ( $steps && ( array_key_exists( 'steps', $out ) || isset( $out['target'] ) || isset( $out['assignees'] ) ) ) {
 			$out['team']      = 1;
 			$out['assignees'] = GRP_Steps::assignees( $steps, $out['target'] ?? (int) ( $task['target'] ?? 1 ) );
 		}
-		if ( $has( 'deadline' ) ) {
+		if ( $has( 'deadline' ) && ! isset( $out['deadline'] ) ) {
 			$deadline = self::deadline( $request['deadline'] );
 			if ( is_wp_error( $deadline ) ) {
 				return $deadline;

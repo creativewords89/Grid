@@ -425,6 +425,7 @@ class GRP_Import {
 				'deadline'     => self::deadline( $d ),
 				'review'       => is_array( $d['review'] ?? null ) ? $d['review'] : null,
 				'completion'   => is_array( $d['completion'] ?? null ) ? $d['completion'] : null,
+				'files'        => self::files( $d['files'] ?? null ),
 				'created_by'   => isset( $d['createdBy'] ) ? (string) $d['createdBy'] : null,
 				'created_at'   => self::time( $d['createdAt'] ?? null ),
 			),
@@ -505,6 +506,7 @@ class GRP_Import {
 				'team'         => $team,
 				'parts'        => $parts,
 				'std'          => ! empty( $d['std'] ) || str_starts_with( $id, 'std_' ) ? 1 : 0,
+				'files'        => self::files( $d['files'] ?? null ),
 				'created_by'   => isset( $d['createdBy'] ) ? (string) $d['createdBy'] : null,
 				'created_at'   => self::time( $d['createdAt'] ?? null ),
 			),
@@ -833,10 +835,12 @@ class GRP_Import {
 			$id   = self::id( $step['id'] ?? '' );
 			$name = sanitize_text_field( (string) ( $step['name'] ?? '' ) );
 			if ( $id && '' !== $name && ! empty( $step['member'] ) ) {
+				$due     = $step['due'] ?? null;
 				$steps[] = array(
 					'id'     => $id,
 					'name'   => $name,
 					'member' => (string) $step['member'],
+					'due'    => $meeting ? ( is_string( $due ) && preg_match( '/^\d{4}-\d{2}-\d{2}$/', $due ) ? $due : null ) : ( (int) $due >= 1 && (int) $due <= 31 ? (int) $due : null ),
 				);
 			}
 		}
@@ -853,6 +857,32 @@ class GRP_Import {
 		}
 
 		return $out;
+	}
+
+	/**
+	 * Files added with a task: `[{id, mime, name, size}]` (the files themselves are not in the export).
+	 *
+	 * @param mixed $raw Raw value.
+	 * @return array|null
+	 */
+	private static function files( $raw ) {
+		if ( ! is_array( $raw ) || ! $raw ) {
+			return null;
+		}
+		$out = array();
+		foreach ( $raw as $f ) {
+			$f = (array) $f;
+			if ( ! empty( $f['id'] ) ) {
+				$out[] = array(
+					'id'   => (string) $f['id'],
+					'mime' => (string) ( $f['mime'] ?? '' ),
+					'name' => sanitize_file_name( (string) ( $f['name'] ?? 'file' ) ),
+					'size' => (int) ( $f['size'] ?? 0 ),
+				);
+			}
+		}
+
+		return $out ? $out : null;
 	}
 
 	/**
