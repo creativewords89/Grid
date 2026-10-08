@@ -36,10 +36,13 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF"]
-ignore = ["S101"]  # assert is how pytest checks things
+ignore = [
+    "S101",  # assert is how pytest checks things
+    "RUF001",  # typographic characters (›, –, —) are deliberate in text people read
+]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S105", "S106", "RUF001"]  # fixture passwords; the › heading separator
+"tests/*" = ["S105", "S106"]  # test passwords are fixtures, not secrets
 
 [tool.mypy]
 python_version = "3.12"

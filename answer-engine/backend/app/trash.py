@@ -1,6 +1,6 @@
 """Trash (SPEC section 6.12): restore or delete forever, by kind of item.
 
-Only files exist so far; verified answers, threads and conversations join in later steps.
+Files and conversations so far; verified answers and threads join in later steps.
 """
 
 from collections.abc import Callable
@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app import settings_store
 from app.auth.tokens import now
-from app.db.models import StoredFile, TrashItem, TrashKind, User
+from app.db.models import Conversation, StoredFile, TrashItem, TrashKind, User
 from app.files import service as files
 
 Restore = Callable[[Session, TrashItem, User], None]
@@ -30,8 +30,22 @@ def _purge_file(db: Session, item: TrashItem, by: User | None) -> None:
         files.purge(db, record, by)
 
 
+def _restore_conversation(db: Session, item: TrashItem, by: User) -> None:
+    conversation = db.get(Conversation, item.ref_id)
+    if conversation is not None:
+        conversation.deleted_at = None
+
+
+def _purge_conversation(db: Session, item: TrashItem, by: User | None) -> None:
+    # Messages go with it; the answers stay in the Answer Log.
+    conversation = db.get(Conversation, item.ref_id)
+    if conversation is not None:
+        db.delete(conversation)
+
+
 HANDLERS: dict[TrashKind, tuple[Restore, Purge]] = {
     TrashKind.FILE: (_restore_file, _purge_file),
+    TrashKind.CONVERSATION: (_restore_conversation, _purge_conversation),
 }
 
 

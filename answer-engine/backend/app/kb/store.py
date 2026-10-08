@@ -1,6 +1,7 @@
 """The search copy in Pinecone (SPEC section 6.3). Only the sync worker writes to it."""
 
 from collections.abc import Iterator
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Protocol
 
@@ -17,10 +18,19 @@ DELETE_BATCH = 1000
 Record = dict[str, Any]
 
 
+@dataclass(frozen=True)
+class Hit:
+    id: str
+    score: float  # the reranker's relevance, 0-1
+
+
 class VectorStore(Protocol):
     def upsert(self, namespace: str, records: list[Record]) -> None: ...
     def delete(self, namespace: str, ids: list[str]) -> None: ...
     def list_ids(self, namespace: str) -> Iterator[str]: ...
+    def search(
+        self, namespace: str, text: str, top_k: int, rerank_model: str, top_n: int
+    ) -> list[Hit]: ...
 
 
 class PineconeStore:
@@ -49,6 +59,19 @@ class PineconeStore:
         for page in self.index.list(namespace=namespace, limit=100):
             for vector in page.vectors:
                 yield vector.id
+
+    def search(
+        self, namespace: str, text: str, top_k: int, rerank_model: str, top_n: int
+    ) -> list[Hit]:
+        """Embed the text in Pinecone, take the top_k nearest, rerank them to top_n."""
+        response = self.index.search(
+            namespace=namespace,
+            top_k=top_k,
+            inputs={"text": text},
+            fields=["file_id"],
+            rerank={"model": rerank_model, "rank_fields": ["text"], "top_n": top_n},
+        )
+        return [Hit(hit.id, float(hit.score)) for hit in response.result.hits]
 
     def ensure_index(self, cloud: str, region: str, embed_model: str) -> str:
         """Create the index with integrated embedding if it doesn't exist. Returns a summary."""

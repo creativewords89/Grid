@@ -365,3 +365,111 @@ class KbOp(TimestampMixin, Base):
         Index("ix_kb_ops_pending", "seq", postgresql_where=text("state = 'pending'")),
         Index("ix_kb_ops_file_id", "file_id"),
     )
+
+
+class Conversation(TimestampMixin, Base):
+    __tablename__ = "conversations"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(String(200))
+    last_message_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    messages: Mapped[list["Message"]] = relationship(
+        back_populates="conversation",
+        order_by="Message.position",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+    __table_args__ = (Index("ix_conversations_user_last", "user_id", "last_message_at"),)
+
+    @property
+    def owner_ids(self) -> frozenset[uuid.UUID]:
+        return frozenset({self.user_id})
+
+
+class MessageRole(enum.StrEnum):
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
+class AnswerKind(enum.StrEnum):
+    CHAT = "chat"
+    MARKETING = "marketing"
+
+
+class AnswerOutcome(enum.StrEnum):
+    NO_ANSWER = "no_answer"
+    LOW = "low"
+    HIGH = "high"
+
+
+class AnswerStatus(enum.StrEnum):
+    AUTO = "auto"
+    IN_REVIEW = "in_review"
+    NEEDS_INFO = "needs_info"
+    VERIFIED = "verified"
+    CORRECTED = "corrected"
+    WRONG_NO_ANSWER = "wrong_no_answer"
+
+
+class Answer(TimestampMixin, Base):
+    """Every answer the engine gives, kept for the Answer Log (SPEC sections 5 and 7.5)."""
+
+    __tablename__ = "answers"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    kind: Mapped[AnswerKind] = mapped_column(_enum(AnswerKind, "answer_kind"))
+    asked_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("conversations.id", ondelete="SET NULL")
+    )
+    question: Mapped[str] = mapped_column(Text)
+    retrieval_query: Mapped[str] = mapped_column(Text)
+    original_text: Mapped[str] = mapped_column(Text)
+    current_text: Mapped[str] = mapped_column(Text)
+    sources: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, server_default="[]")
+    confidence: Mapped[int | None] = mapped_column(Integer)
+    confidence_parts: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    outcome: Mapped[AnswerOutcome | None] = mapped_column(_enum(AnswerOutcome, "answer_outcome"))
+    status: Mapped[AnswerStatus] = mapped_column(
+        _enum(AnswerStatus, "answer_status"), default=AnswerStatus.AUTO
+    )
+    flagged: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    flag_note: Mapped[str | None] = mapped_column(Text)
+    model: Mapped[str | None] = mapped_column(String(100))
+    usage: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
+    stop_reason: Mapped[str | None] = mapped_column(String(50))
+
+    __table_args__ = (Index("ix_answers_created_at", "created_at"),)
+
+    @property
+    def owner_ids(self) -> frozenset[uuid.UUID]:
+        return frozenset({self.asked_by}) if self.asked_by else frozenset()
+
+
+class Message(TimestampMixin, Base):
+    __tablename__ = "messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE")
+    )
+    role: Mapped[MessageRole] = mapped_column(_enum(MessageRole, "message_role"))
+    # The user's text; for an assistant message a copy of answers.current_text.
+    body: Mapped[str] = mapped_column(Text)
+    answer_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("answers.id", ondelete="SET NULL")
+    )
+    position: Mapped[int] = mapped_column(Integer)
+
+    conversation: Mapped[Conversation] = relationship(back_populates="messages")
+    answer: Mapped[Answer | None] = relationship()
+
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "position", name="uq_messages_conversation_position"),
+    )

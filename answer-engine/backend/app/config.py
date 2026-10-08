@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     # warning instead of being read.
     anthropic_api_key: str = ""
     ocr_model: str = "claude-opus-5-5"
+    answer_model: str = "claude-opus-5-5"
+    rewrite_model: str = "claude-opus-5-5"
 
     # Pinecone (SPEC section 6.3). Without a key, changes wait in the outbox (kb_ops).
     pinecone_api_key: str = ""

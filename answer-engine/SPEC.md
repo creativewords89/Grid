@@ -227,13 +227,14 @@ Postgres is the master copy and Pinecone is the search copy. **No code calls Pin
 
 ### 6.5 Answering a question
 
-1. **Conversation context:** the last 10 messages of the conversation are used, with **corrected** answers in place of the originals.
+1. **Conversation context:** the last 10 messages of the conversation are used, with **corrected** answers in place of the originals. Old `[n]` markers are stripped from earlier answers (their numbers belonged to another set of documents), and the turns always start with the person and alternate. A new conversation's title is its first question (up to 80 characters).
 2. **Retrieval query:** for a follow-up question, Claude rewrites it into a standalone question (for example "and for the second plan?" becomes "What does the Pro local SEO plan include?"). A first question is used as is. The query is stored as `answers.retrieval_query`.
 3. **Search:**
    - `verified`: top 3. If the best match has a rerank score ≥ **0.90** (setting `verified_match`), it is a **verified hit**.
    - `docs`: top 20 by vector search, reranked to the top 8. Results below a rerank score of **0.20** (setting `min_relevance`) are dropped.
-   - Items that are deleted, disabled or pending deletion in Postgres are dropped (section 6.4).
-4. **No relevant items** (nothing left after step 3): the outcome is `no_answer`. The reply is "I couldn't find this in the knowledge base." A review is created (reason `no_answer`), and the user sees "🟠 Sent to our team. We'll notify you when there's an answer."
+   - Items that are deleted, disabled or pending deletion in Postgres are dropped (section 6.4). The text sent to Claude is Postgres's master copy of each chunk, never Pinecone's.
+   - *Built in step 8:* the `docs` search. The `verified` search starts in step 11, when verified answers exist.
+4. **No relevant items** (nothing left after step 3): the outcome is `no_answer`. The reply is "I couldn't find this in the knowledge base." A review is created (reason `no_answer`), and the user sees "🟠 Sent to our team. We'll notify you when there's an answer." Claude is not called. *Step 8 saves the answer with outcome `no_answer`; the review and the 🟠 label come with steps 10–11.*
 5. **Answer:** Claude is called with streaming (section 9.2). The context blocks are numbered `[1]…[n]`, and verified answers are marked as *team-verified*. The rules given to Claude:
    - Answer only from the context.
    - A team-verified answer overrides document text when they conflict.
@@ -241,8 +242,9 @@ Postgres is the master copy and Pinecone is the search copy. **No code calls Pin
    - Say plainly when the context only partly answers the question.
    - Never invent prices, dates, names or numbers.
    - Use plain English and short paragraphs.
-6. **Sources:** the `[n]` markers are mapped to `answers.sources`. The UI shows them as chips (e.g. `Pricing.pdf · p.2`, `Fees 2026.xlsx · March`, `✔ Verified answer`). Clicking a document chip opens the original file at that page.
+6. **Sources:** the `[n]` markers are mapped to `answers.sources` (only the items actually cited, in the order of their numbers; the chip keeps the number used in the text). The UI shows them as chips (e.g. `Pricing.pdf · p.2`, `Fees 2026.xlsx · March`, `✔ Verified answer`). Clicking a document chip opens the original file at that page.
 7. **Confidence** (section 6.6) is calculated after the answer finishes streaming, and the badge appears about a second later.
+8. **Failures:** if Pinecone or Claude fails, the question is withdrawn (its message is deleted) and the person sees "The answer service is busy, please try again" with **Try again**. If the person closes the page mid-answer, the text so far is saved with `stop_reason` `client_closed`. If a fallback model took over or the answer was declined, a `replace` event swaps the streamed text for the saved final text.
 
 ### 6.6 Confidence score
 
@@ -405,6 +407,7 @@ A clean, simple layout. Left sidebar: **Ask**, **Documents**, **Marketing**, **V
 - **Messages:** answers stream in, with source chips under each answer, 👍/👎, **Copy**, and the confidence badge only when it is low or no-answer. Labels follow section 6.8.
 - **Needs info:** a reviewer's question appears in the chat as a highlighted card with a reply box.
 - **Empty state:** "Ask anything about GridRankers' documents."
+- *Built in step 8:* the conversation list (search, **+ New chat**, delete with confirm; the open conversation is in the URL as `?c=<id>`), streamed Markdown answers (raw HTML is never rendered; links open in a new tab), source chips that open the file at its page, **Copy**, and **Try again** after an error. Enter sends; Shift+Enter adds a new line. 👍/👎 and the badge come in step 9, the dot and Needs info in steps 10–11.
 
 ### 7.2 Documents
 - **Upload area:** drag and drop or browse, accepting several files.
@@ -460,7 +463,7 @@ Every route checks the session, the CSRF token (for writes) and `permissions.can
 |---|---|
 | Auth | `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/forgot`, `POST /auth/reset`, `POST /auth/accept-invite` |
 | Conversations | `GET /conversations`, `POST /conversations`, `GET /conversations/{id}` (messages + answers), `DELETE /conversations/{id}` |
-| Ask | `POST /conversations/{id}/ask` → **SSE** stream: `delta` events, then `sources`, then `confidence`, then `done` |
+| Ask | `POST /conversations/{id}/ask` `{question}` → **SSE** stream: `delta` events (`{text}`), an optional `replace` (`{text}`, the final text), then `sources`, then `confidence` (step 9), then `done` (`{answer_id, outcome, stop_reason}`); or `error` (`{message}`). `503 not_configured` while the Anthropic or Pinecone key is missing |
 | Answers | `POST /answers/{id}/feedback` `{value: up|down, note?}`, `POST /answers/{id}/needs-info-reply` |
 | Files | `GET /files`, `POST /files` (multipart), `POST /files/{id}/version`, `POST /files/{id}/retry`, `GET /files/{id}/download`, `DELETE /files/{id}` |
 | Reviews | `GET /reviews`, `GET /reviews/{id}`, `POST /reviews/{id}/claim`, `POST /reviews/{id}/decide` `{action: approve|edit|reject|needs_info|no_answer, text?, note?, add_to_kb?}` |
@@ -499,6 +502,8 @@ Every route checks the session, the CSRF token (for writes) and `permissions.can
 - `messages.stream(...)`, `max_tokens` 4000 (answers) / 1500 (drafts).
 - The system prompt is frozen text with no dates or user names, so **prompt caching** works: `cache_control` is set on the system block. Retrieved context and the question go after the cache breakpoint. `usage.cache_read_input_tokens` is logged.
 - The answer text streams to the browser as SSE `delta` events.
+- The follow-up rewrite is a separate, non-streamed call (`max_tokens` 300, effort `low`). A refused or empty rewrite falls back to the question as asked.
+- Each answer's `usage` (requests, tokens, cache reads, cost, and the chunk IDs given to Claude) is saved on `answers.usage` and added to the daily usage totals.
 
 ### 9.3 Support check (structured output)
 

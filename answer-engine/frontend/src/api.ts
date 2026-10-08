@@ -85,6 +85,99 @@ export type KbStatus = {
   } | null;
 };
 
+export type Source = {
+  n: number;
+  kind: "doc" | "verified";
+  ref_id: string;
+  file_id: string;
+  file_name: string;
+  label: string;
+  page: number | null;
+  sheet: string | null;
+  score: number;
+};
+
+export type Conversation = { id: string; title: string; last_message_at: string };
+
+export type ChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  body: string;
+  created_at: string;
+  answer: {
+    id: string;
+    sources: Source[];
+    outcome: "no_answer" | "low" | "high" | null;
+    status: string;
+    stop_reason: string | null;
+    corrected: boolean;
+  } | null;
+};
+
+export type ConversationDetail = Conversation & { messages: ChatMessage[] };
+
+export type AskHandlers = {
+  onDelta: (text: string) => void;
+  onReplace: (text: string) => void;
+  onSources: (sources: Source[]) => void;
+  onDone: (done: { answer_id: string; outcome: string | null; stop_reason: string | null }) => void;
+  onError: (message: string) => void;
+};
+
+/** Stream an answer: the server sends `event: name` / `data: json` blocks. */
+async function askStream(chatId: string, question: string, on: AskHandlers): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch(`/api/conversations/${chatId}/ask`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+        "X-CSRF-Token": csrfToken,
+      },
+      body: JSON.stringify({ question }),
+    });
+  } catch {
+    on.onError("The server can't be reached. Check your connection.");
+    return;
+  }
+  if (!response.ok || !response.body) {
+    const data: unknown = await response.json().catch(() => null);
+    on.onError(toApiError(response.status, data).message);
+    return;
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const handle = (block: string) => {
+    let name = "";
+    let data = "";
+    for (const line of block.split("\n")) {
+      if (line.startsWith("event: ")) name = line.slice(7);
+      else if (line.startsWith("data: ")) data += line.slice(6);
+    }
+    if (!name || !data) return;
+    const payload = JSON.parse(data);
+    if (name === "delta") on.onDelta(payload.text);
+    else if (name === "replace") on.onReplace(payload.text);
+    else if (name === "sources") on.onSources(payload.sources);
+    else if (name === "done") on.onDone(payload);
+    else if (name === "error") on.onError(payload.message);
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let end: number;
+    while ((end = buffer.indexOf("\n\n")) >= 0) {
+      handle(buffer.slice(0, end));
+      buffer = buffer.slice(end + 2);
+    }
+  }
+  if (buffer.trim()) handle(buffer);
+}
+
 export type Health = { status: "ok" | "error"; version: string; checks: Record<string, string> };
 
 export class ApiError extends Error {
@@ -232,6 +325,12 @@ export const api = {
   listTrash: () => request<TrashItem[]>("GET", "/trash"),
   restoreTrash: (id: string) => request<void>("POST", `/trash/${id}/restore`),
   purgeTrash: (id: string) => request<void>("DELETE", `/trash/${id}`),
+
+  listConversations: () => request<Conversation[]>("GET", "/conversations"),
+  createConversation: () => request<Conversation>("POST", "/conversations", {}),
+  getConversation: (id: string) => request<ConversationDetail>("GET", `/conversations/${id}`),
+  deleteConversation: (id: string) => request<void>("DELETE", `/conversations/${id}`),
+  ask: askStream,
 
   kbStatus: () => request<KbStatus>("GET", "/kb/status"),
   kbRebuild: () => request<{ message: string }>("POST", "/kb/rebuild"),

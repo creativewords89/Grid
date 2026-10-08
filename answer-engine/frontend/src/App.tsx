@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AuthProvider, useAuth } from "./auth";
+import { Ask } from "./pages/Ask";
 import { Documents } from "./pages/Documents";
 import { Forgot } from "./pages/Forgot";
 import { Placeholder } from "./pages/Placeholder";
@@ -12,7 +13,6 @@ import { usePath } from "./router";
 import { Shell } from "./Shell";
 
 const PLACEHOLDERS: Record<string, [string, number]> = {
-  "/": ["Ask", 8],
   "/marketing": ["Marketing", 13],
   "/verified": ["Verified Answers", 11],
   "/reviews": ["Review Queue", 10],
@@ -33,10 +33,11 @@ function Routes() {
   if (path === "/users" && user.role === "owner") page = <Users />;
   else if (path === "/profile") page = <Profile />;
   else if (path === "/documents") page = <Documents />;
+  else if (path === "/") page = <Ask />;
   else if (path === "/settings" && user.role === "owner") page = <Settings />;
   else {
-    const [title, step] = PLACEHOLDERS[path] ?? PLACEHOLDERS["/"]!;
-    page = <Placeholder title={title} step={step} />;
+    const known = PLACEHOLDERS[path];
+    page = known ? <Placeholder title={known[0]} step={known[1]} /> : <Ask />;
   }
   return <Shell path={path}>{page}</Shell>;
 }
