@@ -22,15 +22,28 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from app.auth.passwords import hash_password
+from app.config import get_settings
 from app.db.base import Base
 from app.db.models import Role, User
 from app.db.session import get_session
+from app.jobs import handlers  # noqa: F401  (registers every job type)
+from app.jobs.queue import run_next
 from app.mail import get_mailer
 from app.main import create_app
 
 DEFAULT_SERVER_URL = "postgresql+psycopg://answers:answers@localhost:5432/postgres"
 BACKEND = Path(__file__).resolve().parent.parent
 PASSWORD = "correct horse battery staple"
+
+
+@pytest.fixture(autouse=True)
+def upload_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+    """Every test stores uploads in its own temporary folder."""
+    folder = tmp_path / "uploads"
+    monkeypatch.setenv("UPLOAD_DIR", str(folder))
+    get_settings.cache_clear()
+    yield folder
+    get_settings.cache_clear()
 
 
 @contextmanager
@@ -174,3 +187,19 @@ def sign_in(client: TestClient, email: str, password: str = PASSWORD) -> dict[st
     body: dict[str, object] = response.json()
     client.headers["X-CSRF-Token"] = str(body["csrf_token"])
     return body
+
+
+RunJobs = Callable[[], int]
+
+
+@pytest.fixture
+def run_jobs(clean_engine: Engine) -> RunJobs:
+    """Run every due job, like the worker would. Returns how many ran."""
+
+    def run() -> int:
+        count = 0
+        while run_next(lambda: Session(clean_engine, expire_on_commit=False), "test-worker"):
+            count += 1
+        return count
+
+    return run

@@ -6,6 +6,7 @@ from fastapi import APIRouter
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app import audit
 from app.api.schemas import InviteIn, InviteOut, LinkOut, UserOut, UserPatchIn
 from app.auth import sessions, tokens
 from app.auth.deps import CurrentUser, Db
@@ -53,6 +54,15 @@ def invite(body: InviteIn, me: CurrentUser, db: Db, mailer: MailerDep) -> Invite
     user = User(name=body.name, email=body.email, role=body.role)
     db.add(user)
     db.flush()
+    audit.record(
+        db,
+        me,
+        "invite",
+        "user",
+        user.id,
+        user.name,
+        [{"field": "role", "from": None, "to": user.role.value}],
+    )
     result = _send_invite(db, mailer, user, me)
     return InviteOut(user=UserOut.of(user), **result.model_dump())
 
@@ -107,12 +117,18 @@ def update_user(user_id: uuid.UUID, body: UserPatchIn, me: CurrentUser, db: Db) 
         if len(owners) <= 1:
             raise ApiError(409, "last_owner", "There must always be at least one active Owner.")
 
+    before = {"name": user.name, "role": user.role.value, "active": user.active}
     if body.name is not None:
         user.name = body.name
     user.role = new_role
     if user.active and not new_active:
         sessions.revoke_all(db, user.id)
     user.active = new_active
+    changes = audit.diff(
+        before, {"name": user.name, "role": user.role.value, "active": user.active}
+    )
+    if changes:
+        audit.record(db, me, "edit", "user", user.id, user.name, changes)
     db.commit()
     db.refresh(user)
     return UserOut.of(user)

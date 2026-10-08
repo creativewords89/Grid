@@ -147,9 +147,9 @@ All tables have `id` (UUID v7 unless stated), `created_at` and `updated_at` (`ti
 | `communities` | platform_id, name (e.g. `r/SEO`), notes TEXT (e.g. "no links") |
 | `notifications` | user_id, kind (answer_reviewed, needs_info, thread_draft_ready, reply_corrected_after_post, …), ref_kind, ref_id, title, body, read_at NULL |
 | `kb_ops` | outbox for Pinecone (section 6.4): op ENUM(upsert, delete), namespace, record_ids TEXT[], payload JSONB NULL, state ENUM(pending, done, failed), attempts, next_attempt_at, last_error |
-| `jobs` | kind, payload JSONB, state ENUM(queued, running, done, failed), attempts, run_after, locked_by, locked_at, last_error |
+| `jobs` | kind, payload JSONB, state ENUM(queued, running, done, failed), attempts, run_after, locked_by, locked_at, last_error, dedupe_key UNIQUE NULL (scheduled jobs use `kind:YYYY-MM-DD` so each runs once per slot) |
 | `trash` | kind ENUM(file, verified_answer, thread, conversation), ref_id, title, data JSONB, deleted_by, deleted_at. Purged after 30 days. |
-| `audit` | actor_id NULL (system), action, entity, entity_id, changes JSONB `[{field, from, to}]`, at |
+| `audit` | actor_id NULL (system), action, entity, entity_id, title (what it was called at the time), changes JSONB `[{field, from, to}]`, at |
 | `settings` | key, value JSONB (defaults in section 10) |
 | `usage_daily` | date, user_id, kind ENUM(answer, check, ocr, draft), requests, tokens_in, tokens_out, cost_usd |
 
@@ -363,7 +363,7 @@ Sources: [1] Onboarding.pdf p.3
 
 ### 6.12 Jobs, trash and audit
 
-- **Jobs:** the worker claims jobs with `SELECT … FOR UPDATE SKIP LOCKED`. Up to 3 attempts with backoff, then `failed`, shown in Settings → System. Scheduled jobs:
+- **Jobs:** the worker claims jobs with `SELECT … FOR UPDATE SKIP LOCKED`. Up to 3 attempts (retried after 10 s, then 1 min), then `failed`, shown in Settings → System. A job left `running` for 15 minutes (its worker died) counts as a failed attempt. Done jobs are kept 14 days, failed ones 90. Scheduled jobs (times in UTC, the containers' clock):
 
 | Job | Schedule |
 |---|---|
@@ -397,6 +397,8 @@ A clean, simple layout. Left sidebar: **Ask**, **Documents**, **Marketing**, **V
 - **Columns:** Name, Type, Pages/Sheets, Status (Queued / Processing x/y / Ready / Failed + reason / Sync pending), Uploaded by, Date.
 - **Row actions:** Open, Upload new version, Retry (if failed), Delete.
 - **Filters:** search and type filter. Shows the total pages and the OCR pages used this month.
+- **Uploading:** one file per request (with a progress bar), so Caddy can cap request bodies at 210 MB; the app enforces the real per-file limit.
+- **Trash tab** (Owner only): deleted files with who deleted them, when they will be removed for good, and Restore / Delete forever.
 
 ### 7.3 Marketing
 - **Top:** the **Paste a Reddit or Facebook URL** box (section 6.10).

@@ -3,8 +3,22 @@
 import enum
 import uuid
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Enum, ForeignKey, Index, String, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    func,
+    text,
+)
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -109,3 +123,145 @@ class LoginAttempt(Base):
     ok: Mapped[bool] = mapped_column(Boolean)
 
     __table_args__ = (Index("ix_login_attempts_email_ip_at", "email", "ip", "at"),)
+
+
+class FileStatus(enum.StrEnum):
+    QUEUED = "queued"
+    PROCESSING = "processing"
+    READY = "ready"
+    FAILED = "failed"
+
+
+class StoredFile(TimestampMixin, Base):
+    """An uploaded document (SPEC sections 5 and 6.1). Named StoredFile to avoid `file`."""
+
+    __tablename__ = "files"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    name: Mapped[str] = mapped_column(String(255))
+    mime: Mapped[str] = mapped_column(String(100))
+    size: Mapped[int] = mapped_column(BigInteger)
+    sha256: Mapped[str] = mapped_column(String(64))
+    storage_path: Mapped[str] = mapped_column(String(255))
+    status: Mapped[FileStatus] = mapped_column(
+        _enum(FileStatus, "file_status"), default=FileStatus.QUEUED
+    )
+    error: Mapped[str | None] = mapped_column(Text)
+    page_count: Mapped[int | None] = mapped_column(Integer)
+    chunk_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    ocr_pages: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    previous_file_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("files.id", ondelete="SET NULL")
+    )
+    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    uploader: Mapped[User | None] = relationship(foreign_keys=[uploaded_by])
+
+    __table_args__ = (
+        # One live copy of any file; a deleted copy may be uploaded again.
+        Index(
+            "uq_files_sha256_live",
+            "sha256",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+        Index("ix_files_created_at", "created_at"),
+    )
+
+    @property
+    def owner_ids(self) -> frozenset[uuid.UUID]:
+        return frozenset({self.uploaded_by}) if self.uploaded_by else frozenset()
+
+
+class JobState(enum.StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+
+
+class Job(TimestampMixin, Base):
+    """Background work run by the worker (SPEC section 6.12)."""
+
+    __tablename__ = "jobs"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    kind: Mapped[str] = mapped_column(String(64))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
+    state: Mapped[JobState] = mapped_column(_enum(JobState, "job_state"), default=JobState.QUEUED)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    run_after: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    locked_by: Mapped[str | None] = mapped_column(String(100))
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    # Scheduled jobs use e.g. "trash_purge:2026-10-08" so each runs once per slot.
+    dedupe_key: Mapped[str | None] = mapped_column(String(100), unique=True)
+
+    __table_args__ = (
+        Index(
+            "ix_jobs_ready",
+            "run_after",
+            postgresql_where=text("state = 'queued'"),
+        ),
+    )
+
+
+class TrashKind(enum.StrEnum):
+    FILE = "file"
+    VERIFIED_ANSWER = "verified_answer"
+    THREAD = "thread"
+    CONVERSATION = "conversation"
+
+
+class TrashItem(Base):
+    __tablename__ = "trash"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    kind: Mapped[TrashKind] = mapped_column(_enum(TrashKind, "trash_kind"))
+    ref_id: Mapped[uuid.UUID]
+    title: Mapped[str] = mapped_column(String(255))
+    data: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    deleter: Mapped[User | None] = relationship()
+
+    __table_args__ = (Index("uq_trash_kind_ref_id", "kind", "ref_id", unique=True),)
+
+
+class AuditEntry(Base):
+    __tablename__ = "audit"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    action: Mapped[str] = mapped_column(String(50))
+    entity: Mapped[str] = mapped_column(String(50))
+    entity_id: Mapped[str | None] = mapped_column(String(100))
+    title: Mapped[str | None] = mapped_column(String(255))
+    changes: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, server_default="[]")
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    actor: Mapped[User | None] = relationship()
+
+    __table_args__ = (
+        Index("ix_audit_at", "at"),
+        Index("ix_audit_entity", "entity", "entity_id"),
+    )
+
+
+class Setting(Base):
+    """Owner-editable settings (SPEC section 10). Missing keys use the defaults in code."""
+
+    __tablename__ = "settings"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[Any] = mapped_column(JSONB)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

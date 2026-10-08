@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AuthProvider, useAuth } from "./auth";
+import { Documents } from "./pages/Documents";
 import { Forgot } from "./pages/Forgot";
 import { Placeholder } from "./pages/Placeholder";
 import { Profile } from "./pages/Profile";
@@ -11,7 +12,6 @@ import { Shell } from "./Shell";
 
 const PLACEHOLDERS: Record<string, [string, number]> = {
   "/": ["Ask", 8],
-  "/documents": ["Documents", 3],
   "/marketing": ["Marketing", 13],
   "/verified": ["Verified Answers", 11],
   "/reviews": ["Review Queue", 10],
@@ -32,6 +32,7 @@ function Routes() {
   let page;
   if (path === "/users" && user.role === "owner") page = <Users />;
   else if (path === "/profile") page = <Profile />;
+  else if (path === "/documents") page = <Documents />;
   else {
     const [title, step] = PLACEHOLDERS[path] ?? PLACEHOLDERS["/"]!;
     page = <Placeholder title={title} step={step} />;

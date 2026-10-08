@@ -15,6 +15,11 @@
 
 	handle /api/* {
 		header Cache-Control "no-store"
+		# Coarse guard only: the app enforces the real per-file limit (setting max_upload_mb).
+		# The Documents screen sends one file per request.
+		request_body {
+			max_size 210MB
+		}
 		# flush_interval -1 streams answers (SSE) to the browser without buffering.
 		reverse_proxy api:8000 {
 			flush_interval -1

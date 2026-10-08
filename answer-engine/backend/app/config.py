@@ -17,6 +17,9 @@ class Settings(BaseSettings):
         description="SQLAlchemy URL, always the psycopg (v3) driver.",
     )
 
+    # Original uploads live here, under random names (SPEC section 2).
+    upload_dir: str = "/data/uploads"
+
     # Email (SPEC section 2). Empty SMTP_HOST means email is not configured: links are
     # logged and, where the Owner asked for them, returned to the Owner instead.
     smtp_host: str = ""

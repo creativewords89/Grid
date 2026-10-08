@@ -102,3 +102,40 @@ export function AuthCard({ title, children }: { title: string; children: ReactNo
     </main>
   );
 }
+
+export function Confirm({
+  title,
+  message,
+  confirmLabel,
+  danger = false,
+  onConfirm,
+  onClose,
+}: {
+  title: string;
+  message: ReactNode;
+  confirmLabel: string;
+  danger?: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <Modal title={title} onClose={onClose}>
+      <div className="stack">
+        <p className="muted">{message}</p>
+        <div className="modal-actions">
+          <button type="button" className="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className={`button ${danger ? "button-danger" : "button-primary"}`}
+            onClick={onConfirm}
+            autoFocus
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}

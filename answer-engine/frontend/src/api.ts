@@ -15,6 +15,48 @@ export type User = {
 };
 
 export type Me = { user: User; csrf_token: string };
+
+export type FileStatus = "queued" | "processing" | "ready" | "failed";
+export type FileTypeFilter = "pdf" | "word" | "excel" | "image";
+
+export type StoredFile = {
+  id: string;
+  name: string;
+  type: string;
+  mime: string;
+  size: number;
+  status: FileStatus;
+  error: string | null;
+  page_count: number | null;
+  chunk_count: number;
+  version: number;
+  previous_file_id: string | null;
+  uploaded_by: { id: string; name: string } | null;
+  created_at: string;
+  can_delete: boolean;
+};
+
+export type FileList = {
+  files: StoredFile[];
+  totals: { files: number; pages: number; ocr_pages_this_month: number };
+};
+
+export type UploadResult = {
+  name: string;
+  file: StoredFile | null;
+  error: { code: string; message: string } | null;
+};
+
+export type TrashItem = {
+  id: string;
+  kind: "file" | "verified_answer" | "thread" | "conversation";
+  ref_id: string;
+  title: string;
+  deleted_by: string | null;
+  deleted_at: string;
+  purge_at: string;
+  reason: string | null;
+};
 export type LinkResult = { email_sent: boolean; link: string | null };
 export type Health = { status: "ok" | "error"; version: string; checks: Record<string, string> };
 
@@ -33,6 +75,50 @@ let csrfToken = "";
 
 export function setCsrfToken(token: string) {
   csrfToken = token;
+}
+
+function toApiError(status: number, data: unknown): ApiError {
+  const error = (
+    data as { error?: { code?: string; message?: string; fields?: Record<string, string> } } | null
+  )?.error;
+  return new ApiError(
+    status,
+    error?.code ?? "error",
+    error?.message ?? `Something went wrong (${status}).`,
+    error?.fields ?? {},
+  );
+}
+
+/** POST a file with upload progress (fetch can't report it). */
+function sendFile<T>(path: string, field: string, file: File, onProgress?: (pct: number) => void) {
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `/api${path}`);
+    xhr.setRequestHeader("X-CSRF-Token", csrfToken);
+    xhr.setRequestHeader("Accept", "application/json");
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress)
+        onProgress(Math.round((event.loaded / event.total) * 100));
+    };
+    xhr.onerror = () =>
+      reject(
+        new ApiError(0, "network", "The upload stopped. Check your connection and try again."),
+      );
+    xhr.onload = () => {
+      let data: unknown = null;
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch {
+        // not JSON (e.g. the web server refused a huge upload)
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data as T);
+      else if (xhr.status === 413) reject(new ApiError(413, "too_large", "This file is too big."));
+      else reject(toApiError(xhr.status, data));
+    };
+    const form = new FormData();
+    form.append(field, file);
+    xhr.send(form);
+  });
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -92,6 +178,33 @@ export const api = {
   updateProfile: (name: string) => request<User>("PATCH", "/me", { name }),
   changePassword: (current_password: string, new_password: string) =>
     request<{ message: string }>("POST", "/me/password", { current_password, new_password }),
+
+  listFiles: (q = "", type: FileTypeFilter | "" = "") => {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (type) params.set("type", type);
+    const query = params.toString();
+    return request<FileList>("GET", `/files${query ? `?${query}` : ""}`);
+  },
+  uploadFile: async (file: File, onProgress?: (pct: number) => void): Promise<UploadResult> => {
+    const { results } = await sendFile<{ results: UploadResult[] }>(
+      "/files",
+      "files",
+      file,
+      onProgress,
+    );
+    return results[0]!;
+  },
+  newVersion: (id: string, file: File, onProgress?: (pct: number) => void) =>
+    sendFile<StoredFile>(`/files/${id}/version`, "file", file, onProgress),
+  retryFile: (id: string) => request<StoredFile>("POST", `/files/${id}/retry`),
+  deleteFile: (id: string) => request<void>("DELETE", `/files/${id}`),
+  fileUrl: (id: string, inline = false) =>
+    `/api/files/${id}/download${inline ? "?inline=true" : ""}`,
+
+  listTrash: () => request<TrashItem[]>("GET", "/trash"),
+  restoreTrash: (id: string) => request<void>("POST", `/trash/${id}/restore`),
+  purgeTrash: (id: string) => request<void>("DELETE", `/trash/${id}`),
 
   health: () => request<Health>("GET", "/health"),
 };
