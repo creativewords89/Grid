@@ -372,3 +372,104 @@ test("a question with no answer says the team will answer it", async () => {
     await screen.findByText("🟠 Sent to our team. We'll notify you when there's an answer."),
   ).toBeVisible();
 });
+
+test("a corrected answer shows the date, hides old sources and keeps the original", async () => {
+  mockApi({
+    "GET /auth/me": signedIn,
+    "GET /conversations": [200, [{ ...chat, updated: true }]],
+    "GET /conversations/c1": [
+      200,
+      {
+        ...chat,
+        updated_answer_ids: ["a1"],
+        messages: [
+          { id: "m1", role: "user", body: "Pro price?", created_at: "", answer: null },
+          {
+            id: "m2",
+            role: "assistant",
+            body: "Pro is $950 a month.",
+            created_at: "",
+            answer: {
+              id: "a1",
+              sources: [source],
+              outcome: "low",
+              status: "corrected",
+              stop_reason: "end_turn",
+              corrected: true,
+              confidence: 55,
+              feedback: null,
+              original_text: "Pro costs $900 [1].",
+              reviewed_at: "2026-10-09T10:00:00Z",
+            },
+          },
+          { id: "m3", role: "user", body: "And setup?", created_at: "", answer: null },
+          {
+            id: "m4",
+            role: "assistant",
+            body: "Setup is free.",
+            created_at: "",
+            answer: {
+              id: "a2",
+              sources: [],
+              outcome: "high",
+              status: "auto",
+              stop_reason: "end_turn",
+              corrected: false,
+              confidence: 90,
+              feedback: null,
+            },
+          },
+        ],
+      },
+    ],
+  });
+  render(<App />);
+
+  expect(await screen.findByLabelText("An answer was updated")).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: /^Pro plan price/ }));
+
+  expect(await screen.findByText(/✔ Corrected by our team · /)).toBeVisible();
+  // The only chips are the original's, inside "Show original".
+  const lists = screen.queryAllByRole("list", { name: "Sources" });
+  expect(lists.map((l) => l.closest("details.original") !== null)).toEqual([true]);
+  await userEvent.click(screen.getByText("Show original"));
+  expect(screen.getByText(/Pro costs \$900/)).toBeVisible();
+  expect(screen.getByText(/An answer above was corrected/)).toBeVisible();
+  expect(screen.getByRole("button", { name: "Jump to it" })).toBeVisible();
+  expect(screen.queryByLabelText("An answer was updated")).toBeNull();
+});
+
+test("a verified source links to the verified answer", async () => {
+  mockApi({
+    "GET /auth/me": signedIn,
+    "GET /conversations": [200, []],
+    "POST /conversations": [201, chat],
+    "POST /conversations/c1/ask": () =>
+      sse(
+        ["delta", { text: "Pro is $900 [1]." }],
+        [
+          "sources",
+          {
+            sources: [
+              {
+                ...source,
+                kind: "verified",
+                ref_id: "va_v1",
+                file_id: "",
+                file_name: "",
+                label: "✔ Verified answer",
+                page: null,
+              },
+            ],
+          },
+        ],
+        ["done", { answer_id: "a1", outcome: "high", status: "auto", stop_reason: "end_turn" }],
+      ),
+  });
+  render(<App />);
+
+  await userEvent.type(await screen.findByLabelText("Your question"), "Pro?{Enter}");
+
+  const chip = await screen.findByRole("link", { name: /Verified answer/ });
+  expect(chip).toHaveAttribute("href", "/verified?id=v1");
+});

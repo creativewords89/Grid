@@ -11,13 +11,13 @@ import { SetPassword } from "./pages/SetPassword";
 import { Settings } from "./pages/Settings";
 import { SignIn } from "./pages/SignIn";
 import { Users } from "./pages/Users";
+import { Verified } from "./pages/Verified";
 import { usePath } from "./router";
 import { reviewsChanged } from "./events";
 import { Shell } from "./Shell";
 
 const PLACEHOLDERS: Record<string, [string, number]> = {
   "/marketing": ["Marketing", 13],
-  "/verified": ["Verified Answers", 11],
 };
 
 function Routes() {
@@ -37,6 +37,7 @@ function Routes() {
   else if (path === "/") page = <Ask />;
   else if (path === "/settings" && user.role === "owner") page = <Settings />;
   else if (path === "/answer-log" && user.role !== "user") page = <AnswerLog />;
+  else if (path === "/verified") page = <Verified />;
   else if (path === "/reviews" && user.role !== "user")
     page = <ReviewQueue onChange={reviewsChanged} />;
   else {

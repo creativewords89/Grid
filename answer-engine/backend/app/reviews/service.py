@@ -9,6 +9,7 @@ same moment can't both get it. The caller commits.
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any, Literal
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
@@ -30,8 +31,12 @@ from app.db.models import (
     ReviewState,
     Role,
     User,
+    VerifiedAnswer,
+    VerifiedOrigin,
 )
 from app.jobs.queue import enqueue
+from app.kb.store import VectorStore
+from app.verified import service as verified
 
 ACTIONS = ("approve", "edit", "reject", "no_answer", "needs_info")
 NEEDS_TEXT = {"edit", "reject", "needs_info"}
@@ -43,11 +48,14 @@ NOTE_JOB = "telegram_review_note"
 
 
 class ReviewError(Exception):
-    def __init__(self, status: int, code: str, message: str) -> None:
+    def __init__(
+        self, status: int, code: str, message: str, details: dict[str, Any] | None = None
+    ) -> None:
         super().__init__(message)
         self.status = status
         self.code = code
         self.message = message
+        self.details = details
 
 
 def reason_label(review: Review) -> str:
@@ -140,6 +148,18 @@ class Decision:
     note: str | None = None
     # False when the reviewer wrote it in the Telegram group already, so it isn't repeated.
     post_to_group: bool = True
+    # When a verified answer to the same question exists: "ask" (the web asks the reviewer)
+    # or "update" (Telegram updates it and says so). The reviewer's choice comes back as
+    # verified_choice: "new" or "update:<id>".
+    on_duplicate: Literal["ask", "update"] = "ask"
+    verified_choice: str | None = None
+
+
+@dataclass(frozen=True)
+class Decided:
+    review: Review
+    verified: VerifiedAnswer | None = None
+    merged: bool = False  # an existing verified answer was updated instead of adding one
 
 
 def _set_answer_text(db: Session, answer: Answer, text: str) -> None:
@@ -148,7 +168,60 @@ def _set_answer_text(db: Session, answer: Answer, text: str) -> None:
     db.execute(update(Message).where(Message.answer_id == answer.id).values(body=text))
 
 
-def decide(db: Session, review_id: uuid.UUID, user: User, decision: Decision) -> Review:
+def decide(
+    db: Session,
+    review_id: uuid.UUID,
+    user: User,
+    decision: Decision,
+    store: VectorStore | None = None,
+) -> Review:
+    return decide_full(db, review_id, user, decision, store).review
+
+
+def _target(
+    db: Session, answer: Answer, decision: Decision, store: VectorStore | None
+) -> tuple[VerifiedAnswer | None, bool]:
+    """Which verified answer a decision should update (None = add a new one), checked
+    before anything changes, so asking the reviewer leaves the review as it was."""
+    own = verified.for_answer(db, answer)
+    if own is not None:
+        return own, False
+    choice = decision.verified_choice or ""
+    if choice == "new":
+        return None, False
+    if choice.startswith("update:"):
+        try:
+            chosen_id = uuid.UUID(choice.removeprefix("update:"))
+        except ValueError:
+            raise ReviewError(422, "invalid", "Unknown verified answer.") from None
+        chosen = db.get(VerifiedAnswer, chosen_id)
+        if chosen is None or chosen.deleted_at is not None:
+            raise ReviewError(404, "not_found", "That verified answer no longer exists.")
+        return chosen, True
+    duplicate = verified.find_duplicate(db, store, answer.retrieval_query or answer.question)
+    if duplicate is None:
+        return None, False
+    if decision.on_duplicate == "update":
+        return duplicate.verified, True
+    raise ReviewError(
+        409,
+        "duplicate",
+        "A verified answer to this question exists. Update it instead?",
+        {
+            "id": str(duplicate.verified.id),
+            "question": duplicate.verified.question,
+            "answer": duplicate.verified.answer,
+        },
+    )
+
+
+def decide_full(
+    db: Session,
+    review_id: uuid.UUID,
+    user: User,
+    decision: Decision,
+    store: VectorStore | None = None,
+) -> Decided:
     action = decision.action
     if action not in ACTIONS:
         raise ReviewError(422, "invalid", "Unknown action.")
@@ -187,7 +260,11 @@ def decide(db: Session, review_id: uuid.UUID, user: User, decision: Decision) ->
         if decision.post_to_group:
             enqueue(db, NOTE_JOB, {"review_id": str(review.id), "message_id": str(question.id)})
         audit.record(db, user, "review_needs_info", "review", review.id, f"#R-{review.number}")
-        return review
+        return Decided(review)
+
+    target, merged = (None, False)
+    if action != "no_answer":
+        target, merged = _target(db, answer, decision, store)
 
     if action == "approve":
         review.state = ReviewState.APPROVED
@@ -203,6 +280,15 @@ def decide(db: Session, review_id: uuid.UUID, user: User, decision: Decision) ->
     review.note = note
     review.decided_by = user.id
     review.decided_at = now()
+    answer.delivered_at = review.decided_at  # the asker sees the change: the chat's dot
+    made: VerifiedAnswer | None = None
+    if action == "no_answer":
+        verified.withdraw_for_answer(db, answer, user)
+    else:
+        origin = (
+            VerifiedOrigin.ADMIN if review.reason == ReviewReason.ADMIN else VerifiedOrigin.REVIEW
+        )
+        made = verified.from_answer(db, answer, user, origin, update=target)
     audit.record(
         db,
         user,
@@ -213,7 +299,34 @@ def decide(db: Session, review_id: uuid.UUID, user: User, decision: Decision) ->
         [{"field": "status", "from": None, "to": answer.status.value}],
     )
     enqueue(db, UPDATE_JOB, {"review_id": str(review.id)})
-    return review
+    return Decided(review, made, merged)
+
+
+def admin_decide(
+    db: Session,
+    answer: Answer,
+    owner: User,
+    decision: Decision,
+    store: VectorStore | None = None,
+) -> Decided:
+    """The Owner reviews any answer from the Answer Log (SPEC 6.7). A review already waiting
+    for the answer is taken over (its Telegram card is updated); otherwise an Owner review is
+    opened and decided at once, without Telegram."""
+    if decision.action == "needs_info":
+        raise ReviewError(422, "invalid", "Approve, edit or reject the answer.")
+    review = db.scalar(
+        select(Review)
+        .where(Review.answer_id == answer.id, Review.state.in_(UNDECIDED))
+        .with_for_update()
+    )
+    if review is None:
+        review = Review(answer_id=answer.id, reason=ReviewReason.ADMIN)
+        db.add(review)
+    review.state = ReviewState.CLAIMED
+    review.claimed_by = owner.id
+    review.claimed_at = now()
+    db.flush()
+    return decide_full(db, review.id, owner, decision, store)
 
 
 def decided_line(db: Session, review: Review) -> str:

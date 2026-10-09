@@ -16,6 +16,7 @@ from app.errors import ApiError
 from app.files import sniff, storage
 from app.jobs.queue import enqueue
 from app.kb import outbox
+from app.verified import service as verified
 
 INGEST = "ingest_file"
 
@@ -137,6 +138,7 @@ def to_trash(db: Session, record: StoredFile, by: User | None, reason: str = "de
     """Soft-delete: it stops being used at once and can be restored for 30 days."""
     record.deleted_at = now()
     outbox.file_removed(db, record.id)
+    verified.flag_source_gone(db, record.id, record.name, replaced=reason == "replaced")
     db.add(
         TrashItem(
             kind=TrashKind.FILE,

@@ -3,12 +3,14 @@ import {
   api,
   ApiError,
   type AnswerStatus,
+  type DuplicateDetails,
   type Gap,
   type LogDetail,
   type LogFilters,
   type LogPage,
   type LogRow,
 } from "../api";
+import { DuplicatePrompt } from "../components/DuplicatePrompt";
 import { Markdown } from "../components/Markdown";
 import { Alert, Modal } from "../components/ui";
 import { formatDate, plural } from "../format";
@@ -238,7 +240,13 @@ function Answers() {
           </button>
         </div>
       )}
-      {open && <Detail id={open} onClose={() => setOpen(null)} />}
+      {open && (
+        <Detail
+          id={open}
+          onClose={() => setOpen(null)}
+          onChanged={() => setFilters((f) => ({ ...f }))}
+        />
+      )}
     </>
   );
 }
@@ -252,7 +260,15 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Detail({ id, onClose }: { id: string; onClose: () => void }) {
+function Detail({
+  id,
+  onClose,
+  onChanged,
+}: {
+  id: string;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
   const [answer, setAnswer] = useState<LogDetail | null>(null);
   const [error, setError] = useState("");
 
@@ -265,7 +281,7 @@ function Detail({ id, onClose }: { id: string; onClose: () => void }) {
   useEffect(load, [load]);
 
   return (
-    <Modal title="Answer" onClose={onClose}>
+    <Modal title="Answer" onClose={onClose} wide>
       {error && <Alert kind="error">{error}</Alert>}
       {answer && (
         <div className="stack answer-detail">
@@ -321,6 +337,15 @@ function Detail({ id, onClose }: { id: string; onClose: () => void }) {
               </ul>
             </div>
           )}
+          {answer.can_review && (
+            <OwnerReview
+              answer={answer}
+              onDone={() => {
+                load();
+                onChanged();
+              }}
+            />
+          )}
           {answer.reviews.length > 0 && (
             <div>
               <h4>Reviews</h4>
@@ -366,6 +391,132 @@ function Detail({ id, onClose }: { id: string; onClose: () => void }) {
         </div>
       )}
     </Modal>
+  );
+}
+
+type OwnerAction = "approve" | "edit" | "reject" | "no_answer";
+
+/** SPEC 7.5: the Owner can approve, correct or reject any answer, high or low. */
+function OwnerReview({ answer, onDone }: { answer: LogDetail; onDone: () => void }) {
+  const [mode, setMode] = useState<"edit" | "reject" | null>(null);
+  const [text, setText] = useState("");
+  const [note, setNote] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [duplicate, setDuplicate] = useState<{
+    details: DuplicateDetails;
+    retry: (choice: string) => void;
+  } | null>(null);
+
+  async function act(action: OwnerAction, withText?: string, choice?: string) {
+    setBusy(true);
+    setError("");
+    try {
+      await api.adminReview(answer.id, action, withText, note.trim() || undefined, choice);
+      setMode(null);
+      onDone();
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "duplicate" && err.details) {
+        setDuplicate({
+          details: err.details as DuplicateDetails,
+          retry: (picked) => void act(action, withText, picked),
+        });
+      } else {
+        setError(err instanceof ApiError ? err.message : "Something went wrong.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card stack owner-review">
+      <h4>Review this answer</h4>
+      {error && <Alert kind="error">{error}</Alert>}
+      <div className="row">
+        {answer.outcome !== "no_answer" && (
+          <button className="button" disabled={busy} onClick={() => void act("approve")}>
+            ✅ Approve
+          </button>
+        )}
+        <button
+          className="button"
+          disabled={busy}
+          onClick={() => {
+            setMode("edit");
+            setText(answer.current_text);
+          }}
+        >
+          ✏️ Edit
+        </button>
+        <button
+          className="button"
+          disabled={busy}
+          onClick={() => {
+            setMode("reject");
+            setText("");
+          }}
+        >
+          ❌ Reject
+        </button>
+      </div>
+      {mode && (
+        <form
+          className="stack"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void act(mode, text);
+          }}
+        >
+          <label htmlFor="owner-text">
+            {mode === "edit" ? "Corrected answer" : "The correct answer"}
+          </label>
+          <textarea
+            id="owner-text"
+            className="textarea"
+            rows={6}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+          <label htmlFor="owner-note">Note for the log (optional)</label>
+          <input
+            id="owner-note"
+            className="input"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+          <div className="row">
+            <button className="button button-primary" disabled={busy || !text.trim()}>
+              Save and tell {answer.asked_by?.name ?? "the asker"}
+            </button>
+            {mode === "reject" && (
+              <button
+                type="button"
+                className="button"
+                disabled={busy}
+                onClick={() => void act("no_answer")}
+              >
+                🚫 No answer known
+              </button>
+            )}
+            <button type="button" className="button" onClick={() => setMode(null)}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+      {duplicate && (
+        <DuplicatePrompt
+          details={duplicate.details}
+          onClose={() => setDuplicate(null)}
+          onChoose={(choice) => {
+            const retry = duplicate.retry;
+            setDuplicate(null);
+            retry(choice);
+          }}
+        />
+      )}
+    </div>
   );
 }
 

@@ -19,6 +19,9 @@ DEFAULTS: dict[str, Any] = {
     # Confidence (SPEC section 6.6)
     "confidence_threshold": 75,
     "confidence_weights": {"retrieval": 0.4, "support": 0.6},
+    # Verified answers (SPEC sections 6.5 and 6.9)
+    "verified_match": 0.90,
+    "verified_top_k": 3,
     # Reviews (SPEC section 6.7)
     "review_reminder_hours": 4,
     "review_escalation_hours": 24,

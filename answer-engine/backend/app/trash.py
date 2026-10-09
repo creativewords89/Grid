@@ -1,6 +1,6 @@
 """Trash (SPEC section 6.12): restore or delete forever, by kind of item.
 
-Files and conversations so far; verified answers and threads join in later steps.
+Files, conversations and verified answers; marketing threads join in step 13.
 """
 
 from collections.abc import Callable
@@ -11,8 +11,9 @@ from sqlalchemy.orm import Session
 
 from app import settings_store
 from app.auth.tokens import now
-from app.db.models import Conversation, StoredFile, TrashItem, TrashKind, User
+from app.db.models import Conversation, StoredFile, TrashItem, TrashKind, User, VerifiedAnswer
 from app.files import service as files
+from app.verified import service as verified
 
 Restore = Callable[[Session, TrashItem, User], None]
 Purge = Callable[[Session, TrashItem, User | None], None]
@@ -43,9 +44,22 @@ def _purge_conversation(db: Session, item: TrashItem, by: User | None) -> None:
         db.delete(conversation)
 
 
+def _restore_verified(db: Session, item: TrashItem, by: User) -> None:
+    va = db.get(VerifiedAnswer, item.ref_id)
+    if va is not None:
+        verified.restore(db, va, by)
+
+
+def _purge_verified(db: Session, item: TrashItem, by: User | None) -> None:
+    va = db.get(VerifiedAnswer, item.ref_id)
+    if va is not None:
+        verified.purge(db, va, by)
+
+
 HANDLERS: dict[TrashKind, tuple[Restore, Purge]] = {
     TrashKind.FILE: (_restore_file, _purge_file),
     TrashKind.CONVERSATION: (_restore_conversation, _purge_conversation),
+    TrashKind.VERIFIED_ANSWER: (_restore_verified, _purge_verified),
 }
 
 

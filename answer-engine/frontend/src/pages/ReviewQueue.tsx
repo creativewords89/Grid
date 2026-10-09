@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { api, ApiError, type ReviewAction, type ReviewDetail, type ReviewRow } from "../api";
+import {
+  api,
+  ApiError,
+  type DuplicateDetails,
+  type ReviewAction,
+  type ReviewDetail,
+  type ReviewRow,
+} from "../api";
+import { DuplicatePrompt } from "../components/DuplicatePrompt";
 import { Markdown } from "../components/Markdown";
 import { Alert } from "../components/ui";
 import { ago, formatDate } from "../format";
@@ -110,6 +118,10 @@ function Review({
   const [text, setText] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [duplicate, setDuplicate] = useState<{
+    details: DuplicateDetails;
+    retry: (choice: string) => void;
+  } | null>(null);
 
   const load = useCallback(() => {
     api
@@ -119,7 +131,7 @@ function Review({
   }, [id]);
   useEffect(load, [load]);
 
-  async function run(call: () => Promise<ReviewDetail>) {
+  async function run(call: () => Promise<ReviewDetail>, retry?: (choice: string) => void) {
     setBusy(true);
     setError("");
     try {
@@ -127,15 +139,22 @@ function Review({
       setMode(null);
       onChange();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong.");
-      load();
+      if (err instanceof ApiError && err.code === "duplicate" && retry && err.details) {
+        setDuplicate({ details: err.details as DuplicateDetails, retry });
+      } else {
+        setError(err instanceof ApiError ? err.message : "Something went wrong.");
+        load();
+      }
     } finally {
       setBusy(false);
     }
   }
 
-  const decide = (action: ReviewAction, withText?: string) =>
-    run(() => api.decideReview(id, action, withText, note.trim() || undefined));
+  const decide = (action: ReviewAction, withText?: string, choice?: string): Promise<void> =>
+    run(
+      () => api.decideReview(id, action, withText, note.trim() || undefined, choice),
+      (picked) => void decide(action, withText, picked),
+    );
 
   function choose(next: "edit" | "reject" | "needs_info") {
     setMode(next);
@@ -331,6 +350,17 @@ function Review({
             </div>
           )}
         </div>
+      )}
+      {duplicate && (
+        <DuplicatePrompt
+          details={duplicate.details}
+          onClose={() => setDuplicate(null)}
+          onChoose={(choice) => {
+            const retry = duplicate.retry;
+            setDuplicate(null);
+            retry(choice);
+          }}
+        />
       )}
     </>
   );

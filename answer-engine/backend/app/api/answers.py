@@ -3,16 +3,18 @@
 import uuid
 from typing import Annotated, Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, StringConstraints
 
+from app.api.conversations import store_dep
 from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
 from app.db.models import Answer
 from app.errors import ApiError
-from app.permissions import Action, can
+from app.kb.store import VectorStore
+from app.permissions import Action, can, ensure
 from app.reviews import service as reviews
-from app.reviews.service import ReviewError
+from app.reviews.service import Decision, ReviewError
 
 router = APIRouter(prefix="/answers", tags=["answers"])
 
@@ -68,3 +70,41 @@ def needs_info_reply(answer_id: uuid.UUID, body: ReplyIn, me: CurrentUser, db: D
         raise ApiError(error.status, error.code, error.message) from None
     db.commit()
     return ReplyOut(status=answer.status.value)
+
+
+class AdminReviewIn(Strict):
+    action: Literal["approve", "edit", "reject", "no_answer"]
+    text: Annotated[str, StringConstraints(max_length=20000)] | None = None
+    note: Annotated[str, StringConstraints(max_length=2000)] | None = None
+    verified_choice: Annotated[str, StringConstraints(max_length=60)] | None = None
+
+
+class AdminReviewOut(BaseModel):
+    status: str
+    current_text: str
+    review_number: int
+
+
+@router.post("/{answer_id}/admin-review", response_model=AdminReviewOut)
+def admin_review(
+    answer_id: uuid.UUID,
+    body: AdminReviewIn,
+    me: CurrentUser,
+    db: Db,
+    store: Annotated[VectorStore | None, Depends(store_dep)],
+) -> AdminReviewOut:
+    """The Owner approves, corrects or rejects any answer, high or low (SPEC 6.7, 7.5)."""
+    ensure(me, Action.ADMIN_REVIEW)
+    answer = get_answer(db, answer_id)
+    decision = Decision(body.action, body.text, body.note, verified_choice=body.verified_choice)
+    try:
+        done = reviews.admin_decide(db, answer, me, decision, store)
+    except ReviewError as error:
+        db.rollback()
+        raise ApiError(error.status, error.code, error.message, details=error.details) from None
+    db.commit()
+    return AdminReviewOut(
+        status=answer.status.value,
+        current_text=answer.current_text,
+        review_number=done.review.number,
+    )

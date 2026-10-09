@@ -18,6 +18,7 @@ import {
 } from "../api";
 import { Markdown } from "../components/Markdown";
 import { reviewsChanged } from "../events";
+import { formatDate } from "../format";
 import { Alert, Confirm } from "../components/ui";
 
 // Ask (SPEC section 7.1). Labels for reviewed answers follow SPEC section 6.8.
@@ -34,8 +35,29 @@ function setChatInUrl(id: string | null) {
 }
 
 function sourceHref(source: Source): string {
+  if (source.kind === "verified") return `/verified?id=${source.ref_id.replace(/^va_/, "")}`;
   const base = `/api/files/${source.file_id}/download?inline=true`;
   return source.page ? `${base}#page=${source.page}` : base;
+}
+
+function SourceChips({ sources }: { sources: Source[] }) {
+  if (sources.length === 0) return null;
+  return (
+    <ul className="sources" aria-label="Sources">
+      {sources.map((source) => (
+        <li key={source.n}>
+          <a
+            href={sourceHref(source)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`source-chip ${source.kind === "verified" ? "source-verified" : ""}`}
+          >
+            <span className="source-n">{source.n}</span> {source.label}
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 export function Ask() {
@@ -47,6 +69,7 @@ export function Ask() {
   const [loadError, setLoadError] = useState("");
   const [deleting, setDeleting] = useState<Conversation | null>(null);
   const [busy, setBusy] = useState(false);
+  const [updatedIds, setUpdatedIds] = useState<string[]>([]);
   const bottom = useRef<HTMLDivElement>(null);
   const counter = useRef(0);
   const skipLoad = useRef<string | null>(null);
@@ -65,7 +88,13 @@ export function Ask() {
     let current = true;
     api
       .getConversation(chatId)
-      .then((chat) => current && setMessages(chat.messages))
+      .then((chat) => {
+        if (!current) return;
+        setMessages(chat.messages);
+        setUpdatedIds(chat.updated_answer_ids ?? []);
+        // Opening the chat counts as seeing the update: drop its dot.
+        setChats((list) => list.map((c) => (c.id === chat.id ? { ...c, updated: false } : c)));
+      })
       .catch(() => {
         if (current) {
           setChatId(null);
@@ -223,6 +252,7 @@ export function Ask() {
                 }}
               >
                 {chat.title}
+                {chat.updated && <span className="dot" aria-label="An answer was updated" />}
               </button>
               <button
                 className="icon-button chat-delete"
@@ -268,6 +298,7 @@ export function Ask() {
               />
             ),
           )}
+          <UpdateNotice messages={messages} updatedIds={updatedIds} />
           <div ref={bottom} />
         </div>
         <Composer disabled={busy} onSend={(q) => void send(q)} />
@@ -311,35 +342,31 @@ function AnswerBubble({
       </div>
     );
   }
-  const sources = message.answer?.sources ?? [];
+  const answer = message.answer;
+  const changed = Boolean(answer?.original_text);
+  // A changed answer's chips belonged to the original; they show under "Show original".
+  const sources = changed ? [] : (answer?.sources ?? []);
   return (
-    <div className="bubble bubble-answer">
+    <div className="bubble bubble-answer" id={answer?.id ? `answer-${answer.id}` : undefined}>
       {message.body ? (
         <Markdown text={message.body} typing={message.streaming} />
       ) : (
         <p className="muted">Searching the documents…</p>
       )}
-      {sources.length > 0 && (
-        <ul className="sources" aria-label="Sources">
-          {sources.map((source) => (
-            <li key={source.n}>
-              <a
-                href={sourceHref(source)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="source-chip"
-              >
-                <span className="source-n">{source.n}</span> {source.label}
-              </a>
-            </li>
-          ))}
-        </ul>
-      )}
+      <SourceChips sources={sources} />
       {!message.streaming && message.answer && (
         <StatusLabel
           status={message.answer.status}
           noAnswer={message.answer.outcome === "no_answer"}
+          reviewedAt={message.answer.reviewed_at ?? null}
         />
+      )}
+      {changed && answer && (
+        <details className="original">
+          <summary>Show original</summary>
+          <Markdown text={answer.original_text ?? ""} />
+          <SourceChips sources={answer.sources} />
+        </details>
       )}
       {!message.streaming &&
         message.answer?.status === "needs_info" &&
@@ -388,10 +415,51 @@ const NO_ANSWER_LABEL: [string, string] = [
   "label-pending",
 ];
 
-function StatusLabel({ status, noAnswer }: { status: AnswerStatus; noAnswer: boolean }) {
+function StatusLabel({
+  status,
+  noAnswer,
+  reviewedAt,
+}: {
+  status: AnswerStatus;
+  noAnswer: boolean;
+  reviewedAt: string | null;
+}) {
   const label = noAnswer && status === "in_review" ? NO_ANSWER_LABEL : LABELS[status];
   if (!label) return null;
-  return <p className={`answer-label ${label[1]}`}>{label[0]}</p>;
+  const when = status === "corrected" && reviewedAt ? ` · ${formatDate(reviewedAt)}` : "";
+  return (
+    <p className={`answer-label ${label[1]}`}>
+      {label[0]}
+      {when}
+    </p>
+  );
+}
+
+/** SPEC 6.8: when an earlier answer was reviewed, say so at the end of the chat. */
+function UpdateNotice({ messages, updatedIds }: { messages: Shown[]; updatedIds: string[] }) {
+  const answers = messages.filter((m) => m.role === "assistant" && m.answer);
+  const last = answers.at(-1)?.answer?.id;
+  const earlier = answers.filter(
+    (m) => m.answer && updatedIds.includes(m.answer.id) && m.answer.id !== last,
+  );
+  const target = earlier[0]?.answer;
+  if (!target) return null;
+  const what = target.status === "verified" ? "checked by our team" : "corrected";
+  return (
+    <p className="update-notice">
+      🔔 An answer above was {what} —{" "}
+      <button
+        className="link-button"
+        onClick={() =>
+          document
+            .getElementById(`answer-${target.id}`)
+            ?.scrollIntoView?.({ behavior: "smooth", block: "center" })
+        }
+      >
+        Jump to it
+      </button>
+    </p>
+  );
 }
 
 function NeedsInfoCard({

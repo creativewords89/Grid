@@ -20,10 +20,11 @@ from sqlalchemy.orm import Session
 from app import settings_store
 from app.auth import tokens
 from app.db.models import AuthToken, Review, TokenKind, User
+from app.kb.store import get_store
 from app.permissions import Action, can
 from app.reviews import service
 from app.reviews.jobs import group_chat
-from app.reviews.service import Decision, ReviewError
+from app.reviews.service import Decided, Decision, ReviewError
 from app.reviews.telegram import Telegram, TelegramError, esc
 
 log = logging.getLogger(__name__)
@@ -92,9 +93,12 @@ def _button(db: Session, telegram: Telegram, query: dict[str, Any]) -> None:
     action = "no_answer" if parts[2] == "noanswer" else parts[2]
     try:
         if action in DONE_TOASTS:
-            service.decide(db, review_id, user, Decision(action))
+            done = service.decide_full(
+                db, review_id, user, Decision(action, on_duplicate="update"), get_store()
+            )
             db.commit()
             telegram.answer_callback(callback_id, DONE_TOASTS[action])
+            _say_merged(db, telegram, done)
         elif action in PROMPTS:
             _prompt(db, telegram, review_id, user, action)
             telegram.answer_callback(callback_id, "Reply to my message in the group.")
@@ -150,8 +154,15 @@ def _message(db: Session, telegram: Telegram, message: dict[str, Any]) -> None:
         return  # strangers in the group can't act; they get no reply in the group either
     action = review.prompt_action
     try:
-        service.decide(db, review.id, user, Decision(action, text, post_to_group=False))
+        done = service.decide_full(
+            db,
+            review.id,
+            user,
+            Decision(action, text, post_to_group=False, on_duplicate="update"),
+            get_store(),
+        )
         db.commit()
+        _say_merged(db, telegram, done)
     except ReviewError as error:
         db.rollback()
         telegram.send_message(chat["id"], esc(error.message), reply_to=message.get("message_id"))
@@ -159,6 +170,18 @@ def _message(db: Session, telegram: Telegram, message: dict[str, Any]) -> None:
     if action == "needs_info":
         telegram.send_message(
             chat["id"], "Sent. I'll post their reply here.", reply_to=message.get("message_id")
+        )
+
+
+def _say_merged(db: Session, telegram: Telegram, done: Decided) -> None:
+    """In Telegram a duplicate verified answer is updated automatically, and we say so."""
+    chat = group_chat(db)
+    if done.merged and chat is not None:
+        telegram.send_message(
+            chat,
+            "ℹ️ A verified answer to this question already existed, so I updated it "
+            "instead of adding another.",
+            reply_to=done.review.telegram_message_id,
         )
 
 

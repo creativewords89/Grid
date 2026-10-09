@@ -134,11 +134,11 @@ All tables have `id` (UUID v7 unless stated), `created_at` and `updated_at` (`ti
 | `login_attempts` | email, ip, at, ok BOOL |
 | `files` | name, mime, size, sha256, storage_path, status ENUM(queued, processing, ready, failed), error TEXT NULL, warning TEXT NULL (Ready, but something was skipped), progress_done / progress_total NULL (OCR progress), page_count, sheet_count NULL (Excel only), chunk_count, ocr_pages INT, version INT, previous_file_id NULL (the version it replaced), uploaded_by, deleted_at NULL |
 | `chunks` | id TEXT `doc_{file_id}_{n}`, file_id, position, page_from, page_to, sheet NULL, heading NULL, text, token_count, from_ocr BOOL |
-| `verified_answers` | question, answer, status ENUM(active, disabled, expired), expires_at NULL, origin ENUM(review, admin, marketing), origin_answer_id NULL, source_file_ids UUID[], needs_check BOOL, needs_check_reason NULL, created_by, approved_by, deleted_at NULL |
+| `verified_answers` | question, answer, version INT, status ENUM(active, disabled, expired), expires_at NULL, origin ENUM(review, admin, marketing), origin_answer_id NULL, source_file_ids UUID[], needs_check BOOL, needs_check_reason NULL, created_by, approved_by, deleted_at NULL |
 | `verified_answer_versions` | verified_answer_id, version, question, answer, changed_by, at |
 | `conversations` | user_id, title (from the first question), last_message_at, deleted_at NULL |
 | `messages` | conversation_id, role ENUM(user, assistant), body (user text; for assistant, a copy of `answers.current_text`), answer_id NULL, position |
-| `answers` | kind ENUM(chat, marketing), asked_by, question, retrieval_query, original_text, current_text, sources JSONB `[{n, kind: doc|verified, ref_id, file_id, file_name, page, sheet, score}]`, confidence INT 0–100 NULL, confidence_parts JSONB, outcome ENUM(no_answer, low, high), status ENUM(auto, in_review, needs_info, verified, corrected, wrong_no_answer), flagged BOOL (👎), flag_note NULL, feedback NULL (`up`/`down`), model, usage JSONB (tokens in/out/cached, cost_usd), stop_reason |
+| `answers` | kind ENUM(chat, marketing), asked_by, question, retrieval_query, original_text, current_text, sources JSONB `[{n, kind: doc|verified, ref_id, file_id, file_name, page, sheet, score}]`, confidence INT 0–100 NULL, confidence_parts JSONB, outcome ENUM(no_answer, low, high), status ENUM(auto, in_review, needs_info, verified, corrected, wrong_no_answer), flagged BOOL (👎), flag_note NULL, feedback NULL (`up`/`down`), delivered_at NULL (when a review changed what the asker sees), seen_at NULL (when the asker last opened it after that), model, usage JSONB (tokens in/out/cached, cost_usd), stop_reason |
 | `reviews` | number BIGINT IDENTITY (shown as #R-142), answer_id, reason ENUM(low_confidence, no_answer, admin, flag), state ENUM(open, claimed, needs_info, approved, edited, rejected, cancelled), claimed_by NULL, claimed_at, decided_by NULL, decided_at, final_text NULL, note NULL, telegram_message_id NULL, prompt_message_id NULL + prompt_action NULL (the bot's open "reply to this message" prompt), reminded_at NULL, escalated_at NULL. At most one undecided review per answer (partial unique index). |
 | `review_messages` | review_id, author_id, kind ENUM(question_to_asker, asker_reply, reviewer_note), body |
 | `threads` | id TEXT (canonical ID, section 6.9, e.g. `reddit:abc123`), platform_id, community NULL (e.g. `r/localseo`, a group name), title, original_url, status ENUM(waiting_for_us, in_review, ready_to_post, waiting_for_them, closed), created_by, last_activity_at, closed_at NULL, close_reason ENUM(manual, inactive) NULL, deleted_at NULL |
@@ -233,7 +233,7 @@ Postgres is the master copy and Pinecone is the search copy. **No code calls Pin
    - `verified`: top 3. If the best match has a rerank score ≥ **0.90** (setting `verified_match`), it is a **verified hit**.
    - `docs`: top 20 by vector search, reranked to the top 8. Results below a rerank score of **0.20** (setting `min_relevance`) are dropped.
    - Items that are deleted, disabled or pending deletion in Postgres are dropped (section 6.4). The text sent to Claude is Postgres's master copy of each chunk, never Pinecone's.
-   - *Built in step 8:* the `docs` search. The `verified` search starts in step 11, when verified answers exist.
+   - *Built in step 8:* the `docs` search. *Built in step 11:* the `verified` search. Verified answers below `min_relevance` are left out like documents; those kept come first, numbered before the documents. Only active, unexpired, undeleted ones are used, checked in Postgres (an expiry date that has passed counts at once, before the nightly job marks it).
 4. **No relevant items** (nothing left after step 3): the outcome is `no_answer`. The reply is "I couldn't find this in the knowledge base." A review is created (reason `no_answer`), and the user sees "🟠 Sent to our team. We'll notify you when there's an answer." Claude is not called. *Step 8 saves the answer with outcome `no_answer`; the review and the 🟠 label come with steps 10–11.*
 5. **Answer:** Claude is called with streaming (section 9.2). The context blocks are numbered `[1]…[n]`, and verified answers are marked as *team-verified*. The rules given to Claude:
    - Answer only from the context.
@@ -266,6 +266,7 @@ Postgres is the master copy and Pinecone is the search copy. **No code calls Pin
   - A refused or cut-off answer gets 0 without calling the check.
   - The check runs after the `sources` event, and the `confidence` event follows. An answer is scored even if the page closes after it was saved. A partial answer saved because the page closed mid-answer (`client_closed`) is not scored.
   - The check's tokens go to `usage_daily` (kind `check`) and into `answers.usage.check`; `answers.usage.cost_usd` is the total for the answer.
+- *Built in step 11:* `retrieval` is the best rerank score of anything given to Claude, verified answers included (a strong verified match that isn't quite a verified hit shouldn't count as no match).
 
 ### 6.7 Review flow (Telegram + web)
 
@@ -323,6 +324,11 @@ Sources: [1] Onboarding.pdf p.3
 - **Notification:** 🔔 in-app always, plus email or Telegram according to `users.notify_channel`. The link opens the conversation scrolled to that answer.
 - **Later follow-up questions** in that conversation use the corrected text (section 6.5 step 1).
 - **High-confidence answers corrected later** by the Owner are delivered the same way.
+- *Built in step 11:*
+  - The dot on a conversation means an answer in it was reviewed (`answers.delivered_at`) after the asker last opened the conversation (`answers.seen_at`). Opening it clears the dot. An Owner looking at someone else's conversation doesn't count.
+  - The end-of-conversation notice appears for a reviewed answer that isn't the newest one, until the asker has seen it: "🔔 An answer above was corrected — Jump to it" (or "checked by our team" when it was approved).
+  - A changed answer hides its old source chips, because they belonged to the original. **Show original** shows the original text with its chips.
+  - Corrected text is used in later follow-ups (section 6.5 step 1), and **Copy** copies the corrected text.
 
 ### 6.9 Verified answers
 
@@ -331,6 +337,14 @@ Sources: [1] Onboarding.pdf p.3
 - **Page:** the Verified Answers page has search and status filters, plus Edit, Disable/Enable, Set expiry, Delete (to trash) and History (`verified_answer_versions`, with restore).
 - **Expiry:** a daily job sets `expired` when `expires_at` passes, and the record is removed from Pinecone.
 - **Source deleted:** when a file is deleted, every active verified answer with that file in `source_file_ids` gets `needs_check = true` ("Source deleted: {file}"). It stays active and is listed under **Needs check**.
+- *Built in step 11:*
+  - **What is stored:** the question is the standalone retrieval question (a follow-up like "and per year?" is stored as the full question). The answer is the reviewed text without its `[n]` markers, which pointed at documents. `source_file_ids` are the files the answer cited. Pinecone gets `Q: … A: …` as the record text.
+  - **One per answer:** a later review of the same answer (for example an Owner's correction) updates the verified answer made from it, as a new version, instead of adding another. **No answer known** disables what was verified from that answer.
+  - **Near-duplicates** are found with the reranker on the `verified` namespace. On the web, the API replies 409 `duplicate` with the existing question and answer; the reviewer chooses **Update the existing one** or **Add as a new one**, and the decision is sent again with `verified_choice` (`update:<id>` or `new`). Nothing changes until they choose. In Telegram the existing one is updated, and the bot says so under the card. Without Pinecone there is no check.
+  - A file replaced by a new version also flags its verified answers ("Source replaced by a new version: {file}"). Editing the text, or **Mark as checked**, clears the flag.
+  - Every change of the text is a new version; **Restore this version** saves the old text as a new version. Version history is kept with the verified answer and deleted with it when purged from the trash.
+  - Expiry is set to the end of the chosen day. An expired answer can be enabled again only after its date is changed or cleared. Restoring a deleted answer whose date has passed restores it as expired.
+  - The nightly check and **Rebuild index** cover both namespaces.
 
 ### 6.10 Marketing threads
 
@@ -450,6 +464,7 @@ A clean, simple layout. Left sidebar: **Ask**, **Documents**, **Marketing**, **V
 - **Table:** date, asked by, type (Chat / Reddit / Facebook), question, confidence (🟢 / 🟠 / 🔴 no answer), status, sources, feedback.
 - **Filters:** high/low/no answer, status, flagged, platform, person, date range.
 - **Detail:** the full answer, sources, `confidence_parts` explained ("Search match 81 · Support: partial"), and the review history. Owners also get **Approve / Edit / Reject** on any answer.
+- *Built in step 11:* the Owner's **Approve / Edit / Reject** (with **No answer known**) in the detail view. If the answer already has a review waiting (for example in Telegram), the Owner takes it over and its Telegram card shows the result; otherwise an Owner review (reason `admin`) is opened and decided at once, with no Telegram message. **Needs info** isn't offered there.
 - **Knowledge gaps tab:** questions with no answer or "no answer known", grouped by similarity, with counts.
 - **Stats strip:** answers this month, % high confidence, % corrected, average review time.
 - *Built in step 10:* each answer's review history in the detail view, and the average review time (from a review opening to its decision, for reviews decided this month; Owner reviews are left out).
@@ -477,7 +492,7 @@ A clean, simple layout. Left sidebar: **Ask**, **Documents**, **Marketing**, **V
 
 ## 8. REST API (`/api`, JSON)
 
-Every route checks the session, the CSRF token (for writes) and `permissions.can()`. Errors use the shape `{error: {code, message, fields?}}`.
+Every route checks the session, the CSRF token (for writes) and `permissions.can()`. Errors use the shape `{error: {code, message, fields?, details?}}` (`details` carries extra data, such as the existing verified answer with a 409 `duplicate`).
 
 | Area | Endpoints |
 |---|---|
@@ -487,8 +502,8 @@ Every route checks the session, the CSRF token (for writes) and `permissions.can
 | Answers | `POST /answers/{id}/feedback` `{value: up|down|none, note?}`, `POST /answers/{id}/needs-info-reply` |
 | Files | `GET /files`, `POST /files` (multipart), `POST /files/{id}/version`, `POST /files/{id}/retry`, `GET /files/{id}/download`, `DELETE /files/{id}` |
 | Reviews | `GET /reviews?show=waiting|mine|decided`, `GET /reviews/count` (the sidebar badge), `GET /reviews/{id}`, `POST /reviews/{id}/claim`, `POST /reviews/{id}/release`, `POST /reviews/{id}/decide` `{action: approve|edit|reject|needs_info|no_answer, text?, note?, add_to_kb?}` |
-| Answer Log | `GET /answer-log` (filters `outcome`, `status`, `flagged`, `kind`, `person`, `date_from`, `date_to`, `q`, `page`), `GET /answer-log/gaps`, `GET /answer-log/{id}`, `POST /answers/{id}/admin-review` |
-| Verified | `GET /verified`, `GET /verified/{id}`, `PATCH /verified/{id}`, `POST /verified/{id}/disable`, `POST /verified/{id}/enable`, `DELETE /verified/{id}`, `GET /verified/{id}/history` |
+| Answer Log | `GET /answer-log` (filters `outcome`, `status`, `flagged`, `kind`, `person`, `date_from`, `date_to`, `q`, `page`), `GET /answer-log/gaps`, `GET /answer-log/{id}`, `POST /answers/{id}/admin-review` `{action: approve|edit|reject|no_answer, text?, note?, verified_choice?}` |
+| Verified | `GET /verified?show=active|disabled|expired|needs_check|all&q=` (with counts per tab), `GET /verified/{id}`, `PATCH /verified/{id}` `{question?, answer?, expires_at?, clear_expiry?, checked?}`, `POST /verified/{id}/disable`, `POST /verified/{id}/enable`, `DELETE /verified/{id}`, `GET /verified/{id}/history`, `POST /verified/{id}/restore-version` `{version}` |
 | Marketing | `POST /threads/resolve` `{url}` → `{found, thread?, parsed, possible_matches?, error?}`, `POST /threads`, `GET /threads`, `GET /threads/{id}`, `POST /threads/{id}/replies`, `POST /threads/{id}/draft` `{parent_id, instruction?}`, `PATCH /thread-messages/{id}`, `POST /thread-messages/{id}/posted` `{url?}`, `POST /threads/{id}/close`, `POST /threads/{id}/reopen`, `DELETE /threads/{id}` |
 | Notifications | `GET /notifications`, `POST /notifications/read` |
 | Live updates | `GET /updates?since=` (changed answers, reviews, notifications and file statuses for this user) |

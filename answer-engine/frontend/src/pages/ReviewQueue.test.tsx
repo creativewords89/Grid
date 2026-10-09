@@ -136,3 +136,42 @@ test("users don't get the Review Queue", async () => {
   const nav = await screen.findByRole("navigation", { name: "Main" });
   expect(within(nav).queryByText("Review Queue")).toBeNull();
 });
+
+test("a duplicate verified answer asks whether to update it", async () => {
+  window.history.pushState(null, "", "/reviews?id=r1");
+  let first = true;
+  const calls = mockApi({
+    "GET /auth/me": reviewer,
+    "GET /reviews/count": [200, { waiting: 1 }],
+    "GET /reviews/r1": [200, detail],
+    "POST /reviews/r1/decide": () => {
+      if (first) {
+        first = false;
+        return [
+          409,
+          {
+            error: {
+              code: "duplicate",
+              message: "A verified answer to this question exists. Update it instead?",
+              details: { id: "v9", question: "GBP verification time?", answer: "1-2 weeks." },
+            },
+          },
+        ];
+      }
+      return [200, { ...detail, state: "approved", decided_by: { id: "u2", name: "Ali" } }];
+    },
+  });
+  render(<App />);
+
+  await userEvent.click(await screen.findByRole("button", { name: "✅ Approve" }));
+  const dialog = await screen.findByRole("dialog");
+  expect(within(dialog).getByText("GBP verification time?")).toBeVisible();
+  await userEvent.click(within(dialog).getByRole("button", { name: "Update the existing one" }));
+
+  expect(await screen.findByText(/Approved by Ali/)).toBeVisible();
+  const sent = calls.filter((c) => c.path === "/reviews/r1/decide").map((c) => c.body);
+  expect(sent).toEqual([
+    { action: "approve" },
+    { action: "approve", verified_choice: "update:v9" },
+  ]);
+});

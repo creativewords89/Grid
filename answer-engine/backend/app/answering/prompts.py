@@ -68,10 +68,17 @@ class ContextItem:
     sheet: str | None
     text: str
     score: float
+    kind: str = "doc"  # or "verified": a team-verified answer (chunk_id is then "va_…")
+
+    @property
+    def verified(self) -> bool:
+        return self.kind == "verified"
 
     @property
     def label(self) -> str:
-        """Pricing.pdf · p.2, Fees 2026.xlsx · March, Handbook.docx"""
+        """Pricing.pdf · p.2, Fees 2026.xlsx · March, Handbook.docx, ✔ Verified answer"""
+        if self.verified:
+            return "✔ Verified answer"
         if self.sheet:
             return f"{self.file_name} · {self.sheet}"
         if self.page_from and self.page_to and self.page_to != self.page_from:
@@ -88,9 +95,15 @@ def _attr(value: str) -> str:
 def documents_block(items: list[ContextItem]) -> str:
     parts = []
     for item in items:
-        where = item.label + (f" › {item.heading}" if item.heading and not item.sheet else "")
         # A document can't close its own tag early and smuggle in text outside it.
         body = re.sub(r"</?document", lambda m: m.group(0).replace("<", "&lt;"), item.text)
+        if item.verified:
+            parts.append(
+                f'<document index="{item.n}" source="Team-verified answer" verified="true">\n'
+                f"{body}\n</document>"
+            )
+            continue
+        where = item.label + (f" › {item.heading}" if item.heading and not item.sheet else "")
         parts.append(f'<document index="{item.n}" source="{_attr(where)}">\n{body}\n</document>')
     return "<documents>\n" + "\n".join(parts) + "\n</documents>"
 

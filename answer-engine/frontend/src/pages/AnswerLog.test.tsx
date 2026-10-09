@@ -155,3 +155,45 @@ test("users don't get the Answer Log", async () => {
   expect(await screen.findByText("Ask anything about GridRankers' documents.")).toBeVisible();
   expect(screen.queryByRole("heading", { name: "Answer Log" })).toBeNull();
 });
+
+test("the Owner corrects an answer from the log", async () => {
+  const calls = mockApi({
+    "GET /auth/me": owner,
+    "GET /answer-log?page=1": [200, page],
+    "GET /answer-log/a1": [200, detail],
+    "POST /answers/a1/admin-review": [
+      200,
+      { status: "corrected", current_text: "Two weeks.", review_number: 8 },
+    ],
+  });
+  render(<App />);
+
+  await userEvent.click(await screen.findByRole("button", { name: row.question }));
+  const dialog = await screen.findByRole("dialog");
+  await userEvent.click(await within(dialog).findByRole("button", { name: "✏️ Edit" }));
+  const box = within(dialog).getByLabelText("Corrected answer");
+  await userEvent.clear(box);
+  await userEvent.type(box, "Two weeks.");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Save and tell Sara" }));
+
+  await waitFor(() =>
+    expect(calls.find((c) => c.path === "/answers/a1/admin-review")?.body).toEqual({
+      action: "edit",
+      text: "Two weeks.",
+    }),
+  );
+});
+
+test("reviewers can't review from the log", async () => {
+  mockApi({
+    "GET /auth/me": [200, { user: makeUser({ role: "reviewer" }), csrf_token: "t" }],
+    "GET /reviews/count": [200, { waiting: 0 }],
+    "GET /answer-log?page=1": [200, { ...page, can_review: false }],
+    "GET /answer-log/a1": [200, { ...detail, can_review: false }],
+  });
+  render(<App />);
+
+  await userEvent.click(await screen.findByRole("button", { name: row.question }));
+  await screen.findByText("Search match 81 · Support: partial");
+  expect(screen.queryByText("Review this answer")).toBeNull();
+});

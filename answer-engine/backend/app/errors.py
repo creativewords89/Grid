@@ -17,18 +17,27 @@ class ApiError(Exception):
         code: str,
         message: str,
         fields: dict[str, str] | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.code = code
         self.message = message
         self.fields = fields
+        self.details = details
 
 
-def _body(code: str, message: str, fields: dict[str, str] | None = None) -> dict[str, Any]:
+def _body(
+    code: str,
+    message: str,
+    fields: dict[str, str] | None = None,
+    details: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     error: dict[str, Any] = {"code": code, "message": message}
     if fields:
         error["fields"] = fields
+    if details:
+        error["details"] = details
     return {"error": error}
 
 
@@ -43,7 +52,7 @@ _HTTP_CODES = {
 def install(app: FastAPI) -> None:
     @app.exception_handler(ApiError)
     async def api_error(_: Request, exc: ApiError) -> JSONResponse:
-        return JSONResponse(_body(exc.code, exc.message, exc.fields), exc.status_code)
+        return JSONResponse(_body(exc.code, exc.message, exc.fields, exc.details), exc.status_code)
 
     @app.exception_handler(Forbidden)
     async def forbidden(_: Request, __: Forbidden) -> JSONResponse:

@@ -17,6 +17,7 @@ from app.api import (
     telegram,
     trash,
     users,
+    verified,
 )
 from app.api import settings as settings_api
 from app.config import get_settings
@@ -48,6 +49,7 @@ def create_app() -> FastAPI:
         reviews,
         settings_api,
         telegram,
+        verified,
     ):
         app.include_router(module.router, prefix="/api")
     return app

@@ -217,13 +217,19 @@ def test_daily_jobs_are_queued_once_per_day_after_their_time(db: Session) -> Non
         keys = (job.dedupe_key or "" for job in jobs(db))
         return sorted(k for k in keys if not k.startswith("review_reminders:"))
 
-    enqueue_due(db, datetime(2026, 10, 8, 2, 59, tzinfo=UTC))
+    enqueue_due(db, datetime(2026, 10, 8, 1, 59, tzinfo=UTC))
     assert kinds() == []
+    enqueue_due(db, datetime(2026, 10, 8, 2, 59, tzinfo=UTC))
+    assert kinds() == ["verified_expiry:2026-10-08"]
 
     enqueue_due(db, datetime(2026, 10, 8, 3, 0, tzinfo=UTC))
     enqueue_due(db, datetime(2026, 10, 8, 4, 0, tzinfo=UTC))
     enqueue_due(db, datetime(2026, 10, 8, 4, 30, tzinfo=UTC))
-    assert kinds() == ["kb_check:2026-10-08", "trash_purge:2026-10-08"]
+    assert kinds() == [
+        "kb_check:2026-10-08",
+        "trash_purge:2026-10-08",
+        "verified_expiry:2026-10-08",
+    ]
 
     enqueue_due(db, datetime(2026, 10, 8, 23, 0, tzinfo=UTC))
     enqueue_due(db, datetime(2026, 10, 9, 5, 0, tzinfo=UTC))
@@ -234,6 +240,8 @@ def test_daily_jobs_are_queued_once_per_day_after_their_time(db: Session) -> Non
         "session_cleanup:2026-10-09",
         "trash_purge:2026-10-08",
         "trash_purge:2026-10-09",
+        "verified_expiry:2026-10-08",
+        "verified_expiry:2026-10-09",
     ]
 
 

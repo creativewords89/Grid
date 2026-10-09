@@ -5,15 +5,17 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, StringConstraints
 from sqlalchemy import func, select
 
 from app.api.answer_log import Person
+from app.api.conversations import store_dep
 from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
 from app.db.models import UNDECIDED, Review, ReviewState, User
 from app.errors import ApiError
+from app.kb.store import VectorStore
 from app.permissions import Action, ensure
 from app.reviews import service
 from app.reviews.service import Decision, ReviewError
@@ -62,6 +64,8 @@ class DecideIn(Strict):
     action: Literal["approve", "edit", "reject", "no_answer", "needs_info"]
     text: Annotated[str, StringConstraints(max_length=20000)] | None = None
     note: Annotated[str, StringConstraints(max_length=2000)] | None = None
+    # After a "duplicate" reply: "new", or "update:<verified answer id>".
+    verified_choice: Annotated[str, StringConstraints(max_length=60)] | None = None
 
 
 class CountOut(BaseModel):
@@ -94,7 +98,7 @@ def _row(review: Review, people: dict[uuid.UUID, Person]) -> dict[str, Any]:
 
 
 def _raise(error: ReviewError) -> ApiError:
-    return ApiError(error.status, error.code, error.message)
+    return ApiError(error.status, error.code, error.message, details=error.details)
 
 
 @router.get("", response_model=list[ReviewRow])
@@ -195,10 +199,17 @@ def release(review_id: uuid.UUID, me: CurrentUser, db: Db) -> ReviewDetail:
 
 
 @router.post("/{review_id}/decide", response_model=ReviewDetail)
-def decide(review_id: uuid.UUID, body: DecideIn, me: CurrentUser, db: Db) -> ReviewDetail:
+def decide(
+    review_id: uuid.UUID,
+    body: DecideIn,
+    me: CurrentUser,
+    db: Db,
+    store: Annotated[VectorStore | None, Depends(store_dep)],
+) -> ReviewDetail:
     ensure(me, Action.DECIDE_REVIEW)
+    decision = Decision(body.action, body.text, body.note, verified_choice=body.verified_choice)
     try:
-        review = service.decide(db, review_id, me, Decision(body.action, body.text, body.note))
+        review = service.decide(db, review_id, me, decision, store)
     except ReviewError as error:
         db.rollback()
         raise _raise(error) from None

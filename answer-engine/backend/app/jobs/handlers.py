@@ -33,6 +33,7 @@ from app.kb import outbox
 from app.kb.reconcile import reconcile
 from app.kb.store import DOCS, get_store
 from app.reviews import jobs as review_jobs  # noqa: F401  (registers the review jobs)
+from app.verified import service as verified
 
 
 def _fail_file(db: Session, payload: Payload, message: str) -> None:
@@ -157,3 +158,10 @@ def kb_rebuild(db: Session, payload: Payload) -> None:
     """Owner's Rebuild: send every record again and remove anything extra."""
     by = db.get(User, uuid.UUID(payload["user_id"])) if payload.get("user_id") else None
     reconcile(db, get_store(), rebuild=True, by=by)
+
+
+@job("verified_expiry")
+def verified_expiry(db: Session, payload: Payload) -> None:
+    """Daily 02:00: verified answers past their expiry date stop being used (SPEC 6.9)."""
+    verified.expire_due(db)
+    db.commit()

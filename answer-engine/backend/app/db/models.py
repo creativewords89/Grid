@@ -19,6 +19,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    Uuid,
     func,
     text,
 )
@@ -443,6 +444,9 @@ class Answer(TimestampMixin, Base):
     flag_note: Mapped[str | None] = mapped_column(Text)
     # 👍 / 👎 from the person who asked: "up", "down" or NULL.
     feedback: Mapped[str | None] = mapped_column(String(4))
+    # When a review changed what the asker sees, and when they last saw it (the chat's dot).
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     model: Mapped[str | None] = mapped_column(String(100))
     usage: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
     stop_reason: Mapped[str | None] = mapped_column(String(50))
@@ -569,3 +573,76 @@ class ReviewMessage(TimestampMixin, Base):
     review: Mapped[Review] = relationship(back_populates="messages")
 
     __table_args__ = (Index("ix_review_messages_review_id", "review_id"),)
+
+
+class VerifiedStatus(enum.StrEnum):
+    ACTIVE = "active"
+    DISABLED = "disabled"
+    EXPIRED = "expired"
+
+
+class VerifiedOrigin(enum.StrEnum):
+    REVIEW = "review"
+    ADMIN = "admin"
+    MARKETING = "marketing"
+
+
+class VerifiedAnswer(TimestampMixin, Base):
+    """A question and answer the team has confirmed (SPEC section 6.9). Searchable in the
+    `verified` namespace while active."""
+
+    __tablename__ = "verified_answers"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    question: Mapped[str] = mapped_column(Text)
+    answer: Mapped[str] = mapped_column(Text)
+    status: Mapped[VerifiedStatus] = mapped_column(
+        _enum(VerifiedStatus, "verified_status"), default=VerifiedStatus.ACTIVE
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    origin: Mapped[VerifiedOrigin] = mapped_column(_enum(VerifiedOrigin, "verified_origin"))
+    origin_answer_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("answers.id", ondelete="SET NULL")
+    )
+    source_file_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(Uuid), default=list, server_default="{}"
+    )
+    needs_check: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    needs_check_reason: Mapped[str | None] = mapped_column(Text)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("ix_verified_answers_origin_answer", "origin_answer_id"),
+        Index("ix_verified_answers_sources", "source_file_ids", postgresql_using="gin"),
+    )
+
+    @property
+    def record_id(self) -> str:
+        return f"va_{self.id}"
+
+
+class VerifiedAnswerVersion(Base):
+    __tablename__ = "verified_answer_versions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    verified_answer_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("verified_answers.id", ondelete="CASCADE")
+    )
+    version: Mapped[int] = mapped_column(Integer)
+    question: Mapped[str] = mapped_column(Text)
+    answer: Mapped[str] = mapped_column(Text)
+    changed_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("verified_answer_id", "version", name="uq_verified_versions"),
+    )

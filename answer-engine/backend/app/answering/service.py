@@ -120,7 +120,7 @@ def _sources(items: list[ContextItem], text: str) -> list[dict[str, Any]]:
     return [
         {
             "n": item.n,
-            "kind": "doc",
+            "kind": item.kind,
             "ref_id": item.chunk_id,
             "file_id": item.file_id,
             "file_name": item.file_name,
@@ -143,6 +143,7 @@ def answer_stream(
         streamed = ""
         completion: Completion | None = None
         items: list[ContextItem] = []
+        verified_hit = False
         retrieval_query = turn.question
         saved = False
         pieces: Generator[str, None, Completion] | None = None
@@ -152,7 +153,8 @@ def answer_stream(
                 spent.add(rewritten.model, rewritten.input_tokens, rewritten.output_tokens)
                 if rewritten.stop_reason != "refusal" and rewritten.text:
                     retrieval_query = rewritten.text
-            items = retrieve(db, store, retrieval_query)
+            found = retrieve(db, store, retrieval_query)
+            items, verified_hit = found.items, found.verified_hit
 
             if not items:
                 text = NO_ANSWER
@@ -196,7 +198,7 @@ def answer_stream(
         finally:
             # Scored even if the page was closed just now: the Answer Log needs it.
             if answer.outcome is None:
-                _score(db, turn, answer, items, answerer)
+                _score(db, turn, answer, items, answerer, verified_hit)
         if answer.confidence is not None:
             yield event(
                 "confidence",
@@ -218,7 +220,12 @@ def answer_stream(
 
 
 def _score(
-    db: Session, turn: Turn, answer: Answer, items: list[ContextItem], answerer: Answerer
+    db: Session,
+    turn: Turn,
+    answer: Answer,
+    items: list[ContextItem],
+    answerer: Answerer,
+    verified_hit: bool = False,
 ) -> None:
     """The support check and the confidence score (SPEC section 6.6)."""
     spent = Usage()
@@ -233,7 +240,9 @@ def _score(
         except Exception:
             log.exception("the support check failed")
     result_score = score(
+        # The best match of anything given to Claude; a team-verified answer counts too.
         best_doc=max((item.score for item in items), default=None),
+        verified_hit=verified_hit,
         verdict=verdict,
         stop_reason=answer.stop_reason,
         threshold=settings_store.get_int(db, "confidence_threshold"),

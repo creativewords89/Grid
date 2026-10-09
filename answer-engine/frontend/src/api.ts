@@ -97,7 +97,12 @@ export type Source = {
   score: number;
 };
 
-export type Conversation = { id: string; title: string; last_message_at: string };
+export type Conversation = {
+  id: string;
+  title: string;
+  last_message_at: string;
+  updated?: boolean;
+};
 
 export type ChatMessage = {
   id: string;
@@ -114,6 +119,8 @@ export type ChatMessage = {
     confidence: number | null;
     feedback: Feedback | null;
     needs_info?: { question: string; asked_by: string } | null;
+    original_text?: string | null;
+    reviewed_at?: string | null;
   } | null;
 };
 
@@ -260,7 +267,58 @@ export type Gap = {
   examples: string[];
 };
 
-export type ConversationDetail = Conversation & { messages: ChatMessage[] };
+export type ConversationDetail = Conversation & {
+  messages: ChatMessage[];
+  updated_answer_ids?: string[];
+};
+
+export type VerifiedStatus = "active" | "disabled" | "expired";
+
+export type VerifiedRow = {
+  id: string;
+  question: string;
+  answer: string;
+  status: VerifiedStatus;
+  expires_at: string | null;
+  needs_check: boolean;
+  needs_check_reason: string | null;
+  approved_by: Person | null;
+  origin: "review" | "admin" | "marketing";
+  version: number;
+  updated_at: string;
+};
+
+export type VerifiedDetail = VerifiedRow & {
+  sources: { file_id: string; name: string; available: boolean }[];
+  origin_answer_id: string | null;
+  created_at: string;
+  can_manage: boolean;
+};
+
+export type VerifiedPage = {
+  items: VerifiedRow[];
+  can_manage: boolean;
+  counts: Record<"active" | "disabled" | "expired" | "needs_check" | "all", number>;
+};
+
+export type VerifiedVersion = {
+  version: number;
+  question: string;
+  answer: string;
+  changed_by: Person | null;
+  at: string;
+};
+
+export type VerifiedPatch = {
+  question?: string;
+  answer?: string;
+  expires_at?: string;
+  clear_expiry?: boolean;
+  checked?: boolean;
+};
+
+/** Sent back with a 409 "duplicate" when a verified answer to the question exists. */
+export type DuplicateDetails = { id: string; question: string; answer: string };
 
 export type AskHandlers = {
   onDelta: (text: string) => void;
@@ -339,6 +397,7 @@ export class ApiError extends Error {
     public code: string,
     message: string,
     public fields: Record<string, string> = {},
+    public details: Record<string, unknown> | null = null,
   ) {
     super(message);
   }
@@ -352,13 +411,21 @@ export function setCsrfToken(token: string) {
 
 function toApiError(status: number, data: unknown): ApiError {
   const error = (
-    data as { error?: { code?: string; message?: string; fields?: Record<string, string> } } | null
+    data as {
+      error?: {
+        code?: string;
+        message?: string;
+        fields?: Record<string, string>;
+        details?: Record<string, unknown>;
+      };
+    } | null
   )?.error;
   return new ApiError(
     status,
     error?.code ?? "error",
     error?.message ?? `Something went wrong (${status}).`,
     error?.fields ?? {},
+    error?.details ?? null,
   );
 }
 
@@ -413,17 +480,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   if (response.status === 204) return undefined as T;
 
   const data: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    const error = (
-      data as { error?: { code?: string; message?: string; fields?: Record<string, string> } }
-    )?.error;
-    throw new ApiError(
-      response.status,
-      error?.code ?? "error",
-      error?.message ?? `Something went wrong (${response.status}).`,
-      error?.fields ?? {},
-    );
-  }
+  if (!response.ok) throw toApiError(response.status, data);
   return data as T;
 }
 
@@ -506,8 +563,41 @@ export const api = {
   getReview: (id: string) => request<ReviewDetail>("GET", `/reviews/${id}`),
   claimReview: (id: string) => request<ReviewDetail>("POST", `/reviews/${id}/claim`),
   releaseReview: (id: string) => request<ReviewDetail>("POST", `/reviews/${id}/release`),
-  decideReview: (id: string, action: ReviewAction, text?: string, note?: string) =>
-    request<ReviewDetail>("POST", `/reviews/${id}/decide`, { action, text, note }),
+  decideReview: (
+    id: string,
+    action: ReviewAction,
+    text?: string,
+    note?: string,
+    verified_choice?: string,
+  ) =>
+    request<ReviewDetail>("POST", `/reviews/${id}/decide`, { action, text, note, verified_choice }),
+  adminReview: (
+    answerId: string,
+    action: Exclude<ReviewAction, "needs_info">,
+    text?: string,
+    note?: string,
+    verified_choice?: string,
+  ) =>
+    request<{ status: AnswerStatus; current_text: string; review_number: number }>(
+      "POST",
+      `/answers/${answerId}/admin-review`,
+      { action, text, note, verified_choice },
+    ),
+
+  listVerified: (show = "active", q = "") =>
+    request<VerifiedPage>(
+      "GET",
+      `/verified?show=${encodeURIComponent(show)}${q ? `&q=${encodeURIComponent(q)}` : ""}`,
+    ),
+  getVerified: (id: string) => request<VerifiedDetail>("GET", `/verified/${id}`),
+  updateVerified: (id: string, patch: VerifiedPatch) =>
+    request<VerifiedDetail>("PATCH", `/verified/${id}`, patch),
+  disableVerified: (id: string) => request<VerifiedDetail>("POST", `/verified/${id}/disable`),
+  enableVerified: (id: string) => request<VerifiedDetail>("POST", `/verified/${id}/enable`),
+  deleteVerified: (id: string) => request<void>("DELETE", `/verified/${id}`),
+  verifiedHistory: (id: string) => request<VerifiedVersion[]>("GET", `/verified/${id}/history`),
+  restoreVerifiedVersion: (id: string, version: number) =>
+    request<VerifiedDetail>("POST", `/verified/${id}/restore-version`, { version }),
 
   telegramCode: () => request<TelegramCode>("POST", "/me/telegram-link"),
   telegramUnlink: () => request<void>("DELETE", "/me/telegram-link"),

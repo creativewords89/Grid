@@ -7,7 +7,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, StringConstraints
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, and_, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.answering.claude_answer import Answerer, get_answerer
@@ -46,6 +46,7 @@ class ConversationOut(BaseModel):
     id: uuid.UUID
     title: str
     last_message_at: datetime
+    updated: bool = False  # an answer in it was reviewed since the asker last looked
 
 
 class NeedsInfo(BaseModel):
@@ -63,6 +64,8 @@ class AnswerOut(BaseModel):
     confidence: int | None
     feedback: str | None
     needs_info: NeedsInfo | None = None
+    original_text: str | None = None  # when our team changed the answer ("Show original")
+    reviewed_at: datetime | None = None
 
 
 class MessageOut(BaseModel):
@@ -75,6 +78,8 @@ class MessageOut(BaseModel):
 
 class ConversationDetail(ConversationOut):
     messages: list[MessageOut]
+    # Answers reviewed since the asker last looked (for "An answer above was corrected").
+    updated_answer_ids: list[uuid.UUID] = []
 
 
 class AskIn(Strict):
@@ -129,6 +134,10 @@ def _message(db: Session, message: Message) -> MessageOut:
             confidence=answer.confidence,
             feedback=answer.feedback,
             needs_info=_needs_info(db, answer),
+            original_text=answer.original_text
+            if answer.current_text != answer.original_text
+            else None,
+            reviewed_at=answer.delivered_at,
         )
         if answer
         else None,
@@ -144,9 +153,29 @@ def list_conversations(me: CurrentUser, db: Db) -> list[ConversationOut]:
         .order_by(Conversation.last_message_at.desc())
         .limit(200)
     ).all()
+    updated = _updated_conversations(db, [c.id for c in rows])
     return [
-        ConversationOut(id=c.id, title=c.title, last_message_at=c.last_message_at) for c in rows
+        ConversationOut(
+            id=c.id, title=c.title, last_message_at=c.last_message_at, updated=c.id in updated
+        )
+        for c in rows
     ]
+
+
+def _unseen() -> ColumnElement[bool]:
+    return and_(
+        Answer.delivered_at.is_not(None),
+        or_(Answer.seen_at.is_(None), Answer.seen_at < Answer.delivered_at),
+    )
+
+
+def _updated_conversations(db: Session, ids: list[uuid.UUID]) -> set[uuid.UUID]:
+    if not ids:
+        return set()
+    rows = db.scalars(
+        select(Answer.conversation_id).where(Answer.conversation_id.in_(ids), _unseen()).distinct()
+    )
+    return {r for r in rows if r is not None}
 
 
 @router.post("", response_model=ConversationOut, status_code=201)
@@ -171,12 +200,26 @@ def get_conversation(conversation_id: uuid.UUID, me: CurrentUser, db: Db) -> Con
         .where(Message.conversation_id == conversation.id)
         .order_by(Message.position)
     ).all()
-    return ConversationDetail(
+    unseen = list(
+        db.scalars(
+            select(Answer.id)
+            .where(Answer.conversation_id == conversation.id, _unseen())
+            .order_by(Answer.created_at)
+        )
+    )
+    detail = ConversationDetail(
         id=conversation.id,
         title=conversation.title,
         last_message_at=conversation.last_message_at,
+        updated=bool(unseen),
         messages=[_message(db, m) for m in messages],
+        updated_answer_ids=unseen,
     )
+    if unseen and conversation.user_id == me.id:
+        # The asker has now seen the update (an Owner looking doesn't count).
+        db.execute(update(Answer).where(Answer.id.in_(unseen)).values(seen_at=now()))
+        db.commit()
+    return detail
 
 
 @router.delete("/{conversation_id}", status_code=204)

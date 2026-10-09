@@ -15,7 +15,8 @@ from app.auth.tokens import now
 from app.chunking import context_line
 from app.db.models import Chunk, KbOp, KbOpKind, KbOpState, StoredFile
 from app.kb.live import live_chunk_ids
-from app.kb.store import DELETE_BATCH, DOCS, UPSERT_BATCH, Record, VectorStore
+from app.kb.store import DELETE_BATCH, DOCS, UPSERT_BATCH, VERIFIED, Record, VectorStore
+from app.verified import service as verified
 
 log = logging.getLogger(__name__)
 
@@ -64,14 +65,26 @@ def doc_records(db: Session, ids: list[str]) -> list[Record]:
     return records
 
 
+def verified_records(db: Session, ids: list[str]) -> list[Record]:
+    """Records for verified answers that are still active (SPEC 6.3)."""
+    live = verified.live_by_record(db, ids)
+    return [
+        {"_id": record, "text": verified.search_text(va), "verified_answer_id": str(va.id)}
+        for record, va in sorted(live.items())
+    ]
+
+
 def _run(db: Session, store: VectorStore, op: KbOp) -> None:
     if op.op == KbOpKind.DELETE:
         for start in range(0, len(op.record_ids), DELETE_BATCH):
             store.delete(op.namespace, op.record_ids[start : start + DELETE_BATCH])
         return
-    if op.namespace != DOCS:
-        raise ValueError(f"no records for namespace {op.namespace!r} yet")
-    records = doc_records(db, op.record_ids)
+    if op.namespace == DOCS:
+        records = doc_records(db, op.record_ids)
+    elif op.namespace == VERIFIED:
+        records = verified_records(db, op.record_ids)
+    else:
+        raise ValueError(f"no records for namespace {op.namespace!r}")
     for start in range(0, len(records), UPSERT_BATCH):
         store.upsert(op.namespace, records[start : start + UPSERT_BATCH])
 
