@@ -16,6 +16,9 @@ DEFAULTS: dict[str, Any] = {
     "rerank_top_n": 8,
     "min_relevance": 0.20,
     "rerank_model": "bge-reranker-v2-m3",
+    # Confidence (SPEC section 6.6)
+    "confidence_threshold": 75,
+    "confidence_weights": {"retrieval": 0.4, "support": 0.6},
 }
 
 
@@ -30,3 +33,8 @@ def get_int(db: Session, key: str) -> int:
 
 def get_float(db: Session, key: str) -> float:
     return float(get(db, key))
+
+
+def get_dict(db: Session, key: str) -> dict[str, Any]:
+    value = get(db, key)
+    return dict(value) if isinstance(value, dict) else dict(DEFAULTS[key])

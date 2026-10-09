@@ -16,13 +16,16 @@ from anthropic.types.beta import BetaMessageParam
 from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session
 
+from app import settings_store
 from app.ai import usage as usage_log
 from app.ai.usage import Usage
 from app.answering.claude_answer import Answerer, Completion
+from app.answering.confidence import ZERO_STOP_REASONS, score
 from app.answering.prompts import (
     NO_ANSWER,
     REFUSED,
     ContextItem,
+    check_message,
     cited_numbers,
     question_message,
     strip_citations,
@@ -33,6 +36,7 @@ from app.db.models import (
     Answer,
     AnswerKind,
     AnswerOutcome,
+    AnswerStatus,
     Conversation,
     Message,
     MessageRole,
@@ -131,7 +135,7 @@ def _sources(items: list[ContextItem], text: str) -> list[dict[str, Any]]:
 def answer_stream(
     bind: Engine, turn: Turn, answerer: Answerer, store: VectorStore
 ) -> Generator[str, None, None]:
-    """Server-sent events: delta… (replace) sources done, or error."""
+    """Server-sent events: delta… (replace) sources (confidence) done, or error."""
     with Session(bind, expire_on_commit=False) as db:
         spent = Usage()
         streamed = ""
@@ -185,7 +189,21 @@ def answer_stream(
 
         answer = _save(db, turn, retrieval_query, text, items, completion, spent, None)
         saved = True
-        yield event("sources", {"sources": answer.sources})
+        try:
+            yield event("sources", {"sources": answer.sources})
+        finally:
+            # Scored even if the page was closed just now: the Answer Log needs it.
+            if answer.outcome is None:
+                _score(db, turn, answer, items, answerer)
+        if answer.confidence is not None:
+            yield event(
+                "confidence",
+                {
+                    "confidence": answer.confidence,
+                    "outcome": answer.outcome.value if answer.outcome else None,
+                    "status": answer.status.value,
+                },
+            )
         yield event(
             "done",
             {
@@ -194,6 +212,47 @@ def answer_stream(
                 "stop_reason": answer.stop_reason,
             },
         )
+
+
+def _score(
+    db: Session, turn: Turn, answer: Answer, items: list[ContextItem], answerer: Answerer
+) -> None:
+    """The support check and the confidence score (SPEC section 6.6)."""
+    spent = Usage()
+    verdict: str | None = None
+    claims: list[str] = []
+    if answer.stop_reason not in ZERO_STOP_REASONS:
+        try:
+            result = answerer.check(check_message(items, turn.question, answer.current_text))
+            done = result.completion
+            spent.add(done.model, done.input_tokens, done.output_tokens)
+            verdict, claims = result.verdict, result.unsupported_claims
+        except Exception:
+            log.exception("the support check failed")
+    result_score = score(
+        best_doc=max((item.score for item in items), default=None),
+        verdict=verdict,
+        stop_reason=answer.stop_reason,
+        threshold=settings_store.get_int(db, "confidence_threshold"),
+        weights=settings_store.get_dict(db, "confidence_weights"),
+        unsupported_claims=claims,
+    )
+    answer.confidence = result_score.value
+    answer.confidence_parts = result_score.parts
+    answer.outcome = result_score.outcome
+    if result_score.outcome == AnswerOutcome.LOW:
+        answer.status = AnswerStatus.IN_REVIEW
+    usage = dict(answer.usage)
+    usage["check"] = {
+        "requests": spent.requests,
+        "input_tokens": spent.input_tokens,
+        "output_tokens": spent.output_tokens,
+        "cost_usd": round(spent.cost_usd, 6),
+    }
+    usage["cost_usd"] = round(float(usage.get("cost_usd", 0)) + spent.cost_usd, 6)
+    answer.usage = usage
+    usage_log.record(db, turn.user_id, UsageKind.CHECK, spent)
+    db.commit()
 
 
 def _save(

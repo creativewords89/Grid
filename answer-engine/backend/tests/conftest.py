@@ -22,6 +22,7 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
+from app.api.conversations import answerer_dep, store_dep
 from app.auth.passwords import hash_password
 from app.config import get_settings
 from app.db.base import Base
@@ -31,6 +32,7 @@ from app.jobs import handlers  # noqa: F401  (registers every job type)
 from app.jobs.queue import run_next
 from app.mail import get_mailer
 from app.main import create_app
+from tests.fakes import FakeAnswerer, FakeStore
 
 DEFAULT_SERVER_URL = "postgresql+psycopg://answers:answers@localhost:5432/postgres"
 BACKEND = Path(__file__).resolve().parent.parent
@@ -221,3 +223,37 @@ def fake_ocr(monkeypatch: pytest.MonkeyPatch) -> "FakeOcr":
     monkeypatch.setattr(job_handlers, "get_ocr", lambda: fake)
     monkeypatch.setattr("app.files.ocr.RETRY_WAIT", (0.0, 0.0))
     return fake
+
+
+# --- asking questions (Claude and Pinecone faked) ----------------------------------------
+
+
+@pytest.fixture
+def store() -> FakeStore:
+    return FakeStore()
+
+
+@pytest.fixture
+def answerer() -> FakeAnswerer:
+    return FakeAnswerer()
+
+
+@pytest.fixture
+def ask_client(
+    app_factory: Callable[[], TestClient], store: FakeStore, answerer: FakeAnswerer
+) -> Callable[[], TestClient]:
+    def make() -> TestClient:
+        client = app_factory()
+        client.app.dependency_overrides[answerer_dep] = lambda: answerer  # type: ignore[attr-defined]
+        client.app.dependency_overrides[store_dep] = lambda: store  # type: ignore[attr-defined]
+        return client
+
+    return make
+
+
+@pytest.fixture
+def me(ask_client: Callable[[], TestClient], make_user: UserFactory) -> tuple[TestClient, User]:
+    client = ask_client()
+    user = make_user(Role.USER, name="Sara")
+    sign_in(client, user.email)
+    return client, user

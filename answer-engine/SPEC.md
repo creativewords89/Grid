@@ -138,7 +138,7 @@ All tables have `id` (UUID v7 unless stated), `created_at` and `updated_at` (`ti
 | `verified_answer_versions` | verified_answer_id, version, question, answer, changed_by, at |
 | `conversations` | user_id, title (from the first question), last_message_at, deleted_at NULL |
 | `messages` | conversation_id, role ENUM(user, assistant), body (user text; for assistant, a copy of `answers.current_text`), answer_id NULL, position |
-| `answers` | kind ENUM(chat, marketing), asked_by, question, retrieval_query, original_text, current_text, sources JSONB `[{n, kind: doc|verified, ref_id, file_id, file_name, page, sheet, score}]`, confidence INT 0–100 NULL, confidence_parts JSONB, outcome ENUM(no_answer, low, high), status ENUM(auto, in_review, needs_info, verified, corrected, wrong_no_answer), flagged BOOL (👎), flag_note NULL, model, usage JSONB (tokens in/out/cached, cost_usd), stop_reason |
+| `answers` | kind ENUM(chat, marketing), asked_by, question, retrieval_query, original_text, current_text, sources JSONB `[{n, kind: doc|verified, ref_id, file_id, file_name, page, sheet, score}]`, confidence INT 0–100 NULL, confidence_parts JSONB, outcome ENUM(no_answer, low, high), status ENUM(auto, in_review, needs_info, verified, corrected, wrong_no_answer), flagged BOOL (👎), flag_note NULL, feedback NULL (`up`/`down`), model, usage JSONB (tokens in/out/cached, cost_usd), stop_reason |
 | `reviews` | answer_id, reason ENUM(low_confidence, no_answer, admin, flag), state ENUM(open, claimed, needs_info, approved, edited, rejected, cancelled), claimed_by NULL, claimed_at, decided_by NULL, decided_at, final_text NULL, note NULL, telegram_message_id NULL, reminded_at NULL, escalated_at NULL |
 | `review_messages` | review_id, author_id, kind ENUM(question_to_asker, asker_reply, reviewer_note), body |
 | `threads` | id TEXT (canonical ID, section 6.9, e.g. `reddit:abc123`), platform_id, community NULL (e.g. `r/localseo`, a group name), title, original_url, status ENUM(waiting_for_us, in_review, ready_to_post, waiting_for_them, closed), created_by, last_activity_at, closed_at NULL, close_reason ENUM(manual, inactive) NULL, deleted_at NULL |
@@ -260,6 +260,12 @@ Postgres is the master copy and Pinecone is the search copy. **No code calls Pin
 - **High:** status `auto`, no review, and the badge is hidden (the answer looks normal).
 - **Low:** status `in_review`, a review is created (reason `low_confidence`), and the answer shows the label "🟠 Being checked by our team".
 - The threshold and weights are settings. They are tuned in build step 15 against the evaluation set.
+- *Built in step 9:*
+  - Scores round half up (62.5 → 63).
+  - If the support check fails or returns something unusable, it counts as no support (`reason: check_failed`), so the answer is Low and gets checked by a person. The answer itself is still delivered.
+  - A refused or cut-off answer gets 0 without calling the check.
+  - The check runs after the `sources` event, and the `confidence` event follows. An answer is scored even if the page closes after it was saved. A partial answer saved because the page closed mid-answer (`client_closed`) is not scored.
+  - The check's tokens go to `usage_daily` (kind `check`) and into `answers.usage.check`; `answers.usage.cost_usd` is the total for the answer.
 
 ### 6.7 Review flow (Telegram + web)
 
@@ -293,7 +299,7 @@ Sources: [1] Onboarding.pdf p.3
 - **Web Review Queue:** the same reviews and actions, for reviewers who prefer the browser. Both channels update the same rows.
 - **Reminders:** an unclaimed or undecided review gets a reminder in the group after **4 h** (setting). After **24 h** (setting), every Owner is notified by in-app notification and email.
 - **Admin review** of any answer from the Answer Log (section 7.5) creates a review with reason `admin`, decided straight away in the web app (no Telegram message).
-- **Flags:** 👎 on an answer sets `flagged = true` and opens an optional "What was wrong?" note. It **does not** go to Telegram. It appears in the Answer Log under **Flagged** for the Owner.
+- **Flags:** 👎 on an answer sets `flagged = true` and opens an optional "What was wrong?" note. It **does not** go to Telegram. It appears in the Answer Log under **Flagged** for the Owner. Pressing the same thumb again clears it, and 👍 clears a flag and its note. Only the person who asked can do this; anyone else gets a 404, as if the answer didn't exist.
 
 ### 6.8 Delivering the reviewed answer to the asker
 
@@ -434,6 +440,7 @@ A clean, simple layout. Left sidebar: **Ask**, **Documents**, **Marketing**, **V
 - **Detail:** the full answer, sources, `confidence_parts` explained ("Search match 81 · Support: partial"), and the review history. Owners also get **Approve / Edit / Reject** on any answer.
 - **Knowledge gaps tab:** questions with no answer or "no answer known", grouped by similarity, with counts.
 - **Stats strip:** answers this month, % high confidence, % corrected, average review time.
+- *Built in step 9:* the table (50 per page, newest first), all filters, the detail view (with "Searched for" when a follow-up was rewritten, unsupported claims, the 👎 note and the cost), Knowledge gaps (the last 90 days; questions join a group when at least half of their meaningful words match) and the stats strip. % high counts scored answers only; % corrected counts `corrected` and `wrong_no_answer`. Average review time arrives with reviews (step 10), and the Owner's Approve / Edit / Reject with step 11.
 
 ### 7.6 Review Queue (Reviewers, Owners)
 - Open and claimed reviews, oldest first, each with its reason and age. The detail view mirrors the Telegram message and has the same actions, a full-text editor and the "Add to knowledge base" tick (marketing only).
@@ -464,10 +471,10 @@ Every route checks the session, the CSRF token (for writes) and `permissions.can
 | Auth | `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/forgot`, `POST /auth/reset`, `POST /auth/accept-invite` |
 | Conversations | `GET /conversations`, `POST /conversations`, `GET /conversations/{id}` (messages + answers), `DELETE /conversations/{id}` |
 | Ask | `POST /conversations/{id}/ask` `{question}` → **SSE** stream: `delta` events (`{text}`), an optional `replace` (`{text}`, the final text), then `sources`, then `confidence` (step 9), then `done` (`{answer_id, outcome, stop_reason}`); or `error` (`{message}`). `503 not_configured` while the Anthropic or Pinecone key is missing |
-| Answers | `POST /answers/{id}/feedback` `{value: up|down, note?}`, `POST /answers/{id}/needs-info-reply` |
+| Answers | `POST /answers/{id}/feedback` `{value: up|down|none, note?}`, `POST /answers/{id}/needs-info-reply` |
 | Files | `GET /files`, `POST /files` (multipart), `POST /files/{id}/version`, `POST /files/{id}/retry`, `GET /files/{id}/download`, `DELETE /files/{id}` |
 | Reviews | `GET /reviews`, `GET /reviews/{id}`, `POST /reviews/{id}/claim`, `POST /reviews/{id}/decide` `{action: approve|edit|reject|needs_info|no_answer, text?, note?, add_to_kb?}` |
-| Answer Log | `GET /answer-log` (filters, pagination), `GET /answer-log/gaps`, `POST /answers/{id}/admin-review` |
+| Answer Log | `GET /answer-log` (filters `outcome`, `status`, `flagged`, `kind`, `person`, `date_from`, `date_to`, `q`, `page`), `GET /answer-log/gaps`, `GET /answer-log/{id}`, `POST /answers/{id}/admin-review` |
 | Verified | `GET /verified`, `GET /verified/{id}`, `PATCH /verified/{id}`, `POST /verified/{id}/disable`, `POST /verified/{id}/enable`, `DELETE /verified/{id}`, `GET /verified/{id}/history` |
 | Marketing | `POST /threads/resolve` `{url}` → `{found, thread?, parsed, possible_matches?, error?}`, `POST /threads`, `GET /threads`, `GET /threads/{id}`, `POST /threads/{id}/replies`, `POST /threads/{id}/draft` `{parent_id, instruction?}`, `PATCH /thread-messages/{id}`, `POST /thread-messages/{id}/posted` `{url?}`, `POST /threads/{id}/close`, `POST /threads/{id}/reopen`, `DELETE /threads/{id}` |
 | Notifications | `GET /notifications`, `POST /notifications/read` |
@@ -507,7 +514,7 @@ Every route checks the session, the CSRF token (for writes) and `permissions.can
 
 ### 9.3 Support check (structured output)
 
-- `messages.create` with `output_config.format` (JSON schema): `{verdict: "full"|"partial"|"none", unsupported_claims: string[]}`. Input: the question, the numbered context and the answer.
+- `messages.create` with `output_config.format` (JSON schema): `{verdict: "full"|"partial"|"none", unsupported_claims: string[]}`. Input: the question, the numbered context and the answer (in `<answer>` tags, treated as data). `CHECK_MODEL`, effort `low`, `max_tokens` 2000, with the same refusal fallback.
 
 ### 9.4 OCR
 

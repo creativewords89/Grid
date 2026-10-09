@@ -3,7 +3,19 @@
 from fastapi import FastAPI
 
 from app import __version__, errors
-from app.api import audit_log, auth, conversations, files, health, kb, me, trash, users
+from app.api import (
+    answer_log,
+    answers,
+    audit_log,
+    auth,
+    conversations,
+    files,
+    health,
+    kb,
+    me,
+    trash,
+    users,
+)
 from app.config import get_settings
 
 
@@ -18,7 +30,19 @@ def create_app() -> FastAPI:
         openapi_url=None if settings.is_production else "/api/openapi.json",
     )
     errors.install(app)
-    for module in (health, auth, users, me, files, trash, audit_log, kb, conversations):
+    for module in (
+        health,
+        auth,
+        users,
+        me,
+        files,
+        trash,
+        audit_log,
+        kb,
+        conversations,
+        answers,
+        answer_log,
+    ):
         app.include_router(module.router, prefix="/api")
     return app
 

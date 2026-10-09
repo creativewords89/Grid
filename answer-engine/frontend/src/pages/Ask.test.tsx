@@ -213,3 +213,95 @@ test("the setup message shows when answering isn't configured", async () => {
 
   expect(await screen.findByText(/Answering isn't set up yet/)).toBeVisible();
 });
+
+test("a low-confidence answer says the team is checking it", async () => {
+  mockApi({
+    "GET /auth/me": signedIn,
+    "GET /conversations": [200, []],
+    "POST /conversations": [201, chat],
+    "POST /conversations/c1/ask": () =>
+      sse(
+        ["delta", { text: "It takes 3–5 days [1]." }],
+        ["sources", { sources: [source] }],
+        ["confidence", { confidence: 62, outcome: "low", status: "in_review" }],
+        ["done", { answer_id: "a1", outcome: "low", stop_reason: "end_turn" }],
+      ),
+  });
+  render(<App />);
+
+  await userEvent.type(await screen.findByLabelText("Your question"), "How long?{Enter}");
+
+  expect(await screen.findByText("🟠 Being checked by our team")).toBeVisible();
+});
+
+test("a high-confidence answer looks normal", async () => {
+  mockApi({
+    "GET /auth/me": signedIn,
+    "GET /conversations": [200, []],
+    "POST /conversations": [201, chat],
+    "POST /conversations/c1/ask": () =>
+      sse(
+        ["delta", { text: "Pro costs $900 [1]." }],
+        ["sources", { sources: [source] }],
+        ["confidence", { confidence: 92, outcome: "high", status: "auto" }],
+        ["done", { answer_id: "a1", outcome: "high", stop_reason: "end_turn" }],
+      ),
+  });
+  render(<App />);
+
+  await userEvent.type(await screen.findByLabelText("Your question"), "Pro price?{Enter}");
+
+  await screen.findByRole("button", { name: "Copy" });
+  expect(screen.queryByText(/Being checked/)).toBeNull();
+  expect(screen.queryByText(/92/)).toBeNull();
+});
+
+test("thumbs down asks what was wrong and sends the note", async () => {
+  const calls = mockApi({
+    "GET /auth/me": signedIn,
+    "GET /conversations": [200, [chat]],
+    "GET /conversations/c1": [
+      200,
+      {
+        ...chat,
+        messages: [
+          { id: "m1", role: "user", body: "Pro price?", created_at: "", answer: null },
+          {
+            id: "m2",
+            role: "assistant",
+            body: "Pro costs $900 [1].",
+            created_at: "",
+            answer: {
+              id: "a1",
+              sources: [source],
+              outcome: "high",
+              status: "auto",
+              stop_reason: "end_turn",
+              corrected: false,
+              confidence: 90,
+              feedback: null,
+            },
+          },
+        ],
+      },
+    ],
+    "POST /answers/a1/feedback": (body) => [
+      200,
+      { feedback: (body as { value: string }).value, flagged: true },
+    ],
+  });
+  window.history.pushState(null, "", "/?c=c1");
+  render(<App />);
+
+  await userEvent.click(await screen.findByRole("button", { name: "Not helpful" }));
+  await userEvent.type(await screen.findByLabelText("What was wrong? (optional)"), "Old price");
+  await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+  const sent = calls.filter((c) => c.path === "/answers/a1/feedback").map((c) => c.body);
+  expect(sent).toEqual([{ value: "down" }, { value: "down", note: "Old price" }]);
+  expect(screen.getByRole("button", { name: "Not helpful" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  expect(screen.queryByLabelText("What was wrong? (optional)")).toBeNull();
+});

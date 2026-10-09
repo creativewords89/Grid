@@ -646,6 +646,7 @@ a {
 
 .link-button {
   font: inherit;
+  text-align: left;
   border: 0;
   background: none;
   padding: 0;
@@ -1081,4 +1082,164 @@ a.button {
   .actions .button:not(:first-child) {
     margin-left: 0;
   }
+}
+
+/* Answer labels and feedback (SPEC sections 6.7, 6.8) */
+.answer-label {
+  margin: 8px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.label-pending {
+  color: var(--warn);
+}
+
+.label-ok {
+  color: var(--ok);
+}
+
+.label-warn {
+  color: var(--error);
+}
+
+.icon-button.feedback {
+  font-size: 15px;
+  opacity: 0.6;
+}
+
+.icon-button.feedback[aria-pressed="true"] {
+  opacity: 1;
+  background: var(--surface-2);
+}
+
+.feedback-note {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.feedback-note textarea {
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* Answer Log (SPEC section 7.5) */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.stat {
+  padding: 12px 16px;
+}
+
+.stat-value {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.filters .input {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.filters select,
+.filters input[type="date"] {
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  max-width: 100%;
+}
+
+label.inline {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 14px;
+}
+
+.conf {
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.tag-warn {
+  margin-left: 6px;
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.pager {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.pairs {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 16px;
+  margin: 0;
+}
+
+.pairs dt {
+  color: var(--muted);
+}
+
+.pairs dd {
+  margin: 0;
+}
+
+.answer-detail h3 {
+  margin: 4px 0;
+}
+
+.answer-detail h4 {
+  margin: 0 0 6px;
+}
+
+.gaps {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.gaps > li {
+  padding: 12px 16px;
+}
+
+.gap-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
 }

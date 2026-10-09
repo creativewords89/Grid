@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from app.ai.ocr_client import Transcript
 
 if TYPE_CHECKING:
-    from app.answering.claude_answer import Completion
+    from app.answering.claude_answer import CheckResult, Completion
     from app.kb.store import Hit
 
 Answer = Callable[[int], Transcript | Exception]
@@ -110,6 +110,9 @@ class FakeAnswerer:
     prompts: list[str] = field(default_factory=list)
     histories: list[list[dict[str, object]]] = field(default_factory=list)
     rewrites: list[tuple[str, str]] = field(default_factory=list)
+    verdict: str | None = "full"  # the support check's verdict; None = it raises
+    unsupported: list[str] = field(default_factory=list)
+    checks: list[str] = field(default_factory=list)
 
     def rewrite(self, transcript: str, question: str) -> "Completion":
         from app.answering.claude_answer import Completion
@@ -131,3 +134,12 @@ class FakeAnswerer:
         if self.stop_reason == "refusal":
             text = ""
         return Completion(text, self.stop_reason, "claude-opus-5-5", 3000, 120, 2500)
+
+    def check(self, prompt: str) -> "CheckResult":
+        from app.answering.claude_answer import CheckResult, Completion
+
+        self.checks.append(prompt)
+        if self.verdict is None:
+            raise ConnectionError("Claude is overloaded")
+        done = Completion("{}", "end_turn", "claude-opus-5-5", 2000, 40)
+        return CheckResult(self.verdict, list(self.unsupported), done)

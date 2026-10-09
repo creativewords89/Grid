@@ -1,5 +1,8 @@
-"""Claude calls for answering: the follow-up rewrite and the streamed answer (SPEC 9.1-9.2)."""
+"""Claude calls for answering: the follow-up rewrite, the streamed answer and the support
+check (SPEC 9.1-9.3)."""
 
+import json
+import logging
 from collections.abc import Generator
 from dataclasses import dataclass
 from functools import lru_cache
@@ -9,11 +12,14 @@ import anthropic
 from anthropic.types.beta import BetaMessageParam, BetaTextBlockParam
 
 from app.ai.ocr_client import FALLBACK_BETA
-from app.answering.prompts import ANSWER_SYSTEM, REWRITE_SYSTEM
+from app.answering.prompts import ANSWER_SYSTEM, CHECK_SCHEMA, CHECK_SYSTEM, REWRITE_SYSTEM
 from app.config import get_settings
+
+log = logging.getLogger(__name__)
 
 ANSWER_MAX_TOKENS = 4000
 REWRITE_MAX_TOKENS = 300
+CHECK_MAX_TOKENS = 2000
 
 
 @dataclass(frozen=True)
@@ -26,11 +32,36 @@ class Completion:
     cache_read_tokens: int = 0
 
 
+@dataclass(frozen=True)
+class CheckResult:
+    """The support check's verdict; None when Claude declined or the reply wasn't usable."""
+
+    verdict: str | None
+    unsupported_claims: list[str]
+    completion: Completion
+
+
 class Answerer(Protocol):
     def rewrite(self, transcript: str, question: str) -> Completion: ...
     def stream(
         self, history: list[BetaMessageParam], prompt: str
     ) -> Generator[str, None, Completion]: ...
+    def check(self, prompt: str) -> CheckResult: ...
+
+
+def parse_check(completion: Completion) -> CheckResult:
+    if completion.stop_reason != "end_turn":
+        return CheckResult(None, [], completion)
+    try:
+        data = json.loads(completion.text)
+        verdict = data["verdict"]
+        claims = [str(claim) for claim in data.get("unsupported_claims", [])]
+    except (ValueError, KeyError, TypeError):
+        log.warning("the support check returned something that isn't the expected JSON")
+        return CheckResult(None, [], completion)
+    if verdict not in ("full", "partial", "none"):
+        return CheckResult(None, [], completion)
+    return CheckResult(verdict, claims, completion)
 
 
 def _completion(message: Any) -> Completion:
@@ -47,10 +78,17 @@ def _completion(message: Any) -> Completion:
 
 
 class ClaudeAnswerer:
-    def __init__(self, client: anthropic.Anthropic, answer_model: str, rewrite_model: str) -> None:
+    def __init__(
+        self,
+        client: anthropic.Anthropic,
+        answer_model: str,
+        rewrite_model: str,
+        check_model: str = "claude-opus-5-5",
+    ) -> None:
         self.client = client
         self.answer_model = answer_model
         self.rewrite_model = rewrite_model
+        self.check_model = check_model
 
     def rewrite(self, transcript: str, question: str) -> Completion:
         message = self.client.beta.messages.create(
@@ -87,6 +125,22 @@ class ClaudeAnswerer:
             yield from stream.text_stream
             return _completion(stream.get_final_message())
 
+    def check(self, prompt: str) -> CheckResult:
+        """Does the context support the answer? Structured output (SPEC 9.3)."""
+        message = self.client.beta.messages.create(
+            model=self.check_model,
+            max_tokens=CHECK_MAX_TOKENS,
+            betas=[FALLBACK_BETA],
+            fallbacks="default",
+            output_config={
+                "effort": "low",
+                "format": {"type": "json_schema", "schema": CHECK_SCHEMA},
+            },
+            system=CHECK_SYSTEM,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return parse_check(_completion(message))
+
 
 @lru_cache
 def _client(api_key: str) -> anthropic.Anthropic:
@@ -98,5 +152,8 @@ def get_answerer() -> Answerer | None:
     if not settings.anthropic_api_key:
         return None
     return ClaudeAnswerer(
-        _client(settings.anthropic_api_key), settings.answer_model, settings.rewrite_model
+        _client(settings.anthropic_api_key),
+        settings.answer_model,
+        settings.rewrite_model,
+        settings.check_model,
     )

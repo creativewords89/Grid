@@ -21,115 +21,14 @@ from app.db.models import (
     FileStatus,
     Message,
     Role,
-    StoredFile,
     UsageDaily,
     UsageKind,
     User,
 )
 from app.kb.store import DOCS
+from tests.asking import add_doc, ask, data_of, new_chat, streamed_text
 from tests.conftest import UserFactory, sign_in
 from tests.fakes import FakeAnswerer, FakeStore
-
-Events = list[tuple[str, dict[str, Any]]]
-
-
-@pytest.fixture
-def store() -> FakeStore:
-    return FakeStore()
-
-
-@pytest.fixture
-def answerer() -> FakeAnswerer:
-    return FakeAnswerer()
-
-
-@pytest.fixture
-def ask_client(
-    app_factory: Callable[[], TestClient], store: FakeStore, answerer: FakeAnswerer
-) -> Callable[[], TestClient]:
-    def make() -> TestClient:
-        client = app_factory()
-        client.app.dependency_overrides[answerer_dep] = lambda: answerer  # type: ignore[attr-defined]
-        client.app.dependency_overrides[store_dep] = lambda: store  # type: ignore[attr-defined]
-        return client
-
-    return make
-
-
-@pytest.fixture
-def me(ask_client: Callable[[], TestClient], make_user: UserFactory) -> tuple[TestClient, User]:
-    client = ask_client()
-    user = make_user(Role.USER, name="Sara")
-    sign_in(client, user.email)
-    return client, user
-
-
-def add_doc(
-    db: Session,
-    store: FakeStore,
-    user: User,
-    name: str,
-    texts: list[str],
-    in_pinecone: bool = True,
-    **fields: Any,
-) -> StoredFile:
-    record = StoredFile(
-        name=name,
-        mime="application/pdf",
-        size=1,
-        sha256=name.ljust(64, "0")[:64],
-        storage_path=name,
-        status=fields.pop("status", FileStatus.READY),
-        uploaded_by=user.id,
-        **fields,
-    )
-    db.add(record)
-    db.flush()
-    for n, text in enumerate(texts):
-        chunk_id = Chunk.make_id(record.id, n)
-        db.add(
-            Chunk(
-                id=chunk_id,
-                file_id=record.id,
-                position=n,
-                page_from=n + 1,
-                page_to=n + 1,
-                heading="Plans",
-                text=text,
-                token_count=10,
-            )
-        )
-        if in_pinecone:
-            store.data.setdefault(DOCS, {})[chunk_id] = {"_id": chunk_id, "text": text}
-    db.commit()
-    return record
-
-
-def events(response: Any) -> Events:
-    out: Events = []
-    for block in response.text.strip().split("\n\n"):
-        lines = dict(line.split(": ", 1) for line in block.splitlines())
-        out.append((lines["event"], json.loads(lines["data"])))
-    return out
-
-
-def new_chat(client: TestClient) -> str:
-    chat_id: str = client.post("/api/conversations", json={}).json()["id"]
-    return chat_id
-
-
-def ask(client: TestClient, chat_id: str, question: str) -> Events:
-    response = client.post(f"/api/conversations/{chat_id}/ask", json={"question": question})
-    assert response.status_code == 200, response.text
-    assert response.headers["content-type"].startswith("text/event-stream")
-    return events(response)
-
-
-def streamed_text(evs: Events) -> str:
-    text = "".join(data["text"] for name, data in evs if name == "delta")
-    replaced = [data["text"] for name, data in evs if name == "replace"]
-    return replaced[-1] if replaced else text
-
 
 PRICING = "The Pro plan costs $900 per month and includes weekly posts."
 
@@ -147,10 +46,10 @@ def test_an_answer_streams_with_its_sources(
     evs = ask(client, chat, "How much does the Pro plan cost per month?")
 
     names = [name for name, _ in evs]
-    assert names[:-2] == ["delta"] * (len(names) - 2)
-    assert names[-2:] == ["sources", "done"]
+    assert names[:-3] == ["delta"] * (len(names) - 3)
+    assert names[-3:] == ["sources", "confidence", "done"]
     assert streamed_text(evs) == "The Pro plan costs $900 a month [1]."
-    [source] = evs[-2][1]["sources"]
+    [source] = evs[-3][1]["sources"]
     assert 0 < source.pop("score") <= 1  # the reranker's relevance
     assert source == {
         "n": 1,
@@ -169,7 +68,9 @@ def test_an_answer_streams_with_its_sources(
         "How much does the Pro plan cost per month?",
     )
     assert answer.usage["cache_read_tokens"] == 2500
-    assert answer.outcome is None  # the confidence score arrives in build step 9
+    # Search matched 56 of 100 and the check found full support: 0.4 * 56 + 0.6 * 100 = 82.
+    assert (answer.confidence, answer.outcome) == (82, AnswerOutcome.HIGH)
+    assert evs[-2][1] == {"confidence": 82, "outcome": "high", "status": "auto"}
     assert answerer.rewrites == []  # a first question isn't rewritten
 
 
@@ -221,13 +122,11 @@ def test_usage_is_recorded(me: tuple[TestClient, User], db: Session, store: Fake
 
     ask(client, new_chat(client), "What does the Pro plan cost?")
 
-    spent = db.scalars(select(UsageDaily)).one()
-    assert (spent.user_id, spent.kind, spent.requests, spent.tokens_in) == (
-        user.id,
-        UsageKind.ANSWER,
-        1,
-        3000,
-    )
+    rows = {row.kind: row for row in db.scalars(select(UsageDaily))}
+    assert {kind: (r.user_id, r.requests, r.tokens_in) for kind, r in rows.items()} == {
+        UsageKind.ANSWER: (user.id, 1, 3000),
+        UsageKind.CHECK: (user.id, 1, 2000),  # the support check
+    }
 
 
 # --- what may be used ------------------------------------------------------------------------
@@ -367,7 +266,7 @@ def test_citations_map_to_their_documents_in_order_of_use(
 
     evs = ask(client, new_chat(client), "What does the Pro plan include and cost?")
 
-    assert [s["n"] for s in evs[-2][1]["sources"]] == [2, 1]
+    assert [s["n"] for s in data_of(evs, "sources")["sources"]] == [2, 1]
 
 
 def test_citation_helpers() -> None:

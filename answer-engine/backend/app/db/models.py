@@ -441,11 +441,16 @@ class Answer(TimestampMixin, Base):
     )
     flagged: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     flag_note: Mapped[str | None] = mapped_column(Text)
+    # 👍 / 👎 from the person who asked: "up", "down" or NULL.
+    feedback: Mapped[str | None] = mapped_column(String(4))
     model: Mapped[str | None] = mapped_column(String(100))
     usage: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
     stop_reason: Mapped[str | None] = mapped_column(String(50))
 
-    __table_args__ = (Index("ix_answers_created_at", "created_at"),)
+    __table_args__ = (
+        Index("ix_answers_created_at", "created_at"),
+        Index("ix_answers_outcome", "outcome"),
+    )
 
     @property
     def owner_ids(self) -> frozenset[uuid.UUID]:

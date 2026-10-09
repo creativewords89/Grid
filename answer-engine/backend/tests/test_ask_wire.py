@@ -13,7 +13,7 @@ import pytest
 from pinecone import Pinecone
 
 from app.answering.claude_answer import ClaudeAnswerer, Completion
-from app.answering.prompts import ANSWER_SYSTEM
+from app.answering.prompts import ANSWER_SYSTEM, CHECK_SCHEMA, CHECK_SYSTEM
 from app.kb.store import Hit, PineconeStore
 
 
@@ -197,3 +197,43 @@ def test_the_rewrite_request() -> None:
     assert sent["output_config"] == {"effort": "low"}
     assert sent["fallbacks"] == "default"
     assert sent["messages"][0]["content"].endswith("Follow-up question: and per year?")
+
+
+def test_the_support_check_request_uses_structured_output() -> None:
+    sent: dict[str, Any] = {}
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        sent.update(json.loads(request.content))
+        verdict = json.dumps({"verdict": "partial", "unsupported_claims": ["weekly posts"]})
+        return httpx2.Response(
+            200,
+            json={
+                "id": "msg_3",
+                "type": "message",
+                "role": "assistant",
+                "model": "claude-opus-5-5",
+                "content": [{"type": "text", "text": verdict}],
+                "stop_reason": "end_turn",
+                "stop_sequence": None,
+                "usage": {"input_tokens": 2100, "output_tokens": 30},
+            },
+        )
+
+    client = anthropic.Anthropic(
+        api_key="sk-ant-test", http_client=httpx2.Client(transport=httpx2.MockTransport(handler))
+    )
+
+    result = ClaudeAnswerer(
+        client, "claude-opus-5-5", "claude-opus-5-5", "claude-sonnet-5-5"
+    ).check("CHECK PROMPT")
+
+    assert (result.verdict, result.unsupported_claims) == ("partial", ["weekly posts"])
+    assert result.completion.input_tokens == 2100
+    assert sent["model"] == "claude-sonnet-5-5"
+    assert sent["output_config"] == {
+        "effort": "low",
+        "format": {"type": "json_schema", "schema": CHECK_SCHEMA},
+    }
+    assert sent["system"] == CHECK_SYSTEM
+    assert sent["messages"] == [{"role": "user", "content": "CHECK PROMPT"}]
+    assert sent["fallbacks"] == "default"

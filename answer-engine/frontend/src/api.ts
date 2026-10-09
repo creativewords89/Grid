@@ -107,11 +107,91 @@ export type ChatMessage = {
   answer: {
     id: string;
     sources: Source[];
-    outcome: "no_answer" | "low" | "high" | null;
-    status: string;
+    outcome: Outcome | null;
+    status: AnswerStatus;
     stop_reason: string | null;
     corrected: boolean;
+    confidence: number | null;
+    feedback: Feedback | null;
   } | null;
+};
+
+export type Feedback = "up" | "down";
+export type Outcome = "no_answer" | "low" | "high";
+export type AnswerStatus =
+  "auto" | "in_review" | "needs_info" | "verified" | "corrected" | "wrong_no_answer";
+
+export type Confidence = { confidence: number; outcome: Outcome; status: AnswerStatus };
+
+export type Person = { id: string; name: string };
+
+export type LogRow = {
+  id: string;
+  created_at: string;
+  asked_by: Person | null;
+  kind: "chat" | "marketing";
+  question: string;
+  confidence: number | null;
+  outcome: Outcome | null;
+  status: AnswerStatus;
+  flagged: boolean;
+  feedback: Feedback | null;
+  source_count: number;
+};
+
+export type LogPage = {
+  items: LogRow[];
+  total: number;
+  page: number;
+  page_size: number;
+  stats: {
+    answers_this_month: number;
+    high_pct: number | null;
+    corrected_pct: number | null;
+    avg_review_minutes: number | null;
+  };
+  people: Person[];
+  can_review: boolean;
+};
+
+export type LogFilters = {
+  outcome?: Outcome | "unscored" | "";
+  status?: AnswerStatus | "";
+  flagged?: "true" | "";
+  kind?: "chat" | "marketing" | "";
+  person?: string;
+  date_from?: string;
+  date_to?: string;
+  q?: string;
+  page?: number;
+};
+
+export type LogDetail = LogRow & {
+  retrieval_query: string;
+  original_text: string;
+  current_text: string;
+  sources: Source[];
+  confidence_parts: {
+    retrieval: number;
+    support: "full" | "partial" | "none" | null;
+    unsupported_claims: string[];
+    reason: string | null;
+  } | null;
+  explanation: string;
+  flag_note: string | null;
+  model: string | null;
+  stop_reason: string | null;
+  cost_usd: number;
+  conversation_id: string | null;
+  can_review: boolean;
+};
+
+export type Gap = {
+  question: string;
+  count: number;
+  last_asked_at: string | null;
+  answer_ids: string[];
+  examples: string[];
 };
 
 export type ConversationDetail = Conversation & { messages: ChatMessage[] };
@@ -120,6 +200,7 @@ export type AskHandlers = {
   onDelta: (text: string) => void;
   onReplace: (text: string) => void;
   onSources: (sources: Source[]) => void;
+  onConfidence?: (confidence: Confidence) => void;
   onDone: (done: { answer_id: string; outcome: string | null; stop_reason: string | null }) => void;
   onError: (message: string) => void;
 };
@@ -162,6 +243,7 @@ async function askStream(chatId: string, question: string, on: AskHandlers): Pro
     if (name === "delta") on.onDelta(payload.text);
     else if (name === "replace") on.onReplace(payload.text);
     else if (name === "sources") on.onSources(payload.sources);
+    else if (name === "confidence") on.onConfidence?.(payload);
     else if (name === "done") on.onDone(payload);
     else if (name === "error") on.onError(payload.message);
   };
@@ -328,6 +410,22 @@ export const api = {
 
   listConversations: () => request<Conversation[]>("GET", "/conversations"),
   createConversation: () => request<Conversation>("POST", "/conversations", {}),
+  feedback: (answerId: string, value: Feedback | "none", note?: string) =>
+    request<{ feedback: Feedback | null; flagged: boolean }>(
+      "POST",
+      `/answers/${answerId}/feedback`,
+      note ? { value, note } : { value },
+    ),
+  answerLog: (filters: LogFilters = {}) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined && value !== "") params.set(key, String(value));
+    }
+    const query = params.toString();
+    return request<LogPage>("GET", `/answer-log${query ? `?${query}` : ""}`);
+  },
+  answerDetail: (id: string) => request<LogDetail>("GET", `/answer-log/${id}`),
+  knowledgeGaps: () => request<Gap[]>("GET", "/answer-log/gaps"),
   getConversation: (id: string) => request<ConversationDetail>("GET", `/conversations/${id}`),
   deleteConversation: (id: string) => request<void>("DELETE", `/conversations/${id}`),
   ask: askStream,

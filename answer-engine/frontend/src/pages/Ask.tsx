@@ -6,12 +6,20 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { api, ApiError, type ChatMessage, type Conversation, type Source } from "../api";
+import {
+  api,
+  ApiError,
+  type AnswerStatus,
+  type ChatMessage,
+  type Conversation,
+  type Feedback,
+  type Outcome,
+  type Source,
+} from "../api";
+import { Markdown } from "../components/Markdown";
 import { Alert, Confirm } from "../components/ui";
 
-// Ask (SPEC section 7.1). The confidence badge, 👍/👎 and review labels arrive in steps 9-11.
+// Ask (SPEC section 7.1). Labels for reviewed answers follow SPEC section 6.8.
 
 type Shown = ChatMessage & { streaming?: boolean; error?: string; question?: string };
 
@@ -125,8 +133,19 @@ export function Ask() {
             status: "auto",
             stop_reason: null,
             corrected: false,
+            confidence: null,
+            feedback: null,
             ...m.answer,
             sources,
+          },
+        })),
+      onConfidence: (scored) =>
+        update(replyKey, (m) => ({
+          answer: m.answer && {
+            ...m.answer,
+            confidence: scored.confidence,
+            outcome: scored.outcome,
+            status: scored.status,
           },
         })),
       onDone: (done) =>
@@ -134,10 +153,12 @@ export function Ask() {
           streaming: false,
           answer: {
             sources: m.answer?.sources ?? [],
-            status: "auto",
+            status: m.answer?.status ?? "auto",
             corrected: false,
+            confidence: m.answer?.confidence ?? null,
+            feedback: null,
             id: done.answer_id,
-            outcome: (done.outcome as "no_answer" | null) ?? null,
+            outcome: (done.outcome as Outcome | null) ?? m.answer?.outcome ?? null,
             stop_reason: done.stop_reason,
           },
         })),
@@ -279,21 +300,7 @@ function AnswerBubble({ message, onRetry }: { message: Shown; onRetry: () => voi
   return (
     <div className="bubble bubble-answer">
       {message.body ? (
-        <div className={message.streaming ? "markdown typing" : "markdown"}>
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            skipHtml
-            components={{
-              a: ({ href, children }) => (
-                <a href={href} target="_blank" rel="noopener noreferrer">
-                  {children}
-                </a>
-              ),
-            }}
-          >
-            {message.body}
-          </ReactMarkdown>
-        </div>
+        <Markdown text={message.body} typing={message.streaming} />
       ) : (
         <p className="muted">Searching the documents…</p>
       )}
@@ -313,6 +320,7 @@ function AnswerBubble({ message, onRetry }: { message: Shown; onRetry: () => voi
           ))}
         </ul>
       )}
+      {!message.streaming && message.answer && <StatusLabel status={message.answer.status} />}
       {!message.streaming && message.body && (
         <div className="answer-actions">
           <button
@@ -325,9 +333,99 @@ function AnswerBubble({ message, onRetry }: { message: Shown; onRetry: () => voi
           >
             {copied ? "Copied" : "Copy"}
           </button>
+          {message.answer?.id && (
+            <FeedbackButtons answerId={message.answer.id} initial={message.answer.feedback} />
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+const LABELS: Partial<Record<AnswerStatus, [string, string]>> = {
+  in_review: ["🟠 Being checked by our team", "label-pending"],
+  needs_info: ["🟠 Our team needs more information", "label-pending"],
+  verified: ["✔ Verified by our team", "label-ok"],
+  corrected: ["✔ Corrected by our team", "label-ok"],
+  wrong_no_answer: [
+    "⚠ This answer was not correct and we don't have a confirmed answer yet. Please don't rely on it.",
+    "label-warn",
+  ],
+};
+
+function StatusLabel({ status }: { status: AnswerStatus }) {
+  const label = LABELS[status];
+  if (!label) return null;
+  return <p className={`answer-label ${label[1]}`}>{label[0]}</p>;
+}
+
+function FeedbackButtons({ answerId, initial }: { answerId: string; initial: Feedback | null }) {
+  const [value, setValue] = useState<Feedback | null>(initial);
+  const [asking, setAsking] = useState(false);
+  const [note, setNote] = useState("");
+  const [error, setError] = useState("");
+
+  async function send(next: Feedback | "none", withNote?: string) {
+    setError("");
+    try {
+      const result = await api.feedback(answerId, next, withNote);
+      setValue(result.feedback);
+      return true;
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Not saved.");
+      return false;
+    }
+  }
+
+  return (
+    <>
+      <button
+        className="icon-button feedback"
+        aria-label="Helpful"
+        aria-pressed={value === "up"}
+        onClick={() => void send(value === "up" ? "none" : "up")}
+      >
+        👍
+      </button>
+      <button
+        className="icon-button feedback"
+        aria-label="Not helpful"
+        aria-pressed={value === "down"}
+        onClick={() => {
+          if (value === "down") void send("none");
+          else void send("down").then((ok) => ok && setAsking(true));
+        }}
+      >
+        👎
+      </button>
+      {error && <span className="field-error small">{error}</span>}
+      {asking && (
+        <form
+          className="feedback-note"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void send("down", note.trim() || undefined).then((ok) => ok && setAsking(false));
+          }}
+        >
+          <label className="small" htmlFor={`note-${answerId}`}>
+            What was wrong? (optional)
+          </label>
+          <textarea
+            id={`note-${answerId}`}
+            rows={2}
+            maxLength={2000}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+          <div className="row">
+            <button className="button button-small button-primary">Send</button>
+            <button type="button" className="button button-small" onClick={() => setAsking(false)}>
+              Skip
+            </button>
+          </div>
+        </form>
+      )}
+    </>
   );
 }
 

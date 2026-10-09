@@ -46,6 +46,8 @@ class AnswerOut(BaseModel):
     status: str
     stop_reason: str | None
     corrected: bool
+    confidence: int | None
+    feedback: str | None
 
 
 class MessageOut(BaseModel):
@@ -98,6 +100,8 @@ def _message(message: Message) -> MessageOut:
             status=answer.status.value,
             stop_reason=answer.stop_reason,
             corrected=answer.current_text != answer.original_text,
+            confidence=answer.confidence,
+            feedback=answer.feedback,
         )
         if answer
         else None,

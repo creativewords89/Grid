@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AuthProvider, useAuth } from "./auth";
+import { AnswerLog } from "./pages/AnswerLog";
 import { Ask } from "./pages/Ask";
 import { Documents } from "./pages/Documents";
 import { Forgot } from "./pages/Forgot";
@@ -16,7 +17,6 @@ const PLACEHOLDERS: Record<string, [string, number]> = {
   "/marketing": ["Marketing", 13],
   "/verified": ["Verified Answers", 11],
   "/reviews": ["Review Queue", 10],
-  "/answer-log": ["Answer Log", 9],
 };
 
 function Routes() {
@@ -35,6 +35,7 @@ function Routes() {
   else if (path === "/documents") page = <Documents />;
   else if (path === "/") page = <Ask />;
   else if (path === "/settings" && user.role === "owner") page = <Settings />;
+  else if (path === "/answer-log" && user.role !== "user") page = <AnswerLog />;
   else {
     const known = PLACEHOLDERS[path];
     page = known ? <Placeholder title={known[0]} step={known[1]} /> : <Ask />;
