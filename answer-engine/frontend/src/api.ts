@@ -113,6 +113,7 @@ export type ChatMessage = {
     corrected: boolean;
     confidence: number | null;
     feedback: Feedback | null;
+    needs_info?: { question: string; asked_by: string } | null;
   } | null;
 };
 
@@ -184,7 +185,72 @@ export type LogDetail = LogRow & {
   cost_usd: number;
   conversation_id: string | null;
   can_review: boolean;
+  reviews: ReviewHistory[];
 };
+
+export type ReviewState =
+  "open" | "claimed" | "needs_info" | "approved" | "edited" | "rejected" | "cancelled";
+
+export type ReviewRow = {
+  id: string;
+  number: number;
+  reason: "low_confidence" | "no_answer" | "admin" | "flag";
+  reason_label: string;
+  state: ReviewState;
+  created_at: string;
+  question: string;
+  kind: "chat" | "marketing";
+  asked_by: Person | null;
+  claimed_by: Person | null;
+  answer_id: string;
+};
+
+export type ReviewDetail = ReviewRow & {
+  original_text: string;
+  current_text: string;
+  sources: Source[];
+  confidence: number | null;
+  explanation: string;
+  unsupported_claims: string[];
+  no_answer: boolean;
+  notes: {
+    kind: "question_to_asker" | "asker_reply" | "reviewer_note";
+    author: Person | null;
+    body: string;
+    created_at: string;
+  }[];
+  decided_by: Person | null;
+  decided_at: string | null;
+  final_text: string | null;
+  note: string | null;
+  mine: boolean;
+};
+
+export type ReviewAction = "approve" | "edit" | "reject" | "no_answer" | "needs_info";
+
+export type ReviewHistory = {
+  number: number;
+  reason_label: string;
+  state: ReviewState;
+  created_at: string;
+  claimed_by: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  final_text: string | null;
+  note: string | null;
+  notes: { kind: string; author: string | null; body: string; created_at: string }[];
+};
+
+export type SettingsData = {
+  values: Record<string, unknown>;
+  telegram: {
+    configured: boolean;
+    bot_username: string;
+    seen_chats: { id: number; title: string }[];
+  };
+};
+
+export type TelegramCode = { code: string; expires_at: string; bot_username: string };
 
 export type Gap = {
   question: string;
@@ -201,7 +267,12 @@ export type AskHandlers = {
   onReplace: (text: string) => void;
   onSources: (sources: Source[]) => void;
   onConfidence?: (confidence: Confidence) => void;
-  onDone: (done: { answer_id: string; outcome: string | null; stop_reason: string | null }) => void;
+  onDone: (done: {
+    answer_id: string;
+    outcome: string | null;
+    status?: AnswerStatus;
+    stop_reason: string | null;
+  }) => void;
   onError: (message: string) => void;
 };
 
@@ -426,6 +497,25 @@ export const api = {
   },
   answerDetail: (id: string) => request<LogDetail>("GET", `/answer-log/${id}`),
   knowledgeGaps: () => request<Gap[]>("GET", "/answer-log/gaps"),
+  needsInfoReply: (answerId: string, text: string) =>
+    request<{ status: AnswerStatus }>("POST", `/answers/${answerId}/needs-info-reply`, { text }),
+
+  listReviews: (show: "waiting" | "mine" | "decided" = "waiting") =>
+    request<ReviewRow[]>("GET", `/reviews?show=${show}`),
+  reviewCount: () => request<{ waiting: number }>("GET", "/reviews/count"),
+  getReview: (id: string) => request<ReviewDetail>("GET", `/reviews/${id}`),
+  claimReview: (id: string) => request<ReviewDetail>("POST", `/reviews/${id}/claim`),
+  releaseReview: (id: string) => request<ReviewDetail>("POST", `/reviews/${id}/release`),
+  decideReview: (id: string, action: ReviewAction, text?: string, note?: string) =>
+    request<ReviewDetail>("POST", `/reviews/${id}/decide`, { action, text, note }),
+
+  telegramCode: () => request<TelegramCode>("POST", "/me/telegram-link"),
+  telegramUnlink: () => request<void>("DELETE", "/me/telegram-link"),
+
+  getSettings: () => request<SettingsData>("GET", "/settings"),
+  updateSettings: (values: Record<string, unknown>) =>
+    request<SettingsData>("PATCH", "/settings", { values }),
+  telegramTest: () => request<{ message: string }>("POST", "/settings/telegram-test"),
   getConversation: (id: string) => request<ConversationDetail>("GET", `/conversations/${id}`),
   deleteConversation: (id: string) => request<void>("DELETE", `/conversations/${id}`),
   ask: askStream,

@@ -17,6 +17,7 @@ import {
   type Source,
 } from "../api";
 import { Markdown } from "../components/Markdown";
+import { reviewsChanged } from "../events";
 import { Alert, Confirm } from "../components/ui";
 
 // Ask (SPEC section 7.1). Labels for reviewed answers follow SPEC section 6.8.
@@ -153,7 +154,7 @@ export function Ask() {
           streaming: false,
           answer: {
             sources: m.answer?.sources ?? [],
-            status: m.answer?.status ?? "auto",
+            status: done.status ?? m.answer?.status ?? "auto",
             corrected: false,
             confidence: m.answer?.confidence ?? null,
             feedback: null,
@@ -170,6 +171,7 @@ export function Ask() {
     });
     setBusy(false);
     loadChats();
+    reviewsChanged(); // a low or unanswered question opens a review
   }
 
   async function remove(chat: Conversation) {
@@ -258,6 +260,11 @@ export function Ask() {
                 key={m.id}
                 message={m}
                 onRetry={() => m.question && void send(m.question, m.id)}
+                onReplied={() =>
+                  update(m.id, (old) => ({
+                    answer: old.answer && { ...old.answer, status: "in_review", needs_info: null },
+                  }))
+                }
               />
             ),
           )}
@@ -284,7 +291,15 @@ export function Ask() {
   );
 }
 
-function AnswerBubble({ message, onRetry }: { message: Shown; onRetry: () => void }) {
+function AnswerBubble({
+  message,
+  onRetry,
+  onReplied,
+}: {
+  message: Shown;
+  onRetry: () => void;
+  onReplied: () => void;
+}) {
   const [copied, setCopied] = useState(false);
   if (message.error) {
     return (
@@ -320,7 +335,22 @@ function AnswerBubble({ message, onRetry }: { message: Shown; onRetry: () => voi
           ))}
         </ul>
       )}
-      {!message.streaming && message.answer && <StatusLabel status={message.answer.status} />}
+      {!message.streaming && message.answer && (
+        <StatusLabel
+          status={message.answer.status}
+          noAnswer={message.answer.outcome === "no_answer"}
+        />
+      )}
+      {!message.streaming &&
+        message.answer?.status === "needs_info" &&
+        message.answer.needs_info && (
+          <NeedsInfoCard
+            answerId={message.answer.id}
+            question={message.answer.needs_info.question}
+            from={message.answer.needs_info.asked_by}
+            onSent={onReplied}
+          />
+        )}
       {!message.streaming && message.body && (
         <div className="answer-actions">
           <button
@@ -353,10 +383,70 @@ const LABELS: Partial<Record<AnswerStatus, [string, string]>> = {
   ],
 };
 
-function StatusLabel({ status }: { status: AnswerStatus }) {
-  const label = LABELS[status];
+const NO_ANSWER_LABEL: [string, string] = [
+  "🟠 Sent to our team. We'll notify you when there's an answer.",
+  "label-pending",
+];
+
+function StatusLabel({ status, noAnswer }: { status: AnswerStatus; noAnswer: boolean }) {
+  const label = noAnswer && status === "in_review" ? NO_ANSWER_LABEL : LABELS[status];
   if (!label) return null;
   return <p className={`answer-label ${label[1]}`}>{label[0]}</p>;
+}
+
+function NeedsInfoCard({
+  answerId,
+  question,
+  from,
+  onSent,
+}: {
+  answerId: string;
+  question: string;
+  from: string;
+  onSent: () => void;
+}) {
+  const [text, setText] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function send(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      await api.needsInfoReply(answerId, text.trim());
+      onSent();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Not sent.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="needs-info" onSubmit={send}>
+      <p>
+        <strong>❓ {from} from our team asks:</strong> {question}
+      </p>
+      {error && <Alert kind="error">{error}</Alert>}
+      <label className="sr-only" htmlFor={`reply-${answerId}`}>
+        Your reply
+      </label>
+      <textarea
+        id={`reply-${answerId}`}
+        rows={2}
+        maxLength={4000}
+        placeholder="Your reply"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+      />
+      <div>
+        <button className="button button-small button-primary" disabled={busy || !text.trim()}>
+          Send reply
+        </button>
+      </div>
+    </form>
+  );
 }
 
 function FeedbackButtons({ answerId, initial }: { answerId: string; initial: Feedback | null }) {

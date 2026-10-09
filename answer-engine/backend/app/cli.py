@@ -60,6 +60,34 @@ def setup_pinecone() -> None:
     print("Next: Settings → Knowledge base → Rebuild sends every document to it.")
 
 
+def setup_telegram() -> None:
+    """Point Telegram at our webhook, with the secret it must send (SPEC section 6.7)."""
+    from app import settings_store
+    from app.config import get_settings
+    from app.reviews.telegram import TelegramError, get_telegram
+
+    settings = get_settings()
+    telegram = get_telegram()
+    if telegram is None:
+        raise SystemExit("Set TELEGRAM_BOT_TOKEN in .env first.")
+    if len(settings.telegram_webhook_secret) < 16:
+        raise SystemExit("Set TELEGRAM_WEBHOOK_SECRET in .env to a random value (16+ characters).")
+    if not settings.app_url.startswith("https://"):
+        raise SystemExit("APP_URL must be the https:// address of the Answer Engine.")
+    url = settings.link("/api/telegram/webhook")
+    try:
+        telegram.set_webhook(url, settings.telegram_webhook_secret)
+        username = telegram.bot_username()
+    except TelegramError as error:
+        raise SystemExit(str(error)) from None
+    with Session(get_engine()) as db:
+        settings_store.put(db, "telegram_bot_username", username)
+        db.commit()
+    print(f"Webhook set to {url} for @{username}.")
+    print("Next: add the bot to your private review group, then choose the group in")
+    print("Settings → Reviews (Detect group).")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -70,11 +98,14 @@ def main(argv: list[str] | None = None) -> None:
         "--password-stdin", action="store_true", help="read the password from standard input"
     )
     commands.add_parser("setup-pinecone", help="create the Pinecone index if it doesn't exist")
+    commands.add_parser("setup-telegram", help="register the review bot's webhook")
     args = parser.parse_args(argv)
     if args.command == "create-owner":
         create_owner(args.email, args.name, args.password_stdin)
     elif args.command == "setup-pinecone":
         setup_pinecone()
+    elif args.command == "setup-telegram":
+        setup_telegram()
 
 
 if __name__ == "__main__":

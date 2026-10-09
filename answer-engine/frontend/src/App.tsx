@@ -6,17 +6,18 @@ import { Documents } from "./pages/Documents";
 import { Forgot } from "./pages/Forgot";
 import { Placeholder } from "./pages/Placeholder";
 import { Profile } from "./pages/Profile";
+import { ReviewQueue } from "./pages/ReviewQueue";
 import { SetPassword } from "./pages/SetPassword";
 import { Settings } from "./pages/Settings";
 import { SignIn } from "./pages/SignIn";
 import { Users } from "./pages/Users";
 import { usePath } from "./router";
+import { reviewsChanged } from "./events";
 import { Shell } from "./Shell";
 
 const PLACEHOLDERS: Record<string, [string, number]> = {
   "/marketing": ["Marketing", 13],
   "/verified": ["Verified Answers", 11],
-  "/reviews": ["Review Queue", 10],
 };
 
 function Routes() {
@@ -36,6 +37,8 @@ function Routes() {
   else if (path === "/") page = <Ask />;
   else if (path === "/settings" && user.role === "owner") page = <Settings />;
   else if (path === "/answer-log" && user.role !== "user") page = <AnswerLog />;
+  else if (path === "/reviews" && user.role !== "user")
+    page = <ReviewQueue onChange={reviewsChanged} />;
   else {
     const known = PLACEHOLDERS[path];
     page = known ? <Placeholder title={known[0]} step={known[1]} /> : <Ask />;

@@ -1,6 +1,7 @@
-import { useState, type ReactNode } from "react";
-import type { Role } from "./api";
+import { useEffect, useState, type ReactNode } from "react";
+import { api, type Role } from "./api";
 import { useAuth } from "./auth";
+import { REVIEWS_CHANGED } from "./events";
 import { navigate } from "./router";
 
 type NavItem = { path: string; label: string; roles?: Role[] };
@@ -17,10 +18,31 @@ const NAV: NavItem[] = [
   { path: "/settings", label: "Settings", roles: ["owner"] },
 ];
 
+function useWaitingReviews(path: string, staff: boolean): number {
+  const [waiting, setWaiting] = useState(0);
+  useEffect(() => {
+    if (!staff) return;
+    let current = true;
+    const load = () =>
+      api
+        .reviewCount()
+        .then((count) => current && setWaiting(count.waiting))
+        .catch(() => undefined);
+    load();
+    window.addEventListener(REVIEWS_CHANGED, load);
+    return () => {
+      current = false;
+      window.removeEventListener(REVIEWS_CHANGED, load);
+    };
+  }, [path, staff]);
+  return waiting;
+}
+
 export function Shell({ path, children }: { path: string; children: ReactNode }) {
   const { user, signOut } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const waiting = useWaitingReviews(path, user?.role === "owner" || user?.role === "reviewer");
   if (!user) return null;
 
   const go = (to: string) => {
@@ -85,6 +107,11 @@ export function Shell({ path, children }: { path: string; children: ReactNode })
               }}
             >
               {item.label}
+              {item.path === "/reviews" && waiting > 0 && (
+                <span className="badge" aria-label={`${waiting} waiting`}>
+                  {waiting}
+                </span>
+              )}
             </a>
           ))}
         </nav>

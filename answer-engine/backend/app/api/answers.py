@@ -11,6 +11,8 @@ from app.auth.deps import CurrentUser, Db
 from app.db.models import Answer
 from app.errors import ApiError
 from app.permissions import Action, can
+from app.reviews import service as reviews
+from app.reviews.service import ReviewError
 
 router = APIRouter(prefix="/answers", tags=["answers"])
 
@@ -44,3 +46,25 @@ def feedback(answer_id: uuid.UUID, body: FeedbackIn, me: CurrentUser, db: Db) ->
     answer.flag_note = (body.note or None) if body.value == "down" else None
     db.commit()
     return FeedbackOut(feedback=answer.feedback, flagged=answer.flagged)
+
+
+class ReplyIn(Strict):
+    text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)]
+
+
+class ReplyOut(BaseModel):
+    status: str
+
+
+@router.post("/{answer_id}/needs-info-reply", response_model=ReplyOut)
+def needs_info_reply(answer_id: uuid.UUID, body: ReplyIn, me: CurrentUser, db: Db) -> ReplyOut:
+    """The asker answers a reviewer's question; the review goes back to the reviewer."""
+    answer = get_answer(db, answer_id)
+    if not can(me, Action.ANSWER_NEEDS_INFO, answer):
+        raise ApiError(404, "not_found", "That answer doesn't exist.")
+    try:
+        reviews.asker_reply(db, answer, me, body.text)
+    except ReviewError as error:
+        raise ApiError(error.status, error.code, error.message) from None
+    db.commit()
+    return ReplyOut(status=answer.status.value)

@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     # Fixed when the index is created; changing it means a new index and a rebuild.
     pinecone_embed_model: str = "llama-text-embed-v2"
 
+    # Telegram review bot (SPEC section 6.7). Without a token, reviews use the web queue only.
+    telegram_bot_token: str = ""
+    telegram_webhook_secret: str = ""
+    telegram_api_url: str = "https://api.telegram.org"
+
     # Email (SPEC section 2). Empty SMTP_HOST means email is not configured: links are
     # logged and, where the Owner asked for them, returned to the Owner instead.
     smtp_host: str = ""

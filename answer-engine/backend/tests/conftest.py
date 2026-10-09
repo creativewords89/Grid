@@ -32,7 +32,7 @@ from app.jobs import handlers  # noqa: F401  (registers every job type)
 from app.jobs.queue import run_next
 from app.mail import get_mailer
 from app.main import create_app
-from tests.fakes import FakeAnswerer, FakeStore
+from tests.fakes import FakeAnswerer, FakeStore, FakeTelegram
 
 DEFAULT_SERVER_URL = "postgresql+psycopg://answers:answers@localhost:5432/postgres"
 BACKEND = Path(__file__).resolve().parent.parent
@@ -46,6 +46,8 @@ def upload_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path
     monkeypatch.setenv("UPLOAD_DIR", str(folder))
     # Never call the real Claude API from tests, whatever key the developer has set.
     monkeypatch.setenv("ANTHROPIC_API_KEY", "")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "")
+    monkeypatch.setenv("TELEGRAM_WEBHOOK_SECRET", "")
     get_settings.cache_clear()
     yield folder
     get_settings.cache_clear()
@@ -257,3 +259,19 @@ def me(ask_client: Callable[[], TestClient], make_user: UserFactory) -> tuple[Te
     user = make_user(Role.USER, name="Sara")
     sign_in(client, user.email)
     return client, user
+
+
+# --- the Telegram review bot (faked) ----------------------------------------------------------
+
+WEBHOOK_SECRET = "test-webhook-secret-123456"
+
+
+@pytest.fixture
+def telegram(monkeypatch: pytest.MonkeyPatch) -> FakeTelegram:
+    """A configured bot whose API calls are recorded instead of sent."""
+    fake = FakeTelegram()
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123456:test-token")
+    monkeypatch.setenv("TELEGRAM_WEBHOOK_SECRET", WEBHOOK_SECRET)
+    get_settings.cache_clear()
+    monkeypatch.setattr("app.reviews.telegram._client", lambda token, url: fake)
+    return fake

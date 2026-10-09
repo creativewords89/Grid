@@ -139,7 +139,7 @@ All tables have `id` (UUID v7 unless stated), `created_at` and `updated_at` (`ti
 | `conversations` | user_id, title (from the first question), last_message_at, deleted_at NULL |
 | `messages` | conversation_id, role ENUM(user, assistant), body (user text; for assistant, a copy of `answers.current_text`), answer_id NULL, position |
 | `answers` | kind ENUM(chat, marketing), asked_by, question, retrieval_query, original_text, current_text, sources JSONB `[{n, kind: doc|verified, ref_id, file_id, file_name, page, sheet, score}]`, confidence INT 0–100 NULL, confidence_parts JSONB, outcome ENUM(no_answer, low, high), status ENUM(auto, in_review, needs_info, verified, corrected, wrong_no_answer), flagged BOOL (👎), flag_note NULL, feedback NULL (`up`/`down`), model, usage JSONB (tokens in/out/cached, cost_usd), stop_reason |
-| `reviews` | answer_id, reason ENUM(low_confidence, no_answer, admin, flag), state ENUM(open, claimed, needs_info, approved, edited, rejected, cancelled), claimed_by NULL, claimed_at, decided_by NULL, decided_at, final_text NULL, note NULL, telegram_message_id NULL, reminded_at NULL, escalated_at NULL |
+| `reviews` | number BIGINT IDENTITY (shown as #R-142), answer_id, reason ENUM(low_confidence, no_answer, admin, flag), state ENUM(open, claimed, needs_info, approved, edited, rejected, cancelled), claimed_by NULL, claimed_at, decided_by NULL, decided_at, final_text NULL, note NULL, telegram_message_id NULL, prompt_message_id NULL + prompt_action NULL (the bot's open "reply to this message" prompt), reminded_at NULL, escalated_at NULL. At most one undecided review per answer (partial unique index). |
 | `review_messages` | review_id, author_id, kind ENUM(question_to_asker, asker_reply, reviewer_note), body |
 | `threads` | id TEXT (canonical ID, section 6.9, e.g. `reddit:abc123`), platform_id, community NULL (e.g. `r/localseo`, a group name), title, original_url, status ENUM(waiting_for_us, in_review, ready_to_post, waiting_for_them, closed), created_by, last_activity_at, closed_at NULL, close_reason ENUM(manual, inactive) NULL, deleted_at NULL |
 | `thread_messages` | thread_id, parent_id NULL (the message it replies to), author ENUM(them, us), author_name NULL (e.g. `u/john_smb`), body, external_url NULL, external_comment_id NULL, answer_id NULL (for our drafts), state ENUM(draft, in_review, ready, posted, discarded) (ours only), posted_by NULL, posted_at NULL, created_by |
@@ -299,6 +299,18 @@ Sources: [1] Onboarding.pdf p.3
 - **Web Review Queue:** the same reviews and actions, for reviewers who prefer the browser. Both channels update the same rows.
 - **Reminders:** an unclaimed or undecided review gets a reminder in the group after **4 h** (setting). After **24 h** (setting), every Owner is notified by in-app notification and email.
 - **Admin review** of any answer from the Answer Log (section 7.5) creates a review with reason `admin`, decided straight away in the web app (no Telegram message).
+- *Built in step 10:*
+  - A question with no answer gets status `in_review` and a review straight away. Its card has **✏️ Answer**, **🚫 No answer known** and **❓ Needs info** (there is nothing to approve).
+  - The bot posts and edits group messages from worker jobs, so a slow Telegram never slows answering and a failed call is retried. A review decided on the web before its card was posted is posted as already decided, without buttons.
+  - Buttons work only in the chosen group, and only for a linked, active Owner or Reviewer. Anyone else gets a short notice that only they can see ("Your Telegram isn't linked to a reviewer account."). Replies from strangers in the group are ignored.
+  - Edit, Reject and Needs info claim the review and post a prompt as a reply to the card. Only the reviewer who claimed it can answer the prompt; anyone else is told who is handling it. Reject's prompt also has a **🚫 No answer known** button.
+  - A question asked from the web is posted under the card ("❓ Ali asked about #R-142: …"), and so is the asker's reply ("💬 Sara replied to #R-142 (Ali, it's back with you): …").
+  - The web queue also has **Claim** and **Release**. Deciding an open review on the web claims it in the same step.
+  - Reminders and escalations skip reviews waiting for the asker (`needs_info`). Each review is reminded once and escalated once. Until notifications (step 12), escalations go to Owners by email only.
+  - **Linking:** the code is 8 letters and digits (no 0/O or 1/I), valid for 10 minutes and single use. `/link CODE` or the `t.me/<bot>?start=CODE` link both work. One Telegram account belongs to one person: linking it to someone else unlinks the previous person. People can unlink on their Profile.
+  - **Detect group:** the bot remembers the groups it is added to (from Telegram's `my_chat_member` updates), and Settings → Reviews lists them. **Send a test message** checks the bot and the group.
+  - `python -m app.cli setup-telegram` needs `TELEGRAM_BOT_TOKEN`, a `TELEGRAM_WEBHOOK_SECRET` of 16+ characters and an `https://` `APP_URL`. It registers the webhook (`message`, `callback_query` and `my_chat_member` updates) and stores the bot's username.
+  - The webhook answers 200 to every update that carries the right secret, even ones it ignores, so Telegram doesn't resend them.
 - **Flags:** 👎 on an answer sets `flagged = true` and opens an optional "What was wrong?" note. It **does not** go to Telegram. It appears in the Answer Log under **Flagged** for the Owner. Pressing the same thumb again clears it, and 👍 clears a flag and its note. Only the person who asked can do this; anyone else gets a 404, as if the answer didn't exist.
 
 ### 6.8 Delivering the reviewed answer to the asker
@@ -440,6 +452,7 @@ A clean, simple layout. Left sidebar: **Ask**, **Documents**, **Marketing**, **V
 - **Detail:** the full answer, sources, `confidence_parts` explained ("Search match 81 · Support: partial"), and the review history. Owners also get **Approve / Edit / Reject** on any answer.
 - **Knowledge gaps tab:** questions with no answer or "no answer known", grouped by similarity, with counts.
 - **Stats strip:** answers this month, % high confidence, % corrected, average review time.
+- *Built in step 10:* each answer's review history in the detail view, and the average review time (from a review opening to its decision, for reviews decided this month; Owner reviews are left out).
 - *Built in step 9:* the table (50 per page, newest first), all filters, the detail view (with "Searched for" when a follow-up was rewritten, unsupported claims, the 👎 note and the cost), Knowledge gaps (the last 90 days; questions join a group when at least half of their meaningful words match) and the stats strip. % high counts scored answers only; % corrected counts `corrected` and `wrong_no_answer`. Average review time arrives with reviews (step 10), and the Owner's Approve / Edit / Reject with step 11.
 
 ### 7.6 Review Queue (Reviewers, Owners)
@@ -473,14 +486,14 @@ Every route checks the session, the CSRF token (for writes) and `permissions.can
 | Ask | `POST /conversations/{id}/ask` `{question}` → **SSE** stream: `delta` events (`{text}`), an optional `replace` (`{text}`, the final text), then `sources`, then `confidence` (step 9), then `done` (`{answer_id, outcome, stop_reason}`); or `error` (`{message}`). `503 not_configured` while the Anthropic or Pinecone key is missing |
 | Answers | `POST /answers/{id}/feedback` `{value: up|down|none, note?}`, `POST /answers/{id}/needs-info-reply` |
 | Files | `GET /files`, `POST /files` (multipart), `POST /files/{id}/version`, `POST /files/{id}/retry`, `GET /files/{id}/download`, `DELETE /files/{id}` |
-| Reviews | `GET /reviews`, `GET /reviews/{id}`, `POST /reviews/{id}/claim`, `POST /reviews/{id}/decide` `{action: approve|edit|reject|needs_info|no_answer, text?, note?, add_to_kb?}` |
+| Reviews | `GET /reviews?show=waiting|mine|decided`, `GET /reviews/count` (the sidebar badge), `GET /reviews/{id}`, `POST /reviews/{id}/claim`, `POST /reviews/{id}/release`, `POST /reviews/{id}/decide` `{action: approve|edit|reject|needs_info|no_answer, text?, note?, add_to_kb?}` |
 | Answer Log | `GET /answer-log` (filters `outcome`, `status`, `flagged`, `kind`, `person`, `date_from`, `date_to`, `q`, `page`), `GET /answer-log/gaps`, `GET /answer-log/{id}`, `POST /answers/{id}/admin-review` |
 | Verified | `GET /verified`, `GET /verified/{id}`, `PATCH /verified/{id}`, `POST /verified/{id}/disable`, `POST /verified/{id}/enable`, `DELETE /verified/{id}`, `GET /verified/{id}/history` |
 | Marketing | `POST /threads/resolve` `{url}` → `{found, thread?, parsed, possible_matches?, error?}`, `POST /threads`, `GET /threads`, `GET /threads/{id}`, `POST /threads/{id}/replies`, `POST /threads/{id}/draft` `{parent_id, instruction?}`, `PATCH /thread-messages/{id}`, `POST /thread-messages/{id}/posted` `{url?}`, `POST /threads/{id}/close`, `POST /threads/{id}/reopen`, `DELETE /threads/{id}` |
 | Notifications | `GET /notifications`, `POST /notifications/read` |
 | Live updates | `GET /updates?since=` (changed answers, reviews, notifications and file statuses for this user) |
-| Users | `GET /users`, `POST /users/invite`, `PATCH /users/{id}`, `POST /users/{id}/reset-password`, `POST /me/telegram-link` |
-| Settings | `GET /settings`, `PATCH /settings`, `GET /kb/status`, `POST /kb/rebuild`, `GET /usage`, `GET /audit` |
+| Users | `GET /users`, `POST /users/invite`, `PATCH /users/{id}`, `POST /users/{id}/reset-password`, `POST /me/telegram-link` (a one-time code), `DELETE /me/telegram-link` |
+| Settings | `GET /settings`, `PATCH /settings` `{values: {key: value}}` (each key is checked; a wrong value returns 422 with a message per field; every change is audited), `POST /settings/telegram-test`, `GET /kb/status`, `POST /kb/rebuild`, `GET /usage`, `GET /audit` |
 | Trash | `GET /trash`, `POST /trash/{id}/restore`, `DELETE /trash/{id}` |
 | Telegram | `POST /telegram/webhook` (secret header, section 6.7) |
 | Health | `GET /health` (DB, Pinecone and Claude reachability, for monitoring) |
@@ -580,7 +593,7 @@ Every route checks the session, the CSRF token (for writes) and `permissions.can
 - A record `answers.gridrankers.com` → VPS IP. Caddy gets the certificate automatically.
 
 ### 13.3 `.env` (on the server only; `.env.example` lists the keys)
-`DATABASE_URL`, `SECRET_KEY`, `APP_URL`, `ANTHROPIC_API_KEY`, `PINECONE_API_KEY`, `PINECONE_INDEX`, `PINECONE_HOST` (optional), `PINECONE_CLOUD`, `PINECONE_REGION`, `PINECONE_EMBED_MODEL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `ANSWER_MODEL`, `REWRITE_MODEL`, `CHECK_MODEL`, `OCR_MODEL`, `BACKUP_TARGET`.
+`DATABASE_URL`, `SECRET_KEY`, `APP_URL`, `ANTHROPIC_API_KEY`, `PINECONE_API_KEY`, `PINECONE_INDEX`, `PINECONE_HOST` (optional), `PINECONE_CLOUD`, `PINECONE_REGION`, `PINECONE_EMBED_MODEL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_API_URL` (optional, for tests), `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `ANSWER_MODEL`, `REWRITE_MODEL`, `CHECK_MODEL`, `OCR_MODEL`, `BACKUP_TARGET`.
 
 ### 13.4 Install and update
 - **Install:** `git clone` → copy `.env.example` to `.env` and fill it in → `docker compose up -d` → `docker compose exec api python -m app.cli create-owner --email … --name …` → `docker compose exec api python -m app.cli setup-pinecone` (creates the index) → `… setup-telegram` (registers the webhook).

@@ -28,14 +28,22 @@ def now() -> datetime:
     return datetime.now(UTC)
 
 
-def issue(db: Session, user: User, kind: TokenKind) -> str:
+_CODE_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O or 1/I to mix up
+
+
+def new_code(length: int = 8) -> str:
+    """A short code people type (the Telegram link code); it expires in 10 minutes."""
+    return "".join(secrets.choice(_CODE_LETTERS) for _ in range(length))
+
+
+def issue(db: Session, user: User, kind: TokenKind, secret: str | None = None) -> str:
     """Create a single-use token and cancel any earlier unused one of the same kind."""
     db.execute(
         update(AuthToken)
         .where(AuthToken.user_id == user.id, AuthToken.kind == kind, AuthToken.used_at.is_(None))
         .values(used_at=now())
     )
-    secret = new_secret()
+    secret = secret or new_secret()
     db.add(
         AuthToken(
             user_id=user.id,

@@ -14,8 +14,17 @@ from app.answering.gaps import group
 from app.api.answers import get_answer
 from app.auth.deps import CurrentUser, Db
 from app.auth.tokens import now
-from app.db.models import Answer, AnswerKind, AnswerOutcome, AnswerStatus, User
+from app.db.models import (
+    Answer,
+    AnswerKind,
+    AnswerOutcome,
+    AnswerStatus,
+    Review,
+    ReviewReason,
+    User,
+)
 from app.permissions import Action, can, ensure
+from app.reviews.service import reason_label
 
 router = APIRouter(prefix="/answer-log", tags=["answer-log"])
 
@@ -59,6 +68,19 @@ class LogPage(BaseModel):
     can_review: bool
 
 
+class ReviewHistory(BaseModel):
+    number: int
+    reason_label: str
+    state: str
+    created_at: datetime
+    claimed_by: str | None
+    decided_by: str | None
+    decided_at: datetime | None
+    final_text: str | None
+    note: str | None
+    notes: list[dict[str, Any]]
+
+
 class LogDetail(LogRow):
     retrieval_query: str
     original_text: str
@@ -72,6 +94,7 @@ class LogDetail(LogRow):
     cost_usd: float
     conversation_id: uuid.UUID | None
     can_review: bool
+    reviews: list[ReviewHistory]
 
 
 class GapOut(BaseModel):
@@ -149,8 +172,13 @@ def _stats(db: Db) -> Stats:
 
 
 def review_minutes(db: Db) -> int | None:
-    """Average time from question to review decision this month (reviews: build step 10)."""
-    return None
+    """Average time from a review opening to its decision, for reviews decided this month."""
+    seconds = db.scalar(
+        select(func.avg(func.extract("epoch", Review.decided_at - Review.created_at))).where(
+            Review.decided_at >= _month_start(), Review.reason != ReviewReason.ADMIN
+        )
+    )
+    return round(float(seconds) / 60) if seconds is not None else None
 
 
 @router.get("", response_model=LogPage)
@@ -246,7 +274,18 @@ def gaps(me: CurrentUser, db: Db) -> list[GapOut]:
 def answer_detail(answer_id: uuid.UUID, me: CurrentUser, db: Db) -> LogDetail:
     ensure(me, Action.VIEW_ANSWER_LOG)
     answer = get_answer(db, answer_id)
-    people = _people(db, {answer.asked_by} if answer.asked_by else set())
+    reviews = db.scalars(
+        select(Review).where(Review.answer_id == answer.id).order_by(Review.created_at)
+    ).all()
+    ids: set[uuid.UUID | None] = {answer.asked_by}
+    for review in reviews:
+        ids |= {review.claimed_by, review.decided_by} | {n.author_id for n in review.messages}
+    people = _people(db, {i for i in ids if i is not None})
+
+    def name(user_id: uuid.UUID | None) -> str | None:
+        person = people.get(user_id) if user_id else None
+        return person.name if person else None
+
     return LogDetail(
         **_row(answer, people),
         retrieval_query=answer.retrieval_query,
@@ -261,4 +300,27 @@ def answer_detail(answer_id: uuid.UUID, me: CurrentUser, db: Db) -> LogDetail:
         cost_usd=float(answer.usage.get("cost_usd", 0)),
         conversation_id=answer.conversation_id,
         can_review=can(me, Action.ADMIN_REVIEW),
+        reviews=[
+            ReviewHistory(
+                number=r.number,
+                reason_label=reason_label(r),
+                state=r.state.value,
+                created_at=r.created_at,
+                claimed_by=name(r.claimed_by),
+                decided_by=name(r.decided_by),
+                decided_at=r.decided_at,
+                final_text=r.final_text,
+                note=r.note,
+                notes=[
+                    {
+                        "kind": n.kind.value,
+                        "author": name(n.author_id),
+                        "body": n.body,
+                        "created_at": n.created_at,
+                    }
+                    for n in r.messages
+                ],
+            )
+            for r in reviews
+        ],
     )

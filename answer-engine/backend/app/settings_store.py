@@ -19,6 +19,12 @@ DEFAULTS: dict[str, Any] = {
     # Confidence (SPEC section 6.6)
     "confidence_threshold": 75,
     "confidence_weights": {"retrieval": 0.4, "support": 0.6},
+    # Reviews (SPEC section 6.7)
+    "review_reminder_hours": 4,
+    "review_escalation_hours": 24,
+    "telegram_group_chat_id": None,
+    "telegram_bot_username": "",
+    "telegram_seen_chats": [],
 }
 
 
@@ -33,6 +39,15 @@ def get_int(db: Session, key: str) -> int:
 
 def get_float(db: Session, key: str) -> float:
     return float(get(db, key))
+
+
+def put(db: Session, key: str, value: Any) -> None:
+    """Store a value in the current transaction (the caller commits and audits)."""
+    row = db.get(Setting, key)
+    if row is None:
+        db.add(Setting(key=key, value=value))
+    else:
+        row.value = value
 
 
 def get_dict(db: Session, key: str) -> dict[str, Any]:

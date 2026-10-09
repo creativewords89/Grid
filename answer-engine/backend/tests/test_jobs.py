@@ -214,7 +214,8 @@ def test_a_stale_job_on_its_last_attempt_fails(
 
 def test_daily_jobs_are_queued_once_per_day_after_their_time(db: Session) -> None:
     def kinds() -> list[str]:
-        return sorted(job.dedupe_key or "" for job in jobs(db))
+        keys = (job.dedupe_key or "" for job in jobs(db))
+        return sorted(k for k in keys if not k.startswith("review_reminders:"))
 
     enqueue_due(db, datetime(2026, 10, 8, 2, 59, tzinfo=UTC))
     assert kinds() == []
@@ -233,6 +234,18 @@ def test_daily_jobs_are_queued_once_per_day_after_their_time(db: Session) -> Non
         "session_cleanup:2026-10-09",
         "trash_purge:2026-10-08",
         "trash_purge:2026-10-09",
+    ]
+
+
+def test_reminders_are_queued_once_per_five_minutes(db: Session) -> None:
+    for minute, second in ((0, 0), (2, 30), (4, 59), (5, 0), (9, 1), (10, 0)):
+        enqueue_due(db, datetime(2026, 10, 8, 1, minute, second, tzinfo=UTC))
+
+    keys = sorted(j.dedupe_key or "" for j in jobs(db) if j.kind == "review_reminders")
+    assert keys == [
+        "review_reminders:2026-10-08T01:00",
+        "review_reminders:2026-10-08T01:05",
+        "review_reminders:2026-10-08T01:10",
     ]
 
 

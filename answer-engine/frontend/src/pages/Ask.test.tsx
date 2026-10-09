@@ -305,3 +305,70 @@ test("thumbs down asks what was wrong and sends the note", async () => {
   );
   expect(screen.queryByLabelText("What was wrong? (optional)")).toBeNull();
 });
+
+test("a reviewer's question appears with a reply box", async () => {
+  const calls = mockApi({
+    "GET /auth/me": signedIn,
+    "GET /conversations": [200, [chat]],
+    "GET /conversations/c1": [
+      200,
+      {
+        ...chat,
+        messages: [
+          { id: "m1", role: "user", body: "Pro price?", created_at: "", answer: null },
+          {
+            id: "m2",
+            role: "assistant",
+            body: "Pro costs $900 [1].",
+            created_at: "",
+            answer: {
+              id: "a1",
+              sources: [source],
+              outcome: "low",
+              status: "needs_info",
+              stop_reason: "end_turn",
+              corrected: false,
+              confidence: 55,
+              feedback: null,
+              needs_info: { question: "Which client is this for?", asked_by: "Ali" },
+            },
+          },
+        ],
+      },
+    ],
+    "POST /answers/a1/needs-info-reply": [200, { status: "in_review" }],
+  });
+  window.history.pushState(null, "", "/?c=c1");
+  render(<App />);
+
+  expect(await screen.findByText("Which client is this for?")).toBeVisible();
+  expect(screen.getByText("🟠 Our team needs more information")).toBeVisible();
+  await userEvent.type(screen.getByPlaceholderText("Your reply"), "A dentist in Leeds");
+  await userEvent.click(screen.getByRole("button", { name: "Send reply" }));
+
+  expect(await screen.findByText("🟠 Being checked by our team")).toBeVisible();
+  expect(screen.queryByText("Which client is this for?")).toBeNull();
+  const sent = calls.find((c) => c.path === "/answers/a1/needs-info-reply");
+  expect(sent?.body).toEqual({ text: "A dentist in Leeds" });
+});
+
+test("a question with no answer says the team will answer it", async () => {
+  mockApi({
+    "GET /auth/me": signedIn,
+    "GET /conversations": [200, []],
+    "POST /conversations": [201, chat],
+    "POST /conversations/c1/ask": () =>
+      sse(
+        ["delta", { text: "I couldn't find this in the knowledge base." }],
+        ["sources", { sources: [] }],
+        ["done", { answer_id: "a1", outcome: "no_answer", status: "in_review", stop_reason: null }],
+      ),
+  });
+  render(<App />);
+
+  await userEvent.type(await screen.findByLabelText("Your question"), "Office dog?{Enter}");
+
+  expect(
+    await screen.findByText("🟠 Sent to our team. We'll notify you when there's an answer."),
+  ).toBeVisible();
+});

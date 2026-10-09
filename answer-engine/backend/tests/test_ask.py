@@ -185,7 +185,12 @@ def test_nothing_relevant_means_no_answer_without_calling_claude(
     assert streamed_text(evs) == NO_ANSWER
     assert evs[-1] == (
         "done",
-        {"answer_id": evs[-1][1]["answer_id"], "outcome": "no_answer", "stop_reason": None},
+        {
+            "answer_id": evs[-1][1]["answer_id"],
+            "outcome": "no_answer",
+            "status": "in_review",  # our team is asked (SPEC 6.5 step 4)
+            "stop_reason": None,
+        },
     )
     assert answerer.prompts == []
     answer = db.scalars(select(Answer)).one()

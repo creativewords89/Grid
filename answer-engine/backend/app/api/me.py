@@ -1,12 +1,18 @@
 """`/api/me`: a person's own profile and password (SPEC section 7.9)."""
 
-from fastapi import APIRouter
+from datetime import datetime
 
+from fastapi import APIRouter
+from pydantic import BaseModel
+
+from app import settings_store
 from app.api.schemas import ChangePasswordIn, MessageOut, ProfilePatchIn, UserOut
-from app.auth import passwords, sessions
+from app.auth import passwords, sessions, tokens
 from app.auth.deps import CurrentSession, Db
+from app.db.models import TokenKind
 from app.errors import ApiError
 from app.permissions import Action, ensure
+from app.reviews.telegram import get_telegram
 
 router = APIRouter(prefix="/me", tags=["me"])
 
@@ -36,3 +42,34 @@ def change_password(body: ChangePasswordIn, session: CurrentSession, db: Db) -> 
     sessions.revoke_all(db, user.id, keep=session.id)
     db.commit()
     return MessageOut(message="Your password has been changed.")
+
+
+class TelegramCodeOut(BaseModel):
+    code: str
+    expires_at: datetime
+    bot_username: str
+
+
+@router.post("/telegram-link", response_model=TelegramCodeOut)
+def telegram_code(session: CurrentSession, db: Db) -> TelegramCodeOut:
+    """A one-time code (10 minutes) to send to the bot as `/link CODE` (SPEC 6.7)."""
+    user = session.user
+    ensure(user, Action.EDIT_OWN_PROFILE)
+    if get_telegram() is None:
+        raise ApiError(409, "not_configured", "Telegram isn't set up yet. Ask the Owner.")
+    code = tokens.new_code()
+    tokens.issue(db, user, TokenKind.TELEGRAM_LINK, secret=code)
+    db.commit()
+    return TelegramCodeOut(
+        code=code,
+        expires_at=tokens.now() + tokens.TOKEN_TTL[TokenKind.TELEGRAM_LINK],
+        bot_username=str(settings_store.get(db, "telegram_bot_username") or ""),
+    )
+
+
+@router.delete("/telegram-link", status_code=204)
+def telegram_unlink(session: CurrentSession, db: Db) -> None:
+    user = session.user
+    ensure(user, Action.EDIT_OWN_PROFILE)
+    user.telegram_user_id = None
+    db.commit()

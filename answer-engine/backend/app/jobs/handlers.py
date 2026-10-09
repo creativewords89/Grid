@@ -32,6 +32,7 @@ from app.jobs.queue import Payload, UserFacingError, job
 from app.kb import outbox
 from app.kb.reconcile import reconcile
 from app.kb.store import DOCS, get_store
+from app.reviews import jobs as review_jobs  # noqa: F401  (registers the review jobs)
 
 
 def _fail_file(db: Session, payload: Payload, message: str) -> None:

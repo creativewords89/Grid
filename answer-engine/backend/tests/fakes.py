@@ -143,3 +143,66 @@ class FakeAnswerer:
             raise ConnectionError("Claude is overloaded")
         done = Completion("{}", "end_turn", "claude-opus-5-5", 2000, 40)
         return CheckResult(self.verdict, list(self.unsupported), done)
+
+
+@dataclass
+class FakeTelegram:
+    """Records every Bot API call. Set `fail` to make the next N calls raise."""
+
+    sent: list[dict[str, Any]] = field(default_factory=list)
+    edits: list[dict[str, Any]] = field(default_factory=list)
+    toasts: list[tuple[str, str]] = field(default_factory=list)
+    webhook: tuple[str, str] | None = None
+    username: str = "gr_answers_bot"
+    fail: int = 0
+    next_id: int = 100
+
+    def _maybe_fail(self) -> None:
+        from app.reviews.telegram import TelegramError
+
+        if self.fail:
+            self.fail -= 1
+            raise TelegramError("Telegram sendMessage: Bad Gateway")
+
+    def send_message(
+        self,
+        chat_id: int,
+        text: str,
+        reply_markup: dict[str, Any] | None = None,
+        reply_to: int | None = None,
+    ) -> int:
+        self._maybe_fail()
+        self.next_id += 1
+        self.sent.append(
+            {
+                "id": self.next_id,
+                "chat": chat_id,
+                "text": text,
+                "markup": reply_markup,
+                "reply_to": reply_to,
+            }
+        )
+        return self.next_id
+
+    def edit_message(
+        self, chat_id: int, message_id: int, text: str, reply_markup: dict[str, Any] | None
+    ) -> None:
+        self._maybe_fail()
+        self.edits.append({"chat": chat_id, "id": message_id, "text": text, "markup": reply_markup})
+
+    def answer_callback(self, callback_id: str, text: str) -> None:
+        self.toasts.append((callback_id, text))
+
+    def set_webhook(self, url: str, secret: str) -> None:
+        self.webhook = (url, secret)
+
+    def bot_username(self) -> str:
+        return self.username
+
+    def buttons(self, message: dict[str, Any]) -> list[str]:
+        markup = message.get("markup") or {}
+        return [
+            b.get("callback_data", b.get("url", ""))
+            for row in markup.get("inline_keyboard", [])
+            for b in row
+        ]

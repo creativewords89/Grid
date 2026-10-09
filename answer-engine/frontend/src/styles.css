@@ -1243,3 +1243,147 @@ label.inline {
   gap: 12px;
   align-items: baseline;
 }
+
+/* Reviews (SPEC sections 6.7, 7.6) */
+.sidebar a {
+  position: relative;
+}
+
+.badge {
+  display: inline-block;
+  min-width: 20px;
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--brand);
+  color: var(--brand-text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}
+
+.review-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.review-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 12px 16px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.review-num {
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.review-main {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.pill-open,
+.pill-needs_info {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.pill-claimed {
+  background: var(--info-bg);
+  color: var(--brand);
+}
+
+.pill-approved,
+.pill-edited {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.pill-rejected,
+.pill-cancelled {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.review-detail h1 {
+  margin-bottom: 4px;
+}
+
+.review-detail h2 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.textarea,
+.needs-info textarea {
+  font: inherit;
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.note {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.note-asker_reply {
+  background: var(--info-bg);
+}
+
+.needs-info {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--warn-bg);
+  border: 1px solid var(--border);
+}
+
+.needs-info p {
+  margin: 0;
+}
+
+.link-code {
+  display: inline-block;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  justify-self: start;
+}
+
+.history {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+
+@media (max-width: 700px) {
+  .review-row {
+    flex-wrap: wrap;
+  }
+}

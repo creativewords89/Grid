@@ -12,7 +12,7 @@ import {
 import { Markdown } from "../components/Markdown";
 import { Alert, Modal } from "../components/ui";
 import { formatDate, plural } from "../format";
-import { STATUS_NAMES } from "../labels";
+import { REVIEW_STATES, STATUS_NAMES } from "../labels";
 
 // Answer Log (SPEC section 7.5): every answer, for Owners and (read only) Reviewers.
 
@@ -317,6 +317,26 @@ function Detail({ id, onClose }: { id: string; onClose: () => void }) {
               <ul>
                 {answer.confidence_parts.unsupported_claims.map((claim) => (
                   <li key={claim}>{claim}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {answer.reviews.length > 0 && (
+            <div>
+              <h4>Reviews</h4>
+              <ul className="history">
+                {answer.reviews.map((r) => (
+                  <li key={r.number}>
+                    <strong>#R-{r.number}</strong> · {r.reason_label} · {REVIEW_STATES[r.state]}
+                    {r.decided_by && <> by {r.decided_by}</>}
+                    {r.decided_at && <> · {dateTime(r.decided_at)}</>}
+                    {r.note && <div className="muted small">Note: {r.note}</div>}
+                    {r.notes.map((n) => (
+                      <div key={n.created_at + n.body} className="muted small">
+                        {n.author ?? "Someone"}: {n.body}
+                      </div>
+                    ))}
+                  </li>
                 ))}
               </ul>
             </div>

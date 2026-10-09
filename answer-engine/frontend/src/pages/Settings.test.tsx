@@ -111,3 +111,66 @@ test("non-owners get no settings screen", async () => {
   expect(await screen.findByRole("heading", { name: "Ask" })).toBeVisible();
   expect(calls.some((c) => c.path === "/kb/status")).toBe(false);
 });
+
+const reviewSettings = {
+  values: {
+    confidence_threshold: 75,
+    min_relevance: 0.2,
+    review_reminder_hours: 4,
+    review_escalation_hours: 24,
+    telegram_group_chat_id: null,
+  },
+  telegram: {
+    configured: true,
+    bot_username: "gr_answers_bot",
+    seen_chats: [{ id: -100123, title: "GR reviewers" }],
+  },
+};
+
+test("review settings: choose the group the bot has seen and save", async () => {
+  const calls = mockApi({
+    "GET /auth/me": owner,
+    "GET /kb/status": [200, kb()],
+    "GET /reviews/count": [200, { waiting: 0 }],
+    "GET /settings": [200, reviewSettings],
+    "PATCH /settings": (body) => [
+      200,
+      {
+        ...reviewSettings,
+        values: { ...reviewSettings.values, ...(body as { values: object }).values },
+      },
+    ],
+  });
+  render(<App />);
+
+  await userEvent.selectOptions(await screen.findByLabelText("Telegram review group"), "-100123");
+  const threshold = screen.getByLabelText("Confidence threshold");
+  await userEvent.clear(threshold);
+  await userEvent.type(threshold, "80");
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+  expect(await screen.findByText("Saved.")).toBeVisible();
+  expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({
+    values: {
+      confidence_threshold: 80,
+      review_reminder_hours: 4,
+      review_escalation_hours: 24,
+      telegram_group_chat_id: "-100123",
+    },
+  });
+});
+
+test("review settings explain how to set up Telegram", async () => {
+  mockApi({
+    "GET /auth/me": owner,
+    "GET /kb/status": [200, kb()],
+    "GET /settings": [
+      200,
+      { ...reviewSettings, telegram: { configured: false, bot_username: "", seen_chats: [] } },
+    ],
+  });
+  render(<App />);
+
+  expect(await screen.findByText(/Telegram isn't set up/)).toBeVisible();
+  expect(screen.queryByLabelText("Telegram review group")).toBeNull();
+});

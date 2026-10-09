@@ -13,9 +13,12 @@ from app.api import (
     health,
     kb,
     me,
+    reviews,
+    telegram,
     trash,
     users,
 )
+from app.api import settings as settings_api
 from app.config import get_settings
 
 
@@ -42,6 +45,9 @@ def create_app() -> FastAPI:
         conversations,
         answers,
         answer_log,
+        reviews,
+        settings_api,
+        telegram,
     ):
         app.include_router(module.router, prefix="/api")
     return app

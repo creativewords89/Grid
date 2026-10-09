@@ -15,10 +15,19 @@ from app.answering.service import answer_stream, start_turn
 from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
 from app.auth.tokens import now
-from app.db.models import Conversation, Message, TrashItem, TrashKind, User
+from app.db.models import (
+    Answer,
+    AnswerStatus,
+    Conversation,
+    Message,
+    TrashItem,
+    TrashKind,
+    User,
+)
 from app.errors import ApiError
 from app.kb.store import VectorStore, get_store
 from app.permissions import Action, ensure
+from app.reviews import service as reviews
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -39,6 +48,11 @@ class ConversationOut(BaseModel):
     last_message_at: datetime
 
 
+class NeedsInfo(BaseModel):
+    question: str
+    asked_by: str
+
+
 class AnswerOut(BaseModel):
     id: uuid.UUID
     sources: list[dict[str, Any]]
@@ -48,6 +62,7 @@ class AnswerOut(BaseModel):
     corrected: bool
     confidence: int | None
     feedback: str | None
+    needs_info: NeedsInfo | None = None
 
 
 class MessageOut(BaseModel):
@@ -85,7 +100,18 @@ def _get(db: Session, conversation_id: uuid.UUID, me: User, action: Action) -> C
     return conversation
 
 
-def _message(message: Message) -> MessageOut:
+def _needs_info(db: Session, answer: Answer) -> NeedsInfo | None:
+    if answer.status != AnswerStatus.NEEDS_INFO:
+        return None
+    waiting = reviews.open_question(db, answer)
+    if waiting is None:
+        return None
+    _, question = waiting
+    author = db.get(User, question.author_id) if question.author_id else None
+    return NeedsInfo(question=question.body, asked_by=author.name if author else "Our team")
+
+
+def _message(db: Session, message: Message) -> MessageOut:
     answer = message.answer
     return MessageOut(
         id=message.id,
@@ -102,6 +128,7 @@ def _message(message: Message) -> MessageOut:
             corrected=answer.current_text != answer.original_text,
             confidence=answer.confidence,
             feedback=answer.feedback,
+            needs_info=_needs_info(db, answer),
         )
         if answer
         else None,
@@ -148,7 +175,7 @@ def get_conversation(conversation_id: uuid.UUID, me: CurrentUser, db: Db) -> Con
         id=conversation.id,
         title=conversation.title,
         last_message_at=conversation.last_message_at,
-        messages=[_message(m) for m in messages],
+        messages=[_message(db, m) for m in messages],
     )
 
 

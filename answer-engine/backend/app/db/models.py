@@ -478,3 +478,94 @@ class Message(TimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint("conversation_id", "position", name="uq_messages_conversation_position"),
     )
+
+
+class ReviewReason(enum.StrEnum):
+    LOW_CONFIDENCE = "low_confidence"
+    NO_ANSWER = "no_answer"
+    ADMIN = "admin"
+    FLAG = "flag"
+
+
+class ReviewState(enum.StrEnum):
+    OPEN = "open"
+    CLAIMED = "claimed"
+    NEEDS_INFO = "needs_info"
+    APPROVED = "approved"
+    EDITED = "edited"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"
+
+
+UNDECIDED = (ReviewState.OPEN, ReviewState.CLAIMED, ReviewState.NEEDS_INFO)
+
+
+class Review(TimestampMixin, Base):
+    """A person checking an answer (SPEC section 6.7). `number` is the #R-142 shown to people."""
+
+    __tablename__ = "reviews"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    number: Mapped[int] = mapped_column(BigInteger, Identity(), unique=True)
+    answer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("answers.id", ondelete="CASCADE"))
+    reason: Mapped[ReviewReason] = mapped_column(_enum(ReviewReason, "review_reason"))
+    state: Mapped[ReviewState] = mapped_column(
+        _enum(ReviewState, "review_state"), default=ReviewState.OPEN
+    )
+    claimed_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    final_text: Mapped[str | None] = mapped_column(Text)
+    note: Mapped[str | None] = mapped_column(Text)
+    # The group message, and the bot's "reply to this message with…" prompt and what it is for.
+    telegram_message_id: Mapped[int | None] = mapped_column(BigInteger)
+    prompt_message_id: Mapped[int | None] = mapped_column(BigInteger)
+    prompt_action: Mapped[str | None] = mapped_column(String(20))
+    reminded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    escalated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    answer: Mapped[Answer] = relationship()
+    messages: Mapped[list["ReviewMessage"]] = relationship(
+        back_populates="review", order_by="ReviewMessage.created_at", passive_deletes=True
+    )
+
+    __table_args__ = (
+        Index("ix_reviews_state_created", "state", "created_at"),
+        Index("ix_reviews_answer_id", "answer_id"),
+        # At most one undecided review per answer.
+        Index(
+            "uq_reviews_answer_undecided",
+            "answer_id",
+            unique=True,
+            postgresql_where=text("state IN ('open', 'claimed', 'needs_info')"),
+        ),
+    )
+
+    @property
+    def undecided(self) -> bool:
+        return self.state in UNDECIDED
+
+
+class ReviewMessageKind(enum.StrEnum):
+    QUESTION_TO_ASKER = "question_to_asker"
+    ASKER_REPLY = "asker_reply"
+    REVIEWER_NOTE = "reviewer_note"
+
+
+class ReviewMessage(TimestampMixin, Base):
+    __tablename__ = "review_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    review_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("reviews.id", ondelete="CASCADE"))
+    author_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    kind: Mapped[ReviewMessageKind] = mapped_column(_enum(ReviewMessageKind, "review_message_kind"))
+    body: Mapped[str] = mapped_column(Text)
+
+    review: Mapped[Review] = relationship(back_populates="messages")
+
+    __table_args__ = (Index("ix_review_messages_review_id", "review_id"),)

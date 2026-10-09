@@ -40,9 +40,11 @@ from app.db.models import (
     Conversation,
     Message,
     MessageRole,
+    ReviewReason,
     UsageKind,
 )
 from app.kb.store import VectorStore
+from app.reviews import service as reviews
 
 log = logging.getLogger(__name__)
 
@@ -209,6 +211,7 @@ def answer_stream(
             {
                 "answer_id": str(answer.id),
                 "outcome": answer.outcome.value if answer.outcome else None,
+                "status": answer.status.value,
                 "stop_reason": answer.stop_reason,
             },
         )
@@ -242,6 +245,7 @@ def _score(
     answer.outcome = result_score.outcome
     if result_score.outcome == AnswerOutcome.LOW:
         answer.status = AnswerStatus.IN_REVIEW
+        reviews.create(db, answer, ReviewReason.LOW_CONFIDENCE)
     usage = dict(answer.usage)
     usage["check"] = {
         "requests": spent.requests,
@@ -276,6 +280,8 @@ def _save(
         current_text=text,
         sources=[] if no_answer else _sources(items, text),
         outcome=AnswerOutcome.NO_ANSWER if no_answer else None,
+        # Nothing found: our team is asked to answer it (SPEC 6.5 step 4).
+        status=AnswerStatus.IN_REVIEW if no_answer else AnswerStatus.AUTO,
         model=completion.model if completion else None,
         stop_reason=stop_override or (completion.stop_reason if completion else None),
         usage={
@@ -289,6 +295,8 @@ def _save(
     )
     db.add(answer)
     db.flush()
+    if no_answer:
+        reviews.create(db, answer, ReviewReason.NO_ANSWER)
     position = db.scalar(
         select(func.max(Message.position)).where(Message.conversation_id == turn.conversation_id)
     )

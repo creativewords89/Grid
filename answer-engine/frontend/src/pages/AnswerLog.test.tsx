@@ -62,6 +62,20 @@ const detail: LogDetail = {
   cost_usd: 0.061,
   conversation_id: "c1",
   can_review: true,
+  reviews: [
+    {
+      number: 7,
+      reason_label: "Low confidence (62)",
+      state: "edited",
+      created_at: "2026-10-08T10:00:00Z",
+      claimed_by: "Ali",
+      decided_by: "Ali",
+      decided_at: "2026-10-08T11:00:00Z",
+      final_text: "Two weeks.",
+      note: "Google is slow",
+      notes: [],
+    },
+  ],
 };
 
 beforeEach(() => window.history.pushState(null, "", "/answer-log"));
@@ -102,6 +116,7 @@ test("opening an answer explains its score", async () => {
   expect(await within(dialog).findByText("Search match 81 · Support: partial")).toBeVisible();
   expect(within(dialog).getByText("3-5 days")).toBeVisible();
   expect(within(dialog).getByText(/It took two weeks/)).toBeVisible();
+  expect(within(dialog).getByText("Note: Google is slow")).toBeVisible();
 });
 
 test("knowledge gaps show grouped questions with counts", async () => {
