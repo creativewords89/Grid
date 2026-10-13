@@ -36,9 +36,14 @@ export async function signIn(page, code) {
 	await live(page);
 }
 
+// Sign out asks for today's report first (SPEC.md 6.18, design DR-D): "Sign out for now" skips it.
 export async function signOut(page) {
-	await page.getByRole('button', { name: 'Sign out' }).click();
-	await page.getByText('Sign in to continue').waitFor();
+	await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+	const later = page.getByRole('button', { name: 'Sign out for now' });
+	const signIn = page.getByText('Sign in to continue');
+	await Promise.race([signIn.waitFor(), later.waitFor()]);
+	if (await later.isVisible()) await later.click();
+	await signIn.waitFor();
 }
 
 // Super Admin: WordPress login (owner is linked to tm_owner).

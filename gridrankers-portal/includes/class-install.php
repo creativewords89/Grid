@@ -15,7 +15,7 @@ class GRP_Install {
 	/**
 	 * Current schema version. Bump it whenever get_schema() or migrations() changes.
 	 */
-	const DB_VERSION = 16;
+	const DB_VERSION = 17;
 
 	/**
 	 * Option that stores the installed schema version.
@@ -38,6 +38,7 @@ class GRP_Install {
  * Schema 14 adds `grp_client_requests` and `grp_request_messages`: what the team needs from a client (6.15).
  * Schema 15 adds task steps: `steps` on meeting and monthly tasks, `step_done` on meeting tasks and cycle records (6.16).
  * Schema 16 adds `files` (attachments added with the task) to meeting and monthly tasks (6.17).
+ * Schema 17 adds `grp_daily_reports`: what each person did today, written by hand (6.18).
 	 *
 	 * @var string[]
 	 */
@@ -64,6 +65,7 @@ class GRP_Install {
 		'grp_billing_fees',
 		'grp_client_requests',
 		'grp_request_messages',
+		'grp_daily_reports',
 	);
 
 	/**
@@ -131,6 +133,7 @@ class GRP_Install {
 			7  => array( __CLASS__, 'start_cycle_setup' ),
 			11 => array( 'GRP_Billing', 'start' ),
 			12 => array( __CLASS__, 'sync_breakdown_people' ),
+			17 => array( 'GRP_Daily_Reports', 'start' ),
 		);
 	}
 
@@ -689,6 +692,22 @@ class GRP_Install {
 				PRIMARY KEY  (id),
 				KEY request_id (request_id),
 				KEY updated_at (updated_at)
+			) $collate;",
+
+			"CREATE TABLE {$t['grp_daily_reports']} (
+				id varchar(64) NOT NULL,
+				member_id varchar(64) NOT NULL,
+				day date NOT NULL,
+				entries json NULL,
+				blocking text NULL,
+				tomorrow text NULL,
+				sent_at datetime NULL,
+				late tinyint(1) NOT NULL DEFAULT 0,
+				created_at datetime NOT NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				UNIQUE KEY member_day (member_id,day),
+				KEY day (day)
 			) $collate;",
 		);
 	}

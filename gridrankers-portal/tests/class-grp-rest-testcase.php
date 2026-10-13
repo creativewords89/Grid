@@ -23,7 +23,7 @@ abstract class GRP_REST_TestCase extends WP_UnitTestCase {
 	 *
 	 * @var array<string, string>
 	 */
-	private $tokens = array();
+	protected $tokens = array();
 
 	/**
 	 * A complete required profile (SPEC.md 6.10): without it task work is locked.

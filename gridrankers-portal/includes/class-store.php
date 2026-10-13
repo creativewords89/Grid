@@ -32,6 +32,7 @@ class GRP_Store {
 		'grp_settings'         => array( 'value' ),
 		'grp_billing'          => array( 'payments' ),
 		'grp_request_messages' => array( 'files' ),
+		'grp_daily_reports'    => array( 'entries' ),
 	);
 
 	/**
@@ -60,6 +61,7 @@ class GRP_Store {
 		'skipped',
 		'remind_days',
 		'from_client',
+		'late',
 	);
 
 	/**

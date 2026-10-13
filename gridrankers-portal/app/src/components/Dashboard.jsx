@@ -9,6 +9,7 @@ import MyProjects from './day/MyProjects.jsx';
 import { NoticeDialog } from './day/PostDialogs.jsx';
 import ProjectsBoard from './day/ProjectsBoard.jsx';
 import { Notifications, WhosOut } from './day/Side.jsx';
+import ReportBand from './reports/ReportBand.jsx';
 
 const TAB_KEY = 'grp:dash-tab';
 
@@ -52,6 +53,7 @@ export default function Dashboard({ onSignOut }) {
 	return (
 		<div className="md">
 			<DayHeader onSignOut={onSignOut} />
+			<ReportBand />
 			{manager && (
 				<div className="md-tabs">
 					<div role="tablist" aria-label="Dashboard sections">

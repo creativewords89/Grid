@@ -22,21 +22,22 @@ class GRP_Export {
 	 */
 	public static function build( $actor = null ) {
 		$data = array(
-			'clients'     => array_map( array( __CLASS__, 'project' ), GRP_Store::find( 'grp_projects', array(), array( 'order_by' => 'created_at' ) ) ),
-			'items'       => array_map( array( __CLASS__, 'meeting_task' ), GRP_Store::find( 'grp_meeting_tasks', array(), array( 'order_by' => 'created_at' ) ) ),
-			'monthly'     => array_map( array( __CLASS__, 'monthly_task' ), GRP_Store::find( 'grp_monthly_tasks', array(), array( 'order_by' => 'created_at' ) ) ),
-			'monthlyDone' => array_map( array( __CLASS__, 'record' ), GRP_Store::find( 'grp_cycle_records', array(), array( 'order_by' => 'created_at' ) ) ),
-			'team'        => array_map( array( __CLASS__, 'member' ), GRP_Store::find( 'grp_members', array(), array( 'order_by' => 'created_at' ) ) ),
-			'settings'    => array_map( array( __CLASS__, 'setting' ), GRP_Store::find( 'grp_settings' ) ),
-			'activity'    => array_map( array( __CLASS__, 'activity' ), GRP_Store::find( 'grp_activity', array(), array( 'order_by' => 'at' ) ) ),
-			'edits'       => array_map( array( __CLASS__, 'audit' ), GRP_Store::find( 'grp_audit', array(), array( 'order_by' => 'at' ) ) ),
-			'trash'       => array_map( array( __CLASS__, 'trash' ), GRP_Store::find( 'grp_trash', array(), array( 'order_by' => 'deleted_at' ) ) ),
-			'dismissals'  => self::dismissals(),
-			'leave'       => array_map( array( __CLASS__, 'leave' ), GRP_Store::find( 'grp_leave', array(), array( 'order_by' => 'created_at' ) ) ),
-			'daysOff'     => array_map( array( __CLASS__, 'day_off' ), GRP_Store::find( 'grp_days_off', array(), array( 'order_by' => 'from_date' ) ) ),
-			'posts'       => array_map( array( __CLASS__, 'post' ), GRP_Store::find( 'grp_posts', array(), array( 'order_by' => 'created_at' ) ) ),
-			'keywords'    => array_map( array( __CLASS__, 'keyword' ), GRP_Store::find( 'grp_keywords', array(), array( 'order_by' => 'created_at' ) ) ),
-			'visitors'    => array(),
+			'clients'      => array_map( array( __CLASS__, 'project' ), GRP_Store::find( 'grp_projects', array(), array( 'order_by' => 'created_at' ) ) ),
+			'items'        => array_map( array( __CLASS__, 'meeting_task' ), GRP_Store::find( 'grp_meeting_tasks', array(), array( 'order_by' => 'created_at' ) ) ),
+			'monthly'      => array_map( array( __CLASS__, 'monthly_task' ), GRP_Store::find( 'grp_monthly_tasks', array(), array( 'order_by' => 'created_at' ) ) ),
+			'monthlyDone'  => array_map( array( __CLASS__, 'record' ), GRP_Store::find( 'grp_cycle_records', array(), array( 'order_by' => 'created_at' ) ) ),
+			'team'         => array_map( array( __CLASS__, 'member' ), GRP_Store::find( 'grp_members', array(), array( 'order_by' => 'created_at' ) ) ),
+			'settings'     => array_map( array( __CLASS__, 'setting' ), GRP_Store::find( 'grp_settings' ) ),
+			'activity'     => array_map( array( __CLASS__, 'activity' ), GRP_Store::find( 'grp_activity', array(), array( 'order_by' => 'at' ) ) ),
+			'edits'        => array_map( array( __CLASS__, 'audit' ), GRP_Store::find( 'grp_audit', array(), array( 'order_by' => 'at' ) ) ),
+			'trash'        => array_map( array( __CLASS__, 'trash' ), GRP_Store::find( 'grp_trash', array(), array( 'order_by' => 'deleted_at' ) ) ),
+			'dismissals'   => self::dismissals(),
+			'leave'        => array_map( array( __CLASS__, 'leave' ), GRP_Store::find( 'grp_leave', array(), array( 'order_by' => 'created_at' ) ) ),
+			'daysOff'      => array_map( array( __CLASS__, 'day_off' ), GRP_Store::find( 'grp_days_off', array(), array( 'order_by' => 'from_date' ) ) ),
+			'posts'        => array_map( array( __CLASS__, 'post' ), GRP_Store::find( 'grp_posts', array(), array( 'order_by' => 'created_at' ) ) ),
+			'keywords'     => array_map( array( __CLASS__, 'keyword' ), GRP_Store::find( 'grp_keywords', array(), array( 'order_by' => 'created_at' ) ) ),
+			'dailyReports' => array_map( array( __CLASS__, 'daily_report' ), GRP_Store::find( 'grp_daily_reports', array(), array( 'order_by' => 'day' ) ) ),
+			'visitors'     => array(),
 		);
 
 		return array(
@@ -449,6 +450,28 @@ class GRP_Export {
 				'past'      => $r['past'],
 				'position'  => (int) $r['position'],
 				'by'        => $r['created_by'],
+				'createdAt' => self::iso( $r['created_at'] ),
+			)
+		);
+	}
+
+	/**
+	 * `grp_daily_reports` → `dailyReports` (SPEC.md 6.18). Files are details only.
+	 *
+	 * @param array $r Row.
+	 * @return array
+	 */
+	public static function daily_report( array $r ) {
+		return self::clean(
+			array(
+				'id'        => $r['id'],
+				'memberId'  => $r['member_id'],
+				'day'       => $r['day'],
+				'entries'   => array_values( (array) ( $r['entries'] ?? array() ) ),
+				'blocking'  => $r['blocking'],
+				'tomorrow'  => $r['tomorrow'],
+				'sentAt'    => self::iso( $r['sent_at'] ),
+				'late'      => (bool) $r['late'],
 				'createdAt' => self::iso( $r['created_at'] ),
 			)
 		);

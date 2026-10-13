@@ -134,4 +134,23 @@ GRP_Store::insert(
 		'created_at' => $asked,
 	)
 );
+// Daily reports (SPEC.md 6.18): reports started 30 days ago; Ray joined then and never sent one, so
+// his last working day's report is missing. Everyone else joined today and owes nothing yet.
+update_option( GRP_Daily_Reports::SINCE_OPTION, gmdate( 'Y-m-d', strtotime( $today . ' -30 days' ) ), false );
+GRP_Store::insert(
+	'grp_members',
+	array(
+		'id'         => 'tm_ray',
+		'name'       => 'Ray Reporter',
+		'role'       => 'member',
+		'active'     => 1,
+		'location'   => 'Rangpur',
+		'birthday'   => '02-10',
+		'birth_year' => 1992,
+		'phone'      => '+8801700000001',
+		'photo'      => 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+		'created_at' => gmdate( 'Y-m-d H:i:s', strtotime( $today . ' -30 days' ) ),
+	)
+);
+GRP_Auth::set_code( 'tm_ray', 'RAYCODE11' );
 echo "e2e site ready\n";

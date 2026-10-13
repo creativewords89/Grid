@@ -209,6 +209,21 @@ class GRP_Permissions {
 	/** Delete a client request. Context: `{request}`. Whoever added it, or the Super Admin. */
 	const DELETE_CLIENT_REQUEST = 'delete_client_request';
 
+	/** Write one's own daily report (SPEC.md 6.18). Context: `{member_id}`. Team Leaders and Team Members, for themselves only. */
+	const WRITE_DAILY_REPORT = 'write_daily_report';
+
+	/**
+	 * Read a person's daily reports (SPEC.md 6.18). Context: `{member_id, role}` of that person. Everyone their
+	 * own; the Super Admin anyone's; a Team Leader Team Members' and other Team Leaders'.
+	 */
+	const VIEW_DAILY_REPORT = 'view_daily_report';
+
+	/** See everyone's reports for a day: the Team tab of Daily reports (SPEC.md 6.18). Managers. */
+	const VIEW_TEAM_REPORTS = 'view_team_reports';
+
+	/** Remind someone to send their daily report. Context: `{member_id, role}`. Managers, for someone whose report they may read, not themselves. */
+	const REMIND_DAILY_REPORT = 'remind_daily_report';
+
 	/**
 	 * Task work that is locked while a Team Leader's or Team Member's required profile is
 	 * incomplete (SPEC.md section 3, Profile lock).
@@ -294,7 +309,18 @@ class GRP_Permissions {
 			case self::DECIDE_UNDO:
 			case self::REVIEW_CYCLE:
 			case self::ADD_GENERAL_TASK:
+			case self::VIEW_TEAM_REPORTS:
 				return $manager;
+
+			case self::WRITE_DAILY_REPORT:
+				// The Super Admin reads reports but writes none (SPEC.md 6.18).
+				return ! $admin && self::is_self( $user, $context['member_id'] ?? null );
+
+			case self::VIEW_DAILY_REPORT:
+				return self::is_self( $user, $context['member_id'] ?? null ) || $admin || ( $manager && in_array( $context['role'] ?? '', array( self::ROLE_LEAD, self::ROLE_MEMBER ), true ) );
+
+			case self::REMIND_DAILY_REPORT:
+				return $manager && ! self::is_self( $user, $context['member_id'] ?? null ) && in_array( $context['role'] ?? '', array( self::ROLE_LEAD, self::ROLE_MEMBER ), true );
 
 			case self::REQUEST_UNDO:
 				// Leaders move tasks back themselves; quantity tasks count down instead.

@@ -12,7 +12,7 @@ const GROUPS = [
 
 // A steady colour per project for its initials badge.
 const COLORS = ['#2753C9', '#0F6E77', '#B4316E', '#4D7C0F', '#6B3FB5', '#C2410C', '#15233A', '#8A5F00', '#2A7A4B', '#4A5A70', '#0E7490', '#9F1239'];
-const colorOf = (id) => COLORS[[...String(id)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % COLORS.length];
+export const colorOf = (id) => COLORS[[...String(id)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % COLORS.length];
 const initialsOf = (name) =>
 	String(name)
 		.replace(/[^\p{L}\p{N}\s]/gu, '')
@@ -74,6 +74,14 @@ export default function Sidebar({ syncStatus }) {
 						{general.n}
 					</span>
 				)}
+			</button>
+			{/* Daily reports (SPEC.md 6.18): what everyone did today, written by hand. */}
+			<button type="button" className="side-link" aria-current={view === 'reports' ? 'page' : undefined} onClick={() => setView('reports')}>
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+					<path d="M8 3h8l3 3v15H5V3z" />
+					<path d="M9 12l2 2 4-4M9 17h6" />
+				</svg>
+				Daily reports
 			</button>
 			{/* Invoices (SPEC.md 6.14): the Super Admin's own record of what is billed and paid. */}
 			{isAdmin(me) && (

@@ -14,6 +14,9 @@ import MeetingMinutes from './components/meeting/MeetingMinutes.jsx';
 import MonthlyTasks from './components/monthly/MonthlyTasks.jsx';
 import GeneralTasks from './components/general/GeneralTasks.jsx';
 import Invoices from './components/billing/Invoices.jsx';
+import DailyReports, { fmtDue } from './components/reports/DailyReports.jsx';
+import { MissingReport, SignOutDialog } from './components/reports/ReportGates.jsx';
+import { asksBeforeSignOut } from './lib/reports.js';
 import TeamView from './components/TeamView.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import RecentActivities from './components/RecentActivities.jsx';
@@ -99,6 +102,43 @@ function useSync(api, active, dispatch) {
 	return status;
 }
 
+// The signed-in person's daily report state (SPEC.md 6.18): GET /daily-reports/me on sign-in, when
+// the tab comes back into view, and every few minutes. `update` takes a saved report.
+function useReportState(api, on) {
+	const [state, setState] = useState(null);
+	const reload = useCallback(() => {
+		if (!on) return Promise.resolve();
+		return api
+			.get('daily-reports/me')
+			.then(setState)
+			.catch(() => {});
+	}, [api, on]);
+	useEffect(() => {
+		if (!on) {
+			setState(null);
+			return undefined;
+		}
+		reload();
+		const again = () => document.visibilityState === 'visible' && reload();
+		document.addEventListener('visibilitychange', again);
+		const timer = window.setInterval(again, 5 * 60 * 1000);
+		return () => {
+			document.removeEventListener('visibilitychange', again);
+			window.clearInterval(timer);
+		};
+	}, [on, reload]);
+	const update = useCallback((row) => {
+		if (!row) return;
+		setState((st) => {
+			if (!st) return st;
+			if (row.day === st.today) return { ...st, report: row };
+			if (row.day === st.missing) return row.sent_at ? { ...st, missing: null, missing_report: null } : { ...st, missing_report: row };
+			return st;
+		});
+	}, []);
+	return useMemo(() => ({ state, reload, update }), [state, reload, update]);
+}
+
 export default function App({ config }) {
 	const [auth, setAuth] = useState({ status: 'loading', me: null });
 	const [data, dispatch] = useReducer(dataReducer, undefined, emptyData);
@@ -136,6 +176,8 @@ export default function App({ config }) {
 	}, [api]);
 
 	const syncStatus = useSync(api, auth.status === 'signedIn', dispatch);
+	const reports = useReportState(api, auth.status === 'signedIn');
+	const [askOut, setAskOut] = useState(false);
 
 	// The remembered screen belongs to whoever chose it: someone else signing in on this tab
 	// (e.g. after the session expired, without "Sign out") starts on the Dashboard.
@@ -160,7 +202,7 @@ export default function App({ config }) {
 		remember(PROJECT_KEY, id);
 		// Picking a project from a screen that isn't a project's (My day, a person's page, General
 		// tasks, Invoices) opens its Meeting Minutes.
-		if (view === 'team' || view === 'dash' || view === 'general' || view === 'invoices') setView('board');
+		if (view === 'team' || view === 'dash' || view === 'general' || view === 'invoices' || view === 'reports') setView('board');
 	};
 
 	// Always show one project: default to the first active one (reference behaviour).
@@ -172,7 +214,7 @@ export default function App({ config }) {
 		if (first) setProjectState(first.id);
 	}, [projects, project, data.projects]);
 
-	const signOut = async () => {
+	const signOutNow = async () => {
 		try {
 			await api.post('auth/logout');
 		} catch (e) {
@@ -181,6 +223,11 @@ export default function App({ config }) {
 		signOutLocally();
 		setView('dash');
 		if (config.isWpAdmin) window.location.reload();
+	};
+	// Sign out first asks for today's report on a working day (SPEC.md 6.18, design DR-D).
+	const signOut = () => {
+		if (asksBeforeSignOut(reports.state)) setAskOut(true);
+		else signOutNow();
 	};
 
 	if (auth.status === 'loading') {
@@ -222,7 +269,7 @@ export default function App({ config }) {
 		setView('team');
 	};
 
-	const ctx = { api, data, dispatch, me, view, setView, project, setProject, search, setSearch, toast, confirm, config, cycleOff, setCycleOff, today, askCompletion, teamPerson, setTeamPerson, setViewAs: startTour };
+	const ctx = { api, data, dispatch, me, view, setView, project, setProject, search, setSearch, toast, confirm, config, cycleOff, setCycleOff, today, askCompletion, teamPerson, setTeamPerson, setViewAs: startTour, reports };
 
 	const target = viewAs && data.members[viewAs];
 	const viewing = canTour(me, target) ? target : null;
@@ -241,6 +288,16 @@ export default function App({ config }) {
 	}
 	const shown = tourCtx || ctx;
 	const shownMe = shown.me;
+
+	// A report still owed from an earlier working day comes first (design DR-D).
+	if (!viewing && reports.state && reports.state.missing) {
+		return (
+			<PortalContext.Provider value={ctx}>
+				<MissingReport onSignOut={signOutNow} />
+				{toastView}
+			</PortalContext.Provider>
+		);
+	}
 
 	return (
 		<PortalContext.Provider value={shown}>
@@ -281,6 +338,8 @@ export default function App({ config }) {
 								<TeamView />
 							) : view === 'general' ? (
 								<GeneralTasks />
+							) : view === 'reports' ? (
+								viewing ? <p className="empty">Daily reports aren’t part of a tour.</p> : <DailyReports />
 							) : view === 'invoices' ? (
 								isAdmin(shownMe) ? <Invoices /> : <p className="empty">Only the Super Admin keeps the invoices.</p>
 							) : projects.length === 0 ? (
@@ -307,6 +366,7 @@ export default function App({ config }) {
 			</TourGuard>
 			{toastView}
 			{confirmView}
+			<SignOutDialog open={askOut} onClose={() => setAskOut(false)} onSignOut={signOutNow} dueText={fmtDue(reports.state && reports.state.due)} />
 			<CompletionDialog open={!!completion} title={completion ? completion.title : ''} edit={!!(completion && completion.edit)} initial={completion ? completion.initial : null} onCancel={() => finishCompletion(null)} onSubmit={finishCompletion} />
 		</PortalContext.Provider>
 	);
