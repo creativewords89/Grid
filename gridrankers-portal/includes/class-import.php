@@ -21,20 +21,21 @@ class GRP_Import {
 	 * Export collection => table (in import order: projects before tasks, tasks before records).
 	 */
 	const COLLECTIONS = array(
-		'team'        => 'grp_members',
-		'clients'     => 'grp_projects',
-		'items'       => 'grp_meeting_tasks',
-		'monthly'     => 'grp_monthly_tasks',
-		'monthlyDone' => 'grp_cycle_records',
-		'activity'    => 'grp_activity',
-		'edits'       => 'grp_audit',
-		'trash'       => 'grp_trash',
-		'dismissals'  => 'grp_dismissals',
-		'settings'    => 'grp_settings',
-		'leave'       => 'grp_leave',
-		'daysOff'     => 'grp_days_off',
-		'posts'       => 'grp_posts',
-		'keywords'    => 'grp_keywords',
+		'team'         => 'grp_members',
+		'clients'      => 'grp_projects',
+		'items'        => 'grp_meeting_tasks',
+		'monthly'      => 'grp_monthly_tasks',
+		'monthlyDone'  => 'grp_cycle_records',
+		'activity'     => 'grp_activity',
+		'edits'        => 'grp_audit',
+		'trash'        => 'grp_trash',
+		'dismissals'   => 'grp_dismissals',
+		'settings'     => 'grp_settings',
+		'leave'        => 'grp_leave',
+		'daysOff'      => 'grp_days_off',
+		'posts'        => 'grp_posts',
+		'keywords'     => 'grp_keywords',
+		'dailyReports' => 'grp_daily_reports',
 	);
 
 	/**
@@ -177,6 +178,8 @@ class GRP_Import {
 				return self::wrap( self::post( $doc ) );
 			case 'keywords':
 				return self::wrap( self::keyword( $doc ) );
+			case 'dailyReports':
+				return self::wrap( self::daily_report( $doc ) );
 		}
 
 		return array();
@@ -345,6 +348,60 @@ class GRP_Import {
 			) : null,
 			'position'   => (int) ( $d['position'] ?? 0 ),
 			'created_by' => ! empty( $d['by'] ) ? (string) $d['by'] : null,
+			'created_at' => self::time( $d['createdAt'] ?? null ),
+		);
+	}
+
+	/**
+	 * `dailyReports` → grp_daily_reports (SPEC.md 6.18).
+	 *
+	 * @param array $d Document.
+	 * @return array|null
+	 */
+	public static function daily_report( array $d ) {
+		$member = self::id( $d['memberId'] ?? '' );
+		$day    = self::ymd( $d['day'] ?? null );
+		if ( ! $member || ! $day ) {
+			return null;
+		}
+		$entries = array();
+		foreach ( is_array( $d['entries'] ?? null ) ? $d['entries'] : array() as $e ) {
+			$e     = (array) $e;
+			$title = trim( (string) ( $e['title'] ?? '' ) );
+			if ( '' === $title ) {
+				continue;
+			}
+			$links = array();
+			foreach ( is_array( $e['links'] ?? null ) ? $e['links'] : array() as $l ) {
+				$l   = (array) $l;
+				$url = esc_url_raw( (string) ( $l['url'] ?? '' ), array( 'http', 'https' ) );
+				if ( '' !== $url ) {
+					$links[] = array(
+						'url'  => $url,
+						'name' => mb_substr( (string) ( $l['name'] ?? '' ), 0, 120 ),
+					);
+				}
+			}
+			$entries[] = array(
+				'id'      => mb_substr( (string) ( $e['id'] ?? GRP_Ids::ulid() ), 0, 40 ),
+				'title'   => mb_substr( $title, 0, 200 ),
+				'details' => mb_substr( (string) ( $e['details'] ?? '' ), 0, 2000 ),
+				'project' => (string) ( $e['project'] ?? '' ),
+				'minutes' => max( 0, min( GRP_Daily_Reports::MAX_MINUTES, (int) ( $e['minutes'] ?? 0 ) ) ),
+				'files'   => self::files( $e['files'] ?? null ) ?? array(),
+				'links'   => $links,
+			);
+		}
+
+		return array(
+			'id'         => GRP_Daily_Reports::row_id( $member, $day ),
+			'member_id'  => $member,
+			'day'        => $day,
+			'entries'    => $entries,
+			'blocking'   => mb_substr( (string) ( $d['blocking'] ?? '' ), 0, 2000 ),
+			'tomorrow'   => mb_substr( (string) ( $d['tomorrow'] ?? '' ), 0, 2000 ),
+			'sent_at'    => self::time( $d['sentAt'] ?? null ),
+			'late'       => ! empty( $d['late'] ) ? 1 : 0,
 			'created_at' => self::time( $d['createdAt'] ?? null ),
 		);
 	}

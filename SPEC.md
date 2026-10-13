@@ -106,6 +106,9 @@ Three portal roles, stored on the team member (`role`): `admin` (Super Admin), `
 | Approve / send back a review someone asked **you** for | ✔ | ✔ | ✔ (only that task) |
 | Set own profile, incl. location and date of birth | ✔ | ✔ | ✔ |
 | Work on tasks while the profile is incomplete (6.10) | ✔ (reminder only) | ✘ | ✘ |
+| Write a daily report (6.18) | ✘ (reads only) | ✔ own | ✔ own |
+| Read daily reports (6.18) | ✔ everyone's | ✔ own, Team Members' and other Team Leaders' (never a draft) | ✔ own only |
+| See the Team tab of Daily reports and Remind someone (6.18) | ✔ | ✔ (not themselves) | ✘ |
 
 Every REST endpoint calls `GRP_Permissions::can($user, $action, $object)`. Unit-test every row above.
 
@@ -154,6 +157,7 @@ All tables: `id` CHAR(26) ULID (or keep imported string ids, VARCHAR(64)), `crea
 | *task files (schema 16)* | `grp_meeting_tasks.files` / `grp_monthly_tasks.files` JSON NULL `[{id, mime, name, size}]` — *new* (6.17) |
 | `grp_client_requests` | id, project_id, title, kind ENUM(images,info,page,access,other), details TEXT NULL, status ENUM(needed,asked,received,done), asked_via NULL (email, whatsapp, phone, meeting, other), asked_at, asked_by, done_at, done_by, created_by — *new* (6.15, schema 14; synced) |
 | `grp_request_messages` | id, request_id, project_id, body TEXT, files JSON `[{id, mime, name, size}]`, from_client TINYINT, via NULL, event NULL (a status change: needed, asked, received, done), created_by, deleted_at NULL — *new* (6.15, schema 14; synced) |
+| `grp_daily_reports` | id = `dr_` + md5(member, day), member_id, day DATE (UNIQUE with member_id), entries JSON `[{id, title, details, project ('' / project id / office / other), minutes, files: [{id, mime, name, size}], links: [{url, name}]}]`, blocking TEXT, tomorrow TEXT, sent_at DATETIME NULL, late TINYINT — *new* (6.18, schema 17; not synced) |
 | `grp_posts` | id, kind ENUM(announcement,shoutout,notice), title NULL, body, to_member NULL (first shout-outs), to_members JSON NULL (chosen people; NULL = everyone), pinned TINYINT, show_until DATE NULL, created_by, soft delete — *new* |
 
 ## 6. Domain logic
@@ -312,6 +316,17 @@ Some work passes from person to person — write the article, then edit it, then
 - **Attachments** in the task dialog of Meeting Minutes and Monthly Tasks (and General tasks): **📎 Attach files** or drop them on the box — the brief, screenshots, the client's documents; same types and limits as submissions (6.6: PDF, images, Word, Excel, CSV, text; 10 MB each, up to 10); each file uploads at once and shows with × to remove before saving. Whoever adds the task attaches files; changing them later is Edit (Team Leaders and the Super Admin). Locked while the profile is incomplete (as adding a task).
 - The card shows **📎 N**; **Details** has an **Attachments** section with View / Download. Stored as `files` on the task (schema 16), in the export / import as file details (the files themselves are not exported).
 
+### 6.18 Daily reports (*new*, designs DR-A, DR-A2, DR-B, DR-C, DR-D)
+What each person did today, **written by hand** — any work, not only tasks (calls, meetings, research, fixes).
+- **Sidebar → Daily reports** for everyone. Team Leaders and Team Members get **My reports**; the Super Admin and Team Leaders get **Team**. The Super Admin writes no reports.
+- **My reports** (DR-A): "Today", the date and **Send report**; under it "Not sent · due 7:00 pm" (or "Sent {time}", "Day off — no report needed.") and the total ("5 entries · 5h 30m"). The entries as quiet rows — title and time spent, one line of details, the project, files and links as chips; click a row to edit or remove it — then **+ Add work**, and **Blocking** / **Tomorrow** (optional). Saved as you type; today's report can still change after it is sent, until midnight. **Earlier reports ›** opens your own day bar (DR-C).
+- **Add work** (DR-A2): what you did (required), details (optional), project (a project, Office or Other), **time spent** (15m · 30m · 1h · 2h · Other = hours and minutes; required, at most 24 hours a day), **📎 Attach file** (same types and limits as 6.6) and **🔗 Add link** (http/https, optional name — the host otherwise).
+- **Team** (DR-B): ‹ day ›, "3 of 4 sent", All · Sent · Not sent · On leave, and a card per person: their entries, blocker in amber, **Sent {time}**, **Late** (sent on a later day), **Not sent** with **Remind** (a private notice "Please send your daily report", 6.10), On leave, Day off. A Team Leader sees Team Members and the other Team Leaders (and themselves); the Super Admin everyone. Click a name for their reports.
+- **One person** (DR-C): a bar of the month's days (weekday letter, date, a blue dot when there is a report; ‹ › for other months) and the chosen day's report below — no counts or statistics.
+- **Sign-out rule** (DR-D): on a working day, **Sign out** first opens **Before you sign out** with today's entries and + Add work; **Send report and sign out** needs at least one entry; **Sign out for now** (a break) leaves it due. If someone closes the browser instead, the next time they open the portal **"Yesterday's report is missing"** (their last working day before today, looking back 14 days) must be sent before anything else; it is marked **Late**. Days off (weekly, whole-team) and approved leave owe no report, nor days before reports started (option `grp_reports_since`, schema 17) or before the person joined. A past day's report can be sent only while it was never sent; once sent it is locked.
+- **Reminder**: from 5:00 pm on a working day, an amber band on My day ("Today's report isn't sent yet · due by 7:00 pm", red after) with **Write report**.
+- **Private**: not sent by `/sync`; every read goes through `/daily-reports` with the rules of section 3 (WRITE_DAILY_REPORT, VIEW_DAILY_REPORT, VIEW_TEAM_REPORTS, REMIND_DAILY_REPORT). In the export / import (`dailyReports`; files as details only).
+
 ## 7. Screens (match the reference file)
 
 ### 7.0 Dashboard (everyone)
@@ -427,6 +442,7 @@ The team sections are tabs of **My page** for leaders and the Super Admin (7.6) 
 | `files: [id]` on POST / PATCH `/meeting-tasks` and `/monthly-tasks` | files added with a task (6.17) |
 | POST `/projects/id/client-requests` `{title, kind?, details?, status?: needed|asked, via?}` · PATCH `/client-requests/id` `{title?, kind?, details?, status?, via?}` (a status change returns its thread line as `event_message`) · DELETE `/client-requests/id` · POST `/client-requests/id/messages` `{body, files?, from_client?, via?}` → `{message, event, request}` · DELETE `/request-messages/id` | client requests (6.15) |
 | GET `/billing` · PUT `/billing/projects/id` `{fee, currency, remind_days}` · PATCH `/billing/id` `{sent?, sent_at?, amount?, currency?, ref?, skipped?, note?}` · POST `/billing/id/payments` `{amount, date?, method?, ref?}` · DELETE `/billing/id/payments/pid` | invoices (6.14, Super Admin only) |
+| GET `/daily-reports/me` · GET `/daily-reports?member=&month=YYYY-MM` · GET `/daily-reports/team?day=` · PUT `/daily-reports/{day}` `{entries, blocking?, tomorrow?, send?}` · POST `/daily-reports/remind` `{member_id, day?}` | daily reports (6.18) |
 | GET `/export` · POST `/import` (admin, nonce) | data |
 
 All writes validate input, check permissions (section 3), write the audit row in the same transaction, and return the updated row.
@@ -582,5 +598,7 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 70. (Released as 0.1.31.) Task steps v2 (6.16, designs DEP-E, DEP-F, DEP-K4): each step has **Not started · In progress · Completed** and its own due date (a date, or a day of the cycle on monthly tasks; the last one is the task's deadline); completing a step tells the next person; the card shows only the current step (STEP 2 OF 3, a bar split into steps, the step's box with its date and buttons, Next …), Details lists every step. **Tests:** PHPUnit (status moves and who, waiting for the step before, back for leaders only and not below the next step, credit, the last step's Completed completes the task with the form, due dates in order and valid, task deadline from the last step, monthly due day), Vitest (status, who may move it, step dates and badges, My day dates), Playwright (dates in the dialog and their order, the card's current step and Next, In progress → Completed hands over, Ready for you, back to In progress in Details, the last step completes the task).
 
 71. (Released as 0.1.31.) Files added with a task (6.17): **Attachments** in the meeting and monthly task dialogs (📎 Attach files or drop, × to remove), 📎 N on the card, Attachments in Details; schema 16. **Tests:** PHPUnit (files saved with a meeting task and a monthly task, missing files refused, Edit for leaders only, profile lock, export), Playwright (a Team Member adds a task with a file, removes one, the card and Details show it; a monthly task with a file).
+
+72. Daily reports (6.18, designs DR-A, DR-A2, DR-B, DR-C, DR-D): sidebar **Daily reports** — My reports (entries written by hand with details, project, time spent, files and links; Blocking / Tomorrow; Send), Team (a day's reports, Late / Not sent / Remind), one person's day bar; Sign out asks for today's report, a missing report must be sent on the next visit; a 5 pm reminder on My day; schema 17. **Tests:** PHPUnit (every permission row, drafts, sending, Late, locked past reports, days off and leave owe nothing, who reads whose reports, Remind, export / import, not synced), Vitest (time, links, the day bar, who is asked at sign-out, team counts), Playwright (a Team Member writes and sends on sign-out, a Team Leader reads and reminds, a missing report blocks until sent, the Super Admin only reads).
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).
