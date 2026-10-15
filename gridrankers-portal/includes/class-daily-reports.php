@@ -193,6 +193,35 @@ class GRP_Daily_Reports {
 	}
 
 	/**
+	 * How many working days in a row, ending on `$day`, a person sent no report (design TR-G1): days
+	 * off and leave are skipped, a sent report or the first day they owed one ends the run.
+	 *
+	 * @param array   $member      Member row.
+	 * @param string  $day         `Y-m-d`.
+	 * @param string  $since       Day reports started.
+	 * @param array   $sent        Days (`Y-m-d` => true) they sent a report.
+	 * @param array[] $leaves      Leave rows.
+	 * @param mixed   $team_weekly Team weekly day off.
+	 * @param array[] $days_off    Whole-team days off.
+	 * @return int
+	 */
+	public static function missed_in_a_row( array $member, $day, $since, array $sent, array $leaves, $team_weekly, array $days_off ) {
+		$first  = self::first_day( $member, $since );
+		$missed = 0;
+		for ( $i = 0; $i <= self::BACK_DAYS; $i++ ) {
+			$d = GRP_People::add_days( $day, -$i );
+			if ( $d < $first || ! empty( $sent[ $d ] ) ) {
+				break;
+			}
+			if ( null === self::out_reason( $d, $member, $leaves, $team_weekly, $days_off ) ) {
+				++$missed;
+			}
+		}
+
+		return $missed;
+	}
+
+	/**
 	 * Total minutes of a report's entries.
 	 *
 	 * @param array|null $report Report row.

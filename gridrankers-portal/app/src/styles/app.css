@@ -1327,3 +1327,58 @@ button.dr-row-t:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 @media (max-width:560px){
   .pay-grid,.pay-hours{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+
+/* Team tab (SPEC.md 6.18, design TR-G1): everyone's tasks in one table. */
+.tg{gap:14px}
+.tg-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.tg-tiles>div{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 16px;display:flex;flex-direction:column;gap:2px}
+.tg-tiles b{font-family:var(--display);font-size:1.5rem;font-weight:800}
+.tg-tiles span{font-size:.8rem;color:var(--ink-2)}
+.tg-tiles .bad{border-color:color-mix(in srgb,var(--urgent) 30%,var(--line))}
+.tg-tiles .bad b{color:var(--urgent)}
+.tg-bar{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.tg-lab{font-size:.72rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2)}
+.tg-people{display:flex;gap:6px;flex-wrap:wrap}
+.tg-people button{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:99px;padding:3px 11px;font-size:.82rem;font-weight:600;min-height:30px}
+.tg-people button .av{width:22px;height:22px;font-size:.6rem;margin-left:-8px}
+.tg-people button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--panel)}
+.tg-grow{flex:1}
+.tg-remind-all{border:1px solid color-mix(in srgb,var(--urgent) 30%,var(--line));background:var(--urgent-bg);color:var(--urgent);border-radius:9px;padding:7px 12px;font-weight:700;font-size:.84rem}
+.tg-remind-all.solid{background:var(--urgent);border-color:var(--urgent);color:#fff}
+.tg-remind-all:disabled{opacity:.6}
+.tg-wrap{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow-x:auto}
+.tg-table{width:100%;min-width:860px;border-collapse:collapse;font-size:.88rem}
+.tg-table thead th{background:var(--panel-2);text-align:left;font-size:.68rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);padding:10px 8px}
+.tg-table thead th:first-child{padding-left:16px;width:210px}
+.tg-table thead th:nth-child(3){width:200px}
+.tg-table thead th:nth-child(4){width:70px}
+.tg-table td,.tg-table th{vertical-align:top}
+.tg-table td{padding:10px 8px;border-top:1px solid var(--line)}
+.tg-group:nth-of-type(even) td,.tg-group:nth-of-type(even) .tg-who{background:color-mix(in srgb,var(--panel-2) 55%,var(--panel))}
+.tg-group>tr:first-child>td,.tg-group>tr:first-child>.tg-who{border-top:1px solid var(--line)}
+.tg-group+.tg-group>tr:first-child>td,.tg-group+.tg-group>tr:first-child>.tg-who{border-top-width:2px}
+.tg-who{text-align:left;font-weight:400;padding:12px 16px;border-top:1px solid var(--line);border-right:1px solid var(--line)}
+.tg-person{display:flex;align-items:center;gap:9px}
+.tg-person>div{display:grid;min-width:0}
+.tg-person small{font-size:.74rem;color:var(--ink-2)}
+.tg-hours{margin-top:8px;font-size:.82rem}
+.tg-hours span{color:var(--ink-2)}
+.tg-sent{font-size:.76rem;font-weight:700;color:var(--done)}
+.tg-sent.late{color:var(--doing)}
+.tg-task b{display:block}
+.tg-task span{display:block;color:var(--ink-2);font-size:.82rem;margin-top:2px}
+.tg-time{font-weight:700;white-space:nowrap}
+.tg-links{display:flex;gap:5px;flex-wrap:wrap}
+.tg-block td{color:var(--doing);background:var(--doing-bg)!important;font-size:.84rem}
+.tg-missing td,.tg-missing .tg-who{background:color-mix(in srgb,var(--urgent-bg) 60%,var(--panel))}
+.tg-miss-h td{border-top:2px solid color-mix(in srgb,var(--urgent) 30%,var(--line));background:var(--urgent-bg)!important;padding:10px 16px}
+.tg-miss-h div,.tg-miss{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.tg-miss-h b{color:var(--urgent)}
+.tg-names{font-size:.84rem;color:var(--ink-2)}
+.tg-miss-h label{display:flex;align-items:center;gap:6px;font-size:.84rem;color:var(--ink-2)}
+.tg-miss span{font-size:.84rem;color:var(--ink-2)}
+.tg-no{color:var(--urgent)}
+.tg-no.run::after{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--urgent);margin-left:6px;vertical-align:middle}
+.tg-away td,.tg-away .tg-who{background:var(--panel-2)}
+.tg-wrap>.empty{padding:16px}
+@media (max-width:900px){.tg-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}

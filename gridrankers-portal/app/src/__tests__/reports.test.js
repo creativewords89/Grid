@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { after, asksBeforeSignOut, cleanLink, entryError, fmtMinutes, monthDays, projectName, seesTeamReports, shiftMonth, summary, teamCounts, toMinutes, writesReports } from '../lib/reports.js';
+import { after, asksBeforeSignOut, cleanLink, entryError, fmtMinutes, monthDays, projectName, seesTeamReports, shiftMonth, summary, teamCounts, teamTotals, missLine, toMinutes, writesReports } from '../lib/reports.js';
 
 describe('daily reports (SPEC.md 6.18)', () => {
 	it('formats and adds up time spent', () => {
@@ -68,5 +68,24 @@ describe('daily reports (SPEC.md 6.18)', () => {
 	it('counts the team: sent, late, not sent', () => {
 		const c = teamCounts([{ state: 'sent' }, { state: 'late' }, { state: 'not_sent' }, { state: 'leave' }, { state: 'none' }]);
 		expect(c).toEqual({ owed: 3, sent: 2, late: 1, missing: 1 });
+	});
+});
+
+describe('Team tab totals (TR-G1)', () => {
+	it('counts who sent, who was away, the time and the tasks', () => {
+		const t = teamTotals([
+			{ state: 'sent', report: { entries: [{ minutes: 60 }, { minutes: 30 }] } },
+			{ state: 'late', report: { entries: [{ minutes: 120 }] } },
+			{ state: 'not_sent' },
+			{ state: 'leave' },
+			{ state: 'day_off' },
+		]);
+		expect(t).toMatchObject({ owed: 3, sent: 2, missing: 1, away: 2, minutes: 210, tasks: 3 });
+	});
+	it('says how long a report has been missing and when they were reminded', () => {
+		const time = () => '7:05 PM';
+		expect(missLine({ missed: 1, reminded_at: null }, true, time)).toBe('Not sent yet today · not reminded yet');
+		expect(missLine({ missed: 1, reminded_at: null }, false, time)).toBe('Missed this day · not reminded yet');
+		expect(missLine({ missed: 3, reminded_at: '2026-10-15 13:05:00' }, true, time)).toBe('3 working days in a row · reminded 7:05 PM');
 	});
 });
