@@ -16,6 +16,9 @@ class GRP_REST_Daily_Reports extends GRP_REST_Controller {
 
 	const TABLE = 'grp_daily_reports';
 
+	/** Title of the notice Remind sends (also how a reminder is recognised). */
+	const REMIND_TITLE = 'Please send your daily report';
+
 	/**
 	 * Registers routes.
 	 */
@@ -185,13 +188,22 @@ class GRP_REST_Daily_Reports extends GRP_REST_Controller {
 			) ) {
 				continue;
 			}
-			$report   = $reports[ (string) $member['id'] ] ?? null;
-			$sent     = $report && ! empty( $report['sent_at'] ) ? $report : null;
-			$people[] = array(
-				'member_id' => $member['id'],
-				'state'     => GRP_Daily_Reports::state( $member, $day, $today, $since, $report, $leaves, $weekly, $off ),
-				'report'    => self::out( $sent ),
+			$report = $reports[ (string) $member['id'] ] ?? null;
+			$sent   = $report && ! empty( $report['sent_at'] ) ? $report : null;
+			$state  = GRP_Daily_Reports::state( $member, $day, $today, $since, $report, $leaves, $weekly, $off );
+			$pay    = GRP_Store::get( 'grp_pay', (string) $member['id'] );
+			$row    = array(
+				'member_id'   => $member['id'],
+				'state'       => $state,
+				'report'      => self::out( $sent ),
+				// Their working day (hours only, never pay), for "5h 30m of 8h".
+				'day_minutes' => $pay ? (int) $pay['day_minutes'] : null,
 			);
+			if ( 'not_sent' === $state ) {
+				$row['missed']      = GRP_Daily_Reports::missed_in_a_row( $member, $day, $since, self::sent_days( $member['id'], $day ), $leaves, $weekly, $off );
+				$row['reminded_at'] = self::reminded_at( $member['id'], $day );
+			}
+			$people[] = $row;
 		}
 
 		return self::respond(
@@ -353,25 +365,70 @@ class GRP_REST_Daily_Reports extends GRP_REST_Controller {
 	}
 
 	/**
+	 * Days (`Y-m-d` => true) a person sent a report, in the BACK_DAYS before `$day` and on it.
+	 *
+	 * @param string $member_id Person.
+	 * @param string $day       `Y-m-d`.
+	 * @return array<string, bool>
+	 */
+	private static function sent_days( $member_id, $day ) {
+		$days = array();
+		foreach ( GRP_Store::find(
+			self::TABLE,
+			array(
+				'member_id' => $member_id,
+				'day >='    => GRP_People::add_days( $day, -GRP_Daily_Reports::BACK_DAYS ),
+				'day <='    => $day,
+			)
+		) as $row ) {
+			if ( ! empty( $row['sent_at'] ) ) {
+				$days[ (string) $row['day'] ] = true;
+			}
+		}
+
+		return $days;
+	}
+
+	/**
+	 * When someone was last reminded to send their report for a day (UTC), or null.
+	 *
+	 * @param string $member_id Person.
+	 * @param string $day       `Y-m-d` (site time).
+	 * @return string|null
+	 */
+	private static function reminded_at( $member_id, $day ) {
+		$last = null;
+		foreach ( GRP_Store::find(
+			'grp_posts',
+			array(
+				'kind'          => 'notice',
+				'to_member'     => (string) $member_id,
+				'created_at >=' => get_gmt_from_date( $day . ' 00:00:00' ),
+			)
+		) as $post ) {
+			if ( self::REMIND_TITLE === (string) $post['title'] && ( null === $last || $post['created_at'] > $last ) ) {
+				$last = (string) $post['created_at'];
+			}
+		}
+
+		return $last;
+	}
+
+	/**
 	 * POST /daily-reports/remind `{member_id, day?}`: a private notice asking that person to send
-	 * their report (design DR-B, Remind). Managers, for people whose reports they read.
+	 * their report (design DR-B, Remind). Or `{member_ids: [], day?, tell_leads?}` (design TR-G1,
+	 * Remind all): one notice each to everyone listed who still owes that report (anyone who sent
+	 * it or was off is skipped), and with `tell_leads` a notice to the Team Leaders naming them.
+	 * Managers, for people whose reports they read.
 	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public static function remind( WP_REST_Request $request ) {
-		$person = GRP_Store::get( 'grp_members', (string) $request['member_id'] );
-		if ( ! $person || ! (int) $person['active'] ) {
-			return self::not_found();
-		}
-		if ( ! self::can(
-			GRP_Permissions::REMIND_DAILY_REPORT,
-			array(
-				'member_id' => $person['id'],
-				'role'      => $person['role'],
-			)
-		) ) {
-			return self::forbidden( __( 'You can’t remind this person.', 'gridrankers-portal' ) );
+		$bulk = is_array( $request['member_ids'] );
+		$ids  = $bulk ? array_values( array_unique( array_map( 'strval', $request['member_ids'] ) ) ) : array( (string) $request['member_id'] );
+		if ( ! $ids ) {
+			return self::invalid( __( 'Choose who to remind.', 'gridrankers-portal' ) );
 		}
 		$today = GRP_Cycles::today();
 		$day   = self::date( $request['day'] ?? '', 'day' );
@@ -379,26 +436,108 @@ class GRP_REST_Daily_Reports extends GRP_REST_Controller {
 			return $day;
 		}
 		$day    = $day ? $day : $today;
-		$report = GRP_Store::get( self::TABLE, GRP_Daily_Reports::row_id( $person['id'], $day ) );
-		if ( $report && ! empty( $report['sent_at'] ) ) {
-			return self::conflict( __( 'They have already sent that report.', 'gridrankers-portal' ) );
-		}
-		$when = $day === $today ? __( 'today', 'gridrankers-portal' ) : wp_date( 'D, M j', strtotime( $day . ' 12:00:00 UTC' ) );
-		$post = GRP_Store::insert(
-			'grp_posts',
-			array(
-				'kind'       => 'notice',
-				'title'      => __( 'Please send your daily report', 'gridrankers-portal' ),
-				/* translators: %s: "today" or a date. */
-				'body'       => sprintf( __( 'Please send your daily report for %s.', 'gridrankers-portal' ), $when ),
-				'to_members' => array( (string) $person['id'] ),
-				'to_member'  => (string) $person['id'],
-				'show_until' => GRP_People::add_days( $today, 1 ),
-				'pinned'     => 0,
-				'created_by' => self::actor()['id'],
-			)
-		);
+		$leaves = self::leaves();
+		$weekly = GRP_REST_People::team_weekly();
+		$off    = GRP_REST_People::days_off();
 
-		return new WP_REST_Response( $post, 201 );
+		$people = array();
+		foreach ( $ids as $id ) {
+			$person = GRP_Store::get( 'grp_members', $id );
+			if ( ! $person || ! (int) $person['active'] ) {
+				return self::not_found();
+			}
+			if ( ! self::can(
+				GRP_Permissions::REMIND_DAILY_REPORT,
+				array(
+					'member_id' => $person['id'],
+					'role'      => $person['role'],
+				)
+			) ) {
+				return self::forbidden( __( 'You can’t remind this person.', 'gridrankers-portal' ) );
+			}
+			$report = GRP_Store::get( self::TABLE, GRP_Daily_Reports::row_id( $person['id'], $day ) );
+			if ( $report && ! empty( $report['sent_at'] ) ) {
+				if ( ! $bulk ) {
+					return self::conflict( __( 'They have already sent that report.', 'gridrankers-portal' ) );
+				}
+				continue;
+			}
+			if ( $bulk && GRP_Daily_Reports::out_reason( $day, $person, $leaves, $weekly, $off ) ) {
+				continue;
+			}
+			$people[] = $person;
+		}
+
+		$actor = self::actor();
+		$when  = $day === $today ? __( 'today', 'gridrankers-portal' ) : wp_date( 'D, M j', strtotime( $day . ' 12:00:00 UTC' ) );
+		$posts = array();
+		foreach ( $people as $person ) {
+			$posts[] = GRP_Store::insert(
+				'grp_posts',
+				array(
+					'kind'       => 'notice',
+					'title'      => self::REMIND_TITLE,
+					/* translators: %s: "today" or a date. */
+					'body'       => sprintf( __( 'Please send your daily report for %s.', 'gridrankers-portal' ), $when ),
+					'to_members' => array( (string) $person['id'] ),
+					'to_member'  => (string) $person['id'],
+					'show_until' => GRP_People::add_days( $today, 1 ),
+					'pinned'     => 0,
+					'created_by' => $actor['id'],
+				)
+			);
+		}
+		if ( ! $bulk ) {
+			return new WP_REST_Response( $posts[0], 201 );
+		}
+
+		$reminded = array_map(
+			static function ( $p ) {
+				return (string) $p['id'];
+			},
+			$people
+		);
+		if ( $people && ! empty( $request['tell_leads'] ) ) {
+			$leads = array();
+			foreach ( GRP_Store::find( 'grp_members', array( 'active' => 1 ) ) as $member ) {
+				$id = (string) $member['id'];
+				if ( GRP_Permissions::ROLE_LEAD === GRP_Permissions::effective_role( $member ) && $id !== (string) $actor['id'] && ! in_array( $id, $reminded, true ) ) {
+					$leads[] = $id;
+				}
+			}
+			if ( $leads ) {
+				$names = implode(
+					', ',
+					array_map(
+						static function ( $p ) {
+							return $p['name'];
+						},
+						$people
+					)
+				);
+				GRP_Store::insert(
+					'grp_posts',
+					array(
+						'kind'       => 'notice',
+						'title'      => __( 'Daily reports not sent', 'gridrankers-portal' ),
+						/* translators: 1: "today" or a date, 2: names, 3: who reminded them. */
+						'body'       => sprintf( __( 'Not sent for %1$s: %2$s. %3$s reminded them.', 'gridrankers-portal' ), $when, $names, $actor['name'] ),
+						'to_members' => $leads,
+						'to_member'  => $leads[0],
+						'show_until' => GRP_People::add_days( $today, 1 ),
+						'pinned'     => 0,
+						'created_by' => $actor['id'],
+					)
+				);
+			}
+		}
+
+		return new WP_REST_Response(
+			array(
+				'reminded' => $reminded,
+				'skipped'  => array_values( array_diff( $ids, $reminded ) ),
+			),
+			201
+		);
 	}
 }

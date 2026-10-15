@@ -78,18 +78,31 @@ test('daily reports', async ({ page }) => {
 	await signIn(page, LEAD);
 	await openReports();
 	await page.getByRole('tab', { name: 'Team' }).click();
-	const max = page.locator('article.dr-card', { hasText: 'Max Member' });
-	await expect(max.locator('.dr-badge')).toContainText('Sent');
-	await expect(max.locator('.dr-row')).toHaveCount(2);
+	// Everyone's tasks in one table (design TR-G1): Max's two tasks and blocker; the Super Admin
+	// writes none, so isn't listed.
+	const max = page.locator('tbody[aria-label="Report of Max Member"]');
+	await expect(max.locator('.tg-sent')).toContainText('Sent');
+	await expect(max.locator('.tg-task')).toHaveCount(2);
 	await expect(max).toContainText('Waiting for Bright Dental’s logins.');
-	await expect(page.locator('article.dr-card', { hasText: 'Grid Owner' })).toHaveCount(0);
-	const nia = page.locator('article.dr-card', { hasText: 'Nia' });
-	const reminded = (await nia.locator('.dr-badge').textContent()) === 'Not sent';
+	await expect(page.locator('.tg-tiles')).toContainText('tasks reported');
+	await expect(page.getByRole('rowgroup', { name: 'Report of Grid Owner' })).toHaveCount(0);
+	// Filter by name: only Max, then everyone again.
+	await page.getByRole('group', { name: 'Filter by name' }).getByRole('button', { name: 'Max Member', exact: true }).click();
+	await expect(page.locator('.tg-group')).toHaveCount(1);
+	await page.getByRole('group', { name: 'Filter by name' }).getByRole('button', { name: 'Everyone' }).click();
+	// Nia hasn't sent: Remind her, then Remind everyone who hasn't sent.
+	const nia = page.locator('.tg-missing tr[aria-label="Nia Member"]');
+	const reminded = (await nia.count()) > 0;
 	if (reminded) {
+		await expect(nia).toContainText('not reminded yet');
 		await nia.getByRole('button', { name: 'Remind' }).click();
-		await page.getByText(/Reminder sent to Nia/).waitFor();
+		await page.getByText(/Reminder sent to Nia|Reminders sent to/).first().waitFor();
+		await expect(nia).toContainText('reminded');
+		await expect(nia.getByRole('button', { name: 'Remind again' })).toBeVisible();
+		await page.getByRole('button', { name: /Remind everyone who hasn’t sent/ }).click();
+		await page.getByText(/Reminders sent to \d+ people|Reminder sent to/).first().waitFor();
 	}
-	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/dr-team.png' });
+	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/dr-team.png', fullPage: true });
 	await max.getByRole('button', { name: /Max Member/ }).click();
 	await expect(page.locator('.dr-person-h h2')).toHaveText('Max Member');
 	await expect(page.locator('.dr-d[aria-pressed="true"]')).toHaveClass(/has/);
@@ -101,7 +114,7 @@ test('daily reports', async ({ page }) => {
 	// Nia gets the reminder as a notice.
 	if (reminded) {
 		await signIn(page, 'NIACODE11');
-		await expect(page.locator('.nf-item', { hasText: 'Lee Lead → you: Please send your daily report' })).toBeVisible();
+		await expect(page.locator('.nf-item', { hasText: 'Lee Lead → you: Please send your daily report' }).first()).toBeVisible();
 		await signOut(page);
 	}
 
@@ -127,7 +140,7 @@ test('daily reports', async ({ page }) => {
 	await signInOwner(page);
 	await openReports();
 	await expect(page.getByRole('tab', { name: 'My reports' })).toHaveCount(0);
-	await expect(page.locator('article.dr-card', { hasText: 'Lee Lead' })).toBeVisible();
-	await expect(page.locator('article.dr-card', { hasText: 'Max Member' }).locator('.dr-badge')).toContainText('Sent');
+	await expect(page.locator('.tg-table')).toContainText('Lee Lead');
+	await expect(page.locator('tbody[aria-label="Report of Max Member"] .tg-sent')).toContainText('Sent');
 	noErrors();
 });

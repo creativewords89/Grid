@@ -120,3 +120,22 @@ export function teamCounts(people) {
 }
 
 export const nextDay = (day, by) => addDays(day, by);
+
+// The Team tab's totals (design TR-G1): who owed a report and sent it, who was away, the time
+// logged and the tasks reported.
+export function teamTotals(people) {
+	const c = teamCounts(people);
+	const sent = people.filter((p) => p.report && (p.state === 'sent' || p.state === 'late'));
+	return {
+		...c,
+		away: people.filter((p) => p.state === 'leave' || p.state === 'day_off').length,
+		minutes: sent.reduce((n, p) => n + totalMinutes(p.report.entries), 0),
+		tasks: sent.reduce((n, p) => n + (p.report.entries || []).length, 0),
+	};
+}
+
+// Why a missing report matters (design TR-G1): "2 working days in a row · reminded 7:05 PM".
+export function missLine(p, isToday, time) {
+	const run = p.missed > 1 ? `${p.missed} working days in a row` : isToday ? 'Not sent yet today' : 'Missed this day';
+	return `${run} · ${p.reminded_at ? `reminded ${time(p.reminded_at)}` : 'not reminded yet'}`;
+}

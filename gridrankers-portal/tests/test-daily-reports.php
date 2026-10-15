@@ -318,6 +318,79 @@ class Test_GRP_Daily_Reports extends GRP_REST_TestCase {
 		$this->assertStatus( 409, $this->api_as( 'lead', 'POST', '/daily-reports/remind', array( 'member_id' => $who ) ) );
 	}
 
+	public function test_team_tab_shows_missed_days_reminders_and_hours() {
+		$today = $this->today();
+		$this->put(
+			'member',
+			$this->yesterday(),
+			array(
+				'entries' => array( $this->entry() ),
+				'send'    => true,
+			)
+		);
+		$people = array_column( $this->api_as( 'admin', 'GET', '/daily-reports/team', array( 'day' => $today ) )->get_data()['people'], null, 'member_id' );
+		$other  = $people[ $this->team['other']['id'] ];
+		$this->assertSame( 'not_sent', $other['state'] );
+		// Every working day for the last BACK_DAYS and today: no report.
+		$this->assertSame( GRP_Daily_Reports::BACK_DAYS + 1, $other['missed'] );
+		$this->assertNull( $other['reminded_at'] );
+		$this->assertSame( 480, $other['day_minutes'] );
+		// Max sent yesterday: only today is missing.
+		$this->assertSame( 1, $people[ $this->team['member']['id'] ]['missed'] );
+
+		$this->api_as( 'lead', 'POST', '/daily-reports/remind', array( 'member_id' => $this->team['other']['id'] ) );
+		$people = array_column( $this->api_as( 'lead', 'GET', '/daily-reports/team', array( 'day' => $today ) )->get_data()['people'], null, 'member_id' );
+		$this->assertNotNull( $people[ $this->team['other']['id'] ]['reminded_at'] );
+	}
+
+	public function test_remind_all_skips_who_sent_and_can_tell_the_team_leaders() {
+		$today = $this->today();
+		$this->put(
+			'member',
+			$today,
+			array(
+				'entries' => array( $this->entry() ),
+				'send'    => true,
+			)
+		);
+		$ids = array( $this->team['member']['id'], $this->team['other']['id'], $this->lead2['id'] );
+		$this->assertStatus( 403, $this->api_as( 'member', 'POST', '/daily-reports/remind', array( 'member_ids' => array( $this->team['other']['id'] ) ) ) );
+		$this->assertStatus( 403, $this->api_as( 'lead', 'POST', '/daily-reports/remind', array( 'member_ids' => array( $this->team['lead']['id'] ) ) ) );
+
+		$res = $this->api_as(
+			'admin',
+			'POST',
+			'/daily-reports/remind',
+			array(
+				'member_ids' => $ids,
+				'tell_leads' => true,
+			)
+		);
+		$this->assertStatus( 201, $res );
+		$this->assertSame( array( $this->team['other']['id'], $this->lead2['id'] ), $res->get_data()['reminded'] );
+		$this->assertSame( array( $this->team['member']['id'] ), $res->get_data()['skipped'] );
+
+		$posts = GRP_Store::find( 'grp_posts', array( 'kind' => 'notice' ) );
+		$this->assertCount( 3, $posts );
+		$leads = array_values(
+			array_filter(
+				$posts,
+				static function ( $p ) {
+					return 'Daily reports not sent' === $p['title'];
+				}
+			)
+		);
+		// Lee is told; Lia was reminded herself.
+		$this->assertCount( 1, $leads );
+		$this->assertSame( array( $this->team['lead']['id'] ), $leads[0]['to_members'] );
+		$this->assertStringContainsString( 'Olu Other', $leads[0]['body'] );
+		$this->assertStringContainsString( 'Lia Lead', $leads[0]['body'] );
+
+		// Without tell_leads only the people are reminded.
+		$this->api_as( 'lead', 'POST', '/daily-reports/remind', array( 'member_ids' => array( $this->team['other']['id'] ) ) );
+		$this->assertCount( 4, GRP_Store::find( 'grp_posts', array( 'kind' => 'notice' ) ) );
+	}
+
 	public function test_reports_are_exported_and_imported() {
 		$this->put(
 			'member',
