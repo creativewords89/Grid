@@ -128,7 +128,7 @@ class GRP_REST_Daily_Reports extends GRP_REST_Controller {
 			array(
 				'member_id' => $person['id'],
 				'day >='    => $month . '-01',
-				'day <='    => $month . '-31',
+				'day <='    => gmdate( 'Y-m-t', strtotime( $month . '-01 UTC' ) ),
 			),
 			array( 'order_by' => 'day' )
 		);

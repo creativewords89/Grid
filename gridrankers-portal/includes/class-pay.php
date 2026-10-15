@@ -296,7 +296,7 @@ class GRP_Pay {
 			array(
 				'member_id' => $member['id'],
 				'day >='    => $month . '-01',
-				'day <='    => $month . '-31',
+				'day <='    => gmdate( 'Y-m-t', strtotime( $month . '-01 UTC' ) ),
 			)
 		);
 
@@ -317,7 +317,7 @@ class GRP_Pay {
 		}
 		$admin = self::admin_id();
 		$made  = 0;
-		$end   = $month . '-31 23:59:59';
+		$end   = gmdate( 'Y-m-t', strtotime( $month . '-01 UTC' ) ) . ' 23:59:59';
 		foreach ( GRP_Store::find( 'grp_members', array( 'active' => 1 ), array( 'order_by' => 'name' ) ) as $member ) {
 			$pay = GRP_Store::get( 'grp_pay', (string) $member['id'] );
 			// Only people who were set up in that month (or before) are billed for it.
