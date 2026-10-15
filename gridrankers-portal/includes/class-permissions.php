@@ -224,6 +224,15 @@ class GRP_Permissions {
 	/** Remind someone to send their daily report. Context: `{member_id, role}`. Managers, for someone whose report they may read, not themselves. */
 	const REMIND_DAILY_REPORT = 'remind_daily_report';
 
+	/** Set one's own working hours, salary and payment details (SPEC.md 6.19). Context: `{member_id}`. Team Leaders and Team Members, for themselves only. */
+	const SET_OWN_PAY = 'set_own_pay';
+
+	/** See a person's salary month and payslips (SPEC.md 6.19). Context: `{member_id}`. Their own; the Super Admin anyone's. */
+	const VIEW_SALARY = 'view_salary';
+
+	/** See the pay sheet (everyone's salary and payment details) and mark payslips paid (SPEC.md 6.19). Super Admin only. */
+	const MANAGE_PAY = 'manage_pay';
+
 	/**
 	 * Task work that is locked while a Team Leader's or Team Member's required profile is
 	 * incomplete (SPEC.md section 3, Profile lock).
@@ -319,6 +328,14 @@ class GRP_Permissions {
 			case self::VIEW_DAILY_REPORT:
 				return self::is_self( $user, $context['member_id'] ?? null ) || $admin || ( $manager && in_array( $context['role'] ?? '', array( self::ROLE_LEAD, self::ROLE_MEMBER ), true ) );
 
+			case self::SET_OWN_PAY:
+				// The Super Admin has no salary in the portal (SPEC.md 6.19).
+				return ! $admin && self::is_self( $user, $context['member_id'] ?? null );
+
+			case self::VIEW_SALARY:
+				// Team Leaders never see anyone else's pay.
+				return $admin || self::is_self( $user, $context['member_id'] ?? null );
+
 			case self::REMIND_DAILY_REPORT:
 				return $manager && ! self::is_self( $user, $context['member_id'] ?? null ) && in_array( $context['role'] ?? '', array( self::ROLE_LEAD, self::ROLE_MEMBER ), true );
 
@@ -356,6 +373,7 @@ class GRP_Permissions {
 			case self::VIEW_LEAVE_REPORT:
 			case self::MANAGE_PEOPLE_SETTINGS:
 			case self::MANAGE_BILLING:
+			case self::MANAGE_PAY:
 				return $admin;
 
 			case self::CHANGE_PROJECT_CYCLE:

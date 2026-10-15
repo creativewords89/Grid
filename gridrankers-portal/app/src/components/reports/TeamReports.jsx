@@ -92,6 +92,7 @@ export default function TeamReports({ onOpenPerson }) {
 						))}
 					</div>
 					{shown.length === 0 && <p className="empty">Nobody here for this day.</p>}
+					<div className="dr-cards">
 					{shown.map((p) => {
 						const person = data.members[p.member_id];
 						const st = STATE[p.state] || STATE.none;
@@ -125,6 +126,7 @@ export default function TeamReports({ onOpenPerson }) {
 							</article>
 						);
 					})}
+					</div>
 				</>
 			)}
 		</div>

@@ -153,4 +153,37 @@ GRP_Store::insert(
 	)
 );
 GRP_Auth::set_code( 'tm_ray', 'RAYCODE11' );
+// Pay (SPEC.md 6.19): everyone has set up their hours, salary and payment details except Pia,
+// who joined today and sees the setup page first.
+foreach ( array( 'tm_lee', 'tm_max', 'tm_nia', 'tm_ray' ) as $id ) {
+	GRP_Store::insert(
+		'grp_pay',
+		array(
+			'id'             => $id,
+			'member_id'      => $id,
+			'day_minutes'    => 'tm_max' === $id ? 300 : 480,
+			'salary'         => 30000,
+			'method'         => 'bank',
+			'bank_name'      => 'Dutch-Bangla Bank',
+			'branch'         => 'Gulshan',
+			'account_name'   => $id,
+			'account_number' => '1171 0100 2345 678',
+		)
+	);
+}
+GRP_Store::insert(
+	'grp_members',
+	array(
+		'id'         => 'tm_pia',
+		'name'       => 'Pia Newcomer',
+		'role'       => 'member',
+		'active'     => 1,
+		'location'   => 'Rangpur',
+		'birthday'   => '03-12',
+		'birth_year' => 1995,
+		'phone'      => '+8801700000002',
+		'photo'      => 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+	)
+);
+GRP_Auth::set_code( 'tm_pia', 'PIACODE11' );
 echo "e2e site ready\n";
