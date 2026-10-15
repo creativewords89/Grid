@@ -62,6 +62,16 @@ class GRP_Store {
 		'remind_days',
 		'from_client',
 		'late',
+		'day_minutes',
+		'salary',
+		'worked',
+		'extra',
+		'extra_pay',
+		'leave_taken',
+		'leave_pay',
+		'deducted_days',
+		'deducted',
+		'total',
 	);
 
 	/**

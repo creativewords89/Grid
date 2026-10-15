@@ -36,6 +36,18 @@ abstract class GRP_REST_TestCase extends WP_UnitTestCase {
 		'photo'      => 'https://example.com/photo.png',
 	);
 
+	/**
+	 * Pay set up: 8 hours a day, 30,000 BDT, a bank account.
+	 */
+	const FULL_PAY = array(
+		'day_minutes'    => 480,
+		'salary'         => 30000,
+		'method'         => 'bank',
+		'bank_name'      => 'Dutch-Bangla Bank',
+		'account_name'   => 'Test Person',
+		'account_number' => '1171 0100 2345 678',
+	);
+
 	public function set_up() {
 		parent::set_up();
 
@@ -80,7 +92,7 @@ abstract class GRP_REST_TestCase extends WP_UnitTestCase {
 	 * @return array
 	 */
 	protected function add_member( $name, $role, $wp_user_id = null ) {
-		return GRP_Store::insert(
+		$member = GRP_Store::insert(
 			'grp_members',
 			array(
 				'name'       => $name,
@@ -89,6 +101,12 @@ abstract class GRP_REST_TestCase extends WP_UnitTestCase {
 				'active'     => 1,
 			) + self::FULL_PROFILE
 		);
+		// Team Leaders and Team Members have set up their pay (SPEC.md 6.19), so nothing is locked.
+		if ( 'admin' !== $role ) {
+			GRP_Store::insert( 'grp_pay', array( 'id' => $member['id'] ) + self::FULL_PAY + array( 'member_id' => $member['id'] ) );
+		}
+
+		return $member;
 	}
 
 	/**

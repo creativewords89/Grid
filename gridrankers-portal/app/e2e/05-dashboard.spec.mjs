@@ -13,7 +13,9 @@ test('dashboard, project lifecycle and per-project Recent Activities', async ({ 
 		await page.getByRole('menuitem', { name: item }).click();
 	};
 
-	// Team Leader lands on My day; the Projects tab (Active) adds a paused project starting on day 15.
+	// Team Leader lands on My day; the Projects tab (Active) adds a paused project starting on day 15
+	// (day 5 when a cycle starting on the 15th would be in its 3-day setup window today, 6.11).
+	const cycleDay = [15, 16, 17].includes(new Date().getDate()) ? '5' : '15';
 	await signIn(page, LEAD);
 	await expect(page.locator('.md-top h1')).toHaveText(/^Good (morning|afternoon|evening), Lee Lead$/);
 	// A Team Leader's page (SPEC.md 7.6): the team, their own leave, no Admin settings; no Team
@@ -39,14 +41,14 @@ test('dashboard, project lifecycle and per-project Recent Activities', async ({ 
 	await page.getByRole('button', { name: '+ New project' }).click();
 	const dlg = page.locator('dialog[open]');
 	await dlg.getByLabel('Project name').fill('Harbor Hotel');
-	await dlg.getByLabel('Cycle start day').selectOption('15');
+	await dlg.getByLabel('Cycle start day').selectOption(cycleDay);
 	await dlg.getByLabel('Status', { exact: true }).selectOption('paused');
 	await dlg.getByRole('button', { name: 'Add project' }).click();
 	await page.getByText('Harbor Hotel added').waitFor();
 	await expect(pd('Harbor Hotel')).toHaveCount(0);
 
 	await tab('Paused').click();
-	await expect(pd('Harbor Hotel').locator('.pd-cycle')).toContainText('Day 15');
+	await expect(pd('Harbor Hotel').locator('.pd-cycle')).toContainText(`Day ${cycleDay}`);
 	// A paused project gets no monthly tasks (SPEC.md 6.8) until it is moved to Active.
 	await expect(pd('Harbor Hotel')).toContainText('Start when active');
 	await expect(pd('Harbor Hotel')).toContainText('On track');

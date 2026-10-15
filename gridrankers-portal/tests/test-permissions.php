@@ -957,6 +957,57 @@ class Test_GRP_Permissions extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Rows: Set own pay; see a salary; the pay sheet (SPEC.md 6.19).
+	 */
+	public function test_pay() {
+		$this->assert_matrix(
+			GRP_Permissions::SET_OWN_PAY,
+			fn ( $role ) => array( 'member_id' => $this->users[ $role ]['id'] ),
+			array(
+				'admin'  => false,
+				'lead'   => true,
+				'member' => true,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::SET_OWN_PAY,
+			array( 'member_id' => 'm-other' ),
+			array(
+				'admin'  => false,
+				'lead'   => false,
+				'member' => false,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::VIEW_SALARY,
+			fn ( $role ) => array( 'member_id' => $this->users[ $role ]['id'] ),
+			array(
+				'admin'  => true,
+				'lead'   => true,
+				'member' => true,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::VIEW_SALARY,
+			array( 'member_id' => 'm-other' ),
+			array(
+				'admin'  => true,
+				'lead'   => false,
+				'member' => false,
+			)
+		);
+		$this->assert_matrix(
+			GRP_Permissions::MANAGE_PAY,
+			null,
+			array(
+				'admin'  => true,
+				'lead'   => false,
+				'member' => false,
+			)
+		);
+	}
+
+	/**
 	 * Row: Issue a day off — Team Leaders and the Super Admin, to Team Members and Team Leaders,
 	 * never to themselves or the Super Admin.
 	 */

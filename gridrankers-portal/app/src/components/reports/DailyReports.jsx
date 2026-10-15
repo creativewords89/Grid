@@ -4,14 +4,21 @@ import { dayTitle, seesTeamReports, summary, writesReports } from '../../lib/rep
 import PersonReports from './PersonReports.jsx';
 import ReportEditor from './ReportEditor.jsx';
 import TeamReports from './TeamReports.jsx';
+import PaySheet from '../pay/PaySheet.jsx';
+import PaymentInfo from '../pay/PaymentInfo.jsx';
+import SalaryMonth from '../pay/SalaryMonth.jsx';
 
-// Daily reports (SPEC.md 6.18), in the sidebar for everyone. Team Leaders and Team Members get
-// My reports (today's report, design DR-A; earlier ones on the day bar, DR-C); the Super Admin and
-// Team Leaders get Team (everyone's report for a day, DR-B). Click a name for that person's days.
+// Daily reports (SPEC.md 6.18), in the sidebar for everyone. Three tabs (SPEC.md 6.19): Reports,
+// Salary and Payment information. Under Reports, Team Leaders and Team Members get My reports
+// (today's report, design DR-A; earlier ones on the day bar, DR-C); the Super Admin and Team Leaders
+// get Team (everyone's report for a day, DR-B). Salary is your own month (PAY-3), or the Super
+// Admin's pay sheet (PAY-4); Payment information is your pay and payment details (PAY-2).
 export default function DailyReports() {
 	const { me } = usePortal();
 	const writes = writesReports(me);
 	const team = seesTeamReports(me);
+	const admin = me.role === 'admin';
+	const [area, setArea] = useState('reports');
 	const [tab, setTab] = useState(writes ? 'mine' : 'team');
 	const [person, setPerson] = useState(null);
 
@@ -19,19 +26,29 @@ export default function DailyReports() {
 		return <PersonReports memberId={person} onBack={() => setPerson(null)} backLabel="Team reports" />;
 	}
 
+	const areas = [['reports', 'Reports'], ['salary', 'Salary'], ...(admin ? [] : [['payment', 'Payment information']])];
 	return (
 		<div className="dr">
-			{writes && team && (
-				<div className="dr-tabs" role="tablist" aria-label="Daily reports">
-					<button type="button" role="tab" aria-selected={tab === 'mine'} onClick={() => setTab('mine')}>
-						My reports
-					</button>
-					<button type="button" role="tab" aria-selected={tab === 'team'} onClick={() => setTab('team')}>
-						Team
-					</button>
+			<div className="dr-top">
+				<div className="pay-areas" role="tablist" aria-label="Daily reports and pay">
+					{areas.map(([k, label]) => (
+						<button key={k} type="button" role="tab" aria-selected={area === k} onClick={() => setArea(k)}>
+							{label}
+						</button>
+					))}
 				</div>
-			)}
-			{tab === 'team' && team ? <TeamReports onOpenPerson={setPerson} /> : <MyReports />}
+				{area === 'reports' && writes && team && (
+					<div className="dr-tabs" role="tablist" aria-label="Daily reports">
+						<button type="button" role="tab" aria-selected={tab === 'mine'} onClick={() => setTab('mine')}>
+							My reports
+						</button>
+						<button type="button" role="tab" aria-selected={tab === 'team'} onClick={() => setTab('team')}>
+							Team
+						</button>
+					</div>
+				)}
+			</div>
+			{area === 'salary' ? admin ? <PaySheet /> : <SalaryMonth /> : area === 'payment' ? <PaymentInfo /> : tab === 'team' && team ? <TeamReports onOpenPerson={setPerson} /> : <MyReports />}
 		</div>
 	);
 }

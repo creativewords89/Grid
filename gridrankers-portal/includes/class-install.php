@@ -15,7 +15,7 @@ class GRP_Install {
 	/**
 	 * Current schema version. Bump it whenever get_schema() or migrations() changes.
 	 */
-	const DB_VERSION = 17;
+	const DB_VERSION = 18;
 
 	/**
 	 * Option that stores the installed schema version.
@@ -39,6 +39,7 @@ class GRP_Install {
  * Schema 15 adds task steps: `steps` on meeting and monthly tasks, `step_done` on meeting tasks and cycle records (6.16).
  * Schema 16 adds `files` (attachments added with the task) to meeting and monthly tasks (6.17).
  * Schema 17 adds `grp_daily_reports`: what each person did today, written by hand (6.18).
+ * Schema 18 adds `grp_pay` (working hours, salary, payment details) and `grp_payslips` (6.19).
 	 *
 	 * @var string[]
 	 */
@@ -66,6 +67,8 @@ class GRP_Install {
 		'grp_client_requests',
 		'grp_request_messages',
 		'grp_daily_reports',
+		'grp_pay',
+		'grp_payslips',
 	);
 
 	/**
@@ -134,6 +137,7 @@ class GRP_Install {
 			11 => array( 'GRP_Billing', 'start' ),
 			12 => array( __CLASS__, 'sync_breakdown_people' ),
 			17 => array( 'GRP_Daily_Reports', 'start' ),
+			18 => array( 'GRP_Pay', 'start' ),
 		);
 	}
 
@@ -708,6 +712,47 @@ class GRP_Install {
 				PRIMARY KEY  (id),
 				UNIQUE KEY member_day (member_id,day),
 				KEY day (day)
+			) $collate;",
+
+			"CREATE TABLE {$t['grp_pay']} (
+				id varchar(64) NOT NULL,
+				member_id varchar(64) NOT NULL,
+				day_minutes smallint NOT NULL DEFAULT 0,
+				salary int NOT NULL DEFAULT 0,
+				method varchar(10) NOT NULL DEFAULT '',
+				bank_name varchar(120) NULL,
+				branch varchar(120) NULL,
+				account_name varchar(120) NULL,
+				account_number varchar(40) NULL,
+				routing varchar(20) NULL,
+				created_at datetime NOT NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				UNIQUE KEY member_id (member_id)
+			) $collate;",
+
+			"CREATE TABLE {$t['grp_payslips']} (
+				id varchar(64) NOT NULL,
+				member_id varchar(64) NOT NULL,
+				month char(7) NOT NULL,
+				salary int NOT NULL DEFAULT 0,
+				day_minutes smallint NOT NULL DEFAULT 0,
+				worked int NOT NULL DEFAULT 0,
+				extra int NOT NULL DEFAULT 0,
+				extra_pay int NOT NULL DEFAULT 0,
+				leave_taken tinyint NOT NULL DEFAULT 0,
+				leave_pay int NOT NULL DEFAULT 0,
+				deducted_days tinyint NOT NULL DEFAULT 0,
+				deducted int NOT NULL DEFAULT 0,
+				total int NOT NULL DEFAULT 0,
+				account varchar(191) NULL,
+				paid_at datetime NULL,
+				paid_by varchar(64) NULL,
+				created_at datetime NOT NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				UNIQUE KEY member_month (member_id,month),
+				KEY month (month)
 			) $collate;",
 		);
 	}

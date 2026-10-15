@@ -55,13 +55,15 @@ class GRP_Cron {
 			'sessions'       => 0,
 			'tombstones'     => 0,
 			'billing'        => 0,
+			'payslips'       => 0,
 		);
 
 		foreach ( GRP_Store::find( 'grp_projects' ) as $project ) {
 			$summary['standard_tasks'] += GRP_Standard_Tasks::ensure( $project, $today );
 		}
 
-		$summary['billing'] = GRP_Billing::ensure( $today );
+		$summary['billing']  = GRP_Billing::ensure( $today );
+		$summary['payslips'] = GRP_Pay::bill( $today );
 
 		$before = count( GRP_Store::find( 'grp_trash' ) );
 		GRP_REST_Trash::purge();

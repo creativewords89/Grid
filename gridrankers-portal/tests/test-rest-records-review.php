@@ -122,6 +122,8 @@ class Test_GRP_REST_Records_Review extends GRP_REST_TestCase {
 				'project_id' => $project['id'],
 				'title'      => 'Weekly post',
 				'due_mode'   => 'weekly',
+				// Two a week: on day 1–7 of the cycle the current week is week 1, ticked twice below.
+				'target'     => 2,
 				'assignees'  => array( array( 'id' => $this->team['member']['id'] ) ),
 			)
 		)->get_data();

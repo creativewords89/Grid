@@ -17,6 +17,7 @@ import Invoices from './components/billing/Invoices.jsx';
 import DailyReports, { fmtDue } from './components/reports/DailyReports.jsx';
 import { MissingReport, SignOutDialog } from './components/reports/ReportGates.jsx';
 import { asksBeforeSignOut } from './lib/reports.js';
+import PaySetup from './components/pay/PaySetup.jsx';
 import TeamView from './components/TeamView.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import RecentActivities from './components/RecentActivities.jsx';
@@ -139,6 +140,27 @@ function useReportState(api, on) {
 	return useMemo(() => ({ state, reload, update }), [state, reload, update]);
 }
 
+// The signed-in person's pay (SPEC.md 6.19): GET /pay/me on sign-in. `needed` shows the setup page
+// (design PAY-1) instead of the portal; `update` takes the saved pay row.
+function usePayState(api, on) {
+	const [state, setState] = useState(null);
+	const reload = useCallback(() => {
+		if (!on) return Promise.resolve();
+		return api
+			.get('pay/me')
+			.then(setState)
+			.catch(() => {});
+	}, [api, on]);
+	useEffect(() => {
+		if (on) reload();
+		else setState(null);
+	}, [on, reload]);
+	const update = useCallback((row) => {
+		if (row) setState((st) => (st ? { ...st, pay: row, needed: false } : st));
+	}, []);
+	return useMemo(() => ({ state, reload, update }), [state, reload, update]);
+}
+
 export default function App({ config }) {
 	const [auth, setAuth] = useState({ status: 'loading', me: null });
 	const [data, dispatch] = useReducer(dataReducer, undefined, emptyData);
@@ -177,6 +199,7 @@ export default function App({ config }) {
 
 	const syncStatus = useSync(api, auth.status === 'signedIn', dispatch);
 	const reports = useReportState(api, auth.status === 'signedIn');
+	const pay = usePayState(api, auth.status === 'signedIn');
 	const [askOut, setAskOut] = useState(false);
 
 	// The remembered screen belongs to whoever chose it: someone else signing in on this tab
@@ -269,7 +292,7 @@ export default function App({ config }) {
 		setView('team');
 	};
 
-	const ctx = { api, data, dispatch, me, view, setView, project, setProject, search, setSearch, toast, confirm, config, cycleOff, setCycleOff, today, askCompletion, teamPerson, setTeamPerson, setViewAs: startTour, reports };
+	const ctx = { api, data, dispatch, me, view, setView, project, setProject, search, setSearch, toast, confirm, config, cycleOff, setCycleOff, today, askCompletion, teamPerson, setTeamPerson, setViewAs: startTour, reports, pay };
 
 	const target = viewAs && data.members[viewAs];
 	const viewing = canTour(me, target) ? target : null;
@@ -288,6 +311,16 @@ export default function App({ config }) {
 	}
 	const shown = tourCtx || ctx;
 	const shownMe = shown.me;
+
+	// Working hours, salary and payment details come before anything else (design PAY-1).
+	if (!viewing && pay.state && pay.state.needed) {
+		return (
+			<PortalContext.Provider value={ctx}>
+				<PaySetup onSignOut={signOutNow} />
+				{toastView}
+			</PortalContext.Provider>
+		);
+	}
 
 	// A report still owed from an earlier working day comes first (design DR-D).
 	if (!viewing && reports.state && reports.state.missing) {
