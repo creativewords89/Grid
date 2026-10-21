@@ -178,13 +178,15 @@ export default function TeamReports({ onOpenPerson }) {
 													<ProjectTag project={e.project} />
 												</td>
 												<td className="tg-time">{fmtMinutes(e.minutes)}</td>
-												<td className="tg-links">
-													{(e.files || []).map((f) => (
-														<FileChip key={f.id} file={f} />
-													))}
-													{(e.links || []).map((l, j) => (
-														<LinkChip key={l.url + j} link={l} />
-													))}
+												<td>
+													<div className="tg-links">
+														{(e.files || []).map((f) => (
+															<FileChip key={f.id} file={f} />
+														))}
+														{(e.links || []).map((l, j) => (
+															<LinkChip key={l.url + j} link={l} />
+														))}
+													</div>
 												</td>
 											</tr>
 										))}

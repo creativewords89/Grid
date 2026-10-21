@@ -98,12 +98,11 @@ function Bell() {
 		};
 	}, [open]);
 
-	const toggle = () => {
-		setOpen(!open);
-		// Opening the list marks everything in it as read, except the setup reminders (SPEC.md 6.11).
-		const read = unread.filter((i) => !i.sticky);
-		if (!open && read.length) dismiss(read.map((i) => 'seen:' + i.key));
-	};
+	// Opening the list clears nothing (SPEC.md 6.9): each item stays new until it is marked read.
+	// Reminders and what waits for you can't be marked: they go when the work is done.
+	const toggle = () => setOpen(!open);
+	const markable = unread.filter((i) => !i.sticky && !i.waiting);
+	const markRead = (list) => list.length && dismiss(list.map((i) => 'seen:' + i.key));
 
 	return (
 		<div className="md-bell" ref={ref}>
@@ -115,14 +114,28 @@ function Bell() {
 			</button>
 			{open && (
 				<div className="md-pop" role="dialog" aria-label="Notifications">
-					<h2>Notifications</h2>
+					<div className="md-pop-h">
+						<h2>Notifications</h2>
+						{markable.length > 0 && (
+							<button type="button" className="linkbtn" onClick={() => markRead(markable)}>
+								Mark all read
+							</button>
+						)}
+					</div>
 					{items.length === 0 ? (
 						<p className="empty">Nothing new.</p>
 					) : (
 						<ul>
 							{items.map((i) => (
 								<li key={i.key} className={(i.unread ? 'new' : '') + (i.sticky ? ' must t-' + i.tone : '')}>
-									<b>{i.text}</b>
+									<div className="md-pop-row">
+										<b>{i.text}</b>
+										{i.unread && !i.sticky && !i.waiting && (
+											<button type="button" className="md-pop-read" aria-label={`Mark read: ${i.text}`} title="Mark read" onClick={() => markRead([i])}>
+												✓
+											</button>
+										)}
+									</div>
 									{i.sub && <span>{i.sub}</span>}
 									{i.reminder && (
 										<button type="button" className="linkbtn" onClick={() => (setOpen(false), act(i.reminder))}>

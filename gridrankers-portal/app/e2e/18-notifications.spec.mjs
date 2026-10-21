@@ -68,6 +68,17 @@ test('notifications feed', async ({ page }) => {
 	await page.locator('.md-bell-btn').click();
 	await expect(page.locator('.md-pop li.new', { hasText: `New task: “Feed task 8 ${stamp}”` })).toHaveCount(1);
 	await expect(page.locator('.md-pop li.new', { hasText: `Feed task 7 ${stamp}` })).toHaveCount(0);
+	// Opening the bell clears nothing (SPEC.md 6.9): closing and opening it again, it is still new.
+	await page.locator('.md-bell-btn').click();
+	await page.locator('.md-bell-btn').click();
+	const eight = page.locator('.md-pop li.new', { hasText: `New task: “Feed task 8 ${stamp}”` });
+	await expect(eight).toHaveCount(1);
+	// ✓ marks one read; Mark all read the rest.
+	await eight.getByRole('button', { name: /^Mark read/ }).click();
+	await expect(eight).toHaveCount(0);
+	const markAll = page.locator('.md-pop').getByRole('button', { name: 'Mark all read' });
+	if (await markAll.count()) await markAll.click();
+	await expect(markAll).toHaveCount(0);
 	await page.locator('.md-bell-btn').click();
 	await expect(box.locator('.nf-item.new')).toHaveCount(0);
 

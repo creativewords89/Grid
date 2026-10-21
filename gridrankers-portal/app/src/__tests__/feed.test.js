@@ -87,6 +87,11 @@ describe('notifications feed', () => {
 		expect(bellItems(d, max, TODAY, NOW).find((b) => b.key === 'new:n').unread).toBe(false);
 		// Leaders: what waits for them rings the bell too.
 		d.leave.l2 = { id: 'l2', member_id: 'sam', type: 'sick', from_date: '2026-10-20', to_date: '2026-10-20', days: 1, status: 'pending', created_at: '2026-10-12 11:30:00' };
-		expect(bellItems(d, lee, TODAY, NOW).find((b) => b.key === 'wait:leave:l2')).toMatchObject({ text: 'Sam asks for sick leave · Oct 20', unread: true });
+		expect(bellItems(d, lee, TODAY, NOW).find((b) => b.key === 'wait:leave:l2')).toMatchObject({ text: 'Sam asks for sick leave · Oct 20', unread: true, waiting: true });
+		// It stays new until it is answered, even if marked read.
+		d.dismissals.w = { id: 'w', member_id: 'lee', notice_key: 'seen:wait:leave:l2' };
+		expect(bellItems(d, lee, TODAY, NOW).find((b) => b.key === 'wait:leave:l2').unread).toBe(true);
+		d.leave.l2.status = 'approved';
+		expect(bellItems(d, lee, TODAY, NOW).find((b) => b.key === 'wait:leave:l2')).toBeUndefined();
 	});
 });

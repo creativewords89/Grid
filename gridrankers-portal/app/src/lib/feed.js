@@ -189,8 +189,10 @@ export function waitTitle(item) {
 
 // The bell (SPEC.md 6.9): the same things as the Notifications box — the message band, what waits
 // for a leader, and the feed — with the same read state (`seen:` keys), so a new item on My day
-// always shows on the bell too. New cycle setup reminders come first and always count as new
-// (`sticky`): opening the bell does not clear them, finishing the work does (SPEC.md 6.11).
+// always shows on the bell too. Opening the bell clears nothing: an item stays new until it is
+// marked read (✓ or Mark all read). New cycle setup reminders come first and always count as new
+// (`sticky`), and so does what waits for a leader (`waiting`): finishing the work clears them
+// (SPEC.md 6.9, 6.11).
 export function bellItems(data, me, today, now = Date.now()) {
 	const seen = dismissedKeys(data, me);
 	const keys = new Set();
@@ -198,13 +200,14 @@ export function bellItems(data, me, today, now = Date.now()) {
 	const add = (i) => {
 		if (keys.has(i.key)) return;
 		keys.add(i.key);
-		out.push({ ...i, unread: i.sticky || !seen.has('seen:' + i.key) });
+		out.push({ ...i, unread: i.sticky || i.waiting || !seen.has('seen:' + i.key) });
 	};
 	allReminders(data, me, today).forEach((r) => add({ key: r.key, text: r.title, sub: r.tone === 'red' ? 'Overdue · until it’s done' : 'Every day until it’s done', sticky: true, tone: r.tone, reminder: r }));
 	strips(data, me, today, { now, all: true })
 		.filter((s) => s.kind !== 'cycle')
 		.forEach((s) => add({ key: s.key, text: s.title, sub: s.text }));
-	if (isManager(me)) approvals(data, me).forEach((a) => add({ key: `wait:${a.kind}:${a.id}`, text: waitTitle(a), sub: 'Waiting for you' }));
+	// What waits for a leader stays new until it is answered (it leaves the list then).
+	if (isManager(me)) approvals(data, me).forEach((a) => add({ key: `wait:${a.kind}:${a.id}`, text: waitTitle(a), sub: 'Waiting for you', waiting: true }));
 	feedOf(data, me, today, now).forEach((f) => add({ key: f.key, text: f.title, sub: '' }));
 	return out;
 }
