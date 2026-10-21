@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { usePortal } from '../../context.js';
 import { ROLE } from '../../lib/roles.js';
 import { dayTitle, fmtMinutes, missLine, nextDay, teamTotals } from '../../lib/reports.js';
@@ -14,7 +15,7 @@ const SHOWN = 4;
 // a report; below them who hasn't sent (how many working days in a row, when they were reminded,
 // Remind / Remind all), and who was on leave or off. The server decides who is listed: the Super
 // Admin sees everyone, a Team Leader Team Members and the other Team Leaders.
-export default function TeamReports({ onOpenPerson }) {
+export default function TeamReports({ onOpenPerson, slot }) {
 	const { api, data, me, toast, viewOnly, reports } = usePortal();
 	const today = (reports.state && reports.state.today) || null;
 	const [day, setDay] = useState(today);
@@ -71,17 +72,28 @@ export default function TeamReports({ onOpenPerson }) {
 	const canRemind = (p) => p.member_id !== me.id && !viewOnly;
 	const toRemind = everyone.filter((p) => p.state === 'not_sent' && canRemind(p)).map((p) => p.member_id);
 
+	// ‹ day ›, on the right of the tabs row when the page gives a slot for it.
+	const dayNav = (
+		<div className="dr-dayrow tg-day">
+			<button type="button" className="dr-nav" aria-label="Previous day" onClick={() => setDay(nextDay(shownDay, -1))} disabled={!shownDay}>
+				‹
+			</button>
+			<b className="dr-day">
+				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+					<rect x="3" y="5" width="18" height="16" rx="2" />
+					<path d="M3 10h18M8 3v4M16 3v4" />
+				</svg>
+				{shownDay ? dayTitle(shownDay) : ''}
+			</b>
+			<button type="button" className="dr-nav" aria-label="Next day" onClick={() => setDay(nextDay(shownDay, 1))} disabled={!shownDay || !res || isToday}>
+				›
+			</button>
+		</div>
+	);
+
 	return (
 		<div className="dr-team tg">
-			<div className="dr-dayrow">
-				<button type="button" className="dr-nav" aria-label="Previous day" onClick={() => setDay(nextDay(shownDay, -1))} disabled={!shownDay}>
-					‹
-				</button>
-				<b className="dr-day">{shownDay ? dayTitle(shownDay) : ''}</b>
-				<button type="button" className="dr-nav" aria-label="Next day" onClick={() => setDay(nextDay(shownDay, 1))} disabled={!shownDay || !res || isToday}>
-					›
-				</button>
-			</div>
+			{slot ? createPortal(dayNav, slot) : dayNav}
 			{!res ? (
 				<p className="empty">Loading…</p>
 			) : (

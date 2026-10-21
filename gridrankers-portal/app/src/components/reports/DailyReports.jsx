@@ -21,6 +21,8 @@ export default function DailyReports() {
 	const [area, setArea] = useState('reports');
 	const [tab, setTab] = useState(writes ? 'mine' : 'team');
 	const [person, setPerson] = useState(null);
+	// The Team tab puts its ‹ day › on the right of this row (design TR-G1, date on the right).
+	const [slot, setSlot] = useState(null);
 
 	if (person) {
 		return <PersonReports memberId={person} onBack={() => setPerson(null)} backLabel="Team reports" />;
@@ -47,8 +49,9 @@ export default function DailyReports() {
 						</button>
 					</div>
 				)}
+				<div className="dr-top-end" ref={setSlot} />
 			</div>
-			{area === 'salary' ? admin ? <PaySheet /> : <SalaryMonth /> : area === 'payment' ? <PaymentInfo /> : tab === 'team' && team ? <TeamReports onOpenPerson={setPerson} /> : <MyReports />}
+			{area === 'salary' ? admin ? <PaySheet /> : <SalaryMonth /> : area === 'payment' ? <PaymentInfo /> : tab === 'team' && team ? <TeamReports onOpenPerson={setPerson} slot={slot} /> : <MyReports />}
 		</div>
 	);
 }

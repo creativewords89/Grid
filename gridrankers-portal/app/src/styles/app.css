@@ -1391,3 +1391,10 @@ button.dr-row-t:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .md-pop-row b{flex:1;min-width:0}
 .md-pop-read{flex:none;width:26px;height:26px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink-2);font-size:.8rem;line-height:1}
 .md-pop-read:hover{color:var(--done);border-color:var(--done)}
+
+/* The Team tab's ‹ day › on the right of the tabs row. */
+.dr-top-end{margin-left:auto;display:flex;align-items:center}
+.dr-top-end:empty{display:none}
+.tg-day{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:3px;gap:2px}
+.tg-day .dr-nav{border:0;background:transparent;width:34px;height:34px}
+.tg-day .dr-day{display:inline-flex;align-items:center;gap:8px;min-width:0;padding:0 8px;white-space:nowrap}
