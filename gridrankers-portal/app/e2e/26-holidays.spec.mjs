@@ -135,7 +135,9 @@ test('holidays', async ({ page }) => {
 	await signIn(page, 'NIACODE11');
 	await openHolidays();
 	const first = page.getByRole('region', { name: 'My leave' });
-	await expect(first).toContainText('Your first year is counted from');
+	// HOL-5B: the year as a timeline from the day she started, a square per day, this year and next.
+	await expect(page.getByRole('region', { name: `Your ${new Date().getFullYear()}` })).toContainText('You joined');
+	await expect(page.getByRole('region', { name: 'Days this year' })).toContainText('of 10 a full year');
 	const months = 12 - new Date().getMonth();
 	await expect(first.getByRole('button', { name: /Casual leave/ })).toContainText(`of ${Math.floor((10 * months) / 12 + 0.5)} left`);
 	await expect(first.getByRole('button', { name: /Sick leave/ })).toContainText(`of ${Math.floor((14 * months) / 12 + 0.5)} left`);

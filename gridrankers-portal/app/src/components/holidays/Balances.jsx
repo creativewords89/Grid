@@ -83,12 +83,14 @@ export default function Balances({ year, focus, setFocus, onAsk }) {
 	const prorated = since ? `Prorated · since ${short(since)}` : '';
 	return (
 		<section className="bal" aria-label="My leave">
-			{since && <FirstYear since={since} year={year} />}
+			{since && <FirstYear since={since} year={year} kind={kind} days={{ day: b.day.allowance, sick: b.sick.allowance, fest: fest.total }} />}
 			<div className="bal-head">
-				<span className="hol-badge">{EMPLOYMENT[kind]}</span>
-				<span className="muted">
-					<b>{year}</b> · Jan 1 – Dec 31 · starts again on Jan 1, {year + 1}
-				</span>
+				{!since && <span className="hol-badge">{EMPLOYMENT[kind]}</span>}
+				{!since && (
+					<span className="muted">
+						<b>{year}</b> · Jan 1 – Dec 31 · starts again on Jan 1, {year + 1}
+					</span>
+				)}
 				<span className="hol-grow" />
 				{ask}
 			</div>
@@ -109,27 +111,83 @@ export default function Balances({ year, focus, setFocus, onAsk }) {
 	);
 }
 
-// HOL-5: the first year counts from the day leave started — the months counted, and the full
-// allowance from next year.
-function FirstYear({ since, year }) {
+// HOL-5B: the first year counts from the day leave started — the year as a timeline with "You
+// joined", one square per day off this year out of a full year's, and this year next to next year.
+function FirstYear({ since, year, kind, days }) {
 	const first = +since.slice(5, 7) - 1;
-	return (
-		<div className="bal-first">
-			<div>
-				<b>Your first year is counted from {short(since)}</b>
-				<span className="muted">
-					{' '}
-					You started on {short(since)}, {year}, so {year} gives you the months you’re here: <b>{12 - first} of 12</b> ({MONTHS[first]}–Dec), half days rounded up. From Jan 1, {year + 1} you get the full 10 casual + 14 sick days.
-				</span>
+	const months = 12 - first;
+	// The marker sits over the start of the joining month.
+	const at = `${((first + (+since.slice(8) - 1) / 31) / 12) * 100}%`;
+	const Meter = ({ k, label, got, full, how }) => (
+		<div className="ft-meter">
+			<div className="ft-meter-h">
+				<b>{label}</b>
+				<span className="muted">{how}</span>
+				<span className="hol-grow" />
+				<b className={'ft-got t-' + k}>{got}</b>
+				<span className="muted">of {full} a full year</span>
 			</div>
-			<span className="bal-strip" aria-hidden="true">
-				{MONTHS.map((m, i) => (
-					<i key={m} className={i >= first ? 'on' : ''}>
-						{m[0]}
-					</i>
+			<span className={'ft-sq t-' + k} aria-label={`${got} of ${full}`}>
+				{Array.from({ length: full }, (_, n) => (
+					<i key={n} className={n < got ? 'on' : ''} />
 				))}
 			</span>
 		</div>
+	);
+	const half = (full) => `${full} × ${months}/12 = ${+((full * months) / 12).toFixed(2)}${(full * months) % 12 ? ` → ${Math.floor((full * months) / 12 + 0.5)}` : ''}`;
+	return (
+		<>
+			<section className="ft" aria-label={`Your ${year}`}>
+				<div className="ft-h">
+					<b>Your {year} at GridRankers</b>
+					<span className="hol-badge">{EMPLOYMENT[kind]}</span>
+				</div>
+				<p className="muted">Leave is for the months you’re here. Each square is one day you can take off.</p>
+				<div className="ft-line">
+					<span className="ft-pin" style={{ left: at }}>
+						<b>You joined · {short(since)}</b>
+					</span>
+					<span className="ft-months">
+						{MONTHS.map((m, i) => (
+							<span key={m} className={i >= first ? 'on' : ''}>
+								<i />
+								{m}
+							</span>
+						))}
+					</span>
+				</div>
+				<div className="ft-foot muted">
+					<span>Jan 1 · {first ? 'not counted for you' : 'counted'}</span>
+					<span>
+						<b>
+							{months} {months === 1 ? 'month' : 'months'} counted
+						</b>{' '}
+						· Dec 31
+					</span>
+				</div>
+			</section>
+			<section className="ft ft-meters" aria-label="Days this year">
+				<Meter k="day" label="Casual leave" got={days.day} full={10} how={half(10)} />
+				<Meter k="sick" label="Sick leave" got={days.sick} full={14} how={half(14)} />
+				<Meter k="fest" label="Festival holidays" got={days.fest} full={FESTIVAL_PER_YEAR} how={`only the ones after ${short(since)}`} />
+			</section>
+			<div className="ft-years">
+				<div>
+					<span className="hol-k">This year · {year}</span>
+					<span>
+						<b>{days.day}</b> casual · <b>{days.sick}</b> sick · <b>{days.fest}</b> festival
+					</span>
+					<small className="muted">Unused days are paid with December salary.</small>
+				</div>
+				<div className="next">
+					<span className="hol-k">From Jan 1, {year + 1}</span>
+					<span>
+						<b>10</b> casual · <b>14</b> sick · <b>{FESTIVAL_PER_YEAR}</b> festival
+					</span>
+					<small className="muted">The full year, like everyone on the team.</small>
+				</div>
+			</div>
+		</>
 	);
 }
 
