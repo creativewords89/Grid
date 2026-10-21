@@ -625,6 +625,6 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 
 75. (Released as 0.1.35.) The bell keeps notifications until you act (6.9): opening it no longer marks everything read; ✓ marks one read, Mark all read the rest; Waiting for you stays new until answered. Fix: on the Team tab the files-and-links column keeps the row's background. **Tests:** Vitest (waiting items stay new even when marked read and leave when answered), Playwright (the bell opened twice still shows the new task, ✓ and Mark all read clear it, the setup reminder stays).
 
-76. Team tab: the ‹ day › moves to the right end of the Reports · Salary row, one pill with a calendar icon (6.18, design TR-G1 date on the right). **Tests:** Playwright (the Team tab still moves between days and reminds).
+76. (Released as 0.1.36.) Team tab: the ‹ day › moves to the right end of the Reports · Salary row, one pill with a calendar icon (6.18, design TR-G1 date on the right). **Tests:** Playwright (the Team tab still moves between days and reminds).
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).
