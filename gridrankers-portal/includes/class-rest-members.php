@@ -158,6 +158,10 @@ class GRP_REST_Members extends GRP_REST_Controller {
 			return $employment;
 		}
 		$fields['employment'] = $employment ?? 'intern';
+		// Leave days are counted from the day someone starts having them (SPEC.md 6.10).
+		if ( GRP_People::has_leave( $fields ) ) {
+			$fields['employment_since'] = GRP_Cycles::today();
+		}
 
 		$count  = count( GRP_Store::find( self::TABLE ) );
 		$member = GRP_Store::transaction(
@@ -237,6 +241,11 @@ class GRP_REST_Members extends GRP_REST_Controller {
 		}
 		if ( null !== $employment && ( $member['employment'] ?? '' ) !== $employment ) {
 			$changes['employment'] = $employment;
+			// Becoming Full-Time or Part-Time starts their leave year today (prorated, SPEC.md 6.10);
+			// moving between the two keeps it.
+			if ( GRP_People::has_leave( $changes ) && ! GRP_People::has_leave( $member ) ) {
+				$changes['employment_since'] = GRP_Cycles::today();
+			}
 		}
 
 		if ( null !== $request->get_param( 'wp_user_id' ) ) {

@@ -5,7 +5,8 @@ import { short } from '../../lib/format.js';
 import { WEEK, dayChips, holidayOn, holidaysAhead, holidaysOf, monthCells, takenThisMonth, workingDays, yearMonths } from '../../lib/holidays.js';
 import { mayDecideLeave, overBy, sortLeave } from '../../lib/leaveBoard.js';
 import { addMonths } from '../../lib/pay.js';
-import { ALLOWANCE, EMPLOYMENT, FESTIVAL_PER_YEAR, WEEKDAYS, balance, dayOffKind, employmentOf, festivalDays, hasLeave, leavePeople, monthName, teamWeekly, whosOut } from '../../lib/people.js';
+import { ALLOWANCE, EMPLOYMENT, FESTIVAL_PER_YEAR, WEEKDAYS, balance, dayOffKind, employmentOf, festivalDays, firstYearSince, hasLeave, leaveDays, leavePeople, monthName, teamWeekly, whosOut } from '../../lib/people.js';
+import Balances, { KIND } from './Balances.jsx';
 import { isAdmin, isManager } from '../../lib/roles.js';
 import { rowsOf } from '../../lib/store.js';
 import Avatar from '../Avatar.jsx';
@@ -22,11 +23,19 @@ const monthTitle = (month) => `${monthName(month)} ${month.slice(0, 4)}`;
 // upcoming holidays, their requests, the year). A Team Leader also gets their own leave card.
 // ‹ month › and Month / Year sit in the tabs row (`slot`). Holiday system is in Admin settings.
 export default function Holidays({ slot }) {
-	const { me, today } = usePortal();
+	const { me, today, viewOnly } = usePortal();
 	const [mode, setMode] = useState('month');
 	const [month, setMonth] = useState(today.slice(0, 7));
 	const [asking, setAsking] = useState(false);
+	const [askKey, setAskKey] = useState(0);
+	// The balance card shown (HOL-4): day (casual), sick, both, fest, or none; and days picked to plan.
+	const [focus, setFocus] = useState('day');
+	const [plan, setPlan] = useState(null);
 	const manager = isManager(me);
+	const takes = me.role !== 'admin';
+	const ask = () => (setAskKey((k) => k + 1), setAsking(true));
+	const pickDay = (d) =>
+		setPlan((p) => (!p || p.to !== p.from || d < p.from ? { from: d, to: d } : d === p.from ? null : { from: p.from, to: d }));
 	const year = +month.slice(0, 4);
 
 	const nav = (
@@ -53,18 +62,22 @@ export default function Holidays({ slot }) {
 		</div>
 	);
 
-	const calendar = mode === 'month' ? <MonthCalendar month={month} manager={manager} /> : <YearCalendar year={year} manager={manager} onPick={(m) => (setMonth(m), setMode('month'))} />;
+	const calendar =
+		mode === 'month' ? (
+			<MonthCalendar month={month} manager={manager} focus={takes ? focus : null} plan={plan} onDay={takes && !viewOnly ? pickDay : null} />
+		) : <YearCalendar year={year} manager={manager} onPick={(m) => (setMonth(m), setMode('month'))} />;
 	return (
 		<div className="hol">
 			{slot ? createPortal(nav, slot) : nav}
-			{me.role !== 'admin' && <MyLeave year={year} onAsk={() => setAsking(true)} />}
+			{takes && <Balances year={year} focus={focus} setFocus={setFocus} onAsk={ask} />}
 			{manager && <Tiles month={month} year={year} />}
 			<div className="hol-main">
 				<section className="hol-cal-card" aria-label={mode === 'month' ? monthTitle(month) : String(year)}>
 					{calendar}
-					<Legend manager={manager} />
+					<Legend manager={manager} focus={takes ? focus : null} />
 				</section>
 				<div className="hol-side">
+					{takes && !viewOnly && <PlanBox plan={plan} type={focus === 'sick' ? 'sick' : 'day'} onClear={() => setPlan(null)} onAsk={ask} />}
 					{manager ? (
 						<>
 							<Waiting />
@@ -80,7 +93,7 @@ export default function Holidays({ slot }) {
 					)}
 				</div>
 			</div>
-			<LeaveDialog open={asking} onClose={() => setAsking(false)} />
+			<LeaveDialog key={askKey} open={asking} onClose={() => (setAsking(false), setPlan(null))} initial={plan ? { ...plan, type: focus === 'sick' ? 'sick' : 'day' } : null} />
 		</div>
 	);
 }
@@ -118,74 +131,28 @@ function Tiles({ month, year }) {
 	);
 }
 
-// The viewer's own leave (HOL-2): casual and sick days left, festival holidays, the employment.
-function MyLeave({ year, onAsk }) {
-	const { data, me, today, viewOnly } = usePortal();
-	const self = data.members[me.id] || me;
-	const team = teamWeekly(data);
-	const daysOff = rowsOf(data, 'days_off');
-	const b = balance(self, year, rowsOf(data, 'leave'), team, daysOff);
-	const kind = employmentOf(self);
-	const ahead = +today.slice(0, 4) === year ? holidaysAhead(year, daysOff, team, today) : null;
-	const ask = !viewOnly && (
-		<button type="button" className="btn primary" onClick={onAsk}>
-			{hasLeave(self) ? (me.role === 'lead' ? 'Take leave' : 'Request leave') : me.role === 'lead' ? 'Take unpaid leave' : 'Request unpaid leave'}
-		</button>
-	);
-	if (!hasLeave(self)) {
-		return (
-			<section className="hol-mine none" aria-label="My leave">
-				<div className="hol-mine-txt">
-					<span className="hol-badge no">{EMPLOYMENT[kind]}</span>
-					<h2>You don’t have leave days</h2>
-					<p className="muted">Leave days are for Full-Time and Part-Time employees. Any leave you take is unpaid. Festival holidays and the weekly day off are still days off for you.</p>
-				</div>
-				{ask}
-			</section>
-		);
-	}
-	const Bar = ({ label, v, tone }) => (
-		<div className="hol-bal">
-			<span className="hol-k">
-				{label} · {year}
-			</span>
-			<span className="hol-n">
-				<b>{v.left}</b> of {v.allowance} days left
-			</span>
-			<span className="hol-bar" aria-hidden="true">
-				<i className={tone} style={{ width: `${Math.round((v.left / v.allowance) * 100)}%` }} />
-			</span>
-			{v.over > 0 && <small className="t-red">{plural(v.over, 'day')} over · deducted</small>}
-		</div>
-	);
-	return (
-		<section className="hol-mine" aria-label="My leave">
-			<Bar label="Casual leave" v={b.day} tone="casual" />
-			<Bar label="Sick leave" v={b.sick} tone="sick" />
-			<div className="hol-bal">
-				<span className="hol-k">Festival holidays</span>
-				<span className="hol-n">
-					<b>{FESTIVAL_PER_YEAR}</b> days{ahead !== null ? ` · ${ahead} still to come` : ''}
-				</span>
-			</div>
-			<div className="hol-bal hol-year">
-				<span className="hol-badge">{EMPLOYMENT[kind]}</span>
-				<span>
-					<b>{year}</b> · Jan 1 – Dec 31
-				</span>
-				<span className="muted">Starts again on Jan 1, {year + 1}</span>
-			</div>
-			{ask}
-		</section>
-	);
-}
-
 // The month from Saturday: festival holidays, leave and requests per person, the weekly day off.
-function MonthCalendar({ month, manager }) {
+// With a balance card selected (HOL-4) the viewer's own days of that kind stand out and the rest
+// fade; working days from today on can be picked to plan a day off; days before someone's leave
+// year started (HOL-5) are marked.
+function MonthCalendar({ month, manager, focus, plan, onDay }) {
 	const { data, me, today } = usePortal();
 	const team = teamWeekly(data);
 	const daysOff = rowsOf(data, 'days_off');
 	const leaves = rowsOf(data, 'leave');
+	const self = data.members[me.id] || me;
+	const since = firstYearSince(self, month.slice(0, 4));
+	const mine = leaves.filter((l) => l.member_id === me.id && (l.status === 'approved' || l.status === 'pending'));
+	const cells = monthCells(month);
+	const matches = (d) => {
+		if (!d || !focus) return false;
+		const hol = holidayOn(d, daysOff);
+		if (focus === 'fest') return !!hol;
+		const own = mine.find((l) => d >= l.from_date && d <= l.to_date);
+		return !!own && !hol && dayOffKind(d, { weekly_off: null }, team, []) !== 'weekly' && (focus === 'both' || focus === (own.type === 'sick' ? 'sick' : 'day'));
+	};
+	// Fade the other days only when this month has some of the selected kind.
+	const fade = cells.some(matches);
 	return (
 		<div className="hol-cal" role="grid" aria-label={`Holidays and leave in ${monthTitle(month)}`}>
 			{WEEK.map((w) => (
@@ -193,26 +160,91 @@ function MonthCalendar({ month, manager }) {
 					{w}
 				</span>
 			))}
-			{monthCells(month).map((d, i) => {
+			{cells.map((d, i) => {
 				if (!d) return <span key={'b' + i} />;
 				const hol = holidayOn(d, daysOff);
 				const weekly = !hol && dayOffKind(d, { weekly_off: null }, team, []) === 'weekly';
 				const chips = hol || weekly ? [] : dayChips(d, leaves, data.members, me, manager);
-				return (
-					<div key={d} role="gridcell" className={'hol-day' + (hol ? ' hol-h' : weekly ? ' hol-off' : '') + (d === today ? ' today' : '')} aria-label={`${short(d)}${hol ? ': ' + hol.name : weekly ? ': weekly day off' : chips.length ? ': ' + chips.map((c) => c.label).join(', ') : ''}`}>
+				const own = mine.find((l) => d >= l.from_date && d <= l.to_date);
+				const ownType = own ? (own.type === 'sick' ? 'sick' : 'day') : null;
+				const match = matches(d);
+				const pre = since && d < since;
+				const planned = plan && d >= plan.from && d <= plan.to && !hol && !weekly;
+				const pickable = onDay && !hol && !weekly && !own && d >= today;
+				const cls = ['hol-day', hol ? 'hol-h' : weekly ? 'hol-off' : '', d === today ? 'today' : '', fade && !match ? 'dim' : '', match ? 'hl t-' + (focus === 'fest' ? 'fest' : ownType) : '', pre ? 'pre' : '', planned ? 'plan' : '', pickable ? 'pick' : ''].filter(Boolean).join(' ');
+				const label = `${short(d)}${hol ? ': ' + hol.name : weekly ? ': weekly day off' : chips.length ? ': ' + chips.map((c) => c.label).join(', ') : ''}${pre ? ', before you joined' : ''}${planned ? ', planned' : ''}`;
+				const body = (
+					<>
 						<span className="hol-dn">{+d.slice(8)}</span>
 						{hol && <span className="hol-chip h">{hol.name}</span>}
 						{weekly && <span className="hol-mute">Weekly off</span>}
+						{pre && !hol && !weekly && <span className="hol-mute">Before you joined</span>}
 						{chips.slice(0, 3).map((c) => (
 							<span key={c.id} className={'hol-chip ' + c.tone} title={c.label}>
 								{c.label}
 							</span>
 						))}
 						{chips.length > 3 && <span className="hol-mute">+{chips.length - 3} more</span>}
+						{planned && <span className="hol-chip plan">Planned</span>}
+					</>
+				);
+				return pickable ? (
+					<button key={d} type="button" role="gridcell" className={cls} aria-label={label} aria-pressed={!!planned} onClick={() => onDay(d)}>
+						{body}
+					</button>
+				) : (
+					<div key={d} role="gridcell" className={cls} aria-label={label}>
+						{body}
 					</div>
 				);
 			})}
 		</div>
+	);
+}
+
+// Plan a day off (HOL-4): the days picked on the calendar, how many count, what is left after,
+// and Request these days (the leave dialog, filled in).
+function PlanBox({ plan, type, onClear, onAsk }) {
+	const { data, me } = usePortal();
+	const self = data.members[me.id] || me;
+	if (!plan) {
+		return (
+			<section className="hol-box hol-plan" aria-label="Plan a day off">
+				<h2>Plan a day off</h2>
+				<p className="muted">Tap a day on the calendar (and another for a few days) to see what’s left before you ask.</p>
+			</section>
+		);
+	}
+	const team = teamWeekly(data);
+	const daysOff = rowsOf(data, 'days_off');
+	const leaves = rowsOf(data, 'leave');
+	const n = Object.values(leaveDays(plan.from, plan.to, self, team, daysOff)).reduce((a, b) => a + b, 0);
+	const year = +plan.from.slice(0, 4);
+	const b = balance(self, year, leaves, team, daysOff)[type];
+	const waiting = leaves.filter((l) => l.member_id === me.id && l.status === 'pending' && (l.type === 'sick' ? 'sick' : 'day') === type).reduce((a, l) => a + (+l.days || 0), 0);
+	const after = b.left - waiting - n;
+	return (
+		<section className="hol-box hol-plan on" aria-label="Plan a day off">
+			<h2>Plan a day off</h2>
+			<div className="hol-kv">
+				<span>
+					{plan.from === plan.to ? short(plan.from) : `${short(plan.from)} – ${short(plan.to)}`} · {type === 'sick' ? 'sick' : 'casual'}
+				</span>
+				<b>{plural(n, 'day')}</b>
+			</div>
+			<div className="hol-kv">
+				<span>{type === 'sick' ? 'Sick' : 'Casual'} left after</span>
+				<b className={after < 0 ? 't-red' : 't-' + type}>{after < 0 ? `${-after} over · deducted` : `${after} of ${b.allowance}`}</b>
+			</div>
+			<div className="hol-acts">
+				<button type="button" className="btn small primary" onClick={onAsk} disabled={!n}>
+					Request these days
+				</button>
+				<button type="button" className="btn small" onClick={onClear}>
+					Clear
+				</button>
+			</div>
+		</section>
 	);
 }
 
@@ -243,7 +275,7 @@ function YearCalendar({ year, manager, onPick }) {
 	);
 }
 
-function Legend({ manager }) {
+function Legend({ manager, focus }) {
 	return (
 		<p className="hol-legend">
 			<span>
@@ -271,6 +303,7 @@ function Legend({ manager }) {
 					</span>
 				</>
 			)}
+			{focus && <span>· {focus === 'fest' ? 'festival holidays' : KIND[focus].toLowerCase()} stand out, other days fade</span>}
 		</p>
 	);
 }

@@ -481,6 +481,13 @@ class Test_GRP_REST_People extends GRP_REST_TestCase {
 		$this->assertStatus( 200, $response );
 		$this->assertSame( 'contractual', $response->get_data()['employment'] );
 
+		// Becoming Full-Time again starts the leave year today (prorated); Full-Time ↔ Part-Time keeps it.
+		$back = $this->api_as( 'admin', 'PATCH', "/members/{$member}", array( 'employment' => 'full_time' ) )->get_data();
+		$this->assertSame( GRP_Cycles::today(), $back['employment_since'] );
+		GRP_Store::update( 'grp_members', $member, array( 'employment_since' => '2020-01-01' ) );
+		$this->assertSame( '2020-01-01', $this->api_as( 'admin', 'PATCH', "/members/{$member}", array( 'employment' => 'part_time' ) )->get_data()['employment_since'] );
+		$this->api_as( 'admin', 'PATCH', "/members/{$member}", array( 'employment' => 'contractual' ) );
+
 		// A newly appointed person is an intern; only the Super Admin picks another type.
 		$added = $this->api_as( 'lead', 'POST', '/members', array( 'name' => 'Nia New' ) );
 		$this->assertStatus( 201, $added );
@@ -507,6 +514,8 @@ class Test_GRP_REST_People extends GRP_REST_TestCase {
 			)
 		);
 		$this->assertSame( 'part_time', $hired->get_data()['employment'] );
+		$this->assertSame( GRP_Cycles::today(), $hired->get_data()['employment_since'] );
+		$this->assertNull( $added->get_data()['employment_since'] ?? null, 'an intern has no leave year' );
 
 		// Everyone sees the employment type (it is not a private field).
 		$seen = array_column( $this->api_as( 'other', 'GET', '/sync' )->get_data()['changes']['members'], null, 'id' );
