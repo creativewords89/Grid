@@ -80,3 +80,54 @@ export const holidaysAhead = (year, daysOff, team, today) =>
 		daysOff.map((o) => ({ ...o, from_date: o.from_date > today ? o.from_date : today })).filter((o) => o.from_date <= o.to_date),
 		team,
 	);
+
+// A person's own leave days per month of a year (days off not counted), approved and waiting,
+// for the types asked (`day` casual, `sick`): `{taken: [12], waiting: [12], days: [{date, status, type, leave}]}`.
+export function monthCounts(member, year, leaves, team, daysOff, types) {
+	const taken = Array(12).fill(0);
+	const waiting = Array(12).fill(0);
+	const days = [];
+	leaves.forEach((l) => {
+		const type = l.type === 'sick' ? 'sick' : 'day';
+		if (l.member_id !== member.id || !types.includes(type) || (l.status !== 'approved' && l.status !== 'pending')) return;
+		dates(l.from_date > `${year}-01-01` ? l.from_date : `${year}-01-01`, l.to_date < `${year}-12-31` ? l.to_date : `${year}-12-31`).forEach((d) => {
+			if (dayOffKind(d, member, team, daysOff)) return;
+			(l.status === 'approved' ? taken : waiting)[+d.slice(5, 7) - 1] += 1;
+			days.push({ date: d, status: l.status, type, leave: l });
+		});
+	});
+	return { taken, waiting, days: days.sort((a, b) => a.date.localeCompare(b.date)) };
+}
+
+// Festival holiday days of a year per month, split into passed (before today) and to come; with
+// `since`, only the days on or after it count (someone who joined part-way through the year).
+export function festivalCounts(year, daysOff, team, today, since) {
+	const taken = Array(12).fill(0);
+	const waiting = Array(12).fill(0);
+	const first = since && since > `${year}-01-01` ? since : `${year}-01-01`;
+	const seen = new Set();
+	daysOff.forEach((o) => {
+		const from = o.from_date > first ? o.from_date : first;
+		const to = o.to_date < `${year}-12-31` ? o.to_date : `${year}-12-31`;
+		if (from > to) return;
+		dates(from, to).forEach((d) => {
+			if (seen.has(d) || team.includes(weekday(d))) return;
+			seen.add(d);
+			(d < today ? taken : waiting)[+d.slice(5, 7) - 1] += 1;
+		});
+	});
+	return { taken, waiting, total: seen.size };
+}
+
+// Grouping a person's leave days into runs of the same request: "Oct 6–7 · 2 days".
+export function runsOf(days) {
+	const runs = [];
+	days.forEach((d) => {
+		const last = runs[runs.length - 1];
+		if (last && last.leave.id === d.leave.id) {
+			last.to = d.date;
+			last.n += 1;
+		} else runs.push({ from: d.date, to: d.date, n: 1, leave: d.leave, status: d.status, type: d.type });
+	});
+	return runs;
+}

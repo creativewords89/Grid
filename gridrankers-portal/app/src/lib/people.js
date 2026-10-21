@@ -88,7 +88,24 @@ export function takenInMonth(member, month, leaves, team, daysOff) {
 
 export const employmentOf = (member) => (member && member.employment) || 'full_time';
 export const hasLeave = (member) => WITH_LEAVE.includes(employmentOf(member));
-export const allowance = (member, type) => (hasLeave(member) ? ALLOWANCE[type === 'sick' ? 'sick' : 'day'] : 0);
+// A type's leave days in a year (GRP_People::allowance). The year someone started having leave
+// (`employment_since`) is prorated: months from that one to December × allowance ÷ 12, half days up.
+export function allowance(member, type, year) {
+	if (!hasLeave(member)) return 0;
+	const full = ALLOWANCE[type === 'sick' ? 'sick' : 'day'];
+	const since = (member && member.employment_since) || '';
+	if (year == null || !/^\d{4}-\d{2}-\d{2}$/.test(since)) return full;
+	const from = +since.slice(0, 4);
+	if (from > +year) return 0;
+	if (from < +year) return full;
+	return Math.floor((full * (13 - +since.slice(5, 7))) / 12 + 0.5);
+}
+
+// The day a person's leave year started, when it is inside `year` (their prorated first year).
+export const firstYearSince = (member, year) => {
+	const since = (member && member.employment_since) || '';
+	return hasLeave(member) && since.slice(0, 4) === String(year) ? since : null;
+};
 
 // A person's approved leave dates of each type in a calendar year, in date order (days off not counted).
 export function leaveDates(member, year, leaves, team, daysOff) {
@@ -112,7 +129,7 @@ export function leaveDates(member, year, leaves, team, daysOff) {
 export function balance(member, year, leaves, team, daysOff) {
 	const dated = leaveDates(member, year, leaves, team, daysOff);
 	const of = (type) => {
-		const a = allowance(member, type);
+		const a = allowance(member, type, year);
 		const taken = dated[type].length;
 		return { allowance: a, taken, left: Math.max(0, a - taken), over: Math.max(0, taken - a) };
 	};
@@ -127,7 +144,7 @@ export function settlement(member, month, leaves, team, daysOff) {
 	let deducted = 0;
 	let paid = 0;
 	['day', 'sick'].forEach((type) => {
-		const a = allowance(member, type);
+		const a = allowance(member, type, +month.slice(0, 4));
 		dated[type].forEach((d, i) => {
 			if (d.slice(0, 7) === month) {
 				taken += 1;
@@ -145,7 +162,7 @@ export function overBy(member, leave, leaves, team, daysOff) {
 	const years = [...new Set([leave.from_date.slice(0, 4), leave.to_date.slice(0, 4)])];
 	const type = leave.type === 'sick' ? 'sick' : 'day';
 	return years.reduce((sum, y) => {
-		const a = allowance(member, type);
+		const a = allowance(member, type, +y);
 		const before = leaveDates(member, +y, others, team, daysOff)[type].length;
 		const first = `${y}-01-01`;
 		const last = `${y}-12-31`;

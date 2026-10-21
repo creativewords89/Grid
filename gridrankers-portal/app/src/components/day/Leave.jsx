@@ -18,12 +18,13 @@ function nextWorkday(data, me, today) {
 
 // Request (Team Member) or take (Team Leader) casual or sick leave (SPEC.md 6.10, design HOL-3). The
 // server counts and checks again; this shows the same numbers before sending.
-export function LeaveDialog({ open, onClose }) {
+export function LeaveDialog({ open, onClose, initial }) {
 	const { api, data, dispatch, me, today, toast } = usePortal();
 	const start = useMemo(() => nextWorkday(data, me, today), [data, me, today]);
-	const [type, setType] = useState('day');
-	const [from, setFrom] = useState(start);
-	const [to, setTo] = useState(start);
+	// `initial` {type, from, to}: days picked on the Holidays calendar (design HOL-4, Plan a day off).
+	const [type, setType] = useState((initial && initial.type) || 'day');
+	const [from, setFrom] = useState((initial && initial.from) || start);
+	const [to, setTo] = useState((initial && initial.to) || start);
 	const [reason, setReason] = useState('');
 	const [error, setError] = useState('');
 	const lead = me.role === 'lead';

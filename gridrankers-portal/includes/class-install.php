@@ -15,7 +15,7 @@ class GRP_Install {
 	/**
 	 * Current schema version. Bump it whenever get_schema() or migrations() changes.
 	 */
-	const DB_VERSION = 19;
+	const DB_VERSION = 20;
 
 	/**
 	 * Option that stores the installed schema version.
@@ -300,6 +300,7 @@ class GRP_Install {
 				location varchar(191) NULL,
 				weekly_off json NULL,
 				employment varchar(16) NOT NULL DEFAULT 'full_time',
+				employment_since date NULL,
 				created_at datetime NOT NULL,
 				updated_at datetime NOT NULL,
 				PRIMARY KEY  (id),

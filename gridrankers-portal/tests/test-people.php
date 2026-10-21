@@ -113,6 +113,27 @@ class Test_GRP_People extends WP_UnitTestCase {
 		}
 	}
 
+	public function test_the_first_year_is_prorated_from_the_month_leave_started() {
+		$joined = array(
+			'employment'       => 'full_time',
+			'employment_since' => '2026-10-05',
+		);
+		// October to December: 3 of 12 months. 10 × 3/12 = 2.5 → 3; 14 × 3/12 = 3.5 → 4.
+		$this->assertSame( 3, GRP_People::allowance( $joined, 'day', 2026 ) );
+		$this->assertSame( 4, GRP_People::allowance( $joined, 'sick', 2026 ) );
+		$this->assertSame( 10, GRP_People::allowance( $joined, 'day', 2027 ), 'the full allowance from the next year' );
+		$this->assertSame( 0, GRP_People::allowance( $joined, 'day', 2025 ), 'nothing before they started' );
+		$this->assertSame( 10, GRP_People::allowance( array( 'employment_since' => '2026-01-20' ) + $joined, 'day', 2026 ), 'January counts as a whole year' );
+		$this->assertSame( 1, GRP_People::allowance( array( 'employment_since' => '2026-12-01' ) + $joined, 'day', 2026 ), '10 ÷ 12 = 0.83 → 1' );
+		$this->assertSame( 10, GRP_People::allowance( array( 'employment' => 'part_time' ), 'day', 2026 ), 'no start date: the full year' );
+
+		// The December pay-out and deductions use the prorated days.
+		$member = array( 'id' => 'm1' ) + $joined + array( 'weekly_off' => array() );
+		$leaves = array( $this->leave( 'm1', '2026-11-02', '2026-11-05' ) );
+		$this->assertSame( 1, GRP_People::settlement( $member, '2026-11', $leaves, null, array() )['deducted'] );
+		$this->assertSame( 4, GRP_People::settlement( $member, '2026-12', $leaves, null, array() )['paid'], 'no casual days left, 4 sick days paid' );
+	}
+
 	public function test_balance_counts_the_calendar_year_only() {
 		$member  = array(
 			'id'         => 'm1',

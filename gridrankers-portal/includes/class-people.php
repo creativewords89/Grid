@@ -165,14 +165,35 @@ class GRP_People {
 
 	/**
 	 * Leave days of a type a person gets per calendar year: 10 casual, 14 sick for full-time and
-	 * part-time employees, none for interns and contractual employees.
+	 * part-time employees, none for interns and contractual employees. In the year they started
+	 * having leave (`employment_since`) it is prorated: the months from that one to December, ×
+	 * the allowance ÷ 12, half days rounded up (joined in October: 3 casual, 4 sick).
 	 *
 	 * @param array|null $member Member row.
 	 * @param string     $type   `day` (casual) or `sick`.
+	 * @param int|null   $year   Calendar year; null for the full yearly allowance.
 	 * @return int
 	 */
-	public static function allowance( $member, $type ) {
-		return self::has_leave( $member ) ? self::ALLOWANCE[ 'sick' === $type ? 'sick' : 'day' ] : 0;
+	public static function allowance( $member, $type, $year = null ) {
+		if ( ! self::has_leave( $member ) ) {
+			return 0;
+		}
+		$full  = self::ALLOWANCE[ 'sick' === $type ? 'sick' : 'day' ];
+		$since = (string) ( $member['employment_since'] ?? '' );
+		if ( null === $year || ! self::is_date( $since ) ) {
+			return $full;
+		}
+		$from = (int) substr( $since, 0, 4 );
+		if ( $from > (int) $year ) {
+			return 0;
+		}
+		if ( $from < (int) $year ) {
+			return $full;
+		}
+		// The first year: the months from the one they joined in to December, half days rounded up.
+		$months = 13 - (int) substr( $since, 5, 2 );
+
+		return (int) floor( $full * $months / 12 + 0.5 );
 	}
 
 	/**
@@ -220,7 +241,7 @@ class GRP_People {
 	public static function balance( array $member, $year, array $leaves, $team_weekly, array $days_off ) {
 		$out = array();
 		foreach ( self::leave_dates( $member, $year, $leaves, $team_weekly, $days_off ) as $type => $dates ) {
-			$allowance    = self::allowance( $member, $type );
+			$allowance    = self::allowance( $member, $type, $year );
 			$taken        = count( $dates );
 			$out[ $type ] = array(
 				'allowance' => $allowance,
@@ -251,7 +272,7 @@ class GRP_People {
 		$deducted = 0;
 		$paid     = 0;
 		foreach ( self::leave_dates( $member, $year, $leaves, $team_weekly, $days_off ) as $type => $dates ) {
-			$allowance = self::allowance( $member, $type );
+			$allowance = self::allowance( $member, $type, $year );
 			foreach ( $dates as $i => $date ) {
 				if ( substr( $date, 0, 7 ) === $month ) {
 					++$taken;
