@@ -2,7 +2,7 @@
 // and makes Nia contractual; Nia sees he has no leave days; Max sees his yearly leave and asks
 // for sick leave; the Team Leader approves it from Waiting for you.
 import { test, expect } from '@playwright/test';
-import { LEAD, MAX, signIn, signInOwner, signOut, signOutOwner, watchErrors } from './helpers.mjs';
+import { LEAD, MAX, openTeam, signIn, signInOwner, signOut, signOutOwner, watchErrors } from './helpers.mjs';
 
 const pad = (n) => String(n).padStart(2, '0');
 const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -40,16 +40,21 @@ test('holidays', async ({ page }) => {
 	await page.getByText('Victory Day added').waitFor();
 	await expect(festival).toContainText('Victory Day');
 
+	await expect(page.getByRole('region', { name: 'Holiday system' })).toHaveCount(0);
+	await page.getByRole('group', { name: 'Show' }).getByRole('button', { name: 'Year' }).click();
+	await expect(page.locator('.hol-mini')).toHaveCount(12);
+	await page.getByRole('group', { name: 'Show' }).getByRole('button', { name: 'Month' }).click();
+	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/holidays-admin.png', fullPage: true });
+
+	// Holiday system is in Admin settings: everyone's days left and the employment picker.
+	await openTeam(page, 'Admin settings');
 	const system = page.getByRole('region', { name: 'Holiday system' });
 	await expect(system).toContainText('10 casual');
 	// (An earlier spec may have renamed Nia.)
 	await system.getByLabel(/^Employment of Nia/).selectOption('contractual');
 	await page.getByText(/^Nia .+ is now Contractual$/).waitFor();
 	await expect(system.locator('.hol-none')).toContainText('Nia');
-	await page.getByRole('group', { name: 'Show' }).getByRole('button', { name: 'Year' }).click();
-	await expect(page.locator('.hol-mini')).toHaveCount(12);
-	await page.getByRole('group', { name: 'Show' }).getByRole('button', { name: 'Month' }).click();
-	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/holidays-admin.png', fullPage: true });
+	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/holiday-system.png', fullPage: true });
 	await signOutOwner(page);
 
 	// Nia, contractual: no leave days, leave is unpaid; the holiday is still hers.

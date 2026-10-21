@@ -18,9 +18,9 @@ const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 const monthTitle = (month) => `${monthName(month)} ${month.slice(0, 4)}`;
 
 // Daily reports → Holidays (SPEC.md 6.20): the Super Admin and Team Leaders get design HOL-1 (tiles,
-// calendar, Waiting for you, Festival holidays, Holiday system, Out today); Team Members HOL-2
-// (My leave, calendar, upcoming holidays, their requests, the year). A Team Leader also gets their
-// own leave card. ‹ month › and Month / Year sit in the tabs row (`slot`).
+// calendar, Waiting for you, Festival holidays, Out today); Team Members HOL-2 (My leave, calendar,
+// upcoming holidays, their requests, the year). A Team Leader also gets their own leave card.
+// ‹ month › and Month / Year sit in the tabs row (`slot`). Holiday system is in Admin settings.
 export default function Holidays({ slot }) {
 	const { me, today } = usePortal();
 	const [mode, setMode] = useState('month');
@@ -69,7 +69,6 @@ export default function Holidays({ slot }) {
 						<>
 							<Waiting />
 							<Festival year={year} />
-							<System year={year} />
 							<OutToday />
 						</>
 					) : (
@@ -456,9 +455,11 @@ export function AddHoliday({ year, onClose }) {
 	);
 }
 
-// Holiday system · {year}: the rules, everyone's days left, and (Super Admin) the employment picker.
-function System({ year }) {
-	const { api, data, dispatch, me, toast, viewOnly } = usePortal();
+// Team → Settings → Holiday system · {year} (Super Admin): the rules, everyone's days left this year
+// and the employment picker.
+export function HolidaySystem() {
+	const { api, data, dispatch, me, toast, today, viewOnly } = usePortal();
+	const year = +today.slice(0, 4);
 	const team = teamWeekly(data);
 	const daysOff = rowsOf(data, 'days_off');
 	const leaves = rowsOf(data, 'leave');
@@ -487,8 +488,10 @@ function System({ year }) {
 			<span className="hol-badge sm">{EMPLOYMENT[employmentOf(p)]}</span>
 		);
 	return (
-		<section className="hol-box" aria-label="Holiday system">
-			<h2>Holiday system · {year}</h2>
+		<section className="dcard hol-settings" aria-label="Holiday system">
+			<div className="dc-head">
+				<span className="s-k">Holiday system · {year}</span>
+			</div>
 			<p className="muted hol-rule">
 				Calendar year <b>Jan 1 – Dec 31</b> · everything starts again on Jan 1, {year + 1}. Full-Time and Part-Time employees get <b>{ALLOWANCE.day} casual</b> and <b>{ALLOWANCE.sick} sick</b> leave days a year; unused days are paid with December’s salary. Festival holidays ({FESTIVAL_PER_YEAR} days) and the weekly day off are for everyone.
 			</p>

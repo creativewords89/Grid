@@ -1489,7 +1489,9 @@ button.dr-row-t:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .hol-out{font-size:.85rem}
 .hol-kv{display:flex;justify-content:space-between;gap:8px;font-size:.85rem;padding:6px 0;border-top:1px solid var(--line)}
 .hol .t-red,.hol-req .t-amber{font-weight:700}
-.hol .t-red{color:var(--urgent)}
+.hol .t-red,.hol-box .t-red,.hol-settings .t-red{color:var(--urgent)}
+.hol-settings{display:flex;flex-direction:column;gap:8px}
+.hol-settings .hol-rule{margin:0}
 .hol .t-amber{color:var(--doing)}
 .lv-year .t-red{color:var(--urgent);font-weight:700}
 @media (max-width:900px){
