@@ -6,7 +6,8 @@ import { emptyData } from '../lib/store.js';
 const OWNER = { id: 'own', name: 'Grid Owner', role: 'admin', active: 1 };
 const LEAD = { id: 'lee', name: 'Lee Lead', role: 'lead', active: 1 };
 const MAX = { id: 'max', name: 'Max Member', role: 'member', active: 1 };
-const NIA = { id: 'nia', name: 'Nia New', role: 'member', active: 1 };
+// Nia is an intern: no leave days (SPEC.md 6.10).
+const NIA = { id: 'nia', name: 'Nia New', role: 'member', active: 1, employment: 'intern' };
 const leave = (id, member_id, from_date, to_date, status, days = 1) => ({ id, member_id, type: 'day', from_date, to_date, status, days });
 
 // Wednesday 14 Oct 2026; Fridays are the team's weekly day off.
@@ -33,7 +34,8 @@ describe('Leave tab numbers (SPEC.md 7.5, LV-A)', () => {
 		// Max 1 + Nia 1 + Lee 3 approved days in October.
 		expect(s.takenDays).toBe(5);
 		expect(s.takenPeople).toBe(3);
-		expect(s.over.map((o) => [o.member.id, o.taken])).toEqual([['lee', 3]]);
+		// Past the year's allowance: only Nia, who has none.
+		expect(s.over.map((o) => [o.member.id, o.over])).toEqual([['nia', 1]]);
 	});
 
 	it('a Team Member decides nothing; a Team Leader decides Team Members only', () => {
@@ -46,16 +48,18 @@ describe('Leave tab numbers (SPEC.md 7.5, LV-A)', () => {
 
 	it('a waiting request says how many days it would go over', () => {
 		const d = fixture();
-		// Max already took 1 day in October: both days of the request are over.
+		// Max has used 1 of 10 casual days: the 2-day request is within the allowance.
+		expect(overBy(d, d.leave.b)).toBe(0);
+		// 9 more in January (Friday 9th off): all 10 used, both days are over.
+		d.leave.z = leave('z', 'max', '2026-01-05', '2026-01-14', 'approved', 9);
 		expect(overBy(d, d.leave.b)).toBe(2);
-		// Nia took 1 day too: the 1-day request is over by 1.
-		expect(overBy(d, d.leave.e)).toBe(1);
-		// Nobody else this month: within the allowance.
-		d.leave.c.status = 'rejected';
-		expect(overBy(d, d.leave.e)).toBe(0);
 		// A day off (Friday 6 Nov) is not counted.
-		d.leave.h = leave('h', 'nia', '2026-11-05', '2026-11-06', 'pending', 1);
-		expect(overBy(d, d.leave.h)).toBe(0);
+		d.leave.h = leave('h', 'max', '2026-11-05', '2026-11-06', 'pending', 1);
+		expect(overBy(d, d.leave.h)).toBe(1);
+		// Sick leave has its own 14 days.
+		expect(overBy(d, { ...d.leave.b, type: 'sick' })).toBe(0);
+		// An intern has none: every day is over.
+		expect(overBy(d, d.leave.e)).toBe(1);
 	});
 
 	it('lists waiting requests first, then newest first', () => {
@@ -81,7 +85,7 @@ describe('Leave tab numbers (SPEC.md 7.5, LV-A)', () => {
 		expect(isIssued(issued)).toBe(true);
 		expect(isIssued({ ...d.leave.a, created_by: 'max' })).toBe(false);
 		const band = strips(d, MAX, TODAY, { now: Date.parse('2026-10-14T09:00:00Z'), all: true }).find((x) => x.key === 'leave:i:issued');
-		expect(band.title).toMatch(/^Lee Lead gave you a day off · .+ \(2 days, day leave\)\.$/);
+		expect(band.title).toMatch(/^Lee Lead gave you a day off · .+ \(2 days, casual leave\)\.$/);
 		expect(band.text).toBe('“Thanks for the launch”');
 	});
 });

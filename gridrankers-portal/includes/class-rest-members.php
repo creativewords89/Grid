@@ -123,10 +123,11 @@ class GRP_REST_Members extends GRP_REST_Controller {
 	}
 
 	/**
-	 * POST /members `{name, role?, title?, email?, phone?, color?, wp_user_id?}`.
+	 * POST /members `{name, role?, employment?, title?, email?, phone?, color?, wp_user_id?}`.
 	 *
 	 * Team Leaders can add people as Member only; only the Super Admin grants admin
-	 * (to a member linked to a WordPress administrator).
+	 * (to a member linked to a WordPress administrator) and picks the employment type. A newly
+	 * appointed person is an intern until the Super Admin changes it (SPEC.md 6.10).
 	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response|WP_Error
@@ -152,6 +153,11 @@ class GRP_REST_Members extends GRP_REST_Controller {
 		if ( is_wp_error( $fields ) ) {
 			return $fields;
 		}
+		$employment = self::employment( $request, array( 'role' => $role ) );
+		if ( is_wp_error( $employment ) ) {
+			return $employment;
+		}
+		$fields['employment'] = $employment ?? 'intern';
 
 		$count  = count( GRP_Store::find( self::TABLE ) );
 		$member = GRP_Store::transaction(
@@ -175,7 +181,8 @@ class GRP_REST_Members extends GRP_REST_Controller {
 
 	/**
 	 * PATCH /members/{id}: profile fields and `birthday` `MM-DD` (self or Super Admin), `role` (Super Admin),
-	 * `wp_user_id` (Super Admin), `active` (Super Admin; re-adds a removed member).
+	 * `wp_user_id` (Super Admin), `active` (Super Admin; re-adds a removed member), `employment`
+	 * (Super Admin, for Team Leaders and Team Members).
 	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response|WP_Error
@@ -216,6 +223,20 @@ class GRP_REST_Members extends GRP_REST_Controller {
 				return self::invalid( __( 'Pick the year you were born.', 'gridrankers-portal' ) );
 			}
 			$changes['birth_year'] = '' === $year ? null : (int) $year;
+		}
+
+		$employment = self::employment(
+			$request,
+			array(
+				'member_id' => $member['id'],
+				'role'      => GRP_Permissions::effective_role( $member ),
+			)
+		);
+		if ( is_wp_error( $employment ) ) {
+			return $employment;
+		}
+		if ( null !== $employment && ( $member['employment'] ?? '' ) !== $employment ) {
+			$changes['employment'] = $employment;
 		}
 
 		if ( null !== $request->get_param( 'wp_user_id' ) ) {
@@ -359,6 +380,28 @@ class GRP_REST_Members extends GRP_REST_Controller {
 				'has_code' => true,
 			)
 		);
+	}
+
+	/**
+	 * The `employment` asked for: null when not sent, an error when not allowed or not a type.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @param array           $context `{member_id?, role}` of the person.
+	 * @return string|null|WP_Error
+	 */
+	private static function employment( WP_REST_Request $request, array $context ) {
+		if ( null === $request->get_param( 'employment' ) ) {
+			return null;
+		}
+		$employment = (string) $request['employment'];
+		if ( ! in_array( $employment, GRP_People::EMPLOYMENT, true ) ) {
+			return self::invalid( __( 'Pick intern, full-time, part-time or contractual.', 'gridrankers-portal' ) );
+		}
+		if ( ! self::can( GRP_Permissions::SET_EMPLOYMENT, $context ) ) {
+			return self::forbidden( __( 'Only the Super Admin can change the employment type, and the Super Admin has none.', 'gridrankers-portal' ) );
+		}
+
+		return $employment;
 	}
 
 	/**

@@ -119,7 +119,7 @@ export function strips(data, me, today, { now = Date.now(), all = false } = {}) 
 					key: `leave:${l.id}:issued`,
 					kind: 'leave',
 					tone: 'green',
-					title: `${by ? by.name : 'Your Team Leader'} gave you a day off · ${range} (${l.days} day${l.days === 1 ? '' : 's'}, day leave).`,
+					title: `${by ? by.name : 'Your Team Leader'} gave you a day off · ${range} (${l.days} day${l.days === 1 ? '' : 's'}, casual leave).`,
 					text: l.message ? `“${l.message}”` : '',
 					ok: 'Thanks',
 				});

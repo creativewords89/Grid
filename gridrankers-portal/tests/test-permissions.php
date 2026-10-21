@@ -1229,6 +1229,39 @@ class Test_GRP_Permissions extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Row: employment type (intern, full-time, part-time, contractual) — the Super Admin, for Team
+	 * Leaders and Team Members; nobody for the Super Admin.
+	 */
+	public function test_set_employment() {
+		foreach ( array( 'member', 'lead' ) as $role ) {
+			$this->assert_matrix(
+				GRP_Permissions::SET_EMPLOYMENT,
+				array(
+					'member_id' => 'm-other',
+					'role'      => $role,
+				),
+				array(
+					'admin'  => true,
+					'lead'   => false,
+					'member' => false,
+				)
+			);
+		}
+		$this->assert_matrix(
+			GRP_Permissions::SET_EMPLOYMENT,
+			fn ( $role ) => array(
+				'member_id' => $this->users[ $role ]['id'],
+				'role'      => $role,
+			),
+			array(
+				'admin'  => false,
+				'lead'   => false,
+				'member' => false,
+			)
+		);
+	}
+
+	/**
 	 * Rows: post / remove announcements and shout-outs (shout-outs only to Team Members).
 	 */
 	public function test_manage_posts() {

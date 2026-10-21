@@ -66,8 +66,8 @@ describe('display helpers', () => {
 	});
 	it('explains the days off', () => {
 		const base = { salary: 30000, leave_pay: 0, deducted: 0 };
-		expect(leaveLine({ ...base, leave_pay: 1000, leave: { taken: 0, deducted: 0 } })).toMatchObject({ amount: 1000, sign: '+' });
-		expect(leaveLine({ ...base, leave: { taken: 1, deducted: 0 } })).toMatchObject({ amount: 0 });
-		expect(leaveLine({ ...base, deducted: 1000, leave: { taken: 2, deducted: 1 } })).toMatchObject({ amount: 1000, sign: '−', text: '2 days off · 1 casual day is paid · 1 × 1,000' });
+		expect(leaveLine({ ...base, leave_pay: 20000, leave: { taken: 0, deducted: 0, paid: 20 } })).toMatchObject({ amount: 20000, sign: '+', text: 'No days off · unused leave paid · 20 × 1,000' });
+		expect(leaveLine({ ...base, leave: { taken: 1, deducted: 0, paid: 0 } })).toMatchObject({ amount: 0, text: '1 day off · within the year’s allowance' });
+		expect(leaveLine({ ...base, deducted: 1000, leave: { taken: 2, deducted: 1, paid: 0 } })).toMatchObject({ amount: 1000, sign: '−', text: '2 days off · 1 over the allowance · 1 × 1,000' });
 	});
 });

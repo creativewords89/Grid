@@ -111,6 +111,7 @@ class Test_GRP_Pay extends GRP_REST_TestCase {
 			array(
 				'member_id' => 'm1',
 				'status'    => 'approved',
+				'type'      => 'day',
 				'from_date' => '2026-03-09',
 				'to_date'   => '2026-03-10',
 			),
@@ -130,18 +131,25 @@ class Test_GRP_Pay extends GRP_REST_TestCase {
 		$this->assertSame( 1140, $sum['worked'] );
 		$this->assertSame( 240, $sum['extra'] );
 		$this->assertSame( 500, $sum['extra_pay'] );
-		// 2 days of leave: the casual day is paid, the second is deducted.
+		// 2 casual days, well inside the year's 10: nothing deducted, nothing paid out before December.
 		$this->assertSame( 2, $sum['leave']['taken'] );
-		$this->assertSame( 1000, $sum['deducted'] );
+		$this->assertSame( 0, $sum['deducted'] );
 		$this->assertSame( 0, $sum['leave_pay'] );
-		$this->assertSame( 29500, $sum['total'] );
+		$this->assertSame( 30500, $sum['total'] );
 
-		// 5 hours a day, no leave: 5h extra is a day, and the unused day off is paid (6.10).
+		// An intern has no leave days: both are deducted (6.10).
+		$sum = GRP_Pay::month( array( 'employment' => 'intern' ) + $member, $pay, '2026-03', $reports, $leaves, array(), $days_off, '2026-03-20' );
+		$this->assertSame( 2000, $sum['deducted'] );
+		$this->assertSame( 28500, $sum['total'] );
+
+		// 5 hours a day: 5h extra is a day. In December the year's unused leave is paid: 8 casual + 14 sick days.
 		$pay['day_minutes'] = 300;
-		$sum                = GRP_Pay::month( $member, $pay, '2026-03', array( $this->report( 'm1', '2026-03-02', 600 ) ), array(), array(), array(), '2026-03-31' );
+		$sum                = GRP_Pay::month( $member, $pay, '2026-12', array( $this->report( 'm1', '2026-12-01', 600 ) ), $leaves, array(), array(), '2026-12-31' );
 		$this->assertSame( 1000, $sum['extra_pay'] );
-		$this->assertSame( 1000, $sum['leave_pay'] );
-		$this->assertSame( 32000, $sum['total'] );
+		$this->assertSame( 22, $sum['leave']['paid'] );
+		$this->assertSame( 22000, $sum['leave_pay'] );
+		$this->assertSame( 53000, $sum['total'] );
+		$this->assertStringContainsString( '22 unused leave days paid + 22,000', GRP_Pay::slip_line( $sum ) );
 	}
 
 	public function test_nothing_changes_until_pay_is_set_up() {
@@ -257,7 +265,9 @@ class Test_GRP_Pay extends GRP_REST_TestCase {
 		$slip = GRP_Store::get( 'grp_payslips', GRP_Pay::slip_id( $member, $month ) );
 		$this->assertSame( 120, $slip['extra'] );
 		$this->assertSame( 250, $slip['extra_pay'] );
-		$this->assertSame( 31250, $slip['total'] );
+		// December's payslip also pays the year's 24 unused leave days (6.10).
+		$total = 30250 + ( '12' === substr( $month, 5, 2 ) ? 24000 : 0 );
+		$this->assertSame( $total, $slip['total'] );
 		$this->assertSame( 'Dutch-Bangla Bank •••• 5678', $slip['account'] );
 
 		$posts = GRP_Store::find( 'grp_posts', array( 'kind' => 'notice' ) );
@@ -272,7 +282,7 @@ class Test_GRP_Pay extends GRP_REST_TestCase {
 		);
 		$this->assertCount( 1, $mine );
 		$this->assertStringContainsString( '2h extra + 250', $mine[0]['body'] );
-		$this->assertStringContainsString( 'total 31,250 BDT', $mine[0]['body'] );
+		$this->assertStringContainsString( 'total ' . number_format( $total ) . ' BDT', $mine[0]['body'] );
 		$sheet = array_values(
 			array_filter(
 				$posts,

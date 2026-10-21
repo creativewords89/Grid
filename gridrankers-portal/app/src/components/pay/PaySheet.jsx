@@ -137,7 +137,7 @@ export default function PaySheet() {
 												{n.extra_pay ? `+ ${money(n.extra_pay)}` : '—'}
 											</b>
 											<span role="cell" className="muted">
-												{taken(r) ? `${taken(r)} · 1 paid` : n.leave_pay ? `unused · + ${money(n.leave_pay)}` : '—'}
+												{n.leave_pay ? `${taken(r) || 0} · unused paid + ${money(n.leave_pay)}` : taken(r) || '—'}
 											</span>
 											<b role="cell" className={n.deducted ? 'pay-t-off' : 'muted'}>
 												{n.deducted ? `− ${money(n.deducted)}` : '—'}
@@ -195,20 +195,20 @@ export default function PaySheet() {
 							</div>
 						)}
 					</div>
-					<p className="muted pay-legend">Extra pay = extra hours × (salary ÷ 30 ÷ hours a day). Deducted = (days off − 1 casual day) × salary ÷ 30. An unused casual day is paid. {res.billed ? '' : 'Mark paid opens on the billing date.'}</p>
+					<p className="muted pay-legend">Extra pay = extra hours × (salary ÷ 30 ÷ hours a day). Deducted = leave days past the year’s 10 casual / 14 sick × salary ÷ 30. December pays out the unused days. {res.billed ? '' : 'Mark paid opens on the billing date.'}</p>
 				</>
 			)}
 		</div>
 	);
 }
 
-// "2 worked extra (+ 1,250 BDT), 1 took more than their casual day off (− 1,000 BDT). Total to pay 31,250 BDT."
+// "2 worked extra (+ 1,250 BDT), 1 went over their leave (− 1,000 BDT). Total to pay 31,250 BDT."
 function noticeLine(rows, sumOf, billed) {
 	const extra = rows.filter((r) => r.nums && r.nums.extra_pay > 0).length;
 	const over = rows.filter((r) => r.nums && r.nums.deducted > 0).length;
 	const parts = [
 		extra ? `${extra} worked extra (+ ${money(sumOf('extra_pay'))} BDT)` : 'Nobody worked extra',
-		over ? `${over} took more than their casual day off (− ${money(sumOf('deducted'))} BDT)` : 'nobody took more than their casual day off',
+		over ? `${over} went over their leave (− ${money(sumOf('deducted'))} BDT)` : 'nobody went over their leave',
 	];
 	return `${parts.join(', ')}. Total ${billed ? 'to pay' : 'so far'} ${money(sumOf('total'))} BDT.`;
 }

@@ -1,5 +1,5 @@
 // Notifications on My day (SPEC.md 6.10, design NF-A): new tasks and other news in one box with
-// filters, unread dots, Mark all read and pages; Who's out and Day leave share the Today card; the
+// filters, unread dots, Mark all read and pages; Who's out and Leave share the Today card; the
 // left and right columns end at the same line.
 import { test, expect } from '@playwright/test';
 import { LEAD, MAX, apiCall, signIn, signInOwner, signOut, signOutOwner, watchErrors } from './helpers.mjs';
@@ -37,10 +37,10 @@ test('notifications feed', async ({ page }) => {
 	await expect(box.locator('.nf-item', { hasText: 'Feed task' })).toHaveCount(0);
 	await box.getByRole('button', { name: /^All/ }).click();
 
-	// Who's out and Day leave share one card under it; the two columns end together.
+	// Who's out and Leave share one card under it; the two columns end together.
 	const today = page.locator('section.md-today');
 	await expect(today.getByRole('heading', { name: 'Who’s out today' })).toBeVisible();
-	await expect(today.getByRole('heading', { name: 'Day leave' })).toBeVisible();
+	await expect(today.getByRole('heading', { name: 'Leave', exact: true })).toBeVisible();
 	const cols = page.locator('.md-grid > .md-col');
 	const [l, r] = [await cols.nth(0).boundingBox(), await cols.nth(1).boundingBox()];
 	expect(Math.abs(l.y + l.height - (r.y + r.height))).toBeLessThan(2);
@@ -104,8 +104,8 @@ test('notifications feed', async ({ page }) => {
 	await page.locator('.md-bell-btn').click();
 	await expect(page.locator('.md-pop').getByText(/Max Member asks for sick leave/).first()).toBeVisible();
 	await page.locator('.md-bell-btn').click();
-	// A Team Leader's Today card: Who's out and Day leave.
-	await expect(page.locator('section.md-today h2')).toHaveText(['Who’s out today', 'Day leave']);
+	// A Team Leader's Today card: Who's out and Leave.
+	await expect(page.locator('section.md-today h2')).toHaveText(['Who’s out today', 'Leave']);
 	await signOut(page);
 
 	// The Super Admin: the same, and the Today card has only Who's out.

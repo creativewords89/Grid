@@ -11,6 +11,7 @@ import LeaveTab from './LeaveTab.jsx';
 import Notifications, { attentionItems } from './Notifications.jsx';
 import MembersAccess from './MembersAccess.jsx';
 import { AutoMessages, DaysOff } from './PeopleSettings.jsx';
+import { HolidaySystem } from '../holidays/Holidays.jsx';
 import { AddMemberDialog, BarChart, LogWorkDialog, PeriodHead, SetCodeDialog, dayLabel } from './parts.jsx';
 
 const greeting = () => {
@@ -326,6 +327,7 @@ export default function TeamArea({ perf, setPerf, onPerson, section }) {
 		body = membersAccess;
 	} else {
 		const panes = {
+			holidays: <HolidaySystem />,
 			daysoff: <DaysOff />,
 			messages: <AutoMessages />,
 			deleted: (
@@ -351,6 +353,7 @@ export default function TeamArea({ perf, setPerf, onPerson, section }) {
 		// Admin settings (SPEC.md 7.5): one page, the sections one below the other.
 		body = section ? (
 			<div className="as-stack">
+				{panes.holidays}
 				{panes.daysoff}
 				{panes.messages}
 				{panes.deleted}
@@ -360,6 +363,7 @@ export default function TeamArea({ perf, setPerf, onPerson, section }) {
 			<div className="set-grid">
 				{membersAccess}
 				{panes.deleted}
+				{panes.holidays}
 				{panes.daysoff}
 				{panes.messages}
 				{panes.export}

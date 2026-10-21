@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import { usePortal } from '../../context.js';
 import { isIssued, leaveSummary, mayDecideLeave, overBy, sortLeave } from '../../lib/leaveBoard.js';
-import { LEAVE_PER_MONTH, monthName } from '../../lib/people.js';
+import { EMPLOYMENT, monthName } from '../../lib/people.js';
 import { isAdmin, isManager } from '../../lib/roles.js';
 import { rowsOf } from '../../lib/store.js';
 import Avatar from '../Avatar.jsx';
 import IssueDayOff from './IssueDayOff.jsx';
 import { STATUS, TYPE, downloadCsv, leaveActions, printOnly, rangeText, useLeaveAction } from './leaveParts.jsx';
 
-const RESULT = { paid: (r) => `${r.paid} day paid`, even: () => 'Even', deducted: (r) => `${r.deducted} day${r.deducted === 1 ? '' : 's'} deducted` };
+const RESULT = { paid: (r) => `${r.paid} day${r.paid === 1 ? '' : 's'} paid out`, even: () => 'Even', deducted: (r) => `${r.deducted} day${r.deducted === 1 ? '' : 's'} deducted` };
 const RESULT_CLS = { paid: 'f-green', even: 'f-plain', deducted: 'f-red' };
 const CHIPS = [
 	['', 'All'],
@@ -147,8 +147,8 @@ function Settlement() {
 	const rows = report ? report.rows : [];
 	const csv = () =>
 		mode === 'month'
-			? downloadCsv(`leave-settlement-${month}.csv`, [['Person', 'Taken', 'Settlement', 'Paid days', 'Deducted days'], ...rows.map((r) => [name(r.member_id), r.taken, r.result, r.paid, r.deducted])])
-			: downloadCsv(`leave-report-${year}.csv`, [['Person', 'Day leave', 'Sick leave', 'Total', 'Company days off'], ...rows.map((r) => [name(r.member_id), r.day, r.sick, r.total, r.days_off])]);
+			? downloadCsv(`leave-settlement-${month}.csv`, [['Person', 'Taken', 'Settlement', 'Paid out days', 'Deducted days'], ...rows.map((r) => [name(r.member_id), r.taken, r.result, r.paid, r.deducted])])
+			: downloadCsv(`leave-report-${year}.csv`, [['Person', 'Employment', 'Casual leave', 'Sick leave', 'Total', 'Casual left', 'Sick left', 'Over', 'Company days off'], ...rows.map((r) => [name(r.member_id), EMPLOYMENT[r.employment] || '', r.day, r.sick, r.total, r.day_left, r.sick_left, r.over, r.days_off])]);
 	const totals = ['paid', 'even', 'deducted'].map((k) => rows.filter((r) => r.result === k).length);
 	const oldest = shiftMonth(now, -23);
 
@@ -183,7 +183,6 @@ function Settlement() {
 				<div className="lv-table lv-set" role="table" aria-label={`Settlement ${monthName(month)} ${month.slice(0, 4)}`}>
 					<div className="lv-row lv-th" role="row">
 						<span role="columnheader">Person</span>
-						<span role="columnheader">Allowance used</span>
 						<span role="columnheader">Taken</span>
 						<span role="columnheader">End of {monthName(month)}</span>
 					</div>
@@ -192,14 +191,6 @@ function Settlement() {
 							<span className="lv-who" role="cell">
 								<Avatar person={data.members[r.member_id]} small />
 								<b>{name(r.member_id)}</b>
-							</span>
-							<span className="lv-bar" role="cell">
-								{Array.from({ length: Math.max(LEAVE_PER_MONTH, r.taken) }, (_, k) => (
-									<i key={k} className={k >= r.taken ? '' : k < LEAVE_PER_MONTH ? 'used' : 'over'} />
-								))}
-								<small>
-									{r.taken} of {LEAVE_PER_MONTH}
-								</small>
 							</span>
 							<b role="cell">{r.taken}</b>
 							<span role="cell">
@@ -212,9 +203,12 @@ function Settlement() {
 				<div className="lv-table lv-year" role="table" aria-label={`Year-end report ${year}`}>
 					<div className="lv-row lv-th" role="row">
 						<span role="columnheader">Person</span>
-						<span role="columnheader">Day leave</span>
-						<span role="columnheader">Sick leave</span>
+						<span role="columnheader">Employment</span>
+						<span role="columnheader">Casual</span>
+						<span role="columnheader">Sick</span>
 						<span role="columnheader">Total</span>
+						<span role="columnheader">Left · paid out</span>
+						<span role="columnheader">Over</span>
 						<span role="columnheader">Company days off</span>
 					</div>
 					{rows.map((r) => (
@@ -223,9 +217,14 @@ function Settlement() {
 								<Avatar person={data.members[r.member_id]} small />
 								<b>{name(r.member_id)}</b>
 							</span>
+							<span role="cell">{EMPLOYMENT[r.employment] || '—'}</span>
 							<span role="cell">{r.day}</span>
 							<span role="cell">{r.sick}</span>
 							<b role="cell">{r.total}</b>
+							<span role="cell">{r.day_left + r.sick_left}</span>
+							<span role="cell" className={r.over ? 't-red' : ''}>
+								{r.over}
+							</span>
 							<span role="cell">{r.days_off}</span>
 						</div>
 					))}
@@ -234,12 +233,12 @@ function Settlement() {
 			<div className="lv-foot">
 				<span>
 					{mode === 'month'
-						? '1 leave day a month (day or sick). Unused → 1 day paid; extra → deducted. Nothing carries over.'
-						: 'Counts only — leave is settled every month. Total = day leave + sick leave. Company days off = weekly, event and seasonal days off.'}
+						? '10 casual and 14 sick days a year (Full-Time, Part-Time). Days past them are deducted; December pays out the unused days.'
+						: 'Total = casual + sick leave. Left is paid out with December’s salary; over was deducted. Company days off = weekly, event and seasonal days off.'}
 				</span>
 				{mode === 'month' && report && (
 					<span className="lv-tot">
-						<b className="t-green">{totals[0]} paid</b> · <b>{totals[1]} even</b> · <b className="t-red">{totals[2]} deducted</b>
+						<b className="t-green">{totals[0]} paid out</b> · <b>{totals[1]} even</b> · <b className="t-red">{totals[2]} deducted</b>
 					</span>
 				)}
 			</div>
@@ -269,7 +268,7 @@ export default function LeaveTab() {
 				<Stat label="Waiting for you" value={sum.waiting.length} sub={sum.waiting.length ? names([...new Set(sum.waiting.map(nameOf))]) : 'Nothing to decide'} tone={sum.waiting.length ? 'amber' : ''} />
 				<Stat label="Out today" value={sum.outToday.length} sub={sum.outToday.length ? names(sum.outToday.map((l) => `${nameOf(l)} · ${TYPE[l.type]}`)) : 'Everyone is in'} />
 				<Stat label={`Taken in ${mon}`} value={plural(sum.takenDays, 'day')} sub={plural(sum.takenPeople, 'person').replace('persons', 'people')} />
-				{admin && <Stat label="Over the allowance" value={sum.over.length} sub={sum.over.length ? names(sum.over.map((o) => `${o.member.name} · ${plural(o.taken - LEAVE_PER_MONTH, 'day')} deducted`)) : `Nobody over in ${mon}`} tone={sum.over.length ? 'red' : ''} />}
+				{admin && <Stat label="Over the allowance" value={sum.over.length} sub={sum.over.length ? names(sum.over.map((o) => `${o.member.name} · ${plural(o.over, 'day')} deducted`)) : `Nobody over in ${sum.month.slice(0, 4)}`} tone={sum.over.length ? 'red' : ''} />}
 			</div>
 			<section className="dcard lv-card" aria-labelledby="lvReq">
 				<div className="lv-head">

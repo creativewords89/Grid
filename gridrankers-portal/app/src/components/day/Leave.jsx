@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { usePortal } from '../../context.js';
 import { short } from '../../lib/format.js';
 import { addDays } from '../../lib/cycles.js';
-import { MEMBER_TAB_KEY, dayOffKind, daysLeft, leaveDays, monthName, takenInMonth, teamWeekly } from '../../lib/people.js';
+import { EMPLOYMENT, MEMBER_TAB_KEY, balance, dayOffKind, employmentOf, hasLeave, leaveDays, overBy, teamWeekly } from '../../lib/people.js';
 import { rowsOf } from '../../lib/store.js';
 import Modal from '../Modal.jsx';
 
@@ -16,8 +16,8 @@ function nextWorkday(data, me, today) {
 	return d;
 }
 
-// Request (Team Member) or take (Team Leader) day leave (SPEC.md 6.10). The server counts
-// and checks again; this shows the same numbers before sending.
+// Request (Team Member) or take (Team Leader) casual or sick leave (SPEC.md 6.10, design HOL-3). The
+// server counts and checks again; this shows the same numbers before sending.
 export function LeaveDialog({ open, onClose }) {
 	const { api, data, dispatch, me, today, toast } = usePortal();
 	const start = useMemo(() => nextWorkday(data, me, today), [data, me, today]);
@@ -35,9 +35,9 @@ export function LeaveDialog({ open, onClose }) {
 	const end = to < from ? from : to;
 	const months = leaveDays(from, end, self, team, daysOff);
 	const total = Object.values(months).reduce((a, b) => a + b, 0);
-	const over = Object.entries(months)
-		.map(([month, days]) => ({ month, n: takenInMonth(self, month, leaves, team, daysOff) + days - 1 }))
-		.filter((o) => o.n > 0);
+	const left = balance(self, +from.slice(0, 4), leaves, team, daysOff);
+	const over = total ? overBy(self, { id: '', type, from_date: from, to_date: end }, leaves, team, daysOff) : 0;
+	const paid = hasLeave(self);
 	const range = from === end ? short(from) : `${short(from)} – ${short(end)}`;
 
 	const submit = async (e) => {
@@ -58,12 +58,12 @@ export function LeaveDialog({ open, onClose }) {
 	return (
 		<Modal open={open} onClose={onClose} labelledBy="grpLeave">
 			<form onSubmit={submit} noValidate>
-				<h2 id="grpLeave">{lead ? 'Take day leave' : 'Request day leave'}</h2>
+				<h2 id="grpLeave">{paid ? (lead ? 'Take leave' : 'Request leave') : lead ? 'Take unpaid leave' : 'Request unpaid leave'}</h2>
 				<label>
 					Type
 					<select value={type} onChange={(e) => setType(e.target.value)} aria-label="Leave type">
-						<option value="day">Day leave</option>
-						<option value="sick">Sick leave</option>
+						<option value="day">Casual{paid ? ` · ${left.day.left} of ${left.day.allowance} left` : ''}</option>
+						<option value="sick">Sick{paid ? ` · ${left.sick.left} of ${left.sick.allowance} left` : ''}</option>
 					</select>
 				</label>
 				<div className="row">
@@ -80,13 +80,13 @@ export function LeaveDialog({ open, onClose }) {
 					<b>
 						{total} day{total === 1 ? '' : 's'}
 					</b>{' '}
-					· {range} {total ? '(days off aren’t counted)' : '— all days off'}
-					{over.map((o) => (
-						<p key={o.month} className="ap-over">
-							This request is {o.n} day{o.n === 1 ? '' : 's'} over. Settled at the end of {monthName(o.month)}: {o.n} day{o.n === 1 ? '' : 's'} deducted from {monthName(o.month)}’s salary.
+					· {range} {total ? '(days off and festival holidays aren’t counted)' : '— all days off'}
+					{over > 0 && (
+						<p className="ap-over">
+							{paid ? `${over} day${over === 1 ? '' : 's'} over the allowance · deducted from salary` : `Unpaid · ${over} day${over === 1 ? '' : 's'} deducted from salary`}
 						</p>
-					))}
-					<p className="muted">Day leave and sick leave share 1 day each month. An unused day is paid with that month’s salary.</p>
+					)}
+					<p className="muted">{paid ? '10 casual and 14 sick days a year (Jan 1 – Dec 31). Unused days are paid with December’s salary.' : `${EMPLOYMENT[employmentOf(self)]}s have no leave days: leave is unpaid.`}</p>
 				</div>
 				<label>
 					Reason (optional)
@@ -101,7 +101,7 @@ export function LeaveDialog({ open, onClose }) {
 						Cancel
 					</button>
 					<button type="submit" className="btn primary">
-						{lead ? 'Take day leave' : 'Send request'}
+						{lead ? 'Take leave' : 'Send request'}
 					</button>
 				</div>
 			</form>
@@ -109,14 +109,14 @@ export function LeaveDialog({ open, onClose }) {
 	);
 }
 
-// Day leave box (Team Member, Team Leader): days left this month and the button.
+// Leave box (Team Member, Team Leader): casual and sick days left this year and the button.
 export default function DayLeave({ bare = false }) {
 	const { data, me, today, setView, setTeamPerson, viewOnly } = usePortal();
 	const [open, setOpen] = useState(false);
-	const month = today.slice(0, 7);
+	const year = today.slice(0, 4);
 	const self = data.members[me.id] || me;
 	const leaves = rowsOf(data, 'leave');
-	const left = daysLeft(takenInMonth(self, month, leaves, teamWeekly(data), rowsOf(data, 'days_off')));
+	const left = balance(self, +year, leaves, teamWeekly(data), rowsOf(data, 'days_off'));
 	const lead = me.role === 'lead';
 	const latest = leaves
 		.filter((l) => l.member_id === me.id && l.status === 'approved' && l.to_date >= today && l.decided_by !== me.id)
@@ -137,14 +137,18 @@ export default function DayLeave({ bare = false }) {
 	return (
 		<Box className={bare ? 'td-half' : 'md-card'} aria-labelledby="dlTitle">
 			<div className="md-h">
-				<h2 id="dlTitle">Day leave</h2>
+				<h2 id="dlTitle">Leave</h2>
 				<button type="button" className="linkbtn" onClick={openMine}>
 					My leave
 				</button>
 			</div>
-			<p className="dl-left">
-				<b>{left}</b> day{left === 1 ? '' : 's'} left in {monthName(month)}
-			</p>
+			{hasLeave(self) ? (
+				<p className="dl-left">
+					<b>{left.day.left}</b> casual · <b>{left.sick.left}</b> sick days left in {year}
+				</p>
+			) : (
+				<p className="dl-left">No leave days ({EMPLOYMENT[employmentOf(self)]}) · leave is deducted</p>
+			)}
 			{lead && <p className="muted">Your leave is approved straight away.</p>}
 			{latest && <p className="muted">Approved: {latest.from_date === latest.to_date ? short(latest.from_date) : `${short(latest.from_date)} – ${short(latest.to_date)}`}.</p>}
 			{pending > 0 && (
@@ -155,7 +159,7 @@ export default function DayLeave({ bare = false }) {
 			{!viewOnly && (
 				<div>
 					<button type="button" className={'btn primary' + (bare ? ' small' : '')} onClick={() => setOpen(true)}>
-						{lead ? 'Take day leave' : 'Request day leave'}
+						{lead ? 'Take leave' : 'Request leave'}
 					</button>
 				</div>
 			)}

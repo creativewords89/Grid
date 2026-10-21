@@ -12,23 +12,29 @@ const plus = (n) => {
 	return d;
 };
 const TODAY = ymd(plus(0));
-const MONTH = new Date().toLocaleDateString('en-US', { month: 'long' });
+const YEAR = new Date().getFullYear();
 
 test('my day: leave, days off, birthdays, shout-outs and review requests', async ({ page }) => {
 	const noErrors = watchErrors(page);
 	const strip = (text) => page.locator('.md-strip', { hasText: text });
 	const box = (title) => page.locator('.md-card', { has: page.getByRole('heading', { name: title }) });
 	const dlg = page.locator('dialog[open]');
+	// Casual days left this year in the Leave box (SPEC.md 6.10): 10 a year, less what was taken.
+	const casualLeft = async () => {
+		const text = await box('Leave').locator('.dl-left').innerText();
+		expect(text).toMatch(new RegExp(`^\\d+ casual · \\d+ sick days left in ${YEAR}$`));
+		return +text.match(/^(\d+)/)[1];
+	};
 
 	// Super Admin: the team's weekly day off is three days from now, so today … +2 are working days.
 	await signInOwner(page);
 	expect((await apiCall(page, 'PUT', 'days-off/weekly', { weekdays: [plus(3).getDay()] })).status).toBe(200);
-	await expect(page.getByRole('heading', { name: 'Day leave' })).toHaveCount(0);
+	await expect(page.getByRole('heading', { name: 'Leave', exact: true })).toHaveCount(0);
 	await signOutOwner(page);
 
 	// Team Member: sets a birthday (today) and asks for 3 days of leave starting today.
 	await signIn(page, MAX);
-	await expect(box('Day leave')).toContainText(`1 day left in ${MONTH}`);
+	const maxLeft = await casualLeft();
 	await expect(box('Notifications')).not.toContainText('Great work on the Acme H1 fixes');
 	await page.locator('.me-btn').click();
 	await page.locator('nav.ttabs').getByRole('tab', { name: 'Settings' }).click();
@@ -39,7 +45,7 @@ test('my day: leave, days off, birthdays, shout-outs and review requests', async
 
 	await page.getByRole('button', { name: /GridRankers/ }).click();
 	await showStrip(page, 'Happy birthday, Max Member!');
-	await box('Day leave').getByRole('button', { name: 'Request day leave' }).click();
+	await box('Leave').getByRole('button', { name: 'Request leave' }).click();
 	await dlg.getByLabel('Leave type').selectOption('day');
 	await dlg.getByLabel('From').fill(TODAY);
 	await dlg.getByLabel('To').fill(ymd(plus(2)));
@@ -47,7 +53,7 @@ test('my day: leave, days off, birthdays, shout-outs and review requests', async
 	await dlg.getByLabel('Reason (optional)').fill('Family wedding');
 	await dlg.getByRole('button', { name: 'Send request' }).click();
 	await page.getByText('Leave requested').waitFor();
-	await expect(box('Day leave')).toContainText('1 request waiting for an answer');
+	await expect(box('Leave')).toContainText('1 request waiting for an answer');
 	await signOut(page);
 
 	// Team Leader: sees the birthday and the request, approves it with a message, takes their own
@@ -56,7 +62,7 @@ test('my day: leave, days off, birthdays, shout-outs and review requests', async
 	await showStrip(page, 'Today is Max Member’s birthday.');
 	const asks = await waiting(page);
 	await expect(asks).toContainText('Max Member');
-	await expect(asks).toContainText('asks for day leave');
+	await expect(asks).toContainText('asks for casual leave');
 	await asks.getByRole('button', { name: 'Approve' }).first().click();
 	await dlg.getByLabel('Message (optional)').fill('Enjoy the wedding!');
 	await dlg.getByRole('button', { name: 'Approve' }).click();
@@ -65,12 +71,13 @@ test('my day: leave, days off, birthdays, shout-outs and review requests', async
 	await expect(box('Who’s out today')).toContainText('Max Member');
 	await expect(box('Who’s out today').locator('li', { hasText: 'Max Member' })).toContainText('On leave');
 
-	await box('Day leave').getByRole('button', { name: 'Take day leave' }).click();
+	const leeLeft = await casualLeft();
+	await box('Leave').getByRole('button', { name: 'Take leave' }).click();
 	await dlg.getByLabel('From').fill(TODAY);
 	await dlg.getByLabel('To').fill(TODAY);
-	await dlg.getByRole('button', { name: 'Take day leave' }).click();
+	await dlg.getByRole('button', { name: 'Take leave' }).click();
 	await page.getByText('approved straight away').first().waitFor();
-	await expect(box('Day leave')).toContainText(`0 days left in ${MONTH}`);
+	await expect(box('Leave').locator('.dl-left')).toContainText(`${leeLeft - 1} casual`);
 
 	await page.getByRole('button', { name: 'Send notice' }).click();
 	await dlg.getByRole('button', { name: 'Shout-out ★' }).click();
@@ -127,7 +134,8 @@ test('my day: leave, days off, birthdays, shout-outs and review requests', async
 	await expect(page.locator('.md-strip:visible')).toHaveCount(1);
 	await expect(page.locator('.md-strip:visible .md-pager')).toContainText(/\d of \d/);
 	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/band.png' });
-	await expect(box('Day leave')).toContainText(`0 days left in ${MONTH}`);
+	// The approved days (Founders Day aside) came off his casual days.
+	await expect.poll(casualLeft).toBeLessThan(Math.max(1, maxLeft));
 	await expect(box('Notifications')).toContainText('Shout-out from Lee Lead');
 	const review = strip('Lee Lead asked you to review “Approve content plan”.');
 	await expect(review).toContainText('Please check the October topics');

@@ -121,7 +121,7 @@ class Test_GRP_REST_People extends GRP_REST_TestCase {
 		$this->assertSame( $this->team['lead']['id'], $leave['created_by'] );
 		$this->assertSame( 'Thanks for the launch', $leave['message'] );
 		$this->assertSame( '', (string) $leave['reason'] );
-		// It counts: Max took 2 days in that month (1 over the allowance).
+		// It counts: Max took 2 days in that month.
 		$month = substr( $this->day( 0 ), 0, 7 );
 		if ( substr( $this->day( 1 ), 0, 7 ) === $month ) {
 			$report = array_column( $this->api_as( 'admin', 'GET', '/leave/report', array( 'month' => $month ) )->get_data()['rows'], null, 'member_id' );
@@ -219,9 +219,10 @@ class Test_GRP_REST_People extends GRP_REST_TestCase {
 
 		$rows = array_column( $this->api_as( 'admin', 'GET', '/leave/report', array( 'month' => $month ) )->get_data()['rows'], null, 'member_id' );
 		$this->assertArrayNotHasKey( $this->team['admin']['id'], $rows, 'the Super Admin has no leave' );
-		$taken = GRP_People::taken_in_month( GRP_Store::get( 'grp_members', $this->team['member']['id'] ), $month, array( GRP_Store::get( 'grp_leave', $leave['id'] ) ), null, array() );
-		$this->assertSame( GRP_People::settlement( $taken )['result'], $rows[ $this->team['member']['id'] ]['result'] );
-		$this->assertSame( 'paid', $rows[ $this->team['other']['id'] ]['result'] );
+		$settled = GRP_People::settlement( GRP_Store::get( 'grp_members', $this->team['member']['id'] ), $month, array( GRP_Store::get( 'grp_leave', $leave['id'] ) ), null, array() );
+		$this->assertSame( $settled, array_diff_key( $rows[ $this->team['member']['id'] ], array( 'member_id' => 1 ) ) );
+		// No leave: even, or the year's unused days paid out in December.
+		$this->assertSame( '12' === substr( $month, 5, 2 ) ? 'paid' : 'even', $rows[ $this->team['other']['id'] ]['result'] );
 
 		$year = $this->api_as( 'admin', 'GET', '/leave/report', array( 'year' => (int) substr( $this->monday, 0, 4 ) ) )->get_data();
 		$this->assertSame( 3, array_column( $year['rows'], null, 'member_id' )[ $this->team['member']['id'] ]['day'] );
@@ -466,6 +467,127 @@ class Test_GRP_REST_People extends GRP_REST_TestCase {
 		);
 		$this->assertStatus( 201, $this->api_as( 'lead', 'POST', '/posts', $shout ) );
 		$this->assertStatus( 403, $this->api_as( 'admin', 'POST', '/posts', array_merge( $shout, array( 'to' => array( $this->team['member']['id'], $this->team['lead']['id'] ) ) ) ), 'shout-outs are for Team Members' );
+	}
+
+	public function test_employment_is_set_by_the_super_admin_and_new_people_are_interns() {
+		$member = $this->team['member']['id'];
+		$this->assertSame( 'full_time', GRP_Store::get( 'grp_members', $member )['employment'], 'people already on the team stay full-time' );
+
+		$this->assertStatus( 403, $this->api_as( 'lead', 'PATCH', "/members/{$member}", array( 'employment' => 'intern' ) ) );
+		$this->assertStatus( 403, $this->api_as( 'member', 'PATCH', "/members/{$member}", array( 'employment' => 'part_time' ) ) );
+		$this->assertStatus( 403, $this->api_as( 'admin', 'PATCH', "/members/{$this->team['admin']['id']}", array( 'employment' => 'intern' ) ), 'the Super Admin has no leave' );
+		$this->assertStatus( 400, $this->api_as( 'admin', 'PATCH', "/members/{$member}", array( 'employment' => 'boss' ) ) );
+		$response = $this->api_as( 'admin', 'PATCH', "/members/{$member}", array( 'employment' => 'contractual' ) );
+		$this->assertStatus( 200, $response );
+		$this->assertSame( 'contractual', $response->get_data()['employment'] );
+
+		// A newly appointed person is an intern; only the Super Admin picks another type.
+		$added = $this->api_as( 'lead', 'POST', '/members', array( 'name' => 'Nia New' ) );
+		$this->assertStatus( 201, $added );
+		$this->assertSame( 'intern', $added->get_data()['employment'] );
+		$this->assertStatus(
+			403,
+			$this->api_as(
+				'lead',
+				'POST',
+				'/members',
+				array(
+					'name'       => 'Ola Other',
+					'employment' => 'full_time',
+				)
+			)
+		);
+		$hired = $this->api_as(
+			'admin',
+			'POST',
+			'/members',
+			array(
+				'name'       => 'Pia Part',
+				'employment' => 'part_time',
+			)
+		);
+		$this->assertSame( 'part_time', $hired->get_data()['employment'] );
+
+		// Everyone sees the employment type (it is not a private field).
+		$seen = array_column( $this->api_as( 'other', 'GET', '/sync' )->get_data()['changes']['members'], null, 'id' );
+		$this->assertSame( 'contractual', $seen[ $member ]['employment'] );
+	}
+
+	public function test_contractual_leave_is_all_deducted_in_the_settlement() {
+		$this->api_as( 'admin', 'PATCH', "/members/{$this->team['lead']['id']}", array( 'employment' => 'contractual' ) );
+		// A Team Leader's leave is approved straight away: Mon – Tue.
+		$this->assertStatus( 201, $this->ask( 'lead', 0, 1 ) );
+		$month = substr( $this->day( 0 ), 0, 7 );
+		if ( substr( $this->day( 1 ), 0, 7 ) !== $month ) {
+			$this->markTestSkipped( 'The leave crosses a month end.' );
+		}
+		$rows = array_column( $this->api_as( 'admin', 'GET', '/leave/report', array( 'month' => $month ) )->get_data()['rows'], null, 'member_id' );
+		$this->assertSame( 2, $rows[ $this->team['lead']['id'] ]['deducted'] );
+		$this->assertSame( 'deducted', $rows[ $this->team['lead']['id'] ]['result'] );
+
+		$year = array_column( $this->api_as( 'admin', 'GET', '/leave/report', array( 'year' => (int) substr( $month, 0, 4 ) ) )->get_data()['rows'], null, 'member_id' );
+		$this->assertSame( 'contractual', $year[ $this->team['lead']['id'] ]['employment'] );
+		$this->assertSame( 0, $year[ $this->team['lead']['id'] ]['day_left'] );
+		$this->assertSame( 2, $year[ $this->team['lead']['id'] ]['over'] );
+	}
+
+	public function test_festival_holidays_are_capped_at_13_days_a_year() {
+		$year   = (int) substr( GRP_Cycles::today(), 0, 4 ) + 1;
+		$add    = function ( $from, $to ) use ( $year ) {
+			return $this->api_as(
+				'admin',
+				'POST',
+				'/days-off',
+				array(
+					'kind' => 'seasonal',
+					'name' => 'Eid',
+					'from' => "{$year}-{$from}",
+					'to'   => "{$year}-{$to}",
+				)
+			);
+		};
+		$weekly = array( 5 );
+		$count  = static function ( $from, $to ) use ( $year, $weekly ) {
+			return GRP_People::festival_days(
+				$year,
+				array(
+					array(
+						'from_date' => "{$year}-{$from}",
+						'to_date'   => "{$year}-{$to}",
+					),
+				),
+				$weekly
+			);
+		};
+
+		// Find a range of exactly 13 festival days starting on 2 March.
+		$end = 13;
+		while ( $count( '03-02', sprintf( '03-%02d', $end ) ) < 13 ) {
+			++$end;
+		}
+		$this->assertStatus( 201, $add( '03-02', sprintf( '03-%02d', $end ) ) );
+		$this->assertSame( 13, GRP_People::festival_days( $year, GRP_REST_People::days_off(), GRP_REST_People::team_weekly() ) );
+
+		$full = $add( '06-01', '06-01' );
+		$this->assertStatus( 409, $full );
+		$this->assertSame( 'grp_festival_full', $full->get_data()['code'] );
+		// A Friday is the weekly day off already, so it does not count.
+		$friday = gmdate( 'm-d', strtotime( "first friday of june {$year} UTC" ) );
+		$this->assertStatus( 201, $add( $friday, $friday ) );
+		// A holiday may not cross into the next year, which has its own 13 days.
+		$across = $this->api_as(
+			'admin',
+			'POST',
+			'/days-off',
+			array(
+				'kind' => 'seasonal',
+				'name' => 'New Year',
+				'from' => "{$year}-12-31",
+				'to'   => ( $year + 1 ) . '-01-01',
+			)
+		);
+		$this->assertStatus( 400, $across );
+		$this->assertSame( 'grp_festival_year', $across->get_data()['code'] );
 	}
 
 	public function test_incomplete_profile_locks_task_work_with_a_clear_message() {

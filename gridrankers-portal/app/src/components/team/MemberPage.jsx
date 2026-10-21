@@ -397,7 +397,7 @@ function ProfileHead({ person }) {
 export default function MemberPage({ pid, perf, setPerf, onBack, initialTab }) {
 	const { api, data, dispatch, toast, me, today, setView, setTeamPerson, setViewAs } = usePortal();
 	const [picked, setTab] = useState(() => {
-		// The Day leave box's My leave link opens this page on that tab.
+		// The Leave box's My leave link opens this page on that tab.
 		try {
 			const t = window.sessionStorage.getItem(MEMBER_TAB_KEY);
 			window.sessionStorage.removeItem(MEMBER_TAB_KEY);

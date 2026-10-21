@@ -8,7 +8,7 @@
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Day leave: Team Members request it (pending until a Team Leader or the Super Admin
+ * Casual (`day`) and sick leave: Team Members request it (pending until a Team Leader or the Super Admin
  * decides), Team Leaders take it (approved straight away), the Super Admin has none.
  * Team Leaders and the Super Admin may also issue a day off to someone else: approved day
  * leave for that person, counted like any other.
@@ -253,7 +253,7 @@ class GRP_REST_Leave extends GRP_REST_Controller {
 		if ( preg_match( '/^(\d{4})-(0[1-9]|1[0-2])$/', $month ) ) {
 			$rows = array();
 			foreach ( $people as $person ) {
-				$rows[] = array( 'member_id' => $person['id'] ) + GRP_People::settlement( GRP_People::taken_in_month( $person, $month, $leaves, $weekly, $days_off ) );
+				$rows[] = array( 'member_id' => $person['id'] ) + GRP_People::settlement( $person, $month, $leaves, $weekly, $days_off );
 			}
 			return rest_ensure_response(
 				array(

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { usePortal } from '../../context.js';
+import { EMPLOYMENT, employmentOf, hasLeave } from '../../lib/people.js';
 import { dayLength, dayPay, hourPay, hours, masked, methodName, money, monthTitle, shortDay } from '../../lib/pay.js';
 import Modal from '../Modal.jsx';
 import PayForm from './PayForm.jsx';
@@ -7,7 +8,8 @@ import PayForm from './PayForm.jsx';
 // Payment information (SPEC.md 6.19, design PAY-2): your pay (salary, hours, a day's and an
 // hour's pay, the casual day off) and payment details, each with Edit; your past payslips below.
 export default function PaymentInfo() {
-	const { pay, toast } = usePortal();
+	const { data, me, pay, toast } = usePortal();
+	const self = data.members[me.id] || me;
 	const [editing, setEditing] = useState(false);
 	const state = pay.state;
 	if (!state) return <p className="empty">Loading…</p>;
@@ -28,7 +30,7 @@ export default function PaymentInfo() {
 					<KV k="Working hours" v={`${dayLength(p.day_minutes)} a day`} />
 					<KV k="1 day (salary ÷ 30)" v={`${money(dayPay(p.salary))} BDT`} />
 					<KV k={`1 hour (day ÷ ${+(p.day_minutes / 60).toFixed(2)})`} v={`${money(hourPay(p.salary, p.day_minutes))} BDT`} />
-					<KV k="Casual day off" v="1 day a month, paid" />
+					<KV k="Leave" v={hasLeave(self) ? '10 casual + 14 sick days a year' : `none (${EMPLOYMENT[employmentOf(self)]})`} />
 				</section>
 				<section className="pay-card" aria-label="Payment details">
 					<div className="pay-card-h">
