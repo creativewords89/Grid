@@ -233,6 +233,9 @@ class GRP_Permissions {
 	/** See the pay sheet (everyone's salary and payment details) and mark payslips paid (SPEC.md 6.19). Super Admin only. */
 	const MANAGE_PAY = 'manage_pay';
 
+	/** Set a person's employment type: intern, full-time, part-time or contractual (SPEC.md 6.10). Context: `{member_id, role}` of that person. Super Admin, for Team Leaders and Team Members. */
+	const SET_EMPLOYMENT = 'set_employment';
+
 	/**
 	 * Task work that is locked while a Team Leader's or Team Member's required profile is
 	 * incomplete (SPEC.md section 3, Profile lock).
@@ -433,6 +436,10 @@ class GRP_Permissions {
 
 			case self::CANCEL_LEAVE:
 				return self::can_cancel_leave( $user, $role, $context );
+
+			case self::SET_EMPLOYMENT:
+				// The Super Admin has no leave, so no employment type to set.
+				return $admin && in_array( $context['role'] ?? '', array( self::ROLE_LEAD, self::ROLE_MEMBER ), true );
 
 			case self::VIEW_LEAVE_DETAILS:
 				return $manager || self::is_self( $user, $context['member_id'] ?? null );

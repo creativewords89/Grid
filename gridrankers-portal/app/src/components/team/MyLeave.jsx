@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { usePortal } from '../../context.js';
-import { daysLeft, monthName, takenInMonth, teamWeekly } from '../../lib/people.js';
+import { EMPLOYMENT, balance, employmentOf, hasLeave, monthName, settlement, teamWeekly } from '../../lib/people.js';
 import { rowsOf } from '../../lib/store.js';
 import { LeaveDialog } from '../day/Leave.jsx';
 import { LeaveTable } from './leaveParts.jsx';
 
-const SETTLED = { paid: 'Unused · 1 day paid', even: 'Even', deducted: (n) => `${n} day${n === 1 ? '' : 's'} deducted` };
+const SETTLED = { paid: (r) => `${r.paid} unused day${r.paid === 1 ? '' : 's'} paid`, even: () => 'Even', deducted: (r) => `${r.deducted} day${r.deducted === 1 ? '' : 's'} deducted` };
 
-// Member page → My leave (SPEC.md 7.6): this month's days left, requests, past months' settlement.
+// Member page → My leave (SPEC.md 7.6): this year's casual and sick days left, requests, this year's months.
 export default function MyLeave({ pid }) {
 	const { data, me, today } = usePortal();
 	const [open, setOpen] = useState(false);
@@ -15,17 +15,15 @@ export default function MyLeave({ pid }) {
 	const leaves = rowsOf(data, 'leave').filter((l) => l.member_id === pid);
 	const team = teamWeekly(data);
 	const daysOff = rowsOf(data, 'days_off');
-	const month = today.slice(0, 7);
-	const left = daysLeft(takenInMonth(person, month, leaves, team, daysOff));
+	const year = today.slice(0, 4);
+	const left = balance(person, +year, leaves, team, daysOff);
 	const self = pid === me.id;
 
-	// The last 6 finished months since the person joined.
-	const [y, m] = month.split('-').map(Number);
+	// This year's months up to this one, since the person joined, newest first.
 	const joined = String(person.created_at || '').slice(0, 7);
-	const past = Array.from({ length: 6 }, (_, i) => {
-		const d = new Date(y, m - 2 - i, 1);
-		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-	}).filter((k) => !joined || k >= joined);
+	const months = Array.from({ length: +today.slice(5, 7) }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`)
+		.filter((k) => !joined || k >= joined)
+		.reverse();
 
 	return (
 		<div className="set-grid lv-grid">
@@ -34,32 +32,33 @@ export default function MyLeave({ pid }) {
 					<span className="s-k">{self ? 'My leave' : `${person.name}’s leave`}</span>
 					{self && (
 						<button type="button" className="btn small primary" onClick={() => setOpen(true)}>
-							{me.role === 'lead' ? 'Take day leave' : 'Request day leave'}
+							{me.role === 'lead' ? 'Take leave' : 'Request leave'}
 						</button>
 					)}
 				</div>
-				<p className="dl-left">
-					<b>{left}</b> day{left === 1 ? '' : 's'} left in {monthName(month)}
-				</p>
+				{hasLeave(person) ? (
+					<p className="dl-left">
+						<b>{left.day.left}</b> of {left.day.allowance} casual · <b>{left.sick.left}</b> of {left.sick.allowance} sick days left in {year}
+					</p>
+				) : (
+					<p className="dl-left">No leave days ({EMPLOYMENT[employmentOf(person)]}) · leave is deducted</p>
+				)}
 				<LeaveTable rows={[...leaves].sort((a, b) => b.from_date.localeCompare(a.from_date))} empty="No leave yet." />
-				<p className="hint">1 leave day a month for day leave or sick leave. At the end of the month an unused day is paid with that month’s salary; extra days are deducted. Nothing carries over.</p>
+				<p className="hint">Full-Time and Part-Time: 10 casual and 14 sick days a calendar year. Days past them are deducted; unused days are paid with December’s salary. Everything starts again on January 1.</p>
 			</section>
-			{past.length > 0 && (
+			{months.length > 0 && (
 				<section className="dcard">
 					<div className="dc-head">
-						<span className="s-k">Past months</span>
+						<span className="s-k">{year}</span>
 					</div>
 					<ul className="do-list">
-						{past.map((k) => {
-							const taken = takenInMonth(person, k, leaves, team, daysOff);
-							const result = taken === 0 ? 'paid' : taken === 1 ? 'even' : 'deducted';
+						{months.map((k) => {
+							const r = settlement(person, k, leaves, team, daysOff);
 							return (
 								<li key={k}>
-									<b>
-										{monthName(k)} {k.slice(0, 4)}
-									</b>
-									<span>{taken} taken</span>
-									<span className={'mp-flag ' + (result === 'paid' ? 'f-green' : result === 'deducted' ? 'f-red' : 'f-plain')}>{result === 'deducted' ? SETTLED.deducted(taken - 1) : SETTLED[result]}</span>
+									<b>{monthName(k)}</b>
+									<span>{r.taken} taken</span>
+									<span className={'mp-flag ' + (r.result === 'paid' ? 'f-green' : r.result === 'deducted' ? 'f-red' : 'f-plain')}>{SETTLED[r.result](r)}</span>
 								</li>
 							);
 						})}

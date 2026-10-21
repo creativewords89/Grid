@@ -63,7 +63,7 @@ export default function SalaryMonth() {
 							<b>
 								{sum.leave.taken} {sum.leave.taken === 1 ? 'day' : 'days'}
 							</b>
-							<span>off · {sum.leave.deducted ? `1 paid, ${sum.leave.deducted} deducted` : sum.leave.taken ? 'the casual day' : 'casual day unused'}</span>
+							<span>off · {sum.leave.deducted ? `${sum.leave.deducted} over the allowance, deducted` : sum.leave.paid ? `${sum.leave.paid} unused paid` : 'within the allowance'}</span>
 						</div>
 						<div className="total">
 							<b>{money(total)} BDT</b>
@@ -92,7 +92,7 @@ export default function SalaryMonth() {
 							<Line k="Extra hours" how={`${hours(sum.extra)} × ${money(hourPay(sum.salary, sum.day_minutes))}`} v={`+ ${money(sum.extra_pay)}`} tone="extra" />
 							<Line k="Days off" how={leave.text} v={leave.amount ? `${leave.sign} ${money(leave.amount)}` : '—'} tone={leave.sign === '−' ? 'off' : leave.sign === '+' ? 'extra' : ''} />
 							<Line k={slip ? 'Total' : 'Pay so far'} v={`${money(total)} BDT`} big />
-							<p className="muted pay-note">Weekly days off never count. 8h extra on an 8-hour day = one more day’s pay; each day off after the casual one = one day less.</p>
+							<p className="muted pay-note">Weekly days off never count. 8h extra on an 8-hour day = one more day’s pay; each leave day past the year’s allowance = one day less; December pays out the unused days.</p>
 						</div>
 					</div>
 					<p className="muted pay-legend">

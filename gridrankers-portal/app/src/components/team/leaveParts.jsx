@@ -4,7 +4,7 @@ import { isAdmin, isManager } from '../../lib/roles.js';
 import Avatar from '../Avatar.jsx';
 
 export const STATUS = { pending: ['Waiting', 'f-amber'], approved: ['Approved', 'f-green'], rejected: ['Not approved', 'f-red'], cancelled: ['Cancelled', 'f-plain'] };
-export const TYPE = { day: 'Day leave', sick: 'Sick leave' };
+export const TYPE = { day: 'Casual leave', sick: 'Sick leave' };
 
 export const rangeText = (l) => (l.from_date === l.to_date ? short(l.from_date) : `${short(l.from_date)} – ${short(l.to_date)}`);
 

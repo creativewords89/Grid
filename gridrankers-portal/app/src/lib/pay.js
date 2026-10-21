@@ -107,11 +107,14 @@ export function dayTone(day, dayMinutes) {
 	return day.minutes >= dayMinutes ? 'full' : 'short';
 }
 
-// The leave line under the month (design PAY-3): "No days off · casual day paid + 1,000",
-// "1 day off · the casual day", "2 days off · 1 deducted − 1,000".
+// The leave line under the month (design PAY-3, SPEC.md 6.10): "No days off", "2 days off · within
+// the year's allowance", "3 days off · 1 over the allowance · 1 × 1,000", and in December "unused
+// leave paid · 20 × 1,000".
 export function leaveLine(summary) {
 	const { leave } = summary;
-	if (!leave.taken) return { text: 'No days off · the unused casual day is paid', amount: summary.leave_pay, sign: '+' };
-	if (!leave.deducted) return { text: '1 day off · the casual day, paid', amount: 0, sign: '' };
-	return { text: `${leave.taken} days off · 1 casual day is paid · ${leave.deducted} × ${money(dayPay(summary.salary))}`, amount: summary.deducted, sign: '−' };
+	const days = leave.taken ? `${leave.taken} day${leave.taken === 1 ? '' : 's'} off` : 'No days off';
+	const each = money(dayPay(summary.salary));
+	if (leave.deducted) return { text: `${days} · ${leave.deducted} over the allowance · ${leave.deducted} × ${each}`, amount: summary.deducted, sign: '−' };
+	if (leave.paid) return { text: `${days} · unused leave paid · ${leave.paid} × ${each}`, amount: summary.leave_pay, sign: '+' };
+	return { text: leave.taken ? `${days} · within the year’s allowance` : days, amount: 0, sign: '' };
 }

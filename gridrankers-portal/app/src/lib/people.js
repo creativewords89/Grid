@@ -6,7 +6,13 @@ import { rowsOf } from './store.js';
 // weekdays 0 (Sunday) – 6 (Saturday).
 
 export const DEFAULT_WEEKLY_OFF = [5];
-export const LEAVE_PER_MONTH = 1;
+// Leave days a Full-Time or Part-Time employee gets per calendar year, by type (`day` is casual
+// leave); Interns and Contractual employees get none. Festival holidays: 13 days a year.
+export const ALLOWANCE = { day: 10, sick: 14 };
+export const FESTIVAL_PER_YEAR = 13;
+export const EMPLOYMENT = { intern: 'Intern', full_time: 'Full-Time', part_time: 'Part-Time', contractual: 'Contractual' };
+export const WITH_LEAVE = ['full_time', 'part_time'];
+export const LEAVE_TYPE = { day: 'Casual leave', sick: 'Sick leave' };
 
 export const DEFAULT_MESSAGES = {
 	birthday: 'Happy birthday, {name}! The whole GridRankers team wishes you a wonderful year ahead.',
@@ -14,7 +20,7 @@ export const DEFAULT_MESSAGES = {
 	leave_approved: 'Your leave was approved. Enjoy your time off, {name}!',
 };
 
-// Session key: the member page tab to open next (the Day leave box's My leave link).
+// Session key: the member page tab to open next (the Leave box's My leave link).
 export const MEMBER_TAB_KEY = 'grp:member-tab';
 
 export const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -80,7 +86,86 @@ export function takenInMonth(member, month, leaves, team, daysOff) {
 		.reduce((sum, l) => sum + (leaveDays(l.from_date, l.to_date, member, team, daysOff)[month] || 0), 0);
 }
 
-export const daysLeft = (taken) => Math.max(0, LEAVE_PER_MONTH - taken);
+export const employmentOf = (member) => (member && member.employment) || 'full_time';
+export const hasLeave = (member) => WITH_LEAVE.includes(employmentOf(member));
+export const allowance = (member, type) => (hasLeave(member) ? ALLOWANCE[type === 'sick' ? 'sick' : 'day'] : 0);
+
+// A person's approved leave dates of each type in a calendar year, in date order (days off not counted).
+export function leaveDates(member, year, leaves, team, daysOff) {
+	const out = { day: [], sick: [] };
+	const first = `${year}-01-01`;
+	const last = `${year}-12-31`;
+	approvedOf(leaves, member.id).forEach((l) => {
+		const from = l.from_date > first ? l.from_date : first;
+		const to = l.to_date < last ? l.to_date : last;
+		if (from > to) return;
+		dates(from, to).forEach((d) => {
+			if (!dayOffKind(d, member, team, daysOff)) out[l.type === 'sick' ? 'sick' : 'day'].push(d);
+		});
+	});
+	out.day.sort();
+	out.sick.sort();
+	return out;
+}
+
+// The year's leave per type: {allowance, taken, left, over} (GRP_People::balance).
+export function balance(member, year, leaves, team, daysOff) {
+	const dated = leaveDates(member, year, leaves, team, daysOff);
+	const of = (type) => {
+		const a = allowance(member, type);
+		const taken = dated[type].length;
+		return { allowance: a, taken, left: Math.max(0, a - taken), over: Math.max(0, taken - a) };
+	};
+	return { day: of('day'), sick: of('sick') };
+}
+
+// A month's settlement (GRP_People::settlement): days past the year's allowance are deducted in
+// the month they fall; December pays out the days left of both allowances.
+export function settlement(member, month, leaves, team, daysOff) {
+	const dated = leaveDates(member, +month.slice(0, 4), leaves, team, daysOff);
+	let taken = 0;
+	let deducted = 0;
+	let paid = 0;
+	['day', 'sick'].forEach((type) => {
+		const a = allowance(member, type);
+		dated[type].forEach((d, i) => {
+			if (d.slice(0, 7) === month) {
+				taken += 1;
+				if (i >= a) deducted += 1;
+			}
+		});
+		if (month.slice(5) === '12') paid += Math.max(0, a - dated[type].length);
+	});
+	return { taken, result: deducted ? 'deducted' : paid ? 'paid' : 'even', paid, deducted };
+}
+
+// Days a leave request would go past the year's allowance of its type (others' rows aside).
+export function overBy(member, leave, leaves, team, daysOff) {
+	const others = leaves.filter((l) => l.id !== leave.id);
+	const years = [...new Set([leave.from_date.slice(0, 4), leave.to_date.slice(0, 4)])];
+	const type = leave.type === 'sick' ? 'sick' : 'day';
+	return years.reduce((sum, y) => {
+		const a = allowance(member, type);
+		const before = leaveDates(member, +y, others, team, daysOff)[type].length;
+		const first = `${y}-01-01`;
+		const last = `${y}-12-31`;
+		const days = Object.values(leaveDays(leave.from_date > first ? leave.from_date : first, leave.to_date < last ? leave.to_date : last, member, team, daysOff)).reduce((x, n) => x + n, 0);
+		return sum + Math.max(0, before + days - a) - Math.max(0, before - a);
+	}, 0);
+}
+
+// Festival holiday days set for a year: dates of days off in it that are not the team's weekly day off.
+export function festivalDays(year, daysOff, team) {
+	const first = `${year}-01-01`;
+	const last = `${year}-12-31`;
+	const set = new Set();
+	daysOff.forEach((o) => {
+		const from = o.from_date > first ? o.from_date : first;
+		const to = o.to_date < last ? o.to_date : last;
+		if (from <= to) dates(from, to).forEach((d) => !team.includes(weekday(d)) && set.add(d));
+	});
+	return set.size;
+}
 
 function whyOut(date, member, leaves, team, daysOff) {
 	if (approvedOf(leaves, member.id).some((l) => date >= l.from_date && date <= l.to_date)) return 'leave';

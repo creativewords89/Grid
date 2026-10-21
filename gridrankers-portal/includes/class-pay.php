@@ -13,7 +13,7 @@ defined( 'ABSPATH' ) || exit;
  * Everyone who writes daily reports (Team Leaders and Team Members) sets their own working hours,
  * monthly salary and payment details; nothing else works until they have. A day's pay is always
  * salary ÷ 30 and an hour's pay a day's pay ÷ their hours. Extra hours (time in a sent daily report
- * over their hours) are paid at that rate; leave follows the monthly settlement (6.10). On the 1st of
+ * over their hours) are paid at that rate; leave follows the monthly settlement of the yearly allowance (6.10). On the 1st of
  * each month the month before is billed: a payslip per person and a notice to them and the Super Admin.
  */
 class GRP_Pay {
@@ -229,7 +229,7 @@ class GRP_Pay {
 			);
 		}
 
-		$leave     = GRP_People::settlement( GRP_People::taken_in_month( $member, $month, $leaves, $team_weekly, $days_off ) );
+		$leave     = GRP_People::settlement( $member, $month, $leaves, $team_weekly, $days_off );
 		$extra_pay = self::extra_pay( $extra, $salary, $length );
 		$leave_pay = self::days_pay( $leave['paid'], $salary );
 		$deducted  = self::days_pay( $leave['deducted'], $salary );
@@ -398,7 +398,8 @@ class GRP_Pay {
 	}
 
 	/**
-	 * A payslip in one line: "Salary 30,000 · 6h 30m extra + 813 · 2 days off − 1,000 · total 29,813 BDT".
+	 * A payslip in one line: "Salary 30,000 · 6h 30m extra + 813 · 1 leave day over − 1,000 · total 29,813 BDT"
+	 * (December: "· 7 unused leave days paid + 7,000").
 	 *
 	 * @param array $sum See month().
 	 * @return string
@@ -411,12 +412,12 @@ class GRP_Pay {
 			$parts[] = sprintf( __( '%1$s extra + %2$s', 'gridrankers-portal' ), self::hours( $sum['extra'] ), self::money( $sum['extra_pay'] ) );
 		}
 		if ( $sum['leave_pay'] ) {
-			/* translators: %s: amount. */
-			$parts[] = sprintf( __( 'day off not used + %s', 'gridrankers-portal' ), self::money( $sum['leave_pay'] ) );
+			/* translators: 1: days, 2: amount. */
+			$parts[] = sprintf( _n( '%1$d unused leave day paid + %2$s', '%1$d unused leave days paid + %2$s', $sum['leave']['paid'], 'gridrankers-portal' ), $sum['leave']['paid'], self::money( $sum['leave_pay'] ) );
 		}
 		if ( $sum['deducted'] ) {
 			/* translators: 1: days, 2: amount. */
-			$parts[] = sprintf( __( '%1$d days off − %2$s', 'gridrankers-portal' ), $sum['leave']['taken'], self::money( $sum['deducted'] ) );
+			$parts[] = sprintf( _n( '%1$d leave day over − %2$s', '%1$d leave days over − %2$s', $sum['leave']['deducted'], 'gridrankers-portal' ), $sum['leave']['deducted'], self::money( $sum['deducted'] ) );
 		}
 		/* translators: %s: amount. */
 		$parts[] = sprintf( __( 'total %s BDT', 'gridrankers-portal' ), self::money( $sum['total'] ) );
@@ -425,7 +426,7 @@ class GRP_Pay {
 	}
 
 	/**
-	 * The Super Admin's billing notice: "4 people worked extra (+ 3,802 BDT); 3 took more than their day off (− 3,200 BDT). Total to pay 133,602 BDT."
+	 * The Super Admin's billing notice: "4 people worked extra (+ 3,802 BDT); 3 went over their leave (− 3,200 BDT). Total to pay 133,602 BDT."
 	 *
 	 * @param array[] $slips Payslips of the month.
 	 * @return string
@@ -437,7 +438,7 @@ class GRP_Pay {
 		/* translators: 1: people, 2: amount. */
 		$line = sprintf( _n( '%1$d person worked extra (+ %2$s BDT)', '%1$d people worked extra (+ %2$s BDT)', count( $extra ), 'gridrankers-portal' ), count( $extra ), self::money( array_sum( array_map( static fn( $s ) => (int) $s['extra_pay'], $slips ) ) ) );
 		/* translators: 1: people, 2: amount. */
-		$line .= '; ' . sprintf( _n( '%1$d took more than their day off (− %2$s BDT)', '%1$d took more than their day off (− %2$s BDT)', count( $deducted ), 'gridrankers-portal' ), count( $deducted ), self::money( array_sum( array_map( static fn( $s ) => (int) $s['deducted'], $slips ) ) ) );
+		$line .= '; ' . sprintf( _n( '%1$d went over their leave (− %2$s BDT)', '%1$d went over their leave (− %2$s BDT)', count( $deducted ), 'gridrankers-portal' ), count( $deducted ), self::money( array_sum( array_map( static fn( $s ) => (int) $s['deducted'], $slips ) ) ) );
 		/* translators: %s: amount. */
 		return $line . '. ' . sprintf( __( 'Total to pay %s BDT.', 'gridrankers-portal' ), self::money( $total ) );
 	}

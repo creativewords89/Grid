@@ -7,12 +7,14 @@ import TeamReports from './TeamReports.jsx';
 import PaySheet from '../pay/PaySheet.jsx';
 import PaymentInfo from '../pay/PaymentInfo.jsx';
 import SalaryMonth from '../pay/SalaryMonth.jsx';
+import Holidays from '../holidays/Holidays.jsx';
 
-// Daily reports (SPEC.md 6.18), in the sidebar for everyone. Three tabs (SPEC.md 6.19): Reports,
-// Salary and Payment information. Under Reports, Team Leaders and Team Members get My reports
+// Daily reports (SPEC.md 6.18), in the sidebar for everyone. Tabs (SPEC.md 6.19, 6.20): Reports,
+// Salary, Payment information and Holidays. Under Reports, Team Leaders and Team Members get My reports
 // (today's report, design DR-A; earlier ones on the day bar, DR-C); the Super Admin and Team Leaders
 // get Team (everyone's report for a day, DR-B). Salary is your own month (PAY-3), or the Super
-// Admin's pay sheet (PAY-4); Payment information is your pay and payment details (PAY-2).
+// Admin's pay sheet (PAY-4); Payment information is your pay and payment details (PAY-2); Holidays is
+// the calendar of festival holidays and leave (HOL-1, HOL-2).
 export default function DailyReports() {
 	const { me } = usePortal();
 	const writes = writesReports(me);
@@ -28,7 +30,7 @@ export default function DailyReports() {
 		return <PersonReports memberId={person} onBack={() => setPerson(null)} backLabel="Team reports" />;
 	}
 
-	const areas = [['reports', 'Reports'], ['salary', 'Salary'], ...(admin ? [] : [['payment', 'Payment information']])];
+	const areas = [['reports', 'Reports'], ['salary', 'Salary'], ...(admin ? [] : [['payment', 'Payment information']]), ['holidays', 'Holidays']];
 	return (
 		<div className="dr">
 			<div className="dr-top">
@@ -51,7 +53,7 @@ export default function DailyReports() {
 				)}
 				<div className="dr-top-end" ref={setSlot} />
 			</div>
-			{area === 'salary' ? admin ? <PaySheet /> : <SalaryMonth /> : area === 'payment' ? <PaymentInfo /> : tab === 'team' && team ? <TeamReports onOpenPerson={setPerson} slot={slot} /> : <MyReports />}
+			{area === 'salary' ? admin ? <PaySheet /> : <SalaryMonth /> : area === 'payment' ? <PaymentInfo /> : area === 'holidays' ? <Holidays slot={slot} /> : tab === 'team' && team ? <TeamReports onOpenPerson={setPerson} slot={slot} /> : <MyReports />}
 		</div>
 	);
 }

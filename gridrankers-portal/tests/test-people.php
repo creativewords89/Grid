@@ -1,7 +1,7 @@
 <?php
 /**
- * Tests for GRP_People: days off, leave day counting, monthly settlement, Who's out today
- * and the year-end report (SPEC.md 6.10).
+ * Tests for GRP_People: days off, leave day counting, the yearly allowance and its monthly
+ * settlement, festival holidays, Who's out today and the year-end report (SPEC.md 6.10).
  *
  * @package GridRankers_Portal
  */
@@ -101,36 +101,140 @@ class Test_GRP_People extends WP_UnitTestCase {
 		$this->assertSame( 0, GRP_People::taken_in_month( $member, '2026-12', $leaves, null, array() ) );
 	}
 
-	public function test_monthly_settlement() {
+	public function test_yearly_allowance_by_employment() {
+		foreach ( array( 'full_time', 'part_time' ) as $type ) {
+			$this->assertSame( 10, GRP_People::allowance( array( 'employment' => $type ), 'day' ) );
+			$this->assertSame( 14, GRP_People::allowance( array( 'employment' => $type ), 'sick' ) );
+		}
+		foreach ( array( 'intern', 'contractual' ) as $type ) {
+			$this->assertFalse( GRP_People::has_leave( array( 'employment' => $type ) ) );
+			$this->assertSame( 0, GRP_People::allowance( array( 'employment' => $type ), 'day' ) );
+			$this->assertSame( 0, GRP_People::allowance( array( 'employment' => $type ), 'sick' ) );
+		}
+	}
+
+	public function test_balance_counts_the_calendar_year_only() {
+		$member  = array(
+			'id'         => 'm1',
+			'weekly_off' => null,
+			'employment' => 'full_time',
+		);
+		$leaves  = array(
+			// Mon 28 – Thu 31 Dec 2026 and Fri 1 – Mon 4 Jan 2027: 4 days in 2026, 3 in 2027 (Friday 1 Jan is off).
+			$this->leave( 'm1', '2026-12-28', '2027-01-04' ),
+			$this->leave( 'm1', '2026-10-05', '2026-10-07', 'approved', 'sick' ),
+			$this->leave( 'm1', '2026-11-02', '2026-11-03', 'pending' ),
+		);
+		$balance = GRP_People::balance( $member, 2026, $leaves, null, $this->days_off );
 		$this->assertSame(
 			array(
-				'taken'    => 0,
-				'result'   => 'paid',
-				'paid'     => 1,
-				'deducted' => 0,
+				'allowance' => 10,
+				'taken'     => 4,
+				'left'      => 6,
+				'over'      => 0,
 			),
-			GRP_People::settlement( 0 )
+			$balance['day']
+		);
+		// Durga Puja (Tue 6 Oct) is a day off, not sick leave.
+		$this->assertSame( 2, $balance['sick']['taken'] );
+		$this->assertSame( 12, $balance['sick']['left'] );
+		$this->assertSame( 3, GRP_People::balance( $member, 2027, $leaves, null, $this->days_off )['day']['taken'] );
+	}
+
+	public function test_settlement_deducts_days_past_the_allowance_in_date_order() {
+		$member = array(
+			'id'         => 'm1',
+			'weekly_off' => array(),
+			'employment' => 'full_time',
+		);
+		$leaves = array(
+			$this->leave( 'm1', '2026-01-01', '2026-01-08' ),
+			// The 9th and 10th casual days fall in February, the 11th to 13th in March.
+			$this->leave( 'm1', '2026-02-27', '2026-03-03' ),
 		);
 		$this->assertSame(
 			array(
-				'taken'    => 1,
+				'taken'    => 8,
 				'result'   => 'even',
 				'paid'     => 0,
 				'deducted' => 0,
 			),
-			GRP_People::settlement( 1 )
+			GRP_People::settlement( $member, '2026-01', $leaves, null, array() )
 		);
+		$this->assertSame( 0, GRP_People::settlement( $member, '2026-02', $leaves, null, array() )['deducted'] );
 		$this->assertSame(
 			array(
 				'taken'    => 3,
 				'result'   => 'deducted',
 				'paid'     => 0,
-				'deducted' => 2,
+				'deducted' => 3,
 			),
-			GRP_People::settlement( 3 )
+			GRP_People::settlement( $member, '2026-03', $leaves, null, array() )
 		);
-		$this->assertSame( 1, GRP_People::days_left( 0 ) );
-		$this->assertSame( 0, GRP_People::days_left( 3 ) );
+	}
+
+	public function test_december_pays_out_unused_leave_of_both_types() {
+		$member = array(
+			'id'         => 'm1',
+			'weekly_off' => null,
+			'employment' => 'full_time',
+		);
+		$leaves = array(
+			$this->leave( 'm1', '2026-03-02', '2026-03-04' ),
+			$this->leave( 'm1', '2026-12-01', '2026-12-01', 'approved', 'sick' ),
+		);
+		// 10 − 3 casual + 14 − 1 sick.
+		$this->assertSame(
+			array(
+				'taken'    => 1,
+				'result'   => 'paid',
+				'paid'     => 20,
+				'deducted' => 0,
+			),
+			GRP_People::settlement( $member, '2026-12', $leaves, null, array() )
+		);
+		$this->assertSame( 0, GRP_People::settlement( $member, '2026-11', $leaves, null, array() )['paid'] );
+	}
+
+	public function test_interns_and_contractual_employees_have_every_leave_day_deducted() {
+		foreach ( array( 'intern', 'contractual' ) as $type ) {
+			$member = array(
+				'id'         => 'm1',
+				'weekly_off' => null,
+				'employment' => $type,
+			);
+			$leaves = array( $this->leave( 'm1', '2026-12-01', '2026-12-02', 'approved', 'sick' ) );
+			$this->assertSame(
+				array(
+					'taken'    => 2,
+					'result'   => 'deducted',
+					'paid'     => 0,
+					'deducted' => 2,
+				),
+				GRP_People::settlement( $member, '2026-12', $leaves, null, array() ),
+				$type
+			);
+		}
+	}
+
+	public function test_festival_days_skip_the_weekly_day_off_and_count_a_date_once() {
+		$days_off = array(
+			array(
+				'from_date' => '2026-10-20',
+				'to_date'   => '2026-10-24',
+			),
+			array(
+				'from_date' => '2026-10-21',
+				'to_date'   => '2026-10-21',
+			),
+			array(
+				'from_date' => '2025-12-31',
+				'to_date'   => '2026-01-01',
+			),
+		);
+		// Tue 20 – Sat 24 Oct without Friday 23rd, and Thu 1 Jan.
+		$this->assertSame( 5, GRP_People::festival_days( 2026, $days_off, null ) );
+		$this->assertSame( 1, GRP_People::festival_days( 2025, $days_off, null ) );
 	}
 
 	public function test_overlaps_ignore_rejected_cancelled_and_other_people() {
@@ -209,11 +313,15 @@ class Test_GRP_People extends WP_UnitTestCase {
 		$this->assertSame(
 			array(
 				array(
-					'member_id' => 'max',
-					'day'       => 3,
-					'sick'      => 2,
-					'total'     => 5,
-					'days_off'  => 57,
+					'member_id'  => 'max',
+					'employment' => 'full_time',
+					'day'        => 3,
+					'sick'       => 2,
+					'total'      => 5,
+					'day_left'   => 7,
+					'sick_left'  => 12,
+					'over'       => 0,
+					'days_off'   => 57,
 				),
 			),
 			$report

@@ -113,7 +113,7 @@ export function feedOf(data, me, today, now = Date.now()) {
 		.forEach((l) => {
 			const ok = l.status === 'approved';
 			const issued = ok && l.created_by && l.created_by !== l.member_id;
-			const type = l.type === 'sick' ? 'Sick leave' : 'Day leave';
+			const type = l.type === 'sick' ? 'Sick leave' : 'Casual leave';
 			push({
 				key: issued ? `leave:${l.id}:issued` : `leave:${l.id}:${l.status}`,
 				cat: 'leave',
@@ -181,7 +181,7 @@ export function waitTitle(item) {
 	if (item.kind === 'untick') return `${who} asked to untick ${item.col.name} · ${item.kw.keyword}`;
 	if (item.kind === 'leave') {
 		const l = item.leave;
-		return `${who} asks for ${l.type === 'sick' ? 'sick' : 'day'} leave · ${range(l.from_date, l.to_date)}`;
+		return `${who} asks for ${l.type === 'sick' ? 'sick' : 'casual'} leave · ${range(l.from_date, l.to_date)}`;
 	}
 	const r = item.review;
 	return r.review.reviewer ? `${who} asked you to review “${r.title}”` : `${who} finished “${r.title}”`;

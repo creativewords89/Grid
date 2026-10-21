@@ -154,6 +154,31 @@ class GRP_REST_People extends GRP_REST_Controller {
 		if ( ! $from || ! $to || $to < $from ) {
 			return self::invalid( __( 'Pick the dates of the day off.', 'gridrankers-portal' ) );
 		}
+		// Festival holidays: at most 13 days a calendar year (SPEC.md 6.10), so one year at a time.
+		if ( substr( $from, 0, 4 ) !== substr( $to, 0, 4 ) ) {
+			return self::invalid( __( 'A holiday must end in the year it starts.', 'gridrankers-portal' ), 'grp_festival_year' );
+		}
+		$year = (int) substr( $from, 0, 4 );
+		$days = GRP_People::festival_days(
+			$year,
+			array_merge(
+				self::days_off(),
+				array(
+					array(
+						'from_date' => $from,
+						'to_date'   => $to,
+					),
+				)
+			),
+			self::team_weekly()
+		);
+		if ( $days > GRP_People::FESTIVAL_PER_YEAR ) {
+			return self::conflict(
+				/* translators: 1: number of days, 2: year, 3: the limit. */
+				sprintf( __( 'That makes %1$d festival holiday days in %2$d; the limit is %3$d a year.', 'gridrankers-portal' ), $days, $year, GRP_People::FESTIVAL_PER_YEAR ),
+				'grp_festival_full'
+			);
+		}
 
 		$row = GRP_Store::transaction(
 			static function () use ( $kind, $name, $from, $to ) {

@@ -23,7 +23,7 @@ test('leave tab: numbers, requests and settlement', async ({ page }) => {
 
 	// Team Member asks for a day a week from now.
 	await signIn(page, MAX);
-	await page.locator('.md-card', { has: page.getByRole('heading', { name: 'Day leave' }) }).getByRole('button', { name: 'Request day leave' }).click();
+	await page.locator('.md-card', { has: page.getByRole('heading', { name: 'Leave', exact: true }) }).getByRole('button', { name: 'Request leave' }).click();
 	await dlg.getByLabel('Leave type').selectOption('day');
 	await dlg.getByLabel('From').fill(DAY);
 	await dlg.getByLabel('To').fill(DAY);
@@ -37,7 +37,7 @@ test('leave tab: numbers, requests and settlement', async ({ page }) => {
 	await openTeam(page, /^Leave/);
 	await expect(page.locator('.lv-stat')).toHaveCount(3);
 	await expect(stat('Waiting for you')).toContainText('Max Member');
-	await expect(stat('Out today')).toContainText('Max Member · Day leave');
+	await expect(stat('Out today')).toContainText('Max Member · Casual leave');
 	await expect(page.locator('#leaveReport')).toHaveCount(0);
 	const row = list.locator('.lv-row.wait', { hasText: 'Dentist' });
 	await expect(list.locator('.lv-row:not(.lv-th)').first()).toContainText('Dentist');
@@ -61,7 +61,7 @@ test('leave tab: numbers, requests and settlement', async ({ page }) => {
 	await expect(done).toContainText('“Get well soon”');
 	await expect(stat('Waiting for you')).toContainText('Nothing to decide');
 
-	// Issue a day off to Max (SPEC.md 6.10, LV-C): approved day leave, marked Issued.
+	// Issue a day off to Max (SPEC.md 6.10, LV-C): approved casual leave, marked Issued.
 	await page.getByRole('button', { name: '+ Issue day off' }).click();
 	await expect(dlg.getByRole('heading', { name: 'Issue a day off' })).toBeVisible();
 	await expect(dlg.getByRole('radio', { name: /Lee Lead/ })).toHaveCount(0);
@@ -92,13 +92,16 @@ test('leave tab: numbers, requests and settlement', async ({ page }) => {
 	await expect(page.locator('.lv-stat')).toHaveCount(4);
 	await expect(stat('Over the allowance')).toBeVisible();
 	const set = page.locator('#leaveReport');
-	await expect(set.locator('.lv-row', { hasText: 'Max Member' })).toContainText(/of 1/);
-	await expect(set.locator('.lv-tot')).toContainText('paid');
+	// The yearly allowance (SPEC.md 6.10): Max is well within it, so his month is even.
+	await expect(set.locator('.lv-row', { hasText: 'Max Member' })).toContainText(/Even|paid out/);
+	await expect(set.locator('.lv-tot')).toContainText('paid out');
 	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/leave-admin.png', fullPage: true });
 	await set.getByRole('button', { name: 'Previous' }).click();
 	await expect(set.getByRole('button', { name: 'Next' })).toBeEnabled();
 	await set.getByRole('button', { name: 'Year-end' }).click();
-	await expect(set.locator('.lv-th')).toContainText('Sick leave');
+	await expect(set.locator('.lv-th')).toContainText('Sick');
+	await expect(set.locator('.lv-th')).toContainText('Left · paid out');
+	await expect(set.locator('.lv-row', { hasText: 'Max Member' })).toContainText('Full-Time');
 	await expect(set.getByRole('button', { name: 'Next' })).toBeDisabled();
 	await signOutOwner(page);
 	noErrors();

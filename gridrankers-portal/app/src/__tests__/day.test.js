@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { approvals, attention, myProjects, notices, PROJECT_FILTERS, strips } from '../lib/day.js';
 import { bellItems } from '../lib/feed.js';
-import { dayOffKind, daysLeft, fill, leaveDays, messages, missingProfile, profileLocked, takenInMonth, teamWeekly, weekday, whosOut } from '../lib/people.js';
+import { balance, dayOffKind, fill, leaveDays, messages, missingProfile, profileLocked, takenInMonth, teamWeekly, weekday, whosOut } from '../lib/people.js';
 import { emptyData } from '../lib/store.js';
 
 const TODAY = '2026-10-01'; // a Thursday
@@ -44,8 +44,7 @@ describe('people helpers', () => {
 			{ id: 'l2', member_id: 'max', status: 'pending', from_date: '2026-10-01', to_date: '2026-10-01' },
 		];
 		expect(takenInMonth(d.members.sara, '2026-10', leaves, [5], [])).toBe(3);
-		expect(daysLeft(2)).toBe(0);
-		expect(daysLeft(0)).toBe(1);
+		expect(balance(d.members.sara, 2026, leaves, [5], []).day).toEqual({ allowance: 10, taken: 4, left: 6, over: 0 });
 		const out = whosOut(TODAY, Object.values(d.members), leaves, [5], Object.values(d.days_off), 'max');
 		expect(out.map((o) => [o.member.id, o.why, o.back])).toEqual([
 			['rafi', 'day_off', '2026-10-02'],

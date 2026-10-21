@@ -1,6 +1,6 @@
 <?php
 /**
- * Leave, days off and Who's out today (SPEC.md 6.10). Pure functions, unit-tested.
+ * Leave, holidays, days off and Who's out today (SPEC.md 6.10). Pure functions, unit-tested.
  *
  * @package GridRankers_Portal
  */
@@ -22,9 +22,28 @@ class GRP_People {
 	const DEFAULT_WEEKLY_OFF = array( 5 );
 
 	/**
-	 * Leave days everyone (but the Super Admin) gets per calendar month.
+	 * Employment types (SPEC.md 6.10, design HOL-1).
 	 */
-	const LEAVE_PER_MONTH = 1;
+	const EMPLOYMENT = array( 'intern', 'full_time', 'part_time', 'contractual' );
+
+	/**
+	 * Employment types with leave days; interns and contractual employees have none.
+	 */
+	const WITH_LEAVE = array( 'full_time', 'part_time' );
+
+	/**
+	 * Leave days a full-time or part-time employee gets per calendar year (Jan 1 – Dec 31), by leave type:
+	 * `day` is casual leave.
+	 */
+	const ALLOWANCE = array(
+		'day'  => 10,
+		'sick' => 14,
+	);
+
+	/**
+	 * Festival holidays (event and seasonal days off) the Super Admin may set per calendar year.
+	 */
+	const FESTIVAL_PER_YEAR = 13;
 
 	/**
 	 * Leave may start this many days in the past (e.g. sick leave told afterwards).
@@ -135,32 +154,146 @@ class GRP_People {
 	}
 
 	/**
-	 * Leave days left in a month (never below 0).
+	 * Whether a person has leave days: full-time and part-time employees.
 	 *
-	 * @param int $taken Days taken that month.
-	 * @return int
+	 * @param array|null $member Member row.
+	 * @return bool
 	 */
-	public static function days_left( $taken ) {
-		return max( 0, self::LEAVE_PER_MONTH - (int) $taken );
+	public static function has_leave( $member ) {
+		return in_array( (string) ( $member['employment'] ?? 'full_time' ), self::WITH_LEAVE, true );
 	}
 
 	/**
-	 * Month-end settlement: 0 taken → 1 day paid; 1 → even; more → taken − 1 deducted.
+	 * Leave days of a type a person gets per calendar year: 10 casual, 14 sick for full-time and
+	 * part-time employees, none for interns and contractual employees.
 	 *
-	 * @param int $taken Days taken that month.
+	 * @param array|null $member Member row.
+	 * @param string     $type   `day` (casual) or `sick`.
+	 * @return int
+	 */
+	public static function allowance( $member, $type ) {
+		return self::has_leave( $member ) ? self::ALLOWANCE[ 'sick' === $type ? 'sick' : 'day' ] : 0;
+	}
+
+	/**
+	 * A person's approved leave days of each type in a calendar year, in date order (`day` and
+	 * `sick` => list of `Y-m-d`). Days off are not counted.
+	 *
+	 * @param array   $member      Member row.
+	 * @param int     $year        Year.
+	 * @param array[] $leaves      Leave rows (any person, any status).
+	 * @param mixed   $team_weekly Team weekly day off.
+	 * @param array[] $days_off    Whole-team days off.
+	 * @return array{day: string[], sick: string[]}
+	 */
+	public static function leave_dates( array $member, $year, array $leaves, $team_weekly, array $days_off ) {
+		$first = sprintf( '%04d-01-01', $year );
+		$last  = sprintf( '%04d-12-31', $year );
+		$out   = array(
+			'day'  => array(),
+			'sick' => array(),
+		);
+		foreach ( self::approved( $leaves, $member['id'] ) as $leave ) {
+			$type = 'sick' === ( $leave['type'] ?? 'day' ) ? 'sick' : 'day';
+			foreach ( self::dates( max( $leave['from_date'], $first ), min( $leave['to_date'], $last ) ) as $date ) {
+				if ( null === self::day_off_kind( $date, $member, $team_weekly, $days_off ) ) {
+					$out[ $type ][] = $date;
+				}
+			}
+		}
+		sort( $out['day'] );
+		sort( $out['sick'] );
+
+		return $out;
+	}
+
+	/**
+	 * A person's leave in a calendar year, per type: allowance, days taken, days left and days over.
+	 *
+	 * @param array   $member      Member row.
+	 * @param int     $year        Year.
+	 * @param array[] $leaves      Leave rows.
+	 * @param mixed   $team_weekly Team weekly day off.
+	 * @param array[] $days_off    Whole-team days off.
+	 * @return array{day: array, sick: array} Each `{allowance, taken, left, over}`.
+	 */
+	public static function balance( array $member, $year, array $leaves, $team_weekly, array $days_off ) {
+		$out = array();
+		foreach ( self::leave_dates( $member, $year, $leaves, $team_weekly, $days_off ) as $type => $dates ) {
+			$allowance    = self::allowance( $member, $type );
+			$taken        = count( $dates );
+			$out[ $type ] = array(
+				'allowance' => $allowance,
+				'taken'     => $taken,
+				'left'      => max( 0, $allowance - $taken ),
+				'over'      => max( 0, $taken - $allowance ),
+			);
+		}
+
+		return $out;
+	}
+
+	/**
+	 * A month's leave settlement (SPEC.md 6.10): leave days taken that month; the days among them
+	 * past the year's allowance of their type (counted in date order) are deducted; in December
+	 * the days left of both allowances are paid out.
+	 *
+	 * @param array   $member      Member row.
+	 * @param string  $month       `YYYY-MM`.
+	 * @param array[] $leaves      Leave rows.
+	 * @param mixed   $team_weekly Team weekly day off.
+	 * @param array[] $days_off    Whole-team days off.
 	 * @return array `{taken, result: paid|even|deducted, paid, deducted}`.
 	 */
-	public static function settlement( $taken ) {
-		$taken    = max( 0, (int) $taken );
-		$paid     = self::days_left( $taken );
-		$deducted = max( 0, $taken - self::LEAVE_PER_MONTH );
+	public static function settlement( array $member, $month, array $leaves, $team_weekly, array $days_off ) {
+		$year     = (int) substr( $month, 0, 4 );
+		$taken    = 0;
+		$deducted = 0;
+		$paid     = 0;
+		foreach ( self::leave_dates( $member, $year, $leaves, $team_weekly, $days_off ) as $type => $dates ) {
+			$allowance = self::allowance( $member, $type );
+			foreach ( $dates as $i => $date ) {
+				if ( substr( $date, 0, 7 ) === $month ) {
+					++$taken;
+					$deducted += $i >= $allowance ? 1 : 0;
+				}
+			}
+			if ( '12' === substr( $month, 5, 2 ) ) {
+				$paid += max( 0, $allowance - count( $dates ) );
+			}
+		}
 
 		return array(
 			'taken'    => $taken,
-			'result'   => $paid ? 'paid' : ( $deducted ? 'deducted' : 'even' ),
+			'result'   => $deducted ? 'deducted' : ( $paid ? 'paid' : 'even' ),
 			'paid'     => $paid,
 			'deducted' => $deducted,
 		);
+	}
+
+	/**
+	 * Festival holiday days set for a calendar year: the dates of event and seasonal days off in
+	 * it that are not the team's weekly day off.
+	 *
+	 * @param int     $year        Year.
+	 * @param array[] $days_off    Whole-team days off.
+	 * @param mixed   $team_weekly Team weekly day off.
+	 * @return int
+	 */
+	public static function festival_days( $year, array $days_off, $team_weekly ) {
+		$first  = sprintf( '%04d-01-01', $year );
+		$last   = sprintf( '%04d-12-31', $year );
+		$weekly = self::weekly_off( null, $team_weekly );
+		$dates  = array();
+		foreach ( $days_off as $off ) {
+			foreach ( self::dates( max( $off['from_date'], $first ), min( $off['to_date'], $last ) ) as $date ) {
+				if ( ! in_array( self::weekday( $date ), $weekly, true ) ) {
+					$dates[ $date ] = true;
+				}
+			}
+		}
+
+		return count( $dates );
 	}
 
 	/**
@@ -225,36 +358,34 @@ class GRP_People {
 	}
 
 	/**
-	 * Year-end counts per person: approved day leave, sick leave, their total, and the days off they had.
+	 * Year-end report per person: their employment, approved casual (`day`) and sick leave, their
+	 * total, the days left of each allowance (paid out with December's salary), the days over
+	 * (deducted) and the days off they had.
 	 *
 	 * @param int     $year        Year.
 	 * @param array[] $members     Members.
 	 * @param array[] $leaves      Leave rows.
 	 * @param mixed   $team_weekly Team weekly day off.
 	 * @param array[] $days_off    Whole-team days off.
-	 * @return array[] `{member_id, day, sick, total, days_off}`.
+	 * @return array[] `{member_id, employment, day, sick, total, day_left, sick_left, over, days_off}`.
 	 */
 	public static function year_report( $year, array $members, array $leaves, $team_weekly, array $days_off ) {
 		$first = sprintf( '%04d-01-01', $year );
 		$last  = sprintf( '%04d-12-31', $year );
 		$rows  = array();
 		foreach ( $members as $member ) {
-			$row = array(
-				'member_id' => $member['id'],
-				'day'       => 0,
-				'sick'      => 0,
-				'total'     => 0,
-				'days_off'  => 0,
+			$balance = self::balance( $member, $year, $leaves, $team_weekly, $days_off );
+			$row     = array(
+				'member_id'  => $member['id'],
+				'employment' => (string) ( $member['employment'] ?? 'full_time' ),
+				'day'        => $balance['day']['taken'],
+				'sick'       => $balance['sick']['taken'],
+				'total'      => $balance['day']['taken'] + $balance['sick']['taken'],
+				'day_left'   => $balance['day']['left'],
+				'sick_left'  => $balance['sick']['left'],
+				'over'       => $balance['day']['over'] + $balance['sick']['over'],
+				'days_off'   => 0,
 			);
-			foreach ( self::approved( $leaves, $member['id'] ) as $leave ) {
-				$from = max( $leave['from_date'], $first );
-				$to   = min( $leave['to_date'], $last );
-				if ( $from <= $to ) {
-					$type          = 'sick' === $leave['type'] ? 'sick' : 'day';
-					$row[ $type ] += array_sum( self::leave_days( $from, $to, $member, $team_weekly, $days_off ) );
-				}
-			}
-			$row['total'] = $row['day'] + $row['sick'];
 			foreach ( self::dates( $first, $last ) as $date ) {
 				if ( self::day_off_kind( $date, $member, $team_weekly, $days_off ) ) {
 					++$row['days_off'];

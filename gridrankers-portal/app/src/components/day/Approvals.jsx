@@ -1,21 +1,14 @@
 import { usePortal } from '../../context.js';
 import { ago, waitTitle } from '../../lib/feed.js';
 import { short } from '../../lib/format.js';
-import { leaveDays, monthName, takenInMonth, teamWeekly } from '../../lib/people.js';
+import { overBy, teamWeekly } from '../../lib/people.js';
 import { rowsOf } from '../../lib/store.js';
 import useReview from '../review/useReview.js';
 
-// "within October's 1 day" / "2 days over, deducted" for a pending request.
+// "within the year's allowance" / "2 days over, deducted" for a pending request (SPEC.md 6.10).
 function overText(data, leave) {
-	const person = data.members[leave.member_id];
-	const team = teamWeekly(data);
-	const daysOff = rowsOf(data, 'days_off');
-	const others = rowsOf(data, 'leave').filter((l) => l.id !== leave.id);
-	const parts = Object.entries(leaveDays(leave.from_date, leave.to_date, person, team, daysOff)).map(([month, days]) => {
-		const over = takenInMonth(person, month, others, team, daysOff) + days - 1;
-		return over > 0 ? `${over} day${over === 1 ? '' : 's'} over in ${monthName(month)}, deducted` : `within ${monthName(month)}’s 1 day`;
-	});
-	return { text: parts.join(' · '), over: parts.some((p) => p.includes('over')) };
+	const over = overBy(data.members[leave.member_id], leave, rowsOf(data, 'leave'), teamWeekly(data), rowsOf(data, 'days_off'));
+	return { text: over > 0 ? `${over} day${over === 1 ? '' : 's'} over the allowance, deducted` : 'within the year’s allowance', over: over > 0 };
 }
 
 // One request as in design NF-C, without descriptions: a coloured icon, one sentence (who and what;
@@ -113,7 +106,7 @@ export function ApprovalItem({ item }) {
 		const l = item.leave;
 		const range = l.from_date === l.to_date ? short(l.from_date) : `${short(l.from_date)} – ${short(l.to_date)}`;
 		const info = overText(data, l);
-		const kind = l.type === 'sick' ? 'Sick leave' : 'Day leave';
+		const kind = l.type === 'sick' ? 'Sick leave' : 'Casual leave';
 		const answer = async (action) => {
 			const message = await confirm({
 				title: action === 'approve' ? `Approve ${item.who.name}’s leave?` : `Reject ${item.who.name}’s leave?`,
