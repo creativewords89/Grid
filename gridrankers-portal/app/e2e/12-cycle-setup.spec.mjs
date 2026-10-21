@@ -36,7 +36,11 @@ test('assign and review a new cycle', async ({ page }) => {
 	await page.locator('.md-bell-btn').click();
 	await expect(page.locator('.md-pop li.must.new', { hasText: 'New cycle for Cycle Co' })).toHaveCount(1);
 	await page.locator('.md-bell-btn').click();
-	await expect(box('Notifications').getByRole('button', { name: 'Mark all read' })).toHaveCount(0);
+	// Mark all read clears the rest but never the reminder (opening the bell clears nothing).
+	const markAll = box('Notifications').getByRole('button', { name: 'Mark all read' });
+	if (await markAll.count()) await markAll.click();
+	await expect(markAll).toHaveCount(0);
+	await expect(reminder).toBeVisible();
 
 	// Review last cycle: feedback on the short one, "Looks good" on the other.
 	await setup.getByRole('button', { name: 'Review last cycle' }).click();

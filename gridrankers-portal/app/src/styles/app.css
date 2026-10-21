@@ -1382,3 +1382,12 @@ button.dr-row-t:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .tg-away td,.tg-away .tg-who{background:var(--panel-2)}
 .tg-wrap>.empty{padding:16px}
 @media (max-width:900px){.tg-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Bell (SPEC.md 6.9): items stay new until marked read. */
+.md-pop-h{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.md-pop-h h2{margin:0}
+.md-pop-h .linkbtn{font-size:.8rem}
+.md-pop-row{display:flex;align-items:flex-start;gap:8px}
+.md-pop-row b{flex:1;min-width:0}
+.md-pop-read{flex:none;width:26px;height:26px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink-2);font-size:.8rem;line-height:1}
+.md-pop-read:hover{color:var(--done);border-color:var(--done)}
