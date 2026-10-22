@@ -1,7 +1,7 @@
 // Daily reports → Holidays (SPEC.md 6.20, designs HOL-1 to HOL-3): the month calendar, the
 // festival holidays of a year and the tiles. The rules are those of people.js (SPEC.md 6.10).
 import { addMonths } from './pay.js';
-import { dates, dayOffKind, festivalDays, weekday } from './people.js';
+import { balance, dates, dayOffKind, festivalDays, hasLeave, weekday } from './people.js';
 
 export const WEEK = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
@@ -130,4 +130,23 @@ export function runsOf(days) {
 		} else runs.push({ from: d.date, to: d.date, n: 1, leave: d.leave, status: d.status, type: d.type });
 	});
 	return runs;
+}
+
+// Everyone's leave (design HOL-11B2): each person's casual and sick days left of the year, the
+// fewest left (as a share of their allowance) first; people without leave days last, by name.
+export function leaveTable(people, year, leaves, team, daysOff, rules) {
+	return people
+		.map((p) => {
+			const b = balance(p, year, leaves, team, daysOff, rules);
+			const all = b.day.allowance + b.sick.allowance;
+			return { person: p, day: b.day, sick: b.sick, share: hasLeave(p) && all ? (b.day.left + b.sick.left) / all : 2 };
+		})
+		.sort((a, b) => a.share - b.share || a.person.name.localeCompare(b.person.name));
+}
+
+// One page of a list: `{rows, page, pages, from, to}` (`page` from 0, kept in range).
+export function pageOf(list, page, size) {
+	const pages = Math.max(1, Math.ceil(list.length / size));
+	const at = Math.min(Math.max(0, page), pages - 1);
+	return { rows: list.slice(at * size, at * size + size), page: at, pages, from: list.length ? at * size + 1 : 0, to: Math.min(list.length, at * size + size) };
 }

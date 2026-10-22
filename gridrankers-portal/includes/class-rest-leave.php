@@ -76,8 +76,9 @@ class GRP_REST_Leave extends GRP_REST_Controller {
 	}
 
 	/**
-	 * POST /leave `{type: day|sick, from, to, reason?}` for oneself, or `{member_id, from, to,
-	 * note?}` to issue a day off to someone else (Team Leaders and the Super Admin).
+	 * POST /leave `{type: day|sick, from, to, reason?}` for oneself, or `{member_id, type?, from, to,
+	 * note?}` to add casual (the default) or sick leave for someone else (Team Leaders and the Super
+	 * Admin, design HOL-11B2).
 	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response|WP_Error
@@ -138,8 +139,7 @@ class GRP_REST_Leave extends GRP_REST_Controller {
 		$lead = GRP_Permissions::ROLE_LEAD === GRP_Permissions::effective_role( $actor );
 		$row  = array(
 			'member_id'  => $member_id,
-			// An issued day off is day leave.
-			'type'       => ! $issue && 'sick' === $request['type'] ? 'sick' : 'day',
+			'type'       => 'sick' === $request['type'] ? 'sick' : 'day',
 			'from_date'  => $from,
 			'to_date'    => $to,
 			'days'       => min( 255, $days ),
