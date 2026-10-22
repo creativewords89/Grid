@@ -105,7 +105,6 @@ class Test_GRP_REST_People extends GRP_REST_TestCase {
 				'from'      => $this->day( $from ),
 				'to'        => $this->day( $to ),
 				'note'      => 'Thanks for the launch',
-				'type'      => 'sick',
 				'reason'    => 'ignored',
 			)
 		);
@@ -136,6 +135,11 @@ class Test_GRP_REST_People extends GRP_REST_TestCase {
 		$this->assertStatus( 403, $issue( 'lead', 'admin', 3, 3 ), 'never to the Super Admin' );
 		$this->assertStatus( 403, $issue( 'member', 'other', 3, 3 ), 'Team Members cannot issue' );
 		$this->assertStatus( 400, $issue( 'admin', 'other', 4, 4 ), 'a Friday only' );
+		// Add sick leave (HOL-11B2): the type asked for, approved straight away.
+		$sick = $issue( 'admin', 'other', 5, 5, array( 'type' => 'sick' ) );
+		$this->assertStatus( 201, $sick );
+		$this->assertSame( 'sick', $sick->get_data()['type'] );
+		$this->assertSame( 'approved', $sick->get_data()['status'] );
 
 		// The leader who issued it may cancel it; the member may not.
 		$this->assertStatus( 403, $this->api_as( 'member', 'PATCH', "/leave/{$leave['id']}", array( 'action' => 'cancel' ) ) );

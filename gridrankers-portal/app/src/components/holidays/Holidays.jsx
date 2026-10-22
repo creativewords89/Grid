@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { usePortal } from '../../context.js';
 import { short } from '../../lib/format.js';
-import { WEEK, dayChips, holidayOn, holidaysOf, monthCells, takenThisMonth, workingDays, yearMonths } from '../../lib/holidays.js';
-import { mayDecideLeave, overBy, sortLeave } from '../../lib/leaveBoard.js';
+import { WEEK, dayChips, holidayOn, holidaysOf, leaveTable, monthCells, pageOf, yearMonths } from '../../lib/holidays.js';
+import { sortLeave } from '../../lib/leaveBoard.js';
 import { addMonths } from '../../lib/pay.js';
 import { EMPLOYMENT, WEEKDAYS, balance, dayOffKind, employmentOf, festivalDays, firstYearSince, hasLeave, leaveDays, leavePeople, leaveRules, MAX_LEAVE_DAYS, monthName, teamWeekly, whosOut, yearDays } from '../../lib/people.js';
 import Balances, { RequestDialog } from './Balances.jsx';
@@ -17,8 +17,8 @@ import { STATUS, TYPE, leaveActions, rangeText, useLeaveAction } from '../team/l
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 const monthTitle = (month) => `${monthName(month)} ${month.slice(0, 4)}`;
 
-// Daily reports → Holidays (SPEC.md 6.20): the Super Admin and Team Leaders get design HOL-1 (tiles,
-// calendar, Waiting for you, Festival holidays, Out today); Team Members HOL-2 (My leave, calendar,
+// Daily reports → Holidays (SPEC.md 6.20): the Super Admin and Team Leaders get design HOL-11B2
+// (Everyone's leave, calendar, Add, Festival holidays; requests are answered on My day); Team Members HOL-2 (My leave, calendar,
 // upcoming holidays, their requests, the year). A Team Leader also gets their own leave card.
 // ‹ month › and Month / Year sit in the tabs row (`slot`). Holiday system is in Admin settings.
 export default function Holidays({ slot, scope }) {
@@ -71,7 +71,7 @@ export default function Holidays({ slot, scope }) {
 		<div className="hol">
 			{slot ? createPortal(nav, slot) : nav}
 			{takes && <Balances year={year} onAsk={() => setAsking(true)} picked={picked} />}
-			{manager && <Tiles month={month} year={year} />}
+			{manager && <Everyone year={year} />}
 			<div className="hol-main">
 				<section className="hol-cal-card" aria-label={mode === 'month' ? monthTitle(month) : String(year)}>
 					{calendar}
@@ -80,9 +80,8 @@ export default function Holidays({ slot, scope }) {
 				<div className="hol-side">
 					{manager ? (
 						<>
-							<Waiting />
+							{!viewOnly && <AddBox year={year} />}
 							<Festival year={year} />
-							<OutToday />
 						</>
 					) : (
 						<MyRequests />
@@ -94,36 +93,119 @@ export default function Holidays({ slot, scope }) {
 	);
 }
 
-// The four tiles of HOL-1.
-function Tiles({ month, year }) {
-	const { data, me } = usePortal();
+// Everyone's leave (design HOL-11B2): each person's casual and sick days left as bars, the fewest
+// left first, 5 a page, a search at the top right and "Out today" for anyone on leave today.
+const PAGE = 5;
+function Everyone({ year }) {
+	const { data, me, today } = usePortal();
+	const [q, setQ] = useState('');
+	const [page, setPage] = useState(0);
 	const team = teamWeekly(data);
 	const daysOff = rowsOf(data, 'days_off');
 	const leaves = rowsOf(data, 'leave');
-	const set = festivalDays(year, daysOff, team);
-	const limit = yearDays(leaveRules(data), year).festival;
-	const taken = takenThisMonth(month, leaves, data.members, team, daysOff);
-	const waiting = leaves.filter((l) => mayDecideLeave(l, me, data)).length;
+	const query = q.trim().toLowerCase();
+	const all = leaveTable(leavePeople(data), year, leaves, team, daysOff, leaveRules(data)).filter((r) => !query || r.person.name.toLowerCase().includes(query));
+	const shown = pageOf(all, page, PAGE);
+	const out = new Set(
+		whosOut(today, leavePeople(data), leaves, team, daysOff, me.id)
+			.filter((o) => o.why === 'leave')
+			.map((o) => o.member.id),
+	);
+	const Bar = ({ k, b }) => (
+		<span className={'ev-bar t-' + k}>
+			<span className="bal-track" aria-hidden="true">
+				<i style={{ width: `${b.allowance ? Math.round((b.left / b.allowance) * 100) : 0}%` }} />
+			</span>
+			<b>
+				{b.left}/{b.allowance}
+			</b>
+		</span>
+	);
 	return (
-		<section className="hol-tiles" aria-label="This month">
-			<div>
-				<b>
-					{set} of {limit}
-				</b>
-				<span>festival holiday days set for {year}</span>
+		<section className="ev" aria-label="Everyone’s leave">
+			<div className="ev-h">
+				<h2>Everyone’s leave · {year}</h2>
+				<input type="search" className="ev-q" placeholder="Search a person" aria-label="Search a person" value={q} onChange={(e) => (setQ(e.target.value), setPage(0))} />
 			</div>
-			<div>
-				<b>{workingDays(month, team, daysOff)}</b>
-				<span>working days · {team.map((d) => WEEKDAYS[d]).join(', ') || 'no weekly day'} off</span>
+			<div className="ev-t" role="table" aria-label={`Leave left in ${year}`}>
+				<div className="ev-r ev-th" role="row">
+					<span role="columnheader">Person</span>
+					<span role="columnheader">Casual left</span>
+					<span role="columnheader">Sick left</span>
+					<span role="columnheader" />
+				</div>
+				{shown.rows.map((r) => (
+					<div key={r.person.id} className="ev-r" role="row">
+						<span role="cell" className="hol-who">
+							<Avatar person={r.person} small />
+							<b className="hol-nm">{r.person.name}</b>
+						</span>
+						{hasLeave(r.person) ? (
+							<>
+								<span role="cell">
+									<Bar k="day" b={r.day} />
+								</span>
+								<span role="cell">
+									<Bar k="sick" b={r.sick} />
+								</span>
+							</>
+						) : (
+							<span role="cell" className="ev-none muted">
+								No leave days · {EMPLOYMENT[employmentOf(r.person)]}
+							</span>
+						)}
+						<span role="cell">{out.has(r.person.id) && <span className="ev-out">Out today</span>}</span>
+					</div>
+				))}
+				{all.length === 0 && <p className="muted">{query ? 'Nobody matches.' : 'Nobody on the team yet.'}</p>}
 			</div>
-			<div>
-				<b>{taken.days}</b>
-				<span>leave days taken · {plural(taken.people, 'person').replace('persons', 'people')}</span>
-			</div>
-			<div className={waiting ? 'wait' : ''}>
-				<b>{waiting}</b>
-				<span>{waiting === 1 ? 'request' : 'requests'} waiting for you</span>
-			</div>
+			{all.length > 0 && (
+				<div className="ev-f">
+					<span className="muted">
+						{shown.from}–{shown.to} of {all.length} · fewest days left first
+					</span>
+					{shown.pages > 1 && (
+						<span className="ev-pages" role="group" aria-label="Pages">
+							<button type="button" className="ev-pg" aria-label="Previous page" disabled={shown.page === 0} onClick={() => setPage(shown.page - 1)}>
+								‹
+							</button>
+							{Array.from({ length: shown.pages }, (_, i) => (
+								<button key={i} type="button" className="ev-pg" aria-current={i === shown.page ? 'page' : undefined} onClick={() => setPage(i)}>
+									{i + 1}
+								</button>
+							))}
+							<button type="button" className="ev-pg" aria-label="Next page" disabled={shown.page === shown.pages - 1} onClick={() => setPage(shown.page + 1)}>
+								›
+							</button>
+						</span>
+					)}
+				</div>
+			)}
+		</section>
+	);
+}
+
+// Add (design HOL-11B2): + Add holiday (Super Admin), + Add casual leave and + Add sick leave for
+// someone (approved straight away). Requests are answered on My day.
+function AddBox({ year }) {
+	const { data, me } = usePortal();
+	const [open, setOpen] = useState('');
+	const full = festivalDays(year, rowsOf(data, 'days_off'), teamWeekly(data)) >= yearDays(leaveRules(data), year).festival;
+	const Btn = ({ k, label }) => (
+		<button type="button" className={'add-b t-' + k} onClick={() => setOpen(k)} disabled={k === 'fest' && full}>
+			<i aria-hidden="true">+</i>
+			{label}
+		</button>
+	);
+	return (
+		<section className="hol-box add" aria-label="Add">
+			<h2>Add</h2>
+			{isAdmin(me) && <Btn k="fest" label="Add holiday" />}
+			<Btn k="day" label="Add casual leave" />
+			<Btn k="sick" label="Add sick leave" />
+			<small className="muted">Leave added here is approved straight away. Requests are answered on My day.</small>
+			{open === 'fest' && <AddHoliday year={year} onClose={() => setOpen('')} />}
+			{(open === 'day' || open === 'sick') && <IssueDayOff type={open} onClose={() => setOpen('')} />}
 		</section>
 	);
 }
@@ -257,56 +339,9 @@ function Legend({ manager, ownOnly, picks }) {
 	);
 }
 
-// Requests the viewer may decide (Approve / Reject) and + Issue day off.
-function Waiting() {
-	const { data, me, viewOnly } = usePortal();
-	const act = useLeaveAction();
-	const [issuing, setIssuing] = useState(false);
-	const rows = sortLeave(rowsOf(data, 'leave').filter((l) => mayDecideLeave(l, me, data)));
-	return (
-		<section className={'hol-box' + (rows.length ? ' wait' : '')} aria-label="Waiting for you">
-			<h2>Waiting for you · {rows.length}</h2>
-			{rows.length === 0 && <p className="muted">Nothing to decide.</p>}
-			{rows.map((l) => {
-				const who = data.members[l.member_id];
-				const over = overBy(data, l);
-				return (
-					<div key={l.id} className="hol-req">
-						<span>
-							<b>{who.name}</b> · {TYPE[l.type]}
-						</span>
-						<small className="muted">
-							{rangeText(l)} · {plural(l.days, 'day')}
-							{l.reason ? ` · “${l.reason}”` : ''}
-						</small>
-						{over > 0 && <small className="t-amber">{plural(over, 'day')} over the allowance · deducted</small>}
-						{!viewOnly && (
-							<div className="hol-acts">
-								<button type="button" className="btn small primary" onClick={() => act(l, 'approve')}>
-									Approve
-								</button>
-								<button type="button" className="btn small" onClick={() => act(l, 'reject')}>
-									Reject
-								</button>
-							</div>
-						)}
-					</div>
-				);
-			})}
-			{!viewOnly && (
-				<button type="button" className="btn small hol-issue" onClick={() => setIssuing(true)}>
-					+ Issue day off
-				</button>
-			)}
-			{issuing && <IssueDayOff onClose={() => setIssuing(false)} />}
-		</section>
-	);
-}
-
-// Festival holidays of the year; the Super Admin adds (HOL-3) and removes them.
+// Festival holidays of the year; the Super Admin removes them (they are added from Add, HOL-11B2).
 function Festival({ year }) {
 	const { api, data, dispatch, me, toast, confirm, viewOnly } = usePortal();
-	const [adding, setAdding] = useState(false);
 	const team = teamWeekly(data);
 	const daysOff = rowsOf(data, 'days_off');
 	const list = holidaysOf(year, daysOff, team);
@@ -325,14 +360,7 @@ function Festival({ year }) {
 	};
 	return (
 		<section className="hol-box" aria-label="Festival holidays">
-			<div className="hol-box-h">
-				<h2>Festival holidays {year}</h2>
-				{admin && (
-					<button type="button" className="btn small primary" onClick={() => setAdding(true)} disabled={set >= limit}>
-						+ Add holiday
-					</button>
-				)}
-			</div>
+			<h2>Festival holidays {year}</h2>
 			{list.length === 0 && <p className="muted">No festival holidays yet.</p>}
 			{list.map((o) => (
 				<div key={o.id} className="hol-li">
@@ -356,7 +384,6 @@ function Festival({ year }) {
 			<small className="muted">
 				{set} of {limit} days set{set < limit ? ` · ${limit - set} left to add` : ''} · Weekly day off: <b>{team.map((d) => WEEKDAYS[d]).join(', ') || 'none'}</b>
 			</small>
-			{adding && <AddHoliday year={year} onClose={() => setAdding(false)} />}
 		</section>
 	);
 }
@@ -673,24 +700,6 @@ export function HolidaySystem() {
 		</>
 	);
 }
-
-// Who is out today (6.10): approved leave or a day off.
-function OutToday() {
-	const { data, me, today } = usePortal();
-	const out = whosOut(today, leavePeople(data), rowsOf(data, 'leave'), teamWeekly(data), rowsOf(data, 'days_off'), me.id);
-	return (
-		<section className="hol-box" aria-label="Out today">
-			<h2>Out today · {short(today)}</h2>
-			{out.length === 0 && <p className="muted">Everyone is in today.</p>}
-			{out.map((o) => (
-				<span key={o.member.id} className="hol-out">
-					<b>{o.member.name}</b> · {o.why === 'leave' ? 'on leave' : 'day off'} · back {short(o.back)}
-				</span>
-			))}
-		</section>
-	);
-}
-
 
 // The viewer's own requests, newest first, Cancel while allowed.
 function MyRequests() {

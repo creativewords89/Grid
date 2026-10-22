@@ -11,8 +11,9 @@ import Modal from '../Modal.jsx';
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 // Issue a day off (SPEC.md 6.10, design LV-C): approved casual leave for someone else, counted
-// like any other. Team Leaders and the Super Admin; the server checks who may get one.
-export default function IssueDayOff({ onClose }) {
+// like any other. Team Leaders and the Super Admin; the server checks who may get one. With `type`
+// it is Add casual leave / Add sick leave on Holidays (design HOL-11B2).
+export default function IssueDayOff({ onClose, type }) {
 	const { api, data, dispatch, me, today, toast } = usePortal();
 	const [q, setQ] = useState('');
 	const [who, setWho] = useState('');
@@ -35,7 +36,9 @@ export default function IssueDayOff({ onClose }) {
 	const end = to < from ? from : to;
 	const months = person ? leaveDays(from, end, person, team, daysOff) : {};
 	const total = Object.values(months).reduce((a, b) => a + b, 0);
-	const over = person && total ? overBy(person, { id: '', type: 'day', from_date: from, to_date: end }, leaves, team, daysOff, leaveRules(data)) : 0;
+	const kind = type === 'sick' ? 'sick' : 'day';
+	const word = kind === 'sick' ? 'sick' : 'casual';
+	const over = person && total ? overBy(person, { id: '', type: kind, from_date: from, to_date: end }, leaves, team, daysOff, leaveRules(data)) : 0;
 
 	const submit = async (e) => {
 		e.preventDefault();
@@ -44,9 +47,9 @@ export default function IssueDayOff({ onClose }) {
 		if (!total) return setError('Those days are all days off already.');
 		setBusy(true);
 		try {
-			const row = await api.post('leave', { member_id: person.id, from, to: end, note: note.trim() });
+			const row = await api.post('leave', { member_id: person.id, type: kind, from, to: end, note: note.trim() });
 			dispatch({ type: 'upsert', table: 'leave', row });
-			toast(`Day off issued to ${person.name}`);
+			toast(type ? `${kind === 'sick' ? 'Sick' : 'Casual'} leave added for ${person.name}` : `Day off issued to ${person.name}`);
 			onClose();
 		} catch (err) {
 			setError(err.message);
@@ -58,8 +61,8 @@ export default function IssueDayOff({ onClose }) {
 	return (
 		<Modal open onClose={onClose} labelledBy="grpIssue" className="io-dlg">
 			<form onSubmit={submit} noValidate>
-				<h2 id="grpIssue">Issue a day off</h2>
-				<p className="hint io-sub">Recorded as approved casual leave for them — it uses their casual days for the year.</p>
+				<h2 id="grpIssue">{type ? `Add ${word} leave` : 'Issue a day off'}</h2>
+				<p className="hint io-sub">Recorded as approved {word} leave for them — it uses their {word} days for the year.</p>
 				<fieldset className="io-people">
 					<legend>Person</legend>
 					<label className="ld-search io-search">
@@ -68,13 +71,13 @@ export default function IssueDayOff({ onClose }) {
 					</label>
 					<div className="io-list" role="radiogroup" aria-label="Person">
 						{shown.map((p) => {
-							const left = balance(p, year, leaves, team, daysOff, leaveRules(data)).day.left;
+							const left = balance(p, year, leaves, team, daysOff, leaveRules(data))[kind].left;
 							return (
 								<button key={p.id} type="button" role="radio" aria-checked={who === p.id} className={'io-p' + (who === p.id ? ' on' : '')} onClick={() => (setWho(p.id), setError(''))}>
 									<Avatar person={p} small />
 									<b>{p.name}</b>
 									<small>{ROLE[p.role]}</small>
-									<span className={'io-left' + (left ? '' : ' none')}>{hasLeave(p) ? `${plural(left, 'casual day')} left` : 'No leave days'}</span>
+									<span className={'io-left' + (left ? '' : ' none')}>{hasLeave(p) ? `${plural(left, `${word} day`)} left` : 'No leave days'}</span>
 								</button>
 							);
 						})}
@@ -92,7 +95,7 @@ export default function IssueDayOff({ onClose }) {
 					</label>
 				</div>
 				<label>
-					Note for them (optional)
+					{type ? 'Reason (optional)' : 'Note for them (optional)'}
 					<textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} placeholder="e.g. Thanks for the extra hours on the launch." />
 				</label>
 				{person && (
@@ -104,7 +107,7 @@ export default function IssueDayOff({ onClose }) {
 								· {person.name} goes over the allowance → <b className="io-ded">{plural(over, 'day')} deducted</b>
 							</span>
 						) : total ? (
-							` · within ${person.name}’s casual days`
+							` · within ${person.name}’s ${word} days`
 						) : (
 							''
 						)}
@@ -118,7 +121,7 @@ export default function IssueDayOff({ onClose }) {
 						Cancel
 					</button>
 					<button type="submit" className="btn primary" disabled={busy}>
-						Issue day off
+						{type ? 'Add leave' : 'Issue day off'}
 					</button>
 				</div>
 			</form>

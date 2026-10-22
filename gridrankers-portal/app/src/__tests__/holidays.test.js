@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dayChips, festivalCounts, holidaysAhead, holidaysOf, monthCells, monthCounts, runsOf, takenThisMonth, workingDays } from '../lib/holidays.js';
+import { dayChips, festivalCounts, holidaysAhead, holidaysOf, leaveTable, monthCells, monthCounts, pageOf, runsOf, takenThisMonth, workingDays } from '../lib/holidays.js';
 import { allowance, balance, festivalDays, firstYearSince, hasLeave, leaveRules, settlement, yearDays } from '../lib/people.js';
 
 // Fridays are the team's weekly day off; Durga Puja is Tue 20 – Wed 21 Oct 2026.
@@ -141,5 +141,24 @@ describe('Leave days set by the Super Admin (SPEC.md 6.10, HOL-9A, HOL-10)', () 
 		const leaves = [leave('a', 'm', '2026-12-01', '2026-12-02')];
 		expect(balance(me, 2026, leaves, TEAM, [], rules).day).toEqual({ allowance: 12, taken: 2, left: 10, over: 0 });
 		expect(settlement(me, '2026-12', leaves, TEAM, [], rules).paid).toBe(10 + 14);
+	});
+});
+
+describe("Everyone's leave (SPEC.md 6.20, HOL-11B2)", () => {
+	it('puts the fewest days left first and people without leave last, 5 a page', () => {
+		const people = [
+			{ id: 'a', name: 'Ann', weekly_off: [] },
+			{ id: 'b', name: 'Bo', weekly_off: [] },
+			{ id: 'i', name: 'Ivy', weekly_off: [], employment: 'intern' },
+			{ id: 'c', name: 'Cy', weekly_off: [] },
+		];
+		const leaves = [leave('x', 'b', '2026-03-02', '2026-03-06'), leave('y', 'c', '2026-03-02', '2026-03-02', 'approved', 'sick')];
+		const rows = leaveTable(people, 2026, leaves, TEAM, [], []);
+		expect(rows.map((r) => r.person.id)).toEqual(['b', 'c', 'a', 'i']);
+		expect(rows[0].day).toEqual({ allowance: 10, taken: 5, left: 5, over: 0 });
+		const list = Array.from({ length: 12 }, (_, n) => n);
+		expect(pageOf(list, 0, 5)).toEqual({ rows: [0, 1, 2, 3, 4], page: 0, pages: 3, from: 1, to: 5 });
+		expect(pageOf(list, 9, 5)).toMatchObject({ rows: [10, 11], page: 2, from: 11, to: 12 });
+		expect(pageOf([], 0, 5)).toMatchObject({ pages: 1, from: 0, to: 0 });
 	});
 });
