@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { usePortal } from '../../context.js';
 import { short } from '../../lib/format.js';
 import { mayIssueLeave } from '../../lib/leaveBoard.js';
-import { balance, hasLeave, leaveDays, overBy, teamWeekly } from '../../lib/people.js';
+import { balance, hasLeave, leaveDays, leaveRules, overBy, teamWeekly } from '../../lib/people.js';
 import { ROLE } from '../../lib/roles.js';
 import { rowsOf } from '../../lib/store.js';
 import Avatar from '../Avatar.jsx';
@@ -35,7 +35,7 @@ export default function IssueDayOff({ onClose }) {
 	const end = to < from ? from : to;
 	const months = person ? leaveDays(from, end, person, team, daysOff) : {};
 	const total = Object.values(months).reduce((a, b) => a + b, 0);
-	const over = person && total ? overBy(person, { id: '', type: 'day', from_date: from, to_date: end }, leaves, team, daysOff) : 0;
+	const over = person && total ? overBy(person, { id: '', type: 'day', from_date: from, to_date: end }, leaves, team, daysOff, leaveRules(data)) : 0;
 
 	const submit = async (e) => {
 		e.preventDefault();
@@ -68,7 +68,7 @@ export default function IssueDayOff({ onClose }) {
 					</label>
 					<div className="io-list" role="radiogroup" aria-label="Person">
 						{shown.map((p) => {
-							const left = balance(p, year, leaves, team, daysOff).day.left;
+							const left = balance(p, year, leaves, team, daysOff, leaveRules(data)).day.left;
 							return (
 								<button key={p.id} type="button" role="radio" aria-checked={who === p.id} className={'io-p' + (who === p.id ? ' on' : '')} onClick={() => (setWho(p.id), setError(''))}>
 									<Avatar person={p} small />

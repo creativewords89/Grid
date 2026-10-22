@@ -195,7 +195,7 @@ export default function PaySheet() {
 							</div>
 						)}
 					</div>
-					<p className="muted pay-legend">Extra pay = extra hours × (salary ÷ 30 ÷ hours a day). Deducted = leave days past the year’s 10 casual / 14 sick × salary ÷ 30. December pays out the unused days. {res.billed ? '' : 'Mark paid opens on the billing date.'}</p>
+					<p className="muted pay-legend">Extra pay = extra hours × (salary ÷ 30 ÷ hours a day). Deducted = leave days past the year’s casual / sick days × salary ÷ 30. December pays out the unused days. {res.billed ? '' : 'Mark paid opens on the billing date.'}</p>
 				</>
 			)}
 		</div>

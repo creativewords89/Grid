@@ -32,18 +32,33 @@ class GRP_People {
 	const WITH_LEAVE = array( 'full_time', 'part_time' );
 
 	/**
-	 * Leave days a full-time or part-time employee gets per calendar year (Jan 1 – Dec 31), by leave type:
-	 * `day` is casual leave.
+	 * Leave days a full-time or part-time employee gets per calendar year (Jan 1 – Dec 31), by leave type
+	 * (`day` is casual leave), and the festival holidays (event and seasonal days off) the Super Admin
+	 * may set per year, until the Super Admin changes them (settings key LEAVE_DAYS_KEY).
 	 */
-	const ALLOWANCE = array(
-		'day'  => 10,
-		'sick' => 14,
+	const DEFAULT_LEAVE_DAYS = array(
+		'day'      => 10,
+		'sick'     => 14,
+		'festival' => 13,
 	);
 
 	/**
-	 * Festival holidays (event and seasonal days off) the Super Admin may set per calendar year.
+	 * Settings key of the leave days a year: value `{rules: [{from_year, day, sick, festival}]}`;
+	 * a year uses the rule with the latest `from_year` not after it (SPEC.md 6.10, design HOL-10).
 	 */
-	const FESTIVAL_PER_YEAR = 13;
+	const LEAVE_DAYS_KEY = 'leave_days';
+
+	/**
+	 * Most leave days of one kind a year the Super Admin may set.
+	 */
+	const MAX_LEAVE_DAYS = 60;
+
+	/**
+	 * The stored rules (null = not read yet).
+	 *
+	 * @var array[]|null
+	 */
+	private static $rules = null;
 
 	/**
 	 * Leave may start this many days in the past (e.g. sick leave told afterwards).
@@ -154,6 +169,72 @@ class GRP_People {
 	}
 
 	/**
+	 * The leave days of a calendar year: `{day, sick, festival}` from the rule with the latest
+	 * `from_year` not after it, else the defaults.
+	 *
+	 * @param int|null $year Year; null for this year.
+	 * @return array{day: int, sick: int, festival: int}
+	 */
+	public static function year_days( $year = null ) {
+		$year = null === $year ? (int) substr( GRP_Cycles::today(), 0, 4 ) : (int) $year;
+		$days = self::DEFAULT_LEAVE_DAYS;
+		foreach ( self::rules() as $rule ) {
+			if ( $rule['from_year'] <= $year ) {
+				$days = array_intersect_key( $rule, self::DEFAULT_LEAVE_DAYS );
+			}
+		}
+
+		return $days;
+	}
+
+	/**
+	 * The leave-days rules in `from_year` order.
+	 *
+	 * @return array[]
+	 */
+	public static function rules() {
+		if ( null === self::$rules ) {
+			$rows        = GRP_Store::find( 'grp_settings', array( 'setting_key' => self::LEAVE_DAYS_KEY ) );
+			self::$rules = self::clean_rules( $rows ? ( (array) $rows[0]['value'] )['rules'] ?? array() : array() );
+		}
+
+		return self::$rules;
+	}
+
+	/**
+	 * Forgets the rules read, after they change.
+	 */
+	public static function forget_rules() {
+		self::$rules = null;
+	}
+
+	/**
+	 * Valid rules only (whole numbers 0 – MAX_LEAVE_DAYS, one per year), in `from_year` order.
+	 *
+	 * @param mixed $rules Stored rules.
+	 * @return array[]
+	 */
+	public static function clean_rules( $rules ) {
+		$out = array();
+		foreach ( is_array( $rules ) ? $rules : array() as $rule ) {
+			$rule = (array) $rule;
+			$year = (int) ( $rule['from_year'] ?? 0 );
+			if ( $year < 2000 ) {
+				continue;
+			}
+			$clean = array( 'from_year' => $year );
+			foreach ( self::DEFAULT_LEAVE_DAYS as $key => $default ) {
+				$n             = $rule[ $key ] ?? $default;
+				$clean[ $key ] = is_numeric( $n ) ? max( 0, min( self::MAX_LEAVE_DAYS, (int) $n ) ) : $default;
+			}
+			$out[ $year ] = $clean;
+		}
+		ksort( $out );
+
+		return array_values( $out );
+	}
+
+	/**
 	 * Whether a person has leave days: full-time and part-time employees.
 	 *
 	 * @param array|null $member Member row.
@@ -164,21 +245,22 @@ class GRP_People {
 	}
 
 	/**
-	 * Leave days of a type a person gets per calendar year: 10 casual, 14 sick for full-time and
-	 * part-time employees, none for interns and contractual employees. In the year they started
+	 * Leave days of a type a person gets per calendar year: the year's leave days (10 casual, 14 sick
+	 * unless the Super Admin changed them) for full-time and part-time employees, none for interns and
+	 * contractual employees. In the year they started
 	 * having leave (`employment_since`) it is prorated: the months from that one to December, ×
 	 * the allowance ÷ 12, half days rounded up (joined in October: 3 casual, 4 sick).
 	 *
 	 * @param array|null $member Member row.
 	 * @param string     $type   `day` (casual) or `sick`.
-	 * @param int|null   $year   Calendar year; null for the full yearly allowance.
+	 * @param int|null   $year   Calendar year; null for this year's full allowance.
 	 * @return int
 	 */
 	public static function allowance( $member, $type, $year = null ) {
 		if ( ! self::has_leave( $member ) ) {
 			return 0;
 		}
-		$full  = self::ALLOWANCE[ 'sick' === $type ? 'sick' : 'day' ];
+		$full  = self::year_days( $year )[ 'sick' === $type ? 'sick' : 'day' ];
 		$since = (string) ( $member['employment_since'] ?? '' );
 		if ( null === $year || ! self::is_date( $since ) ) {
 			return $full;

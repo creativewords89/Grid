@@ -1,6 +1,6 @@
 <?php
 /**
- * REST: /days-off, /settings/messages (SPEC.md 6.10).
+ * REST: /days-off, /settings/messages, /settings/leave-days (SPEC.md 6.10).
  *
  * @package GridRankers_Portal
  */
@@ -45,6 +45,7 @@ class GRP_REST_People extends GRP_REST_Controller {
 		self::route( '/weather', WP_REST_Server::READABLE, 'weather' );
 		self::route( '/settings/messages', WP_REST_Server::READABLE, 'messages' );
 		self::route( '/settings/messages', WP_REST_Server::EDITABLE, 'set_messages' );
+		self::route( '/settings/leave-days', WP_REST_Server::EDITABLE, 'set_leave_days' );
 	}
 
 	/**
@@ -154,12 +155,12 @@ class GRP_REST_People extends GRP_REST_Controller {
 		if ( ! $from || ! $to || $to < $from ) {
 			return self::invalid( __( 'Pick the dates of the day off.', 'gridrankers-portal' ) );
 		}
-		// Festival holidays: at most 13 days a calendar year (SPEC.md 6.10), so one year at a time.
+		// Festival holidays: at most the year's festival days (13 unless changed) (SPEC.md 6.10), so one year at a time.
 		if ( substr( $from, 0, 4 ) !== substr( $to, 0, 4 ) ) {
 			return self::invalid( __( 'A holiday must end in the year it starts.', 'gridrankers-portal' ), 'grp_festival_year' );
 		}
-		$year = (int) substr( $from, 0, 4 );
-		$days = GRP_People::festival_days(
+		$year  = (int) substr( $from, 0, 4 );
+		$days  = GRP_People::festival_days(
 			$year,
 			array_merge(
 				self::days_off(),
@@ -172,10 +173,11 @@ class GRP_REST_People extends GRP_REST_Controller {
 			),
 			self::team_weekly()
 		);
-		if ( $days > GRP_People::FESTIVAL_PER_YEAR ) {
+		$limit = GRP_People::year_days( $year )['festival'];
+		if ( $days > $limit ) {
 			return self::conflict(
 				/* translators: 1: number of days, 2: year, 3: the limit. */
-				sprintf( __( 'That makes %1$d festival holiday days in %2$d; the limit is %3$d a year.', 'gridrankers-portal' ), $days, $year, GRP_People::FESTIVAL_PER_YEAR ),
+				sprintf( __( 'That makes %1$d festival holiday days in %2$d; the limit is %3$d a year.', 'gridrankers-portal' ), $days, $year, $limit ),
 				'grp_festival_full'
 			);
 		}
@@ -310,6 +312,51 @@ class GRP_REST_People extends GRP_REST_Controller {
 		);
 
 		return rest_ensure_response( self::message_texts() + array( 'setting' => $row ) );
+	}
+
+	/**
+	 * PUT /settings/leave-days `{day, sick, festival, from_year}` (design HOL-10): the casual and
+	 * sick leave days a year and the festival holidays a year, from Jan 1 of `from_year` (this year
+	 * or next). Returns the rules and the stored `setting` row.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function set_leave_days( WP_REST_Request $request ) {
+		if ( ! self::can( GRP_Permissions::MANAGE_PEOPLE_SETTINGS ) ) {
+			return self::forbidden( __( 'Only the Super Admin can change the leave days.', 'gridrankers-portal' ) );
+		}
+		$this_year = (int) substr( GRP_Cycles::today(), 0, 4 );
+		$from_year = (int) ( $request['from_year'] ?? $this_year );
+		if ( $from_year !== $this_year && $from_year !== $this_year + 1 ) {
+			return self::invalid( __( 'The new leave days start this year or next year.', 'gridrankers-portal' ), 'grp_leave_days_year' );
+		}
+		$rule = array( 'from_year' => $from_year );
+		foreach ( array_keys( GRP_People::DEFAULT_LEAVE_DAYS ) as $key ) {
+			$n = $request->get_param( $key );
+			if ( ! is_numeric( $n ) || (int) $n != $n || (int) $n < 0 || (int) $n > GRP_People::MAX_LEAVE_DAYS ) { // phpcs:ignore Universal.Operators.StrictComparisons.LooseNotEqual -- whole numbers only, '12' and 12 alike.
+				/* translators: %d: most days. */
+				return self::invalid( sprintf( __( 'Leave days are whole numbers from 0 to %d.', 'gridrankers-portal' ), GRP_People::MAX_LEAVE_DAYS ), 'grp_leave_days' );
+			}
+			$rule[ $key ] = (int) $n;
+		}
+		// The new rule replaces one for the same year (clean_rules keeps the last per year).
+		$rules = GRP_People::clean_rules( array_merge( GRP_People::rules(), array( $rule ) ) );
+		$row   = GRP_Store::transaction(
+			static function () use ( $rules, $rule ) {
+				$row = self::set_setting( GRP_People::LEAVE_DAYS_KEY, array( 'rules' => $rules ) );
+				GRP_Activity::audit( 'edit', 'settings', array( 'id' => $row['id'] ), self::actor(), sprintf( 'Leave days from %d: %d casual, %d sick, %d festival', $rule['from_year'], $rule['day'], $rule['sick'], $rule['festival'] ) );
+				return $row;
+			}
+		);
+		GRP_People::forget_rules();
+
+		return rest_ensure_response(
+			array(
+				'rules'   => GRP_People::rules(),
+				'setting' => $row,
+			)
+		);
 	}
 
 	/**

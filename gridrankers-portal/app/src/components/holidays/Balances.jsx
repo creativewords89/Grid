@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { usePortal } from '../../context.js';
 import { short } from '../../lib/format.js';
-import { festivalCounts, holidaysOf } from '../../lib/holidays.js';
+import { festivalCounts } from '../../lib/holidays.js';
 import { dayPay, money } from '../../lib/pay.js';
-import { EMPLOYMENT, FESTIVAL_PER_YEAR, balance, employmentOf, firstYearSince, hasLeave, leaveDays, teamWeekly } from '../../lib/people.js';
+import { EMPLOYMENT, balance, employmentOf, firstYearSince, hasLeave, leaveDays, leaveRules, teamWeekly, yearDays } from '../../lib/people.js';
 import { rowsOf } from '../../lib/store.js';
+import Modal from '../Modal.jsx';
 
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -16,59 +17,57 @@ function useDayPay() {
 	return salary ? dayPay(salary) : 0;
 }
 
-// One balance card: total, taken and left, with a bar and a line under it.
-function Card({ k, title, year, total, taken, foot }) {
-	const left = Math.max(0, total - taken);
+// One ring (design HOL-8B2): the days left of the year's total, the name and what is used under it.
+function Ring({ k, title, total, used, usedWord }) {
+	const left = Math.max(0, total - used);
+	const c = 2 * Math.PI * 34;
 	return (
-		<section className={'bal-card t-' + k} aria-label={title}>
-			<span className="hol-k">
-				<i className="bal-dot" aria-hidden="true" />
-				{title} · {year}
+		<section className={'bal-ring t-' + k} aria-label={title}>
+			<svg viewBox="0 0 86 86" aria-hidden="true">
+				<circle cx="43" cy="43" r="34" className="bal-ring-bg" />
+				<circle cx="43" cy="43" r="34" className="bal-ring-on" strokeDasharray={`${total ? (c * left) / total : 0} ${c}`} transform="rotate(-90 43 43)" />
+			</svg>
+			<span className="bal-ring-n">
+				<b>{left}</b>
+				<small>of {total} left</small>
 			</span>
-			<div className="bal-nums">
-				<span>
-					<b>{total}</b>
-					<small>total</small>
-				</span>
-				<span>
-					<b>{taken}</b>
-					<small>taken</small>
-				</span>
-				<span className="left">
-					<b>{left}</b>
-					<small>left</small>
-				</span>
-			</div>
-			<span className="bal-track" aria-hidden="true">
-				<i style={{ width: `${total ? Math.min(100, Math.round((taken / total) * 100)) : 0}%` }} />
-			</span>
-			<span className="bal-foot">{foot}</span>
+			<b className="bal-ring-t">{title}</b>
+			<small className="muted">
+				{used} {usedWord}
+			</small>
 		</section>
 	);
 }
 
-// Festival holidays: 13 a year for everyone; taken = the ones already passed (from `since` in a
-// first year).
-function FestivalCard({ year, since }) {
+// Festival holidays: the year's festival days for everyone (in a first year, the ones after
+// `since`); used = the ones already passed.
+function FestivalRing({ year, since }) {
 	const { data, today } = usePortal();
 	const team = teamWeekly(data);
-	const daysOff = rowsOf(data, 'days_off');
-	const fest = festivalCounts(year, daysOff, team, today, since);
-	const taken = Math.min(FESTIVAL_PER_YEAR, fest.taken.reduce((a, n) => a + n, 0));
-	const next = holidaysOf(year, daysOff, team).find((o) => o.to_date >= today);
-	return <Card k="fest" title="Festival holidays" year={year} total={FESTIVAL_PER_YEAR} taken={taken} foot={`Off for everyone${next ? ` · next: ${next.name}, ${short(next.from_date)}` : ''}`} />;
+	const fest = festivalCounts(year, rowsOf(data, 'days_off'), team, today, since);
+	// A first year counts only the festival holidays after they joined.
+	const total = since ? fest.total : yearDays(leaveRules(data), year).festival;
+	return <Ring k="fest" title="Festival holidays" total={total} used={Math.min(total, fest.taken.reduce((a, n) => a + n, 0))} usedWord="passed" />;
 }
 
-// The viewer's numbers (design HOL-6): Casual leave, Sick leave and Festival holidays — total,
-// taken and left for the year, nothing to click. Festival holidays are 13 a year; taken = the
-// ones already passed. Someone in their first year (HOL-5B) sees why their days are fewer.
-export default function Balances({ year, onAsk }) {
+// The viewer's numbers (design HOL-8B2): three rings — Casual leave, Sick leave, Festival holidays,
+// days left of the year's total — then what December pays for the days not taken and + Request
+// leave. Someone in their first year (HOL-5B) sees why their days are fewer.
+export default function Balances({ year, onAsk, picked }) {
 	const { data, me, today, viewOnly } = usePortal();
 	const self = data.members[me.id] || me;
 	const team = teamWeekly(data);
 	const daysOff = rowsOf(data, 'days_off');
-	const leaves = rowsOf(data, 'leave');
+	const rules = leaveRules(data);
+	const each = useDayPay();
 	const kind = employmentOf(self);
+	const lead = me.role === 'lead';
+	const ask = !viewOnly && (
+		<button type="button" className="btn primary" onClick={onAsk}>
+			+ {hasLeave(self) ? (lead ? 'Take leave' : 'Request leave') : lead ? 'Take unpaid leave' : 'Request unpaid leave'}
+			{picked ? ` · ${plural(picked, 'day')} picked` : ''}
+		</button>
+	);
 	if (!hasLeave(self)) {
 		return (
 			<section className="hol-mine none" aria-label="My leave">
@@ -76,38 +75,40 @@ export default function Balances({ year, onAsk }) {
 					<span className="hol-badge no">{EMPLOYMENT[kind]}</span>
 					<h2>You don’t have leave days</h2>
 					<p className="muted">Leave days are for Full-Time and Part-Time employees. Any leave you take is unpaid. Festival holidays and the weekly day off are still days off for you.</p>
+					{ask}
 				</div>
-				{!viewOnly && (
-					<button type="button" className="btn primary" onClick={onAsk}>
-						{me.role === 'lead' ? 'Take unpaid leave' : 'Request unpaid leave'}
-					</button>
-				)}
-				<div className="bal-cards">
-					<FestivalCard year={year} />
-				</div>
+				<FestivalRing year={year} />
 			</section>
 		);
 	}
 	const since = firstYearSince(self, year);
-	const b = balance(self, year, leaves, team, daysOff);
+	const b = balance(self, year, rowsOf(data, 'leave'), team, daysOff, rules);
 	const fest = festivalCounts(year, daysOff, team, today, since);
-	const reset = `Starts again on Jan 1, ${year + 1}`;
-	const prorated = since ? ` · prorated since ${short(since)}` : '';
+	const days = b.day.left + b.sick.left;
 	return (
 		<div className="bal">
-			{since && <FirstYear since={since} year={year} kind={kind} days={{ day: b.day.allowance, sick: b.sick.allowance, fest: fest.total }} />}
-			<div className="bal-cards" aria-label="My leave" role="region">
-				<Card k="day" title="Casual leave" year={year} total={b.day.allowance} taken={b.day.taken} foot={b.day.over ? `${plural(b.day.over, 'day')} over · deducted from salary` : reset + prorated} />
-				<Card k="sick" title="Sick leave" year={year} total={b.sick.allowance} taken={b.sick.taken} foot={b.sick.over ? `${plural(b.sick.over, 'day')} over · deducted from salary` : reset + prorated} />
-				<FestivalCard year={year} since={since} />
-			</div>
+			{since && <FirstYear since={since} year={year} kind={kind} full={yearDays(rules, year)} next={yearDays(rules, year + 1)} days={{ day: b.day.allowance, sick: b.sick.allowance, fest: fest.total }} />}
+			<section className="bal-rings" aria-label="My leave">
+				<Ring k="day" title="Casual leave" total={b.day.allowance} used={b.day.taken} usedWord="taken" />
+				<Ring k="sick" title="Sick leave" total={b.sick.allowance} used={b.sick.taken} usedWord="taken" />
+				<FestivalRing year={year} since={since} />
+				<div className="bal-pay" role="region" aria-label="Your balance if not taken">
+					<span className="muted">Not taken by December 31?</span>
+					<b>+{each ? `${money(days * each)} BDT` : plural(days, 'day')}</b>
+					<small className="muted">
+						paid with December salary{each ? ` · ${b.day.left} casual + ${b.sick.left} sick × ${money(each)}` : ''}
+					</small>
+					{b.day.over + b.sick.over > 0 && <small className="t-red">{plural(b.day.over + b.sick.over, 'day')} over · deducted from salary</small>}
+					{ask}
+				</div>
+			</section>
 		</div>
 	);
 }
 
 // HOL-5B: the first year counts from the day leave started — the year as a timeline with "You
 // joined", one square per day off this year out of a full year's, and this year next to next year.
-function FirstYear({ since, year, kind, days }) {
+function FirstYear({ since, year, kind, days, full: all, next }) {
 	const first = +since.slice(5, 7) - 1;
 	const months = 12 - first;
 	// The marker sits over the start of the joining month.
@@ -161,9 +162,9 @@ function FirstYear({ since, year, kind, days }) {
 				</div>
 			</section>
 			<section className="ft ft-meters" aria-label="Days this year">
-				<Meter k="day" label="Casual leave" got={days.day} full={10} how={half(10)} />
-				<Meter k="sick" label="Sick leave" got={days.sick} full={14} how={half(14)} />
-				<Meter k="fest" label="Festival holidays" got={days.fest} full={FESTIVAL_PER_YEAR} how={`only the ones after ${short(since)}`} />
+				<Meter k="day" label="Casual leave" got={days.day} full={all.day} how={half(all.day)} />
+				<Meter k="sick" label="Sick leave" got={days.sick} full={all.sick} how={half(all.sick)} />
+				<Meter k="fest" label="Festival holidays" got={days.fest} full={all.festival} how={`only the ones after ${short(since)}`} />
 			</section>
 			<div className="ft-years">
 				<div>
@@ -176,7 +177,7 @@ function FirstYear({ since, year, kind, days }) {
 				<div className="next">
 					<span className="hol-k">From Jan 1, {year + 1}</span>
 					<span>
-						<b>10</b> casual · <b>14</b> sick · <b>{FESTIVAL_PER_YEAR}</b> festival
+						<b>{next.day}</b> casual · <b>{next.sick}</b> sick · <b>{next.festival}</b> festival
 					</span>
 					<small className="muted">The full year, like everyone on the team.</small>
 				</div>
@@ -185,39 +186,10 @@ function FirstYear({ since, year, kind, days }) {
 	);
 }
 
-// Your balance if not taken (HOL-6): the casual and sick days left in money, paid with December
-// salary when nothing more is taken.
-export function BalanceBox({ year }) {
-	const { data, me } = usePortal();
-	const self = data.members[me.id] || me;
-	const each = useDayPay();
-	if (!hasLeave(self)) return null;
-	const b = balance(self, year, rowsOf(data, 'leave'), teamWeekly(data), rowsOf(data, 'days_off'));
-	const days = b.day.left + b.sick.left;
-	const amount = (n) => (each ? `${money(n * each)} BDT` : plural(n, 'day'));
-	return (
-		<section className="hol-box bal-money" aria-label="Your balance if not taken">
-			<h2>Your balance if not taken</h2>
-			<p className="muted">Unused days are paid with December salary{each ? ` (1 day = ${money(each)} BDT)` : ''}.</p>
-			<div className="hol-kv">
-				<span>Casual · {plural(b.day.left, 'day')} left</span>
-				<b>{amount(b.day.left)}</b>
-			</div>
-			<div className="hol-kv">
-				<span>Sick · {plural(b.sick.left, 'day')} left</span>
-				<b>{amount(b.sick.left)}</b>
-			</div>
-			<div className="bal-total">
-				<span>With December salary if nothing more is taken</span>
-				<b>{each ? money(days * each) : days}</b>
-			</div>
-		</section>
-	);
-}
-
-// Request leave (HOL-6, simple): Casual / Sick, From – To (also filled by tapping the calendar), one
-// line with the days and what is left after, Send request. The server counts and checks again.
-export function RequestBox({ plan, setPlan }) {
+// Request leave (HOL-8B2): a pop-up with only the type of leave, From – To (the days tapped on the
+// calendar already filled in), a reason if there is one and Send request. The server counts and
+// checks again.
+export function RequestDialog({ plan, setPlan, onClose }) {
 	const { api, data, dispatch, me, today, toast } = usePortal();
 	const self = data.members[me.id] || me;
 	const [type, setType] = useState('day');
@@ -228,11 +200,13 @@ export function RequestBox({ plan, setPlan }) {
 	const to = (plan && plan.to) || from;
 	const n = from ? Object.values(leaveDays(from, to < from ? from : to, self, teamWeekly(data), rowsOf(data, 'days_off'))).reduce((a, x) => a + x, 0) : 0;
 	const lead = me.role === 'lead';
+	const title = hasLeave(self) ? (lead ? 'Take leave' : 'Request leave') : lead ? 'Take unpaid leave' : 'Request unpaid leave';
 	const set = (k, v) => {
 		setError('');
 		setPlan(k === 'from' ? { from: v, to: !to || to < v ? v : to } : { from: from || v, to: v });
 	};
-	const send = async () => {
+	const send = async (e) => {
+		e.preventDefault();
 		if (!from) return setError('Pick the first day.');
 		if (!n) return setError('Those days are all days off already.');
 		setBusy(true);
@@ -240,8 +214,8 @@ export function RequestBox({ plan, setPlan }) {
 			const row = await api.post('leave', { type, from, to, reason: reason.trim() });
 			dispatch({ type: 'upsert', table: 'leave', row });
 			toast(lead ? 'Leave taken — approved straight away' : 'Leave requested — your Team Leaders will answer');
-			setReason('');
 			setPlan(null);
+			onClose();
 		} catch (err) {
 			setError(err.message);
 		} finally {
@@ -249,35 +223,42 @@ export function RequestBox({ plan, setPlan }) {
 		}
 	};
 	return (
-		<section className="hol-box hol-plan on bal-req" aria-label="Request leave">
-			<h2>{hasLeave(self) ? (lead ? 'Take leave' : 'Request leave') : lead ? 'Take unpaid leave' : 'Request unpaid leave'}</h2>
-			<label>
-				Type of leave
-				<select value={type} onChange={(e) => setType(e.target.value)}>
-					<option value="day">Casual leave</option>
-					<option value="sick">Sick leave</option>
-				</select>
-			</label>
-			<div className="bal-dates">
+		<Modal open onClose={onClose} labelledBy="grpRequestLeave">
+			<form className="bal-req" onSubmit={send} noValidate>
+				<h2 id="grpRequestLeave">{title}</h2>
 				<label>
-					From
-					<input type="date" value={from} min={today} onChange={(e) => set('from', e.target.value)} aria-label="From" />
+					Type of leave
+					<select value={type} onChange={(e) => setType(e.target.value)}>
+						<option value="day">Casual leave</option>
+						<option value="sick">Sick leave</option>
+					</select>
 				</label>
+				<div className="bal-dates">
+					<label>
+						From
+						<input type="date" value={from} min={today} onChange={(e) => set('from', e.target.value)} aria-label="From" />
+					</label>
+					<label>
+						To
+						<input type="date" value={to} min={from || today} onChange={(e) => set('to', e.target.value)} aria-label="To" />
+					</label>
+				</div>
 				<label>
-					To
-					<input type="date" value={to} min={from || today} onChange={(e) => set('to', e.target.value)} aria-label="To" />
+					Reason (optional)
+					<input type="text" value={reason} maxLength={200} onChange={(e) => setReason(e.target.value)} />
 				</label>
-			</div>
-			<label>
-				Reason (optional)
-				<input type="text" value={reason} maxLength={200} onChange={(e) => setReason(e.target.value)} />
-			</label>
-			<p className="err" role="alert">
-				{error}
-			</p>
-			<button type="button" className="btn primary" onClick={send} disabled={busy || !n}>
-				{lead ? 'Take leave' : 'Send request'}
-			</button>
-		</section>
+				<p className="err" role="alert">
+					{error}
+				</p>
+				<div className="dlg-acts">
+					<button type="button" className="btn" onClick={onClose}>
+						Cancel
+					</button>
+					<button type="submit" className="btn primary" disabled={busy || !n}>
+						{lead ? 'Take leave' : 'Send request'}
+					</button>
+				</div>
+			</form>
+		</Modal>
 	);
 }

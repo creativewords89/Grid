@@ -7,9 +7,10 @@ import { rowsOf } from './store.js';
 
 export const DEFAULT_WEEKLY_OFF = [5];
 // Leave days a Full-Time or Part-Time employee gets per calendar year, by type (`day` is casual
-// leave); Interns and Contractual employees get none. Festival holidays: 13 days a year.
-export const ALLOWANCE = { day: 10, sick: 14 };
-export const FESTIVAL_PER_YEAR = 13;
+// leave), and the festival holidays a year, until the Super Admin changes them (GRP_People,
+// design HOL-10); Interns and Contractual employees get no leave days.
+export const DEFAULT_LEAVE_DAYS = { day: 10, sick: 14, festival: 13 };
+export const MAX_LEAVE_DAYS = 60;
 export const EMPLOYMENT = { intern: 'Intern', full_time: 'Full-Time', part_time: 'Part-Time', contractual: 'Contractual' };
 export const WITH_LEAVE = ['full_time', 'part_time'];
 export const LEAVE_TYPE = { day: 'Casual leave', sick: 'Sick leave' };
@@ -38,6 +39,16 @@ export function weekdays(value) {
 export function settingOf(data, key) {
 	const row = rowsOf(data, 'settings').find((s) => s.setting_key === key);
 	return row ? row.value : null;
+}
+
+// The Super Admin's leave-days rules, `[{from_year, day, sick, festival}]` in year order.
+export const leaveRules = (data) => [...((settingOf(data, 'leave_days') || {}).rules || [])].sort((a, b) => a.from_year - b.from_year);
+
+// A year's leave days `{day, sick, festival}` (GRP_People::year_days): the rule with the latest
+// `from_year` not after it, else the defaults.
+export function yearDays(rules, year) {
+	const rule = (rules || []).filter((r) => +r.from_year <= +year).sort((a, b) => b.from_year - a.from_year)[0];
+	return rule ? { day: +rule.day, sick: +rule.sick, festival: +rule.festival } : DEFAULT_LEAVE_DAYS;
 }
 
 export function teamWeekly(data) {
@@ -90,9 +101,9 @@ export const employmentOf = (member) => (member && member.employment) || 'full_t
 export const hasLeave = (member) => WITH_LEAVE.includes(employmentOf(member));
 // A type's leave days in a year (GRP_People::allowance). The year someone started having leave
 // (`employment_since`) is prorated: months from that one to December × allowance ÷ 12, half days up.
-export function allowance(member, type, year) {
+export function allowance(member, type, year, rules = []) {
 	if (!hasLeave(member)) return 0;
-	const full = ALLOWANCE[type === 'sick' ? 'sick' : 'day'];
+	const full = yearDays(rules, year == null ? new Date().getFullYear() : year)[type === 'sick' ? 'sick' : 'day'];
 	const since = (member && member.employment_since) || '';
 	if (year == null || !/^\d{4}-\d{2}-\d{2}$/.test(since)) return full;
 	const from = +since.slice(0, 4);
@@ -126,10 +137,10 @@ export function leaveDates(member, year, leaves, team, daysOff) {
 }
 
 // The year's leave per type: {allowance, taken, left, over} (GRP_People::balance).
-export function balance(member, year, leaves, team, daysOff) {
+export function balance(member, year, leaves, team, daysOff, rules = []) {
 	const dated = leaveDates(member, year, leaves, team, daysOff);
 	const of = (type) => {
-		const a = allowance(member, type, year);
+		const a = allowance(member, type, year, rules);
 		const taken = dated[type].length;
 		return { allowance: a, taken, left: Math.max(0, a - taken), over: Math.max(0, taken - a) };
 	};
@@ -138,13 +149,13 @@ export function balance(member, year, leaves, team, daysOff) {
 
 // A month's settlement (GRP_People::settlement): days past the year's allowance are deducted in
 // the month they fall; December pays out the days left of both allowances.
-export function settlement(member, month, leaves, team, daysOff) {
+export function settlement(member, month, leaves, team, daysOff, rules = []) {
 	const dated = leaveDates(member, +month.slice(0, 4), leaves, team, daysOff);
 	let taken = 0;
 	let deducted = 0;
 	let paid = 0;
 	['day', 'sick'].forEach((type) => {
-		const a = allowance(member, type, +month.slice(0, 4));
+		const a = allowance(member, type, +month.slice(0, 4), rules);
 		dated[type].forEach((d, i) => {
 			if (d.slice(0, 7) === month) {
 				taken += 1;
@@ -157,12 +168,12 @@ export function settlement(member, month, leaves, team, daysOff) {
 }
 
 // Days a leave request would go past the year's allowance of its type (others' rows aside).
-export function overBy(member, leave, leaves, team, daysOff) {
+export function overBy(member, leave, leaves, team, daysOff, rules = []) {
 	const others = leaves.filter((l) => l.id !== leave.id);
 	const years = [...new Set([leave.from_date.slice(0, 4), leave.to_date.slice(0, 4)])];
 	const type = leave.type === 'sick' ? 'sick' : 'day';
 	return years.reduce((sum, y) => {
-		const a = allowance(member, type, +y);
+		const a = allowance(member, type, +y, rules);
 		const before = leaveDates(member, +y, others, team, daysOff)[type].length;
 		const first = `${y}-01-01`;
 		const last = `${y}-12-31`;

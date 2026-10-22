@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { dayChips, festivalCounts, holidaysAhead, holidaysOf, monthCells, monthCounts, runsOf, takenThisMonth, workingDays } from '../lib/holidays.js';
-import { allowance, balance, festivalDays, firstYearSince, hasLeave, settlement } from '../lib/people.js';
+import { allowance, balance, festivalDays, firstYearSince, hasLeave, leaveRules, settlement, yearDays } from '../lib/people.js';
 
 // Fridays are the team's weekly day off; Durga Puja is Tue 20 – Wed 21 Oct 2026.
 const TEAM = [5];
@@ -114,5 +114,32 @@ describe('Interactive balances and the first year (SPEC.md 6.10, 6.20, HOL-4, HO
 		expect(all.waiting[11]).toBe(1);
 		// Joined Oct 5: Durga Puja (2) and Victory Day (1).
 		expect(festivalCounts(2026, offs, TEAM, '2026-10-22', '2026-10-05').total).toBe(3);
+	});
+});
+
+describe('Leave days set by the Super Admin (SPEC.md 6.10, HOL-9A, HOL-10)', () => {
+	const rules = [
+		{ from_year: 2027, day: 8, sick: 10, festival: 5 },
+		{ from_year: 2026, day: 12, sick: 14, festival: 13 },
+	];
+	const data = { settings: { s: { id: 's', setting_key: 'leave_days', value: { rules } } } };
+
+	it('uses the rule of the latest year not after it, else 10 / 14 / 13', () => {
+		expect(leaveRules(data).map((r) => r.from_year)).toEqual([2026, 2027]);
+		expect(yearDays(leaveRules(data), 2025)).toEqual({ day: 10, sick: 14, festival: 13 });
+		expect(yearDays(leaveRules(data), 2026).day).toBe(12);
+		expect(yearDays(leaveRules(data), 2030)).toEqual({ day: 8, sick: 10, festival: 5 });
+		expect(yearDays([], 2026)).toEqual({ day: 10, sick: 14, festival: 13 });
+	});
+
+	it('counts allowances, balances and the December pay-out with them, prorated from Effective from', () => {
+		const me = { id: 'm', weekly_off: [], employment: 'full_time' };
+		expect(allowance(me, 'day', 2026, rules)).toBe(12);
+		expect(allowance(me, 'sick', 2027, rules)).toBe(10);
+		// Effective from October: 12 × 3 / 12 = 3 casual.
+		expect(allowance({ ...me, employment_since: '2026-10-01' }, 'day', 2026, rules)).toBe(3);
+		const leaves = [leave('a', 'm', '2026-12-01', '2026-12-02')];
+		expect(balance(me, 2026, leaves, TEAM, [], rules).day).toEqual({ allowance: 12, taken: 2, left: 10, over: 0 });
+		expect(settlement(me, '2026-12', leaves, TEAM, [], rules).paid).toBe(10 + 14);
 	});
 });

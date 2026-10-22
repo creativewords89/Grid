@@ -1477,7 +1477,11 @@ button.dr-row-t:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .hol-li-t{flex:1;min-width:0;display:flex;flex-direction:column}
 .hol-rule{font-size:.8rem}
 .hol-sys{display:flex;flex-direction:column;border-top:1px solid var(--line)}
-.hol-sys-r{display:grid;grid-template-columns:minmax(0,1fr) 52px 52px;gap:4px 12px;align-items:center;font-size:.84rem;padding:5px 0}
+.hol-sys-r{display:grid;grid-template-columns:minmax(140px,1.4fr) 130px 150px minmax(110px,1fr) 56px 56px;gap:4px 12px;align-items:center;font-size:.84rem;padding:7px 0;border-bottom:1px solid var(--line)}
+.hol-sys-r.part{background:var(--panel-2)}
+.hol-sys-r>b{text-align:right}
+.hol-sys-h>span:nth-child(n+5){text-align:right}
+@media (max-width:900px){.hol-sys-r{grid-template-columns:minmax(0,1fr) 56px 56px}.hol-sys-r>span:nth-child(2),.hol-sys-r>span:nth-child(3),.hol-sys-r>span:nth-child(4){grid-column:1}}
 .hol-sys-h{font-size:.66rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2)}
 .hol-who{display:inline-flex;align-items:center;gap:8px;min-width:0}
 .hol-who>span{display:flex;flex-direction:column;min-width:0}
@@ -1506,24 +1510,9 @@ button.dr-row-t:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 /* Holidays: balances (SPEC.md 6.20, design HOL-6) */
 .bal{display:flex;flex-direction:column;gap:12px}
 .hol-grow{flex:1}
-.bal-cards{display:flex;gap:14px;flex-wrap:wrap}
-.bal-card{--tone:var(--accent);flex:1 1 260px;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px 18px;display:flex;flex-direction:column;gap:12px}
 .t-sick{--tone:#C2410C}
 .t-fest{--tone:#9333EA}
-.bal-card .hol-k{display:inline-flex;align-items:center;gap:8px}
 .bal-dot{width:10px;height:10px;border-radius:3px;background:var(--tone);display:inline-block}
-.bal-nums{display:flex;gap:10px}
-.bal-nums>span{flex:1;display:flex;flex-direction:column}
-.bal-nums b{font-family:var(--display);font-size:1.75rem;line-height:1.1}
-.bal-nums small{font-size:.76rem;color:var(--ink-2)}
-.bal-nums .left b{color:var(--tone)}
-.bal-track{height:8px;border-radius:99px;background:var(--panel-2);overflow:hidden}
-.bal-track i{display:block;height:100%;background:var(--tone)}
-.bal-foot{font-size:.8rem;color:var(--ink-2);background:var(--panel-2);border-radius:10px;padding:8px 10px}
-.bal-money .hol-kv b{font-variant-numeric:tabular-nums}
-.bal-total{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:4px;padding:10px 12px;border-radius:10px;background:var(--done-bg);color:var(--done)}
-.bal-total span{font-size:.8rem;font-weight:700}
-.bal-total b{font-family:var(--display);font-size:1.3rem}
 .bal-dates{display:flex;gap:8px}
 .bal-dates label{flex:1;display:flex;flex-direction:column;gap:3px;font-size:.72rem;color:var(--ink-2)}
 .bal-dates input,.bal-reason{border:1px solid var(--line);border-radius:9px;padding:7px 9px;font:inherit;font-size:.86rem;color:var(--ink);background:var(--panel);min-width:0}
@@ -1583,7 +1572,35 @@ button.hol-day:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .dr-n{margin-left:6px;font-size:.7rem;font-weight:800;background:var(--doing-bg);color:var(--doing);border-radius:99px;padding:1px 7px}
 .dr-group+.dr-top-end{align-self:flex-end}
 @media (max-width:900px){.dr-group-sep{display:none}}
-.hol-mine .bal-cards{flex:1 1 100%}
-.bal-dates label{min-width:0}.bal-dates input{width:100%;box-sizing:border-box}
+.hol-mine .bal-dates label{min-width:0}.bal-dates input{width:100%;box-sizing:border-box}
 .bal-req>label{display:flex;flex-direction:column;gap:3px;font-size:.72rem;color:var(--ink-2)}
 .bal-req select,.bal-req>label input{border:1px solid var(--line);border-radius:9px;padding:7px 9px;font:inherit;font-size:.86rem;color:var(--ink);background:var(--panel);width:100%;box-sizing:border-box}
+
+/* HOL-8B2: three rings, the December amount and + Request leave */
+.bal-rings{display:flex;align-items:center;justify-content:space-around;flex-wrap:wrap;gap:16px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px}
+.bal-ring{--tone:var(--accent);position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:140px}
+.bal-ring svg{width:128px;height:128px}
+.bal-ring-bg{fill:none;stroke:var(--panel-2);stroke-width:10}
+.bal-ring-on{fill:none;stroke:var(--tone);stroke-width:10;stroke-linecap:round}
+.bal-ring-n{position:absolute;top:0;width:128px;height:128px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.bal-ring-n b{font-family:var(--display);font-size:2rem;line-height:1}
+.bal-ring-n small{font-size:.76rem;color:var(--ink-2)}
+.bal-ring-t{font-size:.92rem}
+.bal-pay{display:flex;flex-direction:column;align-items:flex-start;gap:4px;max-width:260px}
+.bal-pay>b{font-family:var(--display);font-size:1.7rem;color:var(--done);line-height:1.1}
+.bal-pay .btn{margin-top:8px}
+.hol-mine.none .bal-ring{flex:0 0 auto}
+.bal-req{display:flex;flex-direction:column;gap:10px;min-width:min(380px,80vw)}
+.t-accent{color:var(--accent);font-weight:700}
+/* HOL-10: leave days a year */
+.hol-days{display:flex;flex-direction:column;gap:12px}
+.hol-days-k{display:flex;gap:12px;flex-wrap:wrap}
+.hol-step{--tone:var(--accent);flex:1 1 220px;border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.hol-step>b{display:inline-flex;align-items:center;gap:8px}
+.hol-step-r{display:flex;align-items:center;gap:8px}
+.hol-step-r input{width:64px;text-align:center;border:1px solid var(--line);border-radius:9px;padding:5px 0;font-family:var(--display);font-size:1.3rem;font-weight:800;color:var(--tone);background:var(--panel)}
+.hol-days-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:.86rem}
+.hol-days-bar.on{background:var(--doing-bg);border-color:var(--doing)}
+.hol-days-bar .hol-grow{flex:1 1 220px}
+.bal-ring.t-sick,.hol-step.t-sick{--tone:#C2410C}
+.bal-ring.t-fest,.hol-step.t-fest{--tone:#9333EA}

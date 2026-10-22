@@ -1,4 +1,4 @@
-// Holidays (SPEC.md 6.10, 6.20, designs HOL-1 to HOL-3): the Super Admin adds a festival holiday
+// Holidays (SPEC.md 6.10, 6.20, designs HOL-1 to HOL-3, HOL-8B2, HOL-9A, HOL-10): the Super Admin adds a festival holiday
 // and makes Nia contractual; Nia sees he has no leave days; Max sees his yearly leave and asks
 // for sick leave; the Team Leader approves it from Waiting for you.
 import { test, expect } from '@playwright/test';
@@ -54,7 +54,19 @@ test('holidays', async ({ page }) => {
 	await system.getByLabel(/^Employment of Nia/).selectOption('contractual');
 	await page.getByText(/^Nia .+ is now Contractual$/).waitFor();
 	await expect(system.locator('.hol-none')).toContainText('Nia');
-	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/holiday-system.png', fullPage: true });
+	// Leave days a year (HOL-10): 12 casual days this year, then back to 10.
+	const days = page.getByRole('region', { name: 'Leave days a year' });
+	await days.getByRole('button', { name: 'More casual leave days' }).click();
+	await days.getByRole('button', { name: 'More casual leave days' }).click();
+	await expect(days).toContainText('Casual leave 10 → 12');
+	await days.getByRole('group', { name: 'Starts' }).getByRole('button', { name: /^This year/ }).click();
+	await days.getByRole('button', { name: 'Save' }).click();
+	await page.getByText(/^Leave days saved for \d{4}$/).waitFor();
+	await expect(system).toContainText('12 casual');
+	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/leave-days.png', fullPage: true });
+	await days.getByLabel('Casual leave days a year').fill('10');
+	await days.getByRole('button', { name: 'Save' }).click();
+	await expect(system).toContainText('10 casual');
 	await signOutOwner(page);
 
 	// Nia, contractual: no leave days, leave is unpaid; the holiday is still hers.
@@ -65,28 +77,29 @@ test('holidays', async ({ page }) => {
 	await expect(nias).toContainText('Contractual');
 	await expect(nias.getByRole('button', { name: 'Request unpaid leave' })).toBeVisible();
 	// Festival holidays are hers too (13 a year).
-	await expect(nias.getByRole('region', { name: 'Festival holidays' })).toContainText('13');
+	await expect(nias.getByRole('region', { name: 'Festival holidays' })).toContainText('of 13 left');
 	await signOut(page);
 
-	// Max, full-time (design HOL-6): total · taken · left for casual (10), sick (14) and festival
-	// holidays (13), nothing to click; his balance in money; asks for sick leave from Request leave.
+	// Max, full-time (design HOL-8B2): rings with the days left of 10 casual, 14 sick and 13 festival
+	// holidays, his balance in money; taps days on the calendar and asks for sick leave.
 	await signIn(page, MAX);
 	await openHolidays();
 	const mine = page.getByRole('region', { name: 'My leave' });
-	const total = (name) => mine.getByRole('region', { name }).locator('.bal-nums > span').first().locator('b');
-	await expect(total('Casual leave')).toHaveText('10');
-	await expect(total('Sick leave')).toHaveText('14');
-	await expect(total('Festival holidays')).toHaveText('13');
-	await expect(mine.getByRole('button')).toHaveCount(0);
+	await expect(mine.getByRole('region', { name: 'Casual leave' })).toContainText('of 10 left');
+	await expect(mine.getByRole('region', { name: 'Sick leave' })).toContainText('of 14 left');
+	await expect(mine.getByRole('region', { name: 'Festival holidays' })).toContainText('of 13 left');
 	await expect(page.getByRole('region', { name: 'Your balance if not taken' })).toContainText('BDT');
-	const request = page.getByRole('region', { name: 'Request leave' });
-	// Tapping a day on the calendar fills in the dates.
+	// Tapping a day on the calendar fills in the dates of the request.
 	const pickable = page.locator('button.hol-day');
-	if (await pickable.count()) {
+	const tapped = (await pickable.count()) > 0;
+	if (tapped) {
 		await pickable.first().click();
-		await expect(request.getByLabel('From')).not.toHaveValue('');
+		await expect(mine.getByRole('button', { name: /Request leave · 1 day picked/ })).toBeVisible();
 	}
 	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/holidays-member.png', fullPage: true });
+	await mine.getByRole('button', { name: /Request leave/ }).click();
+	const request = page.locator('dialog[open]');
+	if (tapped) await expect(request.getByLabel('From')).not.toHaveValue('');
 	// Just the type, the dates and a reason if there is one.
 	await request.getByLabel('Type of leave').selectOption('sick');
 	await request.getByLabel('From').fill(SICK_FROM);
@@ -137,10 +150,22 @@ test('holidays', async ({ page }) => {
 	await expect(page.getByRole('region', { name: `Your ${new Date().getFullYear()}` })).toContainText('You joined');
 	await expect(page.getByRole('region', { name: 'Days this year' })).toContainText('of 10 a full year');
 	const months = 12 - new Date().getMonth();
-	const firstTotal = (name) => first.getByRole('region', { name }).locator('.bal-nums > span').first().locator('b');
-	await expect(firstTotal('Casual leave')).toHaveText(String(Math.floor((10 * months) / 12 + 0.5)));
-	await expect(firstTotal('Sick leave')).toHaveText(String(Math.floor((14 * months) / 12 + 0.5)));
+	await expect(first.getByRole('region', { name: 'Casual leave' })).toContainText(`of ${Math.floor((10 * months) / 12 + 0.5)} left`);
+	await expect(first.getByRole('region', { name: 'Sick leave' })).toContainText(`of ${Math.floor((14 * months) / 12 + 0.5)} left`);
 	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/holidays-joiner.png', fullPage: true });
 	await signOut(page);
+
+	// Effective from (HOL-9A): the Super Admin moves Nia's start to Jan 1, so her whole year counts.
+	await signInOwner(page);
+	await openTeam(page, 'Admin settings');
+	const sys = page.getByRole('region', { name: 'Holiday system' });
+	const niaRow = sys.getByRole('row', { name: /Nia/ });
+	await expect(niaRow).toContainText(months === 12 ? 'Full year' : `${months} months`);
+	await sys.getByLabel(/^Effective from for Nia/).fill(`${new Date().getFullYear()}-01-01`);
+	await page.getByText(/^Nia .+’s leave counts from /).waitFor();
+	await expect(niaRow).toContainText('Full year');
+	await expect(niaRow).toContainText('10/10');
+	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/holiday-system.png', fullPage: true });
+	await signOutOwner(page);
 	noErrors();
 });

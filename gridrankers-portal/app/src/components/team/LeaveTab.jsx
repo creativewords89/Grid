@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { usePortal } from '../../context.js';
 import { isIssued, leaveSummary, mayDecideLeave, overBy, sortLeave } from '../../lib/leaveBoard.js';
-import { EMPLOYMENT, monthName } from '../../lib/people.js';
+import { EMPLOYMENT, leaveRules, monthName, yearDays } from '../../lib/people.js';
 import { isAdmin, isManager } from '../../lib/roles.js';
 import { rowsOf } from '../../lib/store.js';
 import Avatar from '../Avatar.jsx';
@@ -233,7 +233,7 @@ function Settlement() {
 			<div className="lv-foot">
 				<span>
 					{mode === 'month'
-						? '10 casual and 14 sick days a year (Full-Time, Part-Time). Days past them are deducted; December pays out the unused days.'
+						? `${yearDays(leaveRules(data), +today.slice(0, 4)).day} casual and ${yearDays(leaveRules(data), +today.slice(0, 4)).sick} sick days a year (Full-Time, Part-Time). Days past them are deducted; December pays out the unused days.`
 						: 'Total = casual + sick leave. Left is paid out with December’s salary; over was deducted. Company days off = weekly, event and seasonal days off.'}
 				</span>
 				{mode === 'month' && report && (

@@ -1,7 +1,7 @@
 // Leave tab (SPEC.md 7.5, design LV-A): the four numbers on top, the over-allowance warning of a
 // waiting request and the list order. The server stays the source of truth for decisions.
 import { isManager } from './roles.js';
-import { balance, overBy as overOf, takenInMonth, teamWeekly } from './people.js';
+import { balance, leaveRules, overBy as overOf, takenInMonth, teamWeekly } from './people.js';
 import { rowsOf } from './store.js';
 
 // Waiting first, then newest first.
@@ -14,7 +14,7 @@ export const mayDecideLeave = (l, me, data) => l.status === 'pending' && isManag
 export function overBy(data, leave) {
 	const person = data.members[leave.member_id];
 	if (!person) return 0;
-	return overOf(person, leave, rowsOf(data, 'leave'), teamWeekly(data), rowsOf(data, 'days_off'));
+	return overOf(person, leave, rowsOf(data, 'leave'), teamWeekly(data), rowsOf(data, 'days_off'), leaveRules(data));
 }
 
 // The numbers: waiting for the viewer, out today, taken this month, past the year's allowance.
@@ -31,7 +31,7 @@ export function leaveSummary(data, me, today) {
 		.filter((l) => l.status === 'approved' && today >= l.from_date && today <= l.to_date && data.members[l.member_id])
 		.sort((a, b) => data.members[a.member_id].name.localeCompare(data.members[b.member_id].name));
 	const taken = people.map((m) => {
-		const b = balance(m, +month.slice(0, 4), leaves, team, daysOff);
+		const b = balance(m, +month.slice(0, 4), leaves, team, daysOff, leaveRules(data));
 		return { member: m, taken: takenInMonth(m, month, leaves, team, daysOff), over: b.day.over + b.sick.over };
 	});
 	return {
