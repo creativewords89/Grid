@@ -1,6 +1,8 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePortal } from '../../context.js';
-import { dayTitle, seesTeamReports, summary, writesReports } from '../../lib/reports.js';
+import { dayTitle, seesTeamReports, summary, teamTotals, writesReports } from '../../lib/reports.js';
+import { mayDecideLeave } from '../../lib/leaveBoard.js';
+import { rowsOf } from '../../lib/store.js';
 import PersonReports from './PersonReports.jsx';
 import ReportEditor from './ReportEditor.jsx';
 import TeamReports from './TeamReports.jsx';
@@ -14,20 +16,88 @@ import Holidays from '../holidays/Holidays.jsx';
 // (today's report, design DR-A; earlier ones on the day bar, DR-C); the Super Admin and Team Leaders
 // get Team (everyone's report for a day, DR-B). Salary is your own month (PAY-3), or the Super
 // Admin's pay sheet (PAY-4); Payment information is your pay and payment details (PAY-2); Holidays is
-// the calendar of festival holidays and leave (HOL-1, HOL-2).
+// the calendar of festival holidays and leave (HOL-1, HOL-2). A Team Leader, who has their own
+// report, pay and leave and also a team, gets the tabs in two groups (design TL-B): Mine (My reports,
+// Salary, Payment information, My holidays) and My team (Team reports, Team holidays, each with how
+// many wait for them).
 export default function DailyReports() {
-	const { me } = usePortal();
+	const { api, data, me } = usePortal();
 	const writes = writesReports(me);
 	const team = seesTeamReports(me);
 	const admin = me.role === 'admin';
+	const grouped = writes && team;
 	const [area, setArea] = useState('reports');
-	const [tab, setTab] = useState(writes ? 'mine' : 'team');
 	const [person, setPerson] = useState(null);
+	// Team reports not sent today, for the My team badge.
+	const [missing, setMissing] = useState(0);
+	useEffect(() => {
+		if (!grouped) return undefined;
+		let live = true;
+		api
+			.get('daily-reports/team')
+			.then((r) => live && setMissing(teamTotals((r.people || []).filter((p) => p.member_id !== me.id && data.members[p.member_id])).missing))
+			.catch(() => {});
+		return () => {
+			live = false;
+		};
+		// Once per visit to the page, and again after leaving a person's reports.
+	}, [api, grouped, person]);
 	// The Team tab puts its ‹ day › on the right of this row (design TR-G1, date on the right).
 	const [slot, setSlot] = useState(null);
 
 	if (person) {
 		return <PersonReports memberId={person} onBack={() => setPerson(null)} backLabel="Team reports" />;
+	}
+
+	if (grouped) {
+		const waiting = rowsOf(data, 'leave').filter((l) => mayDecideLeave(l, me, data)).length;
+		const Tab = ({ k, label, n }) => (
+			<button type="button" role="tab" aria-selected={area === k} onClick={() => setArea(k)}>
+				{label}
+				{n ? <span className="dr-n">{n}</span> : null}
+			</button>
+		);
+		return (
+			<div className="dr">
+				<div className="dr-top">
+					<div className="dr-group">
+						<span className="dr-group-k" id="drMine">
+							Mine
+						</span>
+						<div className="pay-areas" role="tablist" aria-labelledby="drMine">
+							<Tab k="reports" label="My reports" />
+							<Tab k="salary" label="Salary" />
+							<Tab k="payment" label="Payment information" />
+							<Tab k="holidays" label="My holidays" />
+						</div>
+					</div>
+					<span className="dr-group-sep" aria-hidden="true" />
+					<div className="dr-group">
+						<span className="dr-group-k" id="drTeam">
+							My team
+						</span>
+						<div className="pay-areas" role="tablist" aria-labelledby="drTeam">
+							<Tab k="team" label="Team reports" n={missing} />
+							<Tab k="teamHolidays" label="Team holidays" n={waiting} />
+						</div>
+					</div>
+					<div className="dr-top-end" ref={setSlot} />
+				</div>
+				{area === 'salary' ? (
+					<SalaryMonth />
+				) : area === 'payment' ? (
+					<PaymentInfo />
+				) : area === 'holidays' ? (
+					<Holidays key="mine" slot={slot} scope="mine" />
+				) : area === 'teamHolidays' ? (
+					<Holidays key="team" slot={slot} scope="team" />
+				) : area === 'team' ? (
+					<TeamReports onOpenPerson={setPerson} slot={slot} />
+				) : (
+					<MyReports />
+				)}
+			</div>
+		);
 	}
 
 	const areas = [['reports', 'Reports'], ['salary', 'Salary'], ...(admin ? [] : [['payment', 'Payment information']]), ['holidays', 'Holidays']];
@@ -41,19 +111,9 @@ export default function DailyReports() {
 						</button>
 					))}
 				</div>
-				{area === 'reports' && writes && team && (
-					<div className="dr-tabs" role="tablist" aria-label="Daily reports">
-						<button type="button" role="tab" aria-selected={tab === 'mine'} onClick={() => setTab('mine')}>
-							My reports
-						</button>
-						<button type="button" role="tab" aria-selected={tab === 'team'} onClick={() => setTab('team')}>
-							Team
-						</button>
-					</div>
-				)}
 				<div className="dr-top-end" ref={setSlot} />
 			</div>
-			{area === 'salary' ? admin ? <PaySheet /> : <SalaryMonth /> : area === 'payment' ? <PaymentInfo /> : area === 'holidays' ? <Holidays slot={slot} /> : tab === 'team' && team ? <TeamReports onOpenPerson={setPerson} slot={slot} /> : <MyReports />}
+			{area === 'salary' ? admin ? <PaySheet /> : <SalaryMonth /> : area === 'payment' ? <PaymentInfo /> : area === 'holidays' ? <Holidays slot={slot} /> : team ? <TeamReports onOpenPerson={setPerson} slot={slot} /> : <MyReports />}
 		</div>
 	);
 }

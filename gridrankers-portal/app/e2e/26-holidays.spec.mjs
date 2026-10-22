@@ -112,8 +112,18 @@ test('holidays', async ({ page }) => {
 	await signOut(page);
 
 	// Team Leader: approves it from Waiting for you.
+	// Team Leader (design TL-B): Team holidays (counting the request) for the team; My holidays only theirs.
 	await signIn(page, LEAD);
-	await openHolidays();
+	await page.locator('aside').getByRole('button', { name: 'Daily reports' }).click();
+	const teamHol = page.getByRole('tablist', { name: 'My team' }).getByRole('tab', { name: /^Team holidays/ });
+	await expect(teamHol).toContainText(/\d/);
+	await page.getByRole('tablist', { name: 'Mine' }).getByRole('tab', { name: 'My holidays' }).click();
+	await expect(page.getByRole('region', { name: 'My leave' })).toBeVisible();
+	await expect(page.getByRole('region', { name: 'Waiting for you' })).toHaveCount(0);
+	await expect(page.locator('.hol-cal .hol-chip.out')).toHaveCount(0);
+	await teamHol.click();
+	await page.locator('.hol').waitFor();
+	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/tl-team-holidays.png' });
 	const waiting = page.getByRole('region', { name: 'Waiting for you' });
 	const ask = waiting.locator('.hol-req', { hasText: 'Max Member' }).filter({ hasText: 'Doctor' });
 	await expect(ask).toContainText('Sick leave');
@@ -121,8 +131,8 @@ test('holidays', async ({ page }) => {
 	await dlg.getByRole('button', { name: 'Approve' }).click();
 	await page.getByText('Leave approved').waitFor();
 	await expect(waiting.locator('.hol-req', { hasText: 'Doctor' })).toHaveCount(0);
-	// The Team Leader's own leave sits on top; there is no employment picker for them.
-	await expect(page.getByRole('region', { name: 'My leave' })).toBeVisible();
+	// Their own leave is not on the team tab; there is no employment picker for them.
+	await expect(page.getByRole('region', { name: 'My leave' })).toHaveCount(0);
 	await expect(page.getByLabel('Employment of Max Member')).toHaveCount(0);
 	await signOut(page);
 
