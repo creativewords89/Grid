@@ -16,6 +16,7 @@ from app.chunking import context_line
 from app.db.models import Chunk, KbOp, KbOpKind, KbOpState, StoredFile
 from app.kb.live import live_chunk_ids
 from app.kb.store import DELETE_BATCH, DOCS, UPSERT_BATCH, VERIFIED, Record, VectorStore
+from app.notifications import service as notifications
 from app.verified import service as verified
 
 log = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ BACKOFF = (
     timedelta(minutes=30),
 )
 MAX_BACKOFF = timedelta(hours=1)
+ALERT_AFTER = timedelta(hours=24)  # then the Owners are told (SPEC 6.4)
 BATCH_OPS = 50
 
 
@@ -112,6 +114,17 @@ def process(factory: sessionmaker[Session], store: VectorStore | None) -> int:
                 op.next_attempt_at = now() + backoff(op.attempts)
                 op.last_error = f"{type(exc).__name__}: {exc}"[:2000]
                 log.warning("Pinecone sync failed (attempt %s): %s", op.attempts, exc)
+                if op.created_at <= now() - ALERT_AFTER:
+                    notifications.notify_owners(
+                        db,
+                        notifications.SYNC_FAILING,
+                        "Pinecone has been failing for over 24 hours",
+                        "Changes to the knowledge base are waiting. Deleted items are still "
+                        f"never used in answers. Last error: {op.last_error}",
+                        "/settings",
+                        ("kb_op", op.seq),
+                        once=True,
+                    )
                 db.commit()
                 break
             op.state = KbOpState.DONE

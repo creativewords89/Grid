@@ -17,7 +17,7 @@ import {
   type Source,
 } from "../api";
 import { Markdown } from "../components/Markdown";
-import { reviewsChanged } from "../events";
+import { ANSWERS_CHANGED, reviewsChanged, type AnswersChanged } from "../events";
 import { formatDate } from "../format";
 import { Alert, Confirm } from "../components/ui";
 
@@ -110,6 +110,34 @@ export function Ask() {
   useEffect(() => {
     bottom.current?.scrollIntoView?.({ block: "end" });
   }, [messages]);
+
+  // A reviewer changed one of my answers: refresh the list (its dot) and the open chat.
+  const openChat = useRef<string | null>(chatId);
+  const busyNow = useRef(false);
+  useEffect(() => {
+    openChat.current = chatId;
+    busyNow.current = busy;
+  }, [chatId, busy]);
+  useEffect(() => {
+    const onChanged = (event: Event) => {
+      const changed = (event as CustomEvent<AnswersChanged>).detail ?? [];
+      loadChats();
+      const current = openChat.current;
+      if (!current || busyNow.current || !changed.some((a) => a.conversation_id === current))
+        return;
+      api
+        .getConversation(current)
+        .then((chat) => {
+          if (openChat.current !== chat.id) return;
+          setMessages(chat.messages);
+          setUpdatedIds(chat.updated_answer_ids ?? []);
+          setChats((list) => list.map((c) => (c.id === chat.id ? { ...c, updated: false } : c)));
+        })
+        .catch(() => undefined);
+    };
+    window.addEventListener(ANSWERS_CHANGED, onChanged);
+    return () => window.removeEventListener(ANSWERS_CHANGED, onChanged);
+  }, [loadChats]);
 
   const update = (key: string, patch: Partial<Shown> | ((m: Shown) => Partial<Shown>)) =>
     setMessages((list) =>

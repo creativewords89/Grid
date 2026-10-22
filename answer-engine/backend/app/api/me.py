@@ -9,7 +9,7 @@ from app import settings_store
 from app.api.schemas import ChangePasswordIn, MessageOut, ProfilePatchIn, UserOut
 from app.auth import passwords, sessions, tokens
 from app.auth.deps import CurrentSession, Db
-from app.db.models import TokenKind
+from app.db.models import NotifyChannel, TokenKind
 from app.errors import ApiError
 from app.permissions import Action, ensure
 from app.reviews.telegram import get_telegram
@@ -21,7 +21,13 @@ router = APIRouter(prefix="/me", tags=["me"])
 def update_profile(body: ProfilePatchIn, session: CurrentSession, db: Db) -> UserOut:
     user = session.user
     ensure(user, Action.EDIT_OWN_PROFILE)
-    user.name = body.name
+    if body.name is not None:
+        user.name = body.name
+    if body.notify_channel is not None:
+        if body.notify_channel == NotifyChannel.TELEGRAM and user.telegram_user_id is None:
+            message = "Link your Telegram first."
+            raise ApiError(422, "invalid", message, {"notify_channel": message})
+        user.notify_channel = body.notify_channel
     db.commit()
     db.refresh(user)
     return UserOut.of(user)
@@ -72,4 +78,6 @@ def telegram_unlink(session: CurrentSession, db: Db) -> None:
     user = session.user
     ensure(user, Action.EDIT_OWN_PROFILE)
     user.telegram_user_id = None
+    if user.notify_channel == NotifyChannel.TELEGRAM:
+        user.notify_channel = NotifyChannel.EMAIL
     db.commit()

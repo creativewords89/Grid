@@ -767,7 +767,7 @@ def test_reminders_then_escalation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _, review = posted
-    monkeypatch.setattr("app.reviews.jobs.get_mailer", lambda: mailer)
+    monkeypatch.setattr("app.notifications.service.get_mailer", lambda: mailer)
 
     def tick(hours_old: float) -> None:
         review.created_at = now() - timedelta(hours=hours_old)

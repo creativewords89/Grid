@@ -48,3 +48,19 @@ test("without a bot the reason is shown", async () => {
   await userEvent.click(await screen.findByRole("button", { name: "Link Telegram" }));
   expect(await screen.findByText("Telegram isn't set up yet. Ask the Owner.")).toBeVisible();
 });
+
+test("choosing how to be notified", async () => {
+  const calls = mockApi({
+    "GET /auth/me": [200, { user: makeUser(), csrf_token: "t" }],
+    "PATCH /me": (body) => [200, makeUser(body as object)],
+  });
+  render(<App />);
+
+  const telegram = await screen.findByRole("radio", { name: /Telegram/ });
+  expect(telegram).toBeDisabled(); // not linked yet
+  expect(screen.getByRole("radio", { name: /Email/ })).toBeChecked();
+  await userEvent.click(screen.getByRole("radio", { name: /In the app only/ }));
+
+  expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ notify_channel: "in_app" });
+  expect(await screen.findByRole("radio", { name: /In the app only/ })).toBeChecked();
+});

@@ -473,3 +473,68 @@ test("a verified source links to the verified answer", async () => {
   const chip = await screen.findByRole("link", { name: /Verified answer/ });
   expect(chip).toHaveAttribute("href", "/verified?id=v1");
 });
+
+test("a correction arriving while the chat is open shows up without reloading", async () => {
+  let corrected = false;
+  const answer = (body: string, status: string) => ({
+    id: "m2",
+    role: "assistant",
+    body,
+    created_at: "",
+    answer: {
+      id: "a1",
+      sources: [],
+      outcome: "low",
+      status,
+      stop_reason: "end_turn",
+      corrected: status === "corrected",
+      confidence: 50,
+      feedback: null,
+    },
+  });
+  mockApi({
+    "GET /auth/me": signedIn,
+    "GET /conversations": [200, [chat]],
+    "GET /conversations/c1": () => [
+      200,
+      {
+        ...chat,
+        messages: [
+          { id: "m1", role: "user", body: "Pro price?", created_at: "", answer: null },
+          corrected ? answer("Pro is $950.", "corrected") : answer("Pro is $900.", "in_review"),
+        ],
+      },
+    ],
+    "GET /updates?since=2026-10-22T10%3A00%3A00Z": () => {
+      const reply = {
+        cursor: "2026-10-22T10:00:00Z",
+        answers: corrected ? [{ id: "a1", conversation_id: "c1", status: "corrected" }] : [],
+        notifications: [],
+        unread: 0,
+        files_changed: false,
+        reviews_waiting: null,
+      };
+      return [200, reply];
+    },
+    "GET /updates": [
+      200,
+      {
+        cursor: "2026-10-22T10:00:00Z",
+        answers: [],
+        notifications: [],
+        unread: 0,
+        files_changed: false,
+        reviews_waiting: null,
+      },
+    ],
+  });
+  window.history.pushState(null, "", "/?c=c1");
+  render(<App />);
+  expect(await screen.findByText("Pro is $900.")).toBeVisible();
+
+  corrected = true;
+  document.dispatchEvent(new Event("visibilitychange")); // the tab became visible: poll now
+
+  expect(await screen.findByText("Pro is $950.")).toBeVisible();
+  expect(screen.getByText(/✔ Corrected by our team/)).toBeVisible();
+});

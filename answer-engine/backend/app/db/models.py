@@ -646,3 +646,28 @@ class VerifiedAnswerVersion(Base):
     __table_args__ = (
         UniqueConstraint("verified_answer_id", "version", name="uq_verified_versions"),
     )
+
+
+class Notification(TimestampMixin, Base):
+    """Something a person should know (SPEC section 6.11). Always shown in the app's bell;
+    also sent by email or Telegram when the person chose that channel."""
+
+    __tablename__ = "notifications"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(40))
+    ref_kind: Mapped[str | None] = mapped_column(String(40))
+    ref_id: Mapped[str | None] = mapped_column(String(64))
+    title: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text, default="")
+    link: Mapped[str | None] = mapped_column(String(300))  # a path in the app, e.g. /?c=…
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Email or Telegram delivery: the channel used and when it went.
+    channel: Mapped[str | None] = mapped_column(String(10))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("ix_notifications_user_created", "user_id", "created_at"),
+        Index("ix_notifications_ref", "kind", "ref_id"),
+    )

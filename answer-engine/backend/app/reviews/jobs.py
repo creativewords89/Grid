@@ -14,7 +14,7 @@ from app.auth.tokens import now
 from app.config import get_settings
 from app.db.models import Review, ReviewMessage, ReviewMessageKind, User
 from app.jobs.queue import Payload, job
-from app.mail import get_mailer
+from app.notifications import service as notifications
 from app.reviews import service
 from app.reviews.telegram import (
     ReviewCard,
@@ -131,19 +131,18 @@ def remind(db: Session, payload: Payload) -> None:
         db.commit()
     if not due.escalate:
         return
-    mailer = get_mailer()
-    settings = get_settings()
     hours = settings_store.get_float(db, "review_escalation_hours")
     for review in due.escalate:
         review.escalated_at = at
-        status = "answered by nobody yet" if review.state.value == "open" else "still undecided"
-        for owner in service.owners(db):
-            mailer.send(
-                owner.email,
-                f"Review #R-{review.number} has waited over {hours:g} hours",
-                f"Hello {owner.name},\n\n"
-                f"Review #R-{review.number} ({service.reason_label(review)}) is {status}.\n"
-                f"Question: {review.answer.question}\n\n"
-                f"Open it: {settings.link(f'/reviews?id={review.id}')}\n",
-            )
+        status = (
+            "nobody has taken it yet" if review.state.value == "open" else "it's still undecided"
+        )
+        notifications.notify_owners(
+            db,
+            notifications.REVIEW_ESCALATED,
+            f"Review #R-{review.number} has waited over {hours:g} hours",
+            f"{service.reason_label(review)}: {status}.\nQuestion: {review.answer.question}",
+            f"/reviews?id={review.id}",
+            ("review", review.id),
+        )
         db.commit()

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
+import { FILES_CHANGED } from "../events";
 import { api, ApiError, type FileList, type FileTypeFilter, type StoredFile } from "../api";
 import { useAuth } from "../auth";
 import { Alert, Confirm } from "../components/ui";
@@ -89,6 +90,12 @@ function Files() {
     const timer = window.setInterval(load, POLL_MS);
     return () => window.clearInterval(timer);
   }, [busy, load]);
+
+  // Another person's upload, or the worker finishing one: the app's live updates say so.
+  useEffect(() => {
+    window.addEventListener(FILES_CHANGED, load);
+    return () => window.removeEventListener(FILES_CHANGED, load);
+  }, [load]);
 
   const update = (key: string, patch: Partial<Upload>) =>
     setUploads((list) => list.map((u) => (u.key === key ? { ...u, ...patch } : u)));

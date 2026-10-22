@@ -32,16 +32,29 @@ from app.jobs.queue import Payload, UserFacingError, job
 from app.kb import outbox
 from app.kb.reconcile import reconcile
 from app.kb.store import DOCS, get_store
+from app.notifications import service as notifications  # also registers its job
 from app.reviews import jobs as review_jobs  # noqa: F401  (registers the review jobs)
 from app.verified import service as verified
 
 
-def _fail_file(db: Session, payload: Payload, message: str) -> None:
+def _fail_file(db: Session, payload: Payload, message: str, retried: bool) -> None:
     record = db.get(StoredFile, uuid.UUID(payload["file_id"]))
     if record is not None and record.deleted_at is None:
         record.status = FileStatus.FAILED
         record.error = message
         record.progress_done = record.progress_total = None
+        if retried:
+            # Failed 3 times: the Owners should look (a damaged or locked file fails at once
+            # and is only shown to the uploader).
+            notifications.notify_owners(
+                db,
+                notifications.FILE_FAILED,
+                f"A file couldn't be read: {record.name}",
+                message,
+                "/documents",
+                ("file", record.id),
+                once=True,
+            )
 
 
 @job(files.INGEST, on_failure=_fail_file)

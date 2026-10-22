@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api, type Role } from "./api";
 import { useAuth } from "./auth";
-import { REVIEWS_CHANGED } from "./events";
+import { Bell } from "./components/Bell";
+import { ANSWERS_CHANGED, FILES_CHANGED, REVIEWS_CHANGED } from "./events";
 import { navigate } from "./router";
 
 type NavItem = { path: string; label: string; roles?: Role[] };
@@ -18,7 +19,7 @@ const NAV: NavItem[] = [
   { path: "/settings", label: "Settings", roles: ["owner"] },
 ];
 
-function useWaitingReviews(path: string, staff: boolean): number {
+function useWaitingReviews(path: string, staff: boolean): [number, (n: number) => void] {
   const [waiting, setWaiting] = useState(0);
   useEffect(() => {
     if (!staff) return;
@@ -35,14 +36,57 @@ function useWaitingReviews(path: string, staff: boolean): number {
       window.removeEventListener(REVIEWS_CHANGED, load);
     };
   }, [path, staff]);
-  return waiting;
+  return [waiting, setWaiting];
+}
+
+const POLL_MS = 15_000;
+
+/** Live updates (SPEC section 2): poll every 15 s while the tab is visible, and tell the
+ * screens what changed. */
+function useUpdates(signedIn: boolean, onWaiting: (n: number) => void) {
+  const [unread, setUnread] = useState(0);
+  useEffect(() => {
+    if (!signedIn) return;
+    let since: string | null = null;
+    let stopped = false;
+    let timer = 0;
+    const poll = async () => {
+      window.clearTimeout(timer);
+      if (document.visibilityState === "visible") {
+        const u = await api.updates(since).catch(() => null);
+        if (stopped) return;
+        if (u) {
+          since = u.cursor;
+          setUnread(u.unread);
+          if (u.reviews_waiting !== null) onWaiting(u.reviews_waiting);
+          if (u.answers.length)
+            window.dispatchEvent(new CustomEvent(ANSWERS_CHANGED, { detail: u.answers }));
+          if (u.files_changed) window.dispatchEvent(new Event(FILES_CHANGED));
+        }
+      }
+      if (!stopped) timer = window.setTimeout(() => void poll(), POLL_MS);
+    };
+    const onVisible = () => document.visibilityState === "visible" && void poll();
+    void poll();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [signedIn, onWaiting]);
+  return [unread, setUnread] as const;
 }
 
 export function Shell({ path, children }: { path: string; children: ReactNode }) {
   const { user, signOut } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
-  const waiting = useWaitingReviews(path, user?.role === "owner" || user?.role === "reviewer");
+  const [waiting, setWaiting] = useWaitingReviews(
+    path,
+    user?.role === "owner" || user?.role === "reviewer",
+  );
+  const [unread, setUnread] = useUpdates(Boolean(user), setWaiting);
   if (!user) return null;
 
   const go = (to: string) => {
@@ -67,6 +111,7 @@ export function Shell({ path, children }: { path: string; children: ReactNode })
         </span>
         <span className="brand">Answer Engine</span>
         <div className="spacer" />
+        <Bell unread={unread} onChange={setUnread} />
         <div className="menu">
           <button
             className="chip"

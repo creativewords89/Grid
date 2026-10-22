@@ -116,6 +116,8 @@ class Email:
     to: str
     subject: str
     body: str
+    html: str | None = None
+    unsubscribe: str | None = None
 
 
 @dataclass
@@ -123,9 +125,16 @@ class FakeMailer:
     working: bool = True
     outbox: list[Email] = field(default_factory=list)
 
-    def send(self, to: str, subject: str, body: str) -> bool:
+    def send(
+        self,
+        to: str,
+        subject: str,
+        body: str,
+        html: str | None = None,
+        unsubscribe: str | None = None,
+    ) -> bool:
         if self.working:
-            self.outbox.append(Email(to, subject, body))
+            self.outbox.append(Email(to, subject, body, html, unsubscribe))
         return self.working
 
     def link(self, marker: str) -> str:

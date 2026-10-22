@@ -1,4 +1,4 @@
-"""Outgoing email over SMTP. Notification emails arrive in build step 12."""
+"""Outgoing email over SMTP: invites, password resets and notifications (step 12)."""
 
 import logging
 import smtplib
@@ -14,8 +14,16 @@ log = logging.getLogger(__name__)
 
 
 class Mailer(Protocol):
-    def send(self, to: str, subject: str, body: str) -> bool:
-        """Send a plain-text email. Returns False when it was not sent."""
+    def send(
+        self,
+        to: str,
+        subject: str,
+        body: str,
+        html: str | None = None,
+        unsubscribe: str | None = None,
+    ) -> bool:
+        """Send an email (plain text, plus HTML if given). Returns False when not sent.
+        `unsubscribe` is the "stop these emails" link, also sent as List-Unsubscribe."""
         ...
 
 
@@ -23,13 +31,24 @@ class SmtpMailer:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
 
-    def send(self, to: str, subject: str, body: str) -> bool:
+    def send(
+        self,
+        to: str,
+        subject: str,
+        body: str,
+        html: str | None = None,
+        unsubscribe: str | None = None,
+    ) -> bool:
         s = self.settings
         msg = EmailMessage()
         msg["From"] = s.smtp_from
         msg["To"] = to
         msg["Subject"] = subject
+        if unsubscribe:
+            msg["List-Unsubscribe"] = f"<{unsubscribe}>"
         msg.set_content(body)
+        if html:
+            msg.add_alternative(html, subtype="html")
         try:
             context = ssl.create_default_context()
             if s.smtp_port == 465:
@@ -58,7 +77,14 @@ class UnconfiguredMailer:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
 
-    def send(self, to: str, subject: str, body: str) -> bool:
+    def send(
+        self,
+        to: str,
+        subject: str,
+        body: str,
+        html: str | None = None,
+        unsubscribe: str | None = None,
+    ) -> bool:
         if self.settings.is_production:
             log.warning("email not configured; not sending %r to %s", subject, to)
         else:

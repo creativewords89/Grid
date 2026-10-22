@@ -38,6 +38,7 @@ export function makeUser(overrides: Partial<User> = {}): User {
     active: true,
     invited: false,
     telegram_linked: false,
+    notify_channel: "email",
     last_login_at: null,
     created_at: "2026-10-01T10:00:00Z",
     ...overrides,

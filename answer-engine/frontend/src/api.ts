@@ -10,11 +10,35 @@ export type User = {
   active: boolean;
   invited: boolean;
   telegram_linked: boolean;
+  notify_channel: NotifyChannel;
   last_login_at: string | null;
   created_at: string;
 };
 
 export type Me = { user: User; csrf_token: string };
+
+export type NotifyChannel = "in_app" | "email" | "telegram";
+
+export type NotificationItem = {
+  id: string;
+  kind: string;
+  title: string;
+  body: string;
+  link: string | null;
+  created_at: string;
+  read_at: string | null;
+};
+
+export type NotificationList = { unread: number; items: NotificationItem[] };
+
+export type Updates = {
+  cursor: string;
+  answers: { id: string; conversation_id: string | null; status: string }[];
+  notifications: NotificationItem[];
+  unread: number;
+  files_changed: boolean;
+  reviews_waiting: number | null;
+};
 
 export type FileStatus = "queued" | "processing" | "ready" | "failed";
 export type FileTypeFilter = "pdf" | "word" | "excel" | "image";
@@ -506,6 +530,12 @@ export const api = {
   sendReset: (id: string) => request<LinkResult>("POST", `/users/${id}/reset-password`),
 
   updateProfile: (name: string) => request<User>("PATCH", "/me", { name }),
+  setChannel: (notify_channel: NotifyChannel) => request<User>("PATCH", "/me", { notify_channel }),
+  listNotifications: () => request<NotificationList>("GET", "/notifications"),
+  markRead: (ids?: string[]) =>
+    request<NotificationList>("POST", "/notifications/read", ids ? { ids } : {}),
+  updates: (since: string | null) =>
+    request<Updates>("GET", `/updates${since ? `?since=${encodeURIComponent(since)}` : ""}`),
   changePassword: (current_password: string, new_password: string) =>
     request<{ message: string }>("POST", "/me/password", { current_password, new_password }),
 

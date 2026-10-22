@@ -46,7 +46,7 @@ def calls() -> Iterator[Calls]:
         seen.append(("run", payload))
         raise UserFacingError("The file is broken.")
 
-    def failed(_db: Session, payload: dict[str, Any], message: str) -> None:
+    def failed(_db: Session, payload: dict[str, Any], message: str, retried: bool) -> None:
         seen.append(("on_failure", message))
 
     REGISTRY.update(

@@ -32,14 +32,15 @@ Payload = dict[str, Any]
 class JobType:
     run: Callable[[Session, Payload], None]
     # Called once, in its own transaction, after the final failed attempt.
-    on_failure: Callable[[Session, Payload, str], None] | None = None
+    # (db, payload, message, retried): retried is False when a PermanentError ended it at once.
+    on_failure: Callable[[Session, Payload, str, bool], None] | None = None
 
 
 REGISTRY: dict[str, JobType] = {}
 
 
 def job(
-    kind: str, on_failure: Callable[[Session, Payload, str], None] | None = None
+    kind: str, on_failure: Callable[[Session, Payload, str, bool], None] | None = None
 ) -> Callable[[Callable[[Session, Payload], None]], Callable[[Session, Payload], None]]:
     """Register a job handler: `@job("ingest_file")`."""
 
@@ -109,13 +110,15 @@ def _settle_failure(db: Session, found: Job, error: str) -> bool:
     return False
 
 
-def _final_failure(session_factory: Callable[[], Session], found: Job, message: str) -> None:
+def _final_failure(
+    session_factory: Callable[[], Session], found: Job, message: str, retried: bool = True
+) -> None:
     job_type = REGISTRY.get(found.kind)
     if job_type is None or job_type.on_failure is None:
         return
     with session_factory() as db:
         try:
-            job_type.on_failure(db, found.payload, message)
+            job_type.on_failure(db, found.payload, message, retried)
             db.commit()
         except Exception:
             log.exception("on_failure for %s job %s failed", found.kind, found.id)
@@ -162,7 +165,7 @@ def run_next(session_factory: Callable[[], Session], worker_id: str) -> bool:
         final = _settle_failure(db, found, error)
         db.commit()
     if final:
-        _final_failure(session_factory, found, message)
+        _final_failure(session_factory, found, message, retried=not permanent)
     return True
 
 

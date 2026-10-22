@@ -12,6 +12,9 @@ class Settings(BaseSettings):
 
     app_env: Literal["development", "test", "production"] = "development"
     app_url: str = "http://localhost:8080"
+    # Signs links that work without signing in (the "Stop these emails" link). 32+ random
+    # characters; required in production.
+    secret_key: str = ""
     database_url: str = Field(
         default="postgresql+psycopg://answers:answers@localhost:5432/answers",
         description="SQLAlchemy URL, always the psycopg (v3) driver.",
@@ -58,6 +61,14 @@ class Settings(BaseSettings):
     @property
     def email_configured(self) -> bool:
         return bool(self.smtp_host and self.smtp_from)
+
+    @property
+    def signing_key(self) -> bytes:
+        if self.secret_key:
+            return self.secret_key.encode()
+        if self.is_production:
+            raise RuntimeError("Set SECRET_KEY in .env (32+ random characters).")
+        return b"development-only-signing-key"
 
     def link(self, path: str) -> str:
         return self.app_url.rstrip("/") + path

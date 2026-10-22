@@ -36,6 +36,7 @@ from app.db.models import (
 )
 from app.jobs.queue import enqueue
 from app.kb.store import VectorStore
+from app.notifications import service as notifications
 from app.verified import service as verified
 
 ACTIONS = ("approve", "edit", "reject", "no_answer", "needs_info")
@@ -259,6 +260,14 @@ def decide_full(
         db.flush()
         if decision.post_to_group:
             enqueue(db, NOTE_JOB, {"review_id": str(review.id), "message_id": str(question.id)})
+        _tell_asker(
+            db,
+            answer,
+            user,
+            notifications.NEEDS_INFO,
+            "Our team needs more information",
+            f"{user.name} asks: {text}",
+        )
         audit.record(db, user, "review_needs_info", "review", review.id, f"#R-{review.number}")
         return Decided(review)
 
@@ -299,7 +308,31 @@ def decide_full(
         [{"field": "status", "from": None, "to": answer.status.value}],
     )
     enqueue(db, UPDATE_JOB, {"review_id": str(review.id)})
+    title, body = _reviewed_message(answer)
+    _tell_asker(db, answer, user, notifications.ANSWER_REVIEWED, title, body)
     return Decided(review, made, merged)
+
+
+def _reviewed_message(answer: Answer) -> tuple[str, str]:
+    if answer.status == AnswerStatus.VERIFIED:
+        return "Our team checked an answer you got: it's right", answer.question
+    if answer.status == AnswerStatus.CORRECTED:
+        return "Our team corrected an answer you got", answer.question
+    return (
+        "An answer you got was wrong",
+        f"{answer.question}\nWe don't have a confirmed answer yet. Please don't rely on it.",
+    )
+
+
+def _tell_asker(db: Session, answer: Answer, by: User, kind: str, title: str, body: str) -> None:
+    """Notify the person who asked, unless they made the change themselves."""
+    if answer.asked_by is None or answer.asked_by == by.id:
+        return
+    asker = db.get(User, answer.asked_by)
+    if asker is None:
+        return
+    link = f"/?c={answer.conversation_id}" if answer.conversation_id else None
+    notifications.notify(db, asker, kind, title, body, link, ("answer", answer.id))
 
 
 def admin_decide(

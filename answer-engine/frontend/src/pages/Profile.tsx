@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { api, ApiError, type TelegramCode } from "../api";
+import { api, ApiError, type NotifyChannel, type TelegramCode } from "../api";
 import { useAuth } from "../auth";
 import { Alert, Field } from "../components/ui";
 
@@ -84,8 +84,65 @@ export function Profile() {
           </div>
         </form>
       </div>
+      <Channel />
       <TelegramLink />
     </section>
+  );
+}
+
+const CHANNELS: { value: NotifyChannel; label: string; hint: string }[] = [
+  { value: "in_app", label: "In the app only", hint: "The 🔔 at the top shows them." },
+  { value: "email", label: "Email", hint: "Also sent to your email address." },
+  { value: "telegram", label: "Telegram", hint: "Also sent to you by the bot." },
+];
+
+function Channel() {
+  const { user, updated } = useAuth();
+  const [error, setError] = useState("");
+  if (!user) return null;
+
+  async function choose(value: NotifyChannel) {
+    setError("");
+    try {
+      updated(await api.setChannel(value));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Not saved.");
+    }
+  }
+
+  return (
+    <div className="card stack">
+      <h2>Notifications</h2>
+      <p className="muted">
+        You're told when our team checks an answer you got, or needs more information from you.
+      </p>
+      {error && <Alert kind="error">{error}</Alert>}
+      <fieldset className="choices">
+        <legend className="sr-only">How to tell you</legend>
+        {CHANNELS.map((c) => {
+          const off = c.value === "telegram" && !user.telegram_linked;
+          return (
+            <label key={c.value} className={off ? "choice muted" : "choice"}>
+              <input
+                type="radio"
+                name="channel"
+                value={c.value}
+                checked={user.notify_channel === c.value}
+                disabled={off}
+                onChange={() => void choose(c.value)}
+              />
+              <span>
+                <strong>{c.label}</strong>
+                <span className="muted small">
+                  {" "}
+                  — {off ? "link Telegram below first." : c.hint}
+                </span>
+              </span>
+            </label>
+          );
+        })}
+      </fieldset>
+    </div>
   );
 }
 
@@ -123,7 +180,8 @@ function TelegramLink() {
 
   async function unlink() {
     await api.telegramUnlink();
-    updated({ ...user!, telegram_linked: false });
+    const channel = user!.notify_channel === "telegram" ? "email" : user!.notify_channel;
+    updated({ ...user!, telegram_linked: false, notify_channel: channel });
     setMessage({ kind: "success", text: "Your Telegram is unlinked." });
   }
 

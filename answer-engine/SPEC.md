@@ -120,7 +120,7 @@ Every API endpoint calls `permissions.can(user, action, obj)`. **pytest covers e
 - **Lockout:** 5 failed attempts per email+IP within 15 minutes lock that pair for 15 minutes from the fifth failure; a successful sign-in resets the count. A wrong email and a wrong password both get "Email or password is incorrect." While locked, sign-in returns 429 "Too many attempts. Wait 15 minutes, then try again." (this says nothing about whether the account exists).
 - **Sessions:** random 32-byte token, stored as a SHA-256 hash in `sessions`. The cookie is `HttpOnly; Secure; SameSite=Lax` and expires after 30 days (sliding). Sign out deletes the session. A password reset or deactivation revokes all of that person's sessions.
 - **CSRF:** every state-changing request needs header `X-CSRF-Token`, matching a per-session token returned by `GET /api/auth/me`.
-- Nothing renders before sign-in. Every `/api/*` route except `/api/auth/*`, `/api/health` and `/api/telegram/webhook` returns 401 without a session.
+- Nothing renders before sign-in. Every `/api/*` route except `/api/auth/*`, `/api/health`, `/api/telegram/webhook` and `/api/notifications/stop-emails` (signed link, section 6.11) returns 401 without a session.
 
 ## 5. Data model (PostgreSQL)
 
@@ -145,7 +145,7 @@ All tables have `id` (UUID v7 unless stated), `created_at` and `updated_at` (`ti
 | `thread_messages` | thread_id, parent_id NULL (the message it replies to), author ENUM(them, us), author_name NULL (e.g. `u/john_smb`), body, external_url NULL, external_comment_id NULL, answer_id NULL (for our drafts), state ENUM(draft, in_review, ready, posted, discarded) (ours only), posted_by NULL, posted_at NULL, created_by |
 | `platforms` | slug UNIQUE (reddit, facebook, …), name, enabled BOOL, parser ENUM(reddit, facebook, generic), style_prompt TEXT, disclosure_line TEXT NULL, position |
 | `communities` | platform_id, name (e.g. `r/SEO`), notes TEXT (e.g. "no links") |
-| `notifications` | user_id, kind (answer_reviewed, needs_info, thread_draft_ready, reply_corrected_after_post, …), ref_kind, ref_id, title, body, read_at NULL |
+| `notifications` | user_id, kind (answer_reviewed, needs_info, thread_draft_ready, reply_corrected_after_post, review_escalated, sync_failing, file_failed), ref_kind, ref_id, title, body, link NULL (a path in the app), read_at NULL, channel NULL + sent_at NULL (email or Telegram delivery) |
 | `kb_ops` | outbox for Pinecone (section 6.4): seq BIGINT IDENTITY (sending order; UUID v7 isn't ordered within a millisecond), op ENUM(upsert, delete), namespace, record_ids TEXT[] (at most 1000), file_id NULL (for "Sync pending"), state ENUM(pending, done), attempts, next_attempt_at, last_error. Done ops are kept 7 days. |
 | `jobs` | kind, payload JSONB, state ENUM(queued, running, done, failed), attempts, run_after, locked_by, locked_at, last_error, dedupe_key UNIQUE NULL (scheduled jobs use `kind:YYYY-MM-DD` so each runs once per slot) |
 | `trash` | kind ENUM(file, verified_answer, thread, conversation), ref_id, title, data JSONB, deleted_by, deleted_at. Purged after 30 days. |
@@ -408,6 +408,14 @@ Sources: [1] Onboarding.pdf p.3
   - (Owners) review escalations, sync failures, and failed files after 3 retries.
 - The bell shows the unread count, and there is a "Mark all read" action.
 - Email: plain text plus simple HTML, from `SMTP_FROM`, with a one-click "Stop these emails" link that switches the user to in-app only.
+- *Built in step 12:*
+  - **One rule for every event:** the bell always gets it, plus the person's chosen channel. This also applies to Owner escalations, so an Owner who chose in-app only isn't emailed (section 6.7 said "in-app and email"; following the person's choice keeps "Stop these emails" meaningful).
+  - Email and Telegram are sent by a worker job and retried if they fail. If someone chose Telegram but it has been unlinked, the notification is emailed instead. Unlinking Telegram moves a Telegram choice back to email. Telegram can be chosen only once linked. While email isn't configured, nothing is emailed and the bell is enough.
+  - People aren't told about their own actions (an Owner correcting an answer to their own question). Deactivated people get nothing.
+  - **Who gets what:** the asker, when a review is decided ("Our team checked an answer you got: it's right", "Our team corrected an answer you got", "An answer you got was wrong") or a reviewer asks them something. Every Owner, when a review waits past the escalation time, when a file fails after its 3 tries (a file that can never be read, such as a password-protected one, is only shown to the uploader), and when a Pinecone op has kept failing for 24 hours. Each Owner is told once per file and once per op. Marketing events come with step 13.
+  - **"Stop these emails"** is a signed link (HMAC with `SECRET_KEY`) that works without signing in. It opens a page with one button; the switch happens on the button press, so mail scanners that open links can't switch emails off by themselves. Emails also carry a `List-Unsubscribe` header.
+  - **Live updates:** the app polls `/api/updates` every 15 s while the tab is visible, and at once when the tab becomes visible again. The answer is a cursor plus small facts: my answers that changed, new notifications, the unread count, whether any file changed, and (for Owners and Reviewers) how many reviews are waiting. An open chat reloads when one of its answers changed, the chat list refreshes its dots, Documents reloads when a file changed, and the Review Queue badge updates.
+  - **Profile → Notifications:** In the app only / Email / Telegram.
 
 ### 6.12 Jobs, trash and audit
 
@@ -505,8 +513,8 @@ Every route checks the session, the CSRF token (for writes) and `permissions.can
 | Answer Log | `GET /answer-log` (filters `outcome`, `status`, `flagged`, `kind`, `person`, `date_from`, `date_to`, `q`, `page`), `GET /answer-log/gaps`, `GET /answer-log/{id}`, `POST /answers/{id}/admin-review` `{action: approve|edit|reject|no_answer, text?, note?, verified_choice?}` |
 | Verified | `GET /verified?show=active|disabled|expired|needs_check|all&q=` (with counts per tab), `GET /verified/{id}`, `PATCH /verified/{id}` `{question?, answer?, expires_at?, clear_expiry?, checked?}`, `POST /verified/{id}/disable`, `POST /verified/{id}/enable`, `DELETE /verified/{id}`, `GET /verified/{id}/history`, `POST /verified/{id}/restore-version` `{version}` |
 | Marketing | `POST /threads/resolve` `{url}` → `{found, thread?, parsed, possible_matches?, error?}`, `POST /threads`, `GET /threads`, `GET /threads/{id}`, `POST /threads/{id}/replies`, `POST /threads/{id}/draft` `{parent_id, instruction?}`, `PATCH /thread-messages/{id}`, `POST /thread-messages/{id}/posted` `{url?}`, `POST /threads/{id}/close`, `POST /threads/{id}/reopen`, `DELETE /threads/{id}` |
-| Notifications | `GET /notifications`, `POST /notifications/read` |
-| Live updates | `GET /updates?since=` (changed answers, reviews, notifications and file statuses for this user) |
+| Notifications | `GET /notifications` (your own, newest first, with the unread count), `POST /notifications/read` `{ids?}` (none: mark all), `GET`+`POST /notifications/stop-emails?u=&t=` (signed link, no session) |
+| Live updates | `GET /updates?since=` → `{cursor, answers, notifications, unread, files_changed, reviews_waiting}` |
 | Users | `GET /users`, `POST /users/invite`, `PATCH /users/{id}`, `POST /users/{id}/reset-password`, `POST /me/telegram-link` (a one-time code), `DELETE /me/telegram-link` |
 | Settings | `GET /settings`, `PATCH /settings` `{values: {key: value}}` (each key is checked; a wrong value returns 422 with a message per field; every change is audited), `POST /settings/telegram-test`, `GET /kb/status`, `POST /kb/rebuild`, `GET /usage`, `GET /audit` |
 | Trash | `GET /trash`, `POST /trash/{id}/restore`, `DELETE /trash/{id}` |
@@ -608,7 +616,7 @@ Every route checks the session, the CSRF token (for writes) and `permissions.can
 - A record `answers.gridrankers.com` → VPS IP. Caddy gets the certificate automatically.
 
 ### 13.3 `.env` (on the server only; `.env.example` lists the keys)
-`DATABASE_URL`, `SECRET_KEY`, `APP_URL`, `ANTHROPIC_API_KEY`, `PINECONE_API_KEY`, `PINECONE_INDEX`, `PINECONE_HOST` (optional), `PINECONE_CLOUD`, `PINECONE_REGION`, `PINECONE_EMBED_MODEL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_API_URL` (optional, for tests), `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `ANSWER_MODEL`, `REWRITE_MODEL`, `CHECK_MODEL`, `OCR_MODEL`, `BACKUP_TARGET`.
+`DATABASE_URL`, `SECRET_KEY` (32+ random characters; signs the stop-emails link; required in production), `APP_URL`, `ANTHROPIC_API_KEY`, `PINECONE_API_KEY`, `PINECONE_INDEX`, `PINECONE_HOST` (optional), `PINECONE_CLOUD`, `PINECONE_REGION`, `PINECONE_EMBED_MODEL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_API_URL` (optional, for tests), `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `ANSWER_MODEL`, `REWRITE_MODEL`, `CHECK_MODEL`, `OCR_MODEL`, `BACKUP_TARGET`.
 
 ### 13.4 Install and update
 - **Install:** `git clone` → copy `.env.example` to `.env` and fill it in → `docker compose up -d` → `docker compose exec api python -m app.cli create-owner --email … --name …` → `docker compose exec api python -m app.cli setup-pinecone` (creates the index) → `… setup-telegram` (registers the webhook).

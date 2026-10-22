@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field, StringConstraints
 
-from app.db.models import Role, User
+from app.db.models import NotifyChannel, Role, User
 
 
 def _lower(value: str) -> str:
@@ -31,6 +31,7 @@ class UserOut(BaseModel):
     active: bool
     invited: bool
     telegram_linked: bool
+    notify_channel: NotifyChannel
     last_login_at: datetime | None
     created_at: datetime
 
@@ -44,6 +45,7 @@ class UserOut(BaseModel):
             active=user.active,
             invited=user.invited,
             telegram_linked=user.telegram_user_id is not None,
+            notify_channel=user.notify_channel,
             last_login_at=user.last_login_at,
             created_at=user.created_at,
         )
@@ -107,7 +109,8 @@ class UserPatchIn(Strict):
 
 
 class ProfilePatchIn(Strict):
-    name: Name
+    name: Name | None = None
+    notify_channel: NotifyChannel | None = None
 
 
 class ChangePasswordIn(Strict):
