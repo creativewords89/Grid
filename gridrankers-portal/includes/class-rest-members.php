@@ -247,6 +247,23 @@ class GRP_REST_Members extends GRP_REST_Controller {
 				$changes['employment_since'] = GRP_Cycles::today();
 			}
 		}
+		// Effective from (design HOL-9A): the day their leave starts counting, set by the Super Admin.
+		if ( null !== $request->get_param( 'employment_since' ) ) {
+			if ( ! self::can(
+				GRP_Permissions::SET_EMPLOYMENT,
+				array(
+					'member_id' => $member['id'],
+					'role'      => GRP_Permissions::effective_role( $member ),
+				)
+			) ) {
+				return self::forbidden( __( 'Only the Super Admin can set when leave starts.', 'gridrankers-portal' ) );
+			}
+			$since = trim( (string) $request['employment_since'] );
+			if ( '' !== $since && ! GRP_People::is_date( $since ) ) {
+				return self::invalid( __( 'Pick the date their leave starts.', 'gridrankers-portal' ), 'grp_employment_since' );
+			}
+			$changes['employment_since'] = '' === $since ? null : $since;
+		}
 
 		if ( null !== $request->get_param( 'wp_user_id' ) ) {
 			if ( ! self::can( GRP_Permissions::LINK_WP_USER ) ) {

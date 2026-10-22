@@ -356,4 +356,36 @@ class Test_GRP_People extends WP_UnitTestCase {
 		$this->assertSame( '2026-03-01', GRP_People::add_days( '2026-02-28', 1 ) );
 		$this->assertSame( '2025-12-31', GRP_People::add_days( '2026-01-01', -1 ) );
 	}
+
+	public function test_leave_days_rules_pick_the_latest_year_and_stay_in_range() {
+		$rules = GRP_People::clean_rules(
+			array(
+				array(
+					'from_year' => 2027,
+					'day'       => 8,
+					'sick'      => 99,
+					'festival'  => -3,
+				),
+				array(
+					'from_year' => 2026,
+					'day'       => '12',
+				),
+				array( 'day' => 5 ),
+			)
+		);
+		$this->assertSame( array( 2026, 2027 ), array_column( $rules, 'from_year' ) );
+		$this->assertSame(
+			array(
+				'from_year' => 2027,
+				'day'       => 8,
+				'sick'      => GRP_People::MAX_LEAVE_DAYS,
+				'festival'  => 0,
+			),
+			$rules[1]
+		);
+		$this->assertSame( 14, $rules[0]['sick'], 'missing numbers are the defaults' );
+
+		GRP_People::forget_rules();
+		$this->assertSame( GRP_People::DEFAULT_LEAVE_DAYS, GRP_People::year_days( 2026 ) );
+	}
 }

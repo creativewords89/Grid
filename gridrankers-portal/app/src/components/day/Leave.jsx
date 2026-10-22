@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { usePortal } from '../../context.js';
 import { short } from '../../lib/format.js';
 import { addDays } from '../../lib/cycles.js';
-import { EMPLOYMENT, MEMBER_TAB_KEY, balance, dayOffKind, employmentOf, hasLeave, leaveDays, overBy, teamWeekly } from '../../lib/people.js';
+import { EMPLOYMENT, MEMBER_TAB_KEY, balance, dayOffKind, employmentOf, hasLeave, leaveDays, leaveRules, overBy, teamWeekly, yearDays } from '../../lib/people.js';
 import { rowsOf } from '../../lib/store.js';
 import Modal from '../Modal.jsx';
 
@@ -36,8 +36,8 @@ export function LeaveDialog({ open, onClose, initial }) {
 	const end = to < from ? from : to;
 	const months = leaveDays(from, end, self, team, daysOff);
 	const total = Object.values(months).reduce((a, b) => a + b, 0);
-	const left = balance(self, +from.slice(0, 4), leaves, team, daysOff);
-	const over = total ? overBy(self, { id: '', type, from_date: from, to_date: end }, leaves, team, daysOff) : 0;
+	const left = balance(self, +from.slice(0, 4), leaves, team, daysOff, leaveRules(data));
+	const over = total ? overBy(self, { id: '', type, from_date: from, to_date: end }, leaves, team, daysOff, leaveRules(data)) : 0;
 	const paid = hasLeave(self);
 	const range = from === end ? short(from) : `${short(from)} – ${short(end)}`;
 
@@ -87,7 +87,7 @@ export function LeaveDialog({ open, onClose, initial }) {
 							{paid ? `${over} day${over === 1 ? '' : 's'} over the allowance · deducted from salary` : `Unpaid · ${over} day${over === 1 ? '' : 's'} deducted from salary`}
 						</p>
 					)}
-					<p className="muted">{paid ? '10 casual and 14 sick days a year (Jan 1 – Dec 31). Unused days are paid with December’s salary.' : `${EMPLOYMENT[employmentOf(self)]}s have no leave days: leave is unpaid.`}</p>
+					<p className="muted">{paid ? `${yearDays(leaveRules(data), +(from || today).slice(0, 4)).day} casual and ${yearDays(leaveRules(data), +(from || today).slice(0, 4)).sick} sick days a year (Jan 1 – Dec 31). Unused days are paid with December’s salary.` : `${EMPLOYMENT[employmentOf(self)]}s have no leave days: leave is unpaid.`}</p>
 				</div>
 				<label>
 					Reason (optional)
@@ -117,7 +117,7 @@ export default function DayLeave({ bare = false }) {
 	const year = today.slice(0, 4);
 	const self = data.members[me.id] || me;
 	const leaves = rowsOf(data, 'leave');
-	const left = balance(self, +year, leaves, teamWeekly(data), rowsOf(data, 'days_off'));
+	const left = balance(self, +year, leaves, teamWeekly(data), rowsOf(data, 'days_off'), leaveRules(data));
 	const lead = me.role === 'lead';
 	const latest = leaves
 		.filter((l) => l.member_id === me.id && l.status === 'approved' && l.to_date >= today && l.decided_by !== me.id)

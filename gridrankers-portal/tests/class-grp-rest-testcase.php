@@ -50,6 +50,7 @@ abstract class GRP_REST_TestCase extends WP_UnitTestCase {
 
 	public function set_up() {
 		parent::set_up();
+		GRP_People::forget_rules();
 
 		global $wp_rest_server;
 		$wp_rest_server = new WP_REST_Server(); // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited

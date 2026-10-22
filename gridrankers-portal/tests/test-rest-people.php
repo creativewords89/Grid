@@ -522,6 +522,104 @@ class Test_GRP_REST_People extends GRP_REST_TestCase {
 		$this->assertSame( 'contractual', $seen[ $member ]['employment'] );
 	}
 
+	public function test_effective_from_is_set_by_the_super_admin() {
+		$member = $this->team['member']['id'];
+		$year   = (int) substr( GRP_Cycles::today(), 0, 4 );
+
+		$this->assertStatus( 403, $this->api_as( 'lead', 'PATCH', "/members/{$member}", array( 'employment_since' => "{$year}-10-01" ) ) );
+		$this->assertStatus( 403, $this->api_as( 'member', 'PATCH', "/members/{$member}", array( 'employment_since' => "{$year}-10-01" ) ) );
+		$bad = $this->api_as( 'admin', 'PATCH', "/members/{$member}", array( 'employment_since' => '10/01/2026' ) );
+		$this->assertStatus( 400, $bad );
+		$this->assertSame( 'grp_employment_since', $bad->get_data()['code'] );
+
+		// From October: only October – December count (3 casual, 4 sick).
+		$set = $this->api_as( 'admin', 'PATCH', "/members/{$member}", array( 'employment_since' => "{$year}-10-01" ) );
+		$this->assertStatus( 200, $set );
+		$this->assertSame( "{$year}-10-01", $set->get_data()['employment_since'] );
+		$row = GRP_Store::get( 'grp_members', $member );
+		$this->assertSame( 3, GRP_People::allowance( $row, 'day', $year ) );
+		$this->assertSame( 4, GRP_People::allowance( $row, 'sick', $year ) );
+		$this->assertSame( 10, GRP_People::allowance( $row, 'day', $year + 1 ) );
+
+		// Empty: the whole year again.
+		$this->assertNull( $this->api_as( 'admin', 'PATCH', "/members/{$member}", array( 'employment_since' => '' ) )->get_data()['employment_since'] ?? null );
+		$this->assertSame( 10, GRP_People::allowance( GRP_Store::get( 'grp_members', $member ), 'day', $year ) );
+	}
+
+	public function test_leave_days_a_year_are_set_by_the_super_admin() {
+		$year   = (int) substr( GRP_Cycles::today(), 0, 4 );
+		$days   = function ( $role, $day, $sick, $festival, $from_year ) {
+			return $this->api_as(
+				$role,
+				'PUT',
+				'/settings/leave-days',
+				array(
+					'day'       => $day,
+					'sick'      => $sick,
+					'festival'  => $festival,
+					'from_year' => $from_year,
+				)
+			);
+		};
+		$member = GRP_Store::get( 'grp_members', $this->team['member']['id'] );
+
+		$this->assertStatus( 403, $days( 'lead', 12, 14, 13, $year ) );
+		$this->assertStatus( 403, $days( 'member', 12, 14, 13, $year ) );
+		foreach ( array( array( 61, 14, 13 ), array( -1, 14, 13 ), array( 2.5, 14, 13 ), array( 'ten', 14, 13 ) ) as $bad ) {
+			$response = $days( 'admin', $bad[0], $bad[1], $bad[2], $year );
+			$this->assertStatus( 400, $response );
+			$this->assertSame( 'grp_leave_days', $response->get_data()['code'] );
+		}
+		$this->assertSame( 'grp_leave_days_year', $days( 'admin', 12, 14, 13, $year + 2 )->get_data()['code'] );
+		$this->assertSame( 'grp_leave_days_year', $days( 'admin', 12, 14, 13, $year - 1 )->get_data()['code'] );
+		$this->assertSame( 10, GRP_People::allowance( $member, 'day', $year ), 'nothing saved yet' );
+
+		// This year: 12 casual days for everyone with leave; last year keeps 10.
+		$this->assertStatus( 200, $days( 'admin', 12, 14, 13, $year ) );
+		$this->assertSame( 12, GRP_People::allowance( $member, 'day', $year ) );
+		$this->assertSame( 10, GRP_People::allowance( $member, 'day', $year - 1 ) );
+		$this->assertSame( 12, GRP_People::allowance( $member, 'day', $year + 1 ) );
+
+		// From next year: 8 casual, 10 sick, 5 festival; this year is unchanged.
+		$saved = $days( 'admin', 8, 10, 5, $year + 1 );
+		$this->assertStatus( 200, $saved );
+		$this->assertCount( 2, $saved->get_data()['rules'] );
+		$this->assertSame( 12, GRP_People::allowance( $member, 'day', $year ) );
+		$this->assertSame(
+			array(
+				'day'      => 8,
+				'sick'     => 10,
+				'festival' => 5,
+			),
+			GRP_People::year_days( $year + 1 )
+		);
+		// Saving the same year again replaces it.
+		$this->assertCount( 2, $days( 'admin', 11, 14, 13, $year )->get_data()['rules'] );
+		$this->assertSame( 11, GRP_People::allowance( $member, 'day', $year ) );
+
+		// The festival cap follows the year: 5 days next year.
+		$next = function ( $from, $to ) use ( $year ) {
+			return $this->api_as(
+				'admin',
+				'POST',
+				'/days-off',
+				array(
+					'kind' => 'seasonal',
+					'name' => 'Eid',
+					'from' => ( $year + 1 ) . "-{$from}",
+					'to'   => ( $year + 1 ) . "-{$to}",
+				)
+			);
+		};
+		$full = $next( '03-01', '03-10' );
+		$this->assertStatus( 409, $full );
+		$this->assertStringContainsString( 'the limit is 5 a year', $full->get_data()['message'] );
+
+		// Everyone receives the setting.
+		$keys = array_column( $this->api_as( 'other', 'GET', '/sync' )->get_data()['changes']['settings'], 'value', 'setting_key' );
+		$this->assertCount( 2, $keys[ GRP_People::LEAVE_DAYS_KEY ]['rules'] );
+	}
+
 	public function test_contractual_leave_is_all_deducted_in_the_settlement() {
 		$this->api_as( 'admin', 'PATCH', "/members/{$this->team['lead']['id']}", array( 'employment' => 'contractual' ) );
 		// A Team Leader's leave is approved straight away: Mon – Tue.

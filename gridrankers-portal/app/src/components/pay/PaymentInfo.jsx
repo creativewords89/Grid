@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { usePortal } from '../../context.js';
-import { EMPLOYMENT, employmentOf, hasLeave } from '../../lib/people.js';
+import { EMPLOYMENT, allowance, employmentOf, hasLeave, leaveRules } from '../../lib/people.js';
 import { dayLength, dayPay, hourPay, hours, masked, methodName, money, monthTitle, shortDay } from '../../lib/pay.js';
 import Modal from '../Modal.jsx';
 import PayForm from './PayForm.jsx';
@@ -30,7 +30,7 @@ export default function PaymentInfo() {
 					<KV k="Working hours" v={`${dayLength(p.day_minutes)} a day`} />
 					<KV k="1 day (salary ÷ 30)" v={`${money(dayPay(p.salary))} BDT`} />
 					<KV k={`1 hour (day ÷ ${+(p.day_minutes / 60).toFixed(2)})`} v={`${money(hourPay(p.salary, p.day_minutes))} BDT`} />
-					<KV k="Leave" v={hasLeave(self) ? '10 casual + 14 sick days a year' : `none (${EMPLOYMENT[employmentOf(self)]})`} />
+					<KV k="Leave" v={hasLeave(self) ? `${allowance(self, 'day', new Date().getFullYear(), leaveRules(data))} casual + ${allowance(self, 'sick', new Date().getFullYear(), leaveRules(data))} sick days this year` : `none (${EMPLOYMENT[employmentOf(self)]})`} />
 				</section>
 				<section className="pay-card" aria-label="Payment details">
 					<div className="pay-card-h">

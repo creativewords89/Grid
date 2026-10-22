@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { usePortal } from '../../context.js';
-import { EMPLOYMENT, balance, employmentOf, hasLeave, monthName, settlement, teamWeekly } from '../../lib/people.js';
+import { EMPLOYMENT, balance, employmentOf, hasLeave, leaveRules, monthName, settlement, teamWeekly, yearDays } from '../../lib/people.js';
 import { rowsOf } from '../../lib/store.js';
 import { LeaveDialog } from '../day/Leave.jsx';
 import { LeaveTable } from './leaveParts.jsx';
@@ -16,7 +16,7 @@ export default function MyLeave({ pid }) {
 	const team = teamWeekly(data);
 	const daysOff = rowsOf(data, 'days_off');
 	const year = today.slice(0, 4);
-	const left = balance(person, +year, leaves, team, daysOff);
+	const left = balance(person, +year, leaves, team, daysOff, leaveRules(data));
 	const self = pid === me.id;
 
 	// This year's months up to this one, since the person joined, newest first.
@@ -44,7 +44,7 @@ export default function MyLeave({ pid }) {
 					<p className="dl-left">No leave days ({EMPLOYMENT[employmentOf(person)]}) · leave is deducted</p>
 				)}
 				<LeaveTable rows={[...leaves].sort((a, b) => b.from_date.localeCompare(a.from_date))} empty="No leave yet." />
-				<p className="hint">Full-Time and Part-Time: 10 casual and 14 sick days a calendar year. Days past them are deducted; unused days are paid with December’s salary. Everything starts again on January 1.</p>
+				<p className="hint">Full-Time and Part-Time: {yearDays(leaveRules(data), +year).day} casual and {yearDays(leaveRules(data), +year).sick} sick days a calendar year. Days past them are deducted; unused days are paid with December’s salary. Everything starts again on January 1.</p>
 			</section>
 			{months.length > 0 && (
 				<section className="dcard">
@@ -53,7 +53,7 @@ export default function MyLeave({ pid }) {
 					</div>
 					<ul className="do-list">
 						{months.map((k) => {
-							const r = settlement(person, k, leaves, team, daysOff);
+							const r = settlement(person, k, leaves, team, daysOff, leaveRules(data));
 							return (
 								<li key={k}>
 									<b>{monthName(k)}</b>

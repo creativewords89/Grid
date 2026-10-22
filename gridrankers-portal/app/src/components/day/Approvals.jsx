@@ -1,13 +1,13 @@
 import { usePortal } from '../../context.js';
 import { ago, waitTitle } from '../../lib/feed.js';
 import { short } from '../../lib/format.js';
-import { overBy, teamWeekly } from '../../lib/people.js';
+import { leaveRules, overBy, teamWeekly } from '../../lib/people.js';
 import { rowsOf } from '../../lib/store.js';
 import useReview from '../review/useReview.js';
 
 // "within the year's allowance" / "2 days over, deducted" for a pending request (SPEC.md 6.10).
 function overText(data, leave) {
-	const over = overBy(data.members[leave.member_id], leave, rowsOf(data, 'leave'), teamWeekly(data), rowsOf(data, 'days_off'));
+	const over = overBy(data.members[leave.member_id], leave, rowsOf(data, 'leave'), teamWeekly(data), rowsOf(data, 'days_off'), leaveRules(data));
 	return { text: over > 0 ? `${over} day${over === 1 ? '' : 's'} over the allowance, deducted` : 'within the year’s allowance', over: over > 0 };
 }
 
