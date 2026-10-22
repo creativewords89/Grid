@@ -22,7 +22,7 @@ const monthTitle = (month) => `${monthName(month)} ${month.slice(0, 4)}`;
 // calendar, Waiting for you, Festival holidays, Out today); Team Members HOL-2 (My leave, calendar,
 // upcoming holidays, their requests, the year). A Team Leader also gets their own leave card.
 // ‹ month › and Month / Year sit in the tabs row (`slot`). Holiday system is in Admin settings.
-export default function Holidays({ slot }) {
+export default function Holidays({ slot, scope }) {
 	const { me, today, viewOnly } = usePortal();
 	const [mode, setMode] = useState('month');
 	const [month, setMonth] = useState(today.slice(0, 7));
@@ -31,8 +31,11 @@ export default function Holidays({ slot }) {
 	// The balance card shown (HOL-4): day (casual), sick, both, fest, or none; and days picked to plan.
 	const [focus, setFocus] = useState('day');
 	const [plan, setPlan] = useState(null);
-	const manager = isManager(me);
-	const takes = me.role !== 'admin';
+	// A Team Leader sees their own leave (scope `mine`, design TL-B: My holidays) and the team's
+	// (scope `team`: Team holidays) on separate tabs; others get one tab with their view.
+	const manager = scope === 'mine' ? false : isManager(me);
+	const takes = scope === 'team' ? false : me.role !== 'admin';
+	const ownOnly = scope === 'mine';
 	const ask = () => (setAskKey((k) => k + 1), setAsking(true));
 	const pickDay = (d) =>
 		setPlan((p) => (!p || p.to !== p.from || d < p.from ? { from: d, to: d } : d === p.from ? null : { from: p.from, to: d }));
@@ -64,8 +67,8 @@ export default function Holidays({ slot }) {
 
 	const calendar =
 		mode === 'month' ? (
-			<MonthCalendar month={month} manager={manager} focus={takes ? focus : null} plan={plan} onDay={takes && !viewOnly ? pickDay : null} />
-		) : <YearCalendar year={year} manager={manager} onPick={(m) => (setMonth(m), setMode('month'))} />;
+			<MonthCalendar month={month} manager={manager} ownOnly={ownOnly} focus={takes ? focus : null} plan={plan} onDay={takes && !viewOnly ? pickDay : null} />
+		) : <YearCalendar year={year} manager={manager} ownOnly={ownOnly} onPick={(m) => (setMonth(m), setMode('month'))} />;
 	return (
 		<div className="hol">
 			{slot ? createPortal(nav, slot) : nav}
@@ -74,7 +77,7 @@ export default function Holidays({ slot }) {
 			<div className="hol-main">
 				<section className="hol-cal-card" aria-label={mode === 'month' ? monthTitle(month) : String(year)}>
 					{calendar}
-					<Legend manager={manager} focus={takes ? focus : null} />
+					<Legend manager={manager} ownOnly={ownOnly} focus={takes ? focus : null} />
 				</section>
 				<div className="hol-side">
 					{takes && !viewOnly && <PlanBox plan={plan} type={focus === 'sick' ? 'sick' : 'day'} onClear={() => setPlan(null)} onAsk={ask} />}
@@ -135,7 +138,7 @@ function Tiles({ month, year }) {
 // With a balance card selected (HOL-4) the viewer's own days of that kind stand out and the rest
 // fade; working days from today on can be picked to plan a day off; days before someone's leave
 // year started (HOL-5) are marked.
-function MonthCalendar({ month, manager, focus, plan, onDay }) {
+function MonthCalendar({ month, manager, ownOnly, focus, plan, onDay }) {
 	const { data, me, today } = usePortal();
 	const team = teamWeekly(data);
 	const daysOff = rowsOf(data, 'days_off');
@@ -164,7 +167,7 @@ function MonthCalendar({ month, manager, focus, plan, onDay }) {
 				if (!d) return <span key={'b' + i} />;
 				const hol = holidayOn(d, daysOff);
 				const weekly = !hol && dayOffKind(d, { weekly_off: null }, team, []) === 'weekly';
-				const chips = hol || weekly ? [] : dayChips(d, leaves, data.members, me, manager);
+				const chips = hol || weekly ? [] : dayChips(d, leaves, data.members, me, manager).filter((c) => !ownOnly || c.tone !== 'out');
 				const own = mine.find((l) => d >= l.from_date && d <= l.to_date);
 				const ownType = own ? (own.type === 'sick' ? 'sick' : 'day') : null;
 				const match = matches(d);
@@ -249,7 +252,7 @@ function PlanBox({ plan, type, onClear, onAsk }) {
 }
 
 // The twelve months small: festival holidays and leave as coloured days; a month opens on click.
-function YearCalendar({ year, manager, onPick }) {
+function YearCalendar({ year, manager, ownOnly, onPick }) {
 	const { data, me, today } = usePortal();
 	const team = teamWeekly(data);
 	const daysOff = rowsOf(data, 'days_off');
@@ -264,7 +267,7 @@ function YearCalendar({ year, manager, onPick }) {
 							if (!d) return <i key={'b' + i} />;
 							const hol = holidayOn(d, daysOff);
 							const weekly = !hol && dayOffKind(d, { weekly_off: null }, team, []) === 'weekly';
-							const chips = hol || weekly ? [] : dayChips(d, leaves, data.members, me, manager);
+							const chips = hol || weekly ? [] : dayChips(d, leaves, data.members, me, manager).filter((c) => !ownOnly || c.tone !== 'out');
 							const tone = hol ? 'h' : weekly ? 'off' : chips.some((c) => c.tone === 'you') ? 'you' : chips.length ? (chips.some((c) => c.tone === 'asked') ? 'asked' : 'casual') : '';
 							return <i key={d} className={tone + (d === today ? ' today' : '')} />;
 						})}
@@ -275,7 +278,7 @@ function YearCalendar({ year, manager, onPick }) {
 	);
 }
 
-function Legend({ manager, focus }) {
+function Legend({ manager, ownOnly, focus }) {
 	return (
 		<p className="hol-legend">
 			<span>
@@ -298,9 +301,11 @@ function Legend({ manager, focus }) {
 					<span>
 						<i className="hol-chip you">You</i> your leave
 					</span>
-					<span>
-						<i className="hol-chip out">Name out</i> a teammate is off (no reason shown)
-					</span>
+					{!ownOnly && (
+						<span>
+							<i className="hol-chip out">Name out</i> a teammate is off (no reason shown)
+						</span>
+					)}
 				</>
 			)}
 			{focus && <span>· {focus === 'fest' ? 'festival holidays' : KIND[focus].toLowerCase()} stand out, other days fade</span>}

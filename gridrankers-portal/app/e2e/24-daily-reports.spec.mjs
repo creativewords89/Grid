@@ -74,10 +74,13 @@ test('daily reports', async ({ page }) => {
 		await page.getByText('Sign in to continue').waitFor();
 	}
 
-	// Lee: Team tab — Max sent (with his blocker), Nia not sent → Remind; Max's days.
+	// Lee: his tabs in two groups (design TL-B), Mine and My team; Team reports — Max sent (with his
+	// blocker), Nia not sent → Remind; Max's days.
 	await signIn(page, LEAD);
 	await openReports();
-	await page.getByRole('tab', { name: 'Team' }).click();
+	await expect(page.getByRole('tablist', { name: 'Mine' }).getByRole('tab')).toHaveText(['My reports', 'Salary', 'Payment information', 'My holidays']);
+	await expect(page.getByRole('tablist', { name: 'My team' }).getByRole('tab')).toHaveCount(2);
+	await page.getByRole('tablist', { name: 'My team' }).getByRole('tab', { name: /^Team reports/ }).click();
 	// Everyone's tasks in one table (design TR-G1): Max's two tasks and blocker; the Super Admin
 	// writes none, so isn't listed.
 	const max = page.locator('tbody[aria-label="Report of Max Member"]');

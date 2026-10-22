@@ -1630,3 +1630,11 @@ button.hol-day.dim:hover{opacity:.8}
 .ft-years>div{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 16px;display:flex;flex-direction:column;gap:4px;font-size:.88rem}
 .ft-years .next{background:color-mix(in srgb,var(--accent) 10%,var(--panel));border-color:color-mix(in srgb,var(--accent) 35%,var(--line))}
 .ft-years .next .hol-k{color:var(--accent)}
+
+/* Daily reports for Team Leaders: Mine | My team tab groups (design TL-B) */
+.dr-group{display:flex;flex-direction:column;gap:4px}
+.dr-group-k{font-size:.68rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2)}
+.dr-group-sep{width:1px;align-self:stretch;background:var(--line);margin:0 4px}
+.dr-n{margin-left:6px;font-size:.7rem;font-weight:800;background:var(--doing-bg);color:var(--doing);border-radius:99px;padding:1px 7px}
+.dr-group+.dr-top-end{align-self:flex-end}
+@media (max-width:900px){.dr-group-sep{display:none}}
