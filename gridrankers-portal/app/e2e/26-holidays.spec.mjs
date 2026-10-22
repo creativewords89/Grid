@@ -87,11 +87,11 @@ test('holidays', async ({ page }) => {
 		await expect(request.getByLabel('From')).not.toHaveValue('');
 	}
 	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/holidays-member.png', fullPage: true });
-	await request.getByRole('group', { name: 'Leave type' }).getByRole('button', { name: 'Sick' }).click();
+	// Just the type, the dates and a reason if there is one.
+	await request.getByLabel('Type of leave').selectOption('sick');
 	await request.getByLabel('From').fill(SICK_FROM);
 	await request.getByLabel('To').fill(SICK_TO);
 	await request.getByLabel('Reason (optional)').fill('Doctor');
-	await expect(request).toContainText('Sick left after');
 	await request.getByRole('button', { name: 'Send request' }).click();
 	await page.getByText('Leave requested').waitFor();
 	const requests = page.getByRole('region', { name: 'My requests' });
@@ -112,12 +112,13 @@ test('holidays', async ({ page }) => {
 	await page.locator('.hol').waitFor();
 	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/tl-team-holidays.png' });
 	const waiting = page.getByRole('region', { name: 'Waiting for you' });
-	const ask = waiting.locator('.hol-req', { hasText: 'Max Member' }).filter({ hasText: 'Doctor' });
+	const ask = waiting.locator('.hol-req', { hasText: 'Max Member' }).filter({ hasText: 'Sick leave' }).first();
 	await expect(ask).toContainText('Sick leave');
+	const before = await waiting.locator('.hol-req').count();
 	await ask.getByRole('button', { name: 'Approve' }).click();
 	await dlg.getByRole('button', { name: 'Approve' }).click();
 	await page.getByText('Leave approved').waitFor();
-	await expect(waiting.locator('.hol-req', { hasText: 'Doctor' })).toHaveCount(0);
+	await expect(waiting.locator('.hol-req')).toHaveCount(before - 1);
 	// Their own leave is not on the team tab; there is no employment picker for them.
 	await expect(page.getByRole('region', { name: 'My leave' })).toHaveCount(0);
 	await expect(page.getByLabel('Employment of Max Member')).toHaveCount(0);

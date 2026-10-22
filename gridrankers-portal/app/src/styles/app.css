@@ -1585,3 +1585,5 @@ button.hol-day:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 @media (max-width:900px){.dr-group-sep{display:none}}
 .hol-mine .bal-cards{flex:1 1 100%}
 .bal-dates label{min-width:0}.bal-dates input{width:100%;box-sizing:border-box}
+.bal-req>label{display:flex;flex-direction:column;gap:3px;font-size:.72rem;color:var(--ink-2)}
+.bal-req select,.bal-req>label input{border:1px solid var(--line);border-radius:9px;padding:7px 9px;font:inherit;font-size:.86rem;color:var(--ink);background:var(--panel);width:100%;box-sizing:border-box}

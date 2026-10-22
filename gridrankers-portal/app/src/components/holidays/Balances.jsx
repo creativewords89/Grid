@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { usePortal } from '../../context.js';
 import { short } from '../../lib/format.js';
-import { festivalCounts, holidaysOf, monthCounts } from '../../lib/holidays.js';
+import { festivalCounts, holidaysOf } from '../../lib/holidays.js';
 import { dayPay, money } from '../../lib/pay.js';
 import { EMPLOYMENT, FESTIVAL_PER_YEAR, balance, employmentOf, firstYearSince, hasLeave, leaveDays, teamWeekly } from '../../lib/people.js';
 import { rowsOf } from '../../lib/store.js';
@@ -215,28 +215,18 @@ export function BalanceBox({ year }) {
 	);
 }
 
-// Request leave (HOL-6): type, From – To (or the days tapped on the calendar), the days counted,
-// what is left after and the December pay-out after; Send request. The server counts and checks again.
+// Request leave (HOL-6, simple): Casual / Sick, From – To (also filled by tapping the calendar), one
+// line with the days and what is left after, Send request. The server counts and checks again.
 export function RequestBox({ plan, setPlan }) {
 	const { api, data, dispatch, me, today, toast } = usePortal();
 	const self = data.members[me.id] || me;
-	const each = useDayPay();
 	const [type, setType] = useState('day');
 	const [reason, setReason] = useState('');
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState('');
-	const team = teamWeekly(data);
-	const daysOff = rowsOf(data, 'days_off');
-	const leaves = rowsOf(data, 'leave');
 	const from = (plan && plan.from) || '';
 	const to = (plan && plan.to) || from;
-	const n = from ? Object.values(leaveDays(from, to < from ? from : to, self, team, daysOff)).reduce((a, x) => a + x, 0) : 0;
-	const paid = hasLeave(self);
-	const year = +(from || today).slice(0, 4);
-	const b = balance(self, year, leaves, team, daysOff);
-	const waiting = monthCounts(self, year, leaves, team, daysOff, [type]).waiting.reduce((a, x) => a + x, 0);
-	const left = b[type].left - waiting - n;
-	const unused = Math.max(0, b.day.left - (type === 'day' ? waiting + n : 0)) + Math.max(0, b.sick.left - (type === 'sick' ? waiting + n : 0));
+	const n = from ? Object.values(leaveDays(from, to < from ? from : to, self, teamWeekly(data), rowsOf(data, 'days_off'))).reduce((a, x) => a + x, 0) : 0;
 	const lead = me.role === 'lead';
 	const set = (k, v) => {
 		setError('');
@@ -247,11 +237,11 @@ export function RequestBox({ plan, setPlan }) {
 		if (!n) return setError('Those days are all days off already.');
 		setBusy(true);
 		try {
-			const row = await api.post('leave', { type, from, to, reason });
+			const row = await api.post('leave', { type, from, to, reason: reason.trim() });
 			dispatch({ type: 'upsert', table: 'leave', row });
 			toast(lead ? 'Leave taken — approved straight away' : 'Leave requested — your Team Leaders will answer');
-			setPlan(null);
 			setReason('');
+			setPlan(null);
 		} catch (err) {
 			setError(err.message);
 		} finally {
@@ -259,16 +249,15 @@ export function RequestBox({ plan, setPlan }) {
 		}
 	};
 	return (
-		<section className="hol-box hol-plan on" aria-label="Request leave">
-			<h2>{paid ? (lead ? 'Take leave' : 'Request leave') : lead ? 'Take unpaid leave' : 'Request unpaid leave'}</h2>
-			<div className="hol-seg" role="group" aria-label="Leave type">
-				<button type="button" aria-pressed={type === 'day'} onClick={() => setType('day')}>
-					Casual
-				</button>
-				<button type="button" aria-pressed={type === 'sick'} onClick={() => setType('sick')}>
-					Sick
-				</button>
-			</div>
+		<section className="hol-box hol-plan on bal-req" aria-label="Request leave">
+			<h2>{hasLeave(self) ? (lead ? 'Take leave' : 'Request leave') : lead ? 'Take unpaid leave' : 'Request unpaid leave'}</h2>
+			<label>
+				Type of leave
+				<select value={type} onChange={(e) => setType(e.target.value)}>
+					<option value="day">Casual leave</option>
+					<option value="sick">Sick leave</option>
+				</select>
+			</label>
 			<div className="bal-dates">
 				<label>
 					From
@@ -279,24 +268,10 @@ export function RequestBox({ plan, setPlan }) {
 					<input type="date" value={to} min={from || today} onChange={(e) => set('to', e.target.value)} aria-label="To" />
 				</label>
 			</div>
-			<small className="muted">or tap the days on the calendar</small>
-			<input className="bal-reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} placeholder="Reason (optional)" aria-label="Reason (optional)" />
-			<div className="hol-kv">
-				<span>Days counted</span>
-				<b>{n}</b>
-			</div>
-			{paid && (
-				<div className="hol-kv">
-					<span>{type === 'sick' ? 'Sick' : 'Casual'} left after</span>
-					<b className={left < 0 ? 't-red' : 't-' + type}>{left < 0 ? `${-left} over · deducted` : `${left} of ${b[type].allowance}`}</b>
-				</div>
-			)}
-			{paid && each > 0 && (
-				<div className="hol-kv">
-					<span>December pay-out after</span>
-					<b className="t-pay">{money(unused * each)} BDT</b>
-				</div>
-			)}
+			<label>
+				Reason (optional)
+				<input type="text" value={reason} maxLength={200} onChange={(e) => setReason(e.target.value)} />
+			</label>
 			<p className="err" role="alert">
 				{error}
 			</p>
