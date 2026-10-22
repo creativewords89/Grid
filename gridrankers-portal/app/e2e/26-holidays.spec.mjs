@@ -64,48 +64,35 @@ test('holidays', async ({ page }) => {
 	await expect(nias).toContainText('You don’t have leave days');
 	await expect(nias).toContainText('Contractual');
 	await expect(nias.getByRole('button', { name: 'Request unpaid leave' })).toBeVisible();
-	await expect(page.getByRole('region', { name: 'Upcoming holidays' })).toContainText('Victory Day');
+	// Festival holidays are hers too (13 a year).
+	await expect(nias.getByRole('region', { name: 'Festival holidays' })).toContainText('13');
 	await signOut(page);
 
-	// Max, full-time: casual and sick days left of 10 and 14; asks for sick leave.
+	// Max, full-time (design HOL-6): total · taken · left for casual (10), sick (14) and festival
+	// holidays (13), nothing to click; his balance in money; asks for sick leave from Request leave.
 	await signIn(page, MAX);
 	await openHolidays();
 	const mine = page.getByRole('region', { name: 'My leave' });
-	await expect(mine).toContainText('Full-Time');
-	await expect(mine).toContainText(/of 10 left/);
-	await expect(mine).toContainText(/of 14 left/);
-	await expect(mine).toContainText(`starts again on Jan 1, ${+HOLI.slice(0, 4) + 1}`);
-	// Interactive balances (HOL-4): Casual is open, month by month; Sick opens on a tap; a month shows its days.
-	const year = new Date().getFullYear();
-	await expect(page.getByRole('region', { name: `Casual leave in ${year}` })).toBeVisible();
-	await mine.getByRole('button', { name: /Sick leave/ }).click();
-	const sick = page.getByRole('region', { name: `Sick leave in ${year}` });
-	await expect(sick).toContainText('Allowance 14');
-	await sick.getByRole('button', { name: /^Jan:/ }).click();
-	await expect(sick.locator('.bal-month-h')).toContainText('January');
-	await sick.getByRole('group', { name: 'Leave type' }).getByRole('button', { name: 'Both' }).click();
-	await expect(page.getByRole('region', { name: `Casual and sick leave in ${year}` })).toContainText('Allowance 24');
-	await mine.getByRole('button', { name: /Festival holidays/ }).click();
-	await expect(page.getByRole('region', { name: `Festival holidays in ${year}` })).toBeVisible();
-	await mine.getByRole('button', { name: /Casual leave/ }).click();
-	// Plan a day off: tap a day on the calendar, see what's left, the request opens filled in.
+	const total = (name) => mine.getByRole('region', { name }).locator('.bal-nums > span').first().locator('b');
+	await expect(total('Casual leave')).toHaveText('10');
+	await expect(total('Sick leave')).toHaveText('14');
+	await expect(total('Festival holidays')).toHaveText('13');
+	await expect(mine.getByRole('button')).toHaveCount(0);
+	await expect(page.getByRole('region', { name: 'Your balance if not taken' })).toContainText('BDT');
+	const request = page.getByRole('region', { name: 'Request leave' });
+	// Tapping a day on the calendar fills in the dates.
 	const pickable = page.locator('button.hol-day');
 	if (await pickable.count()) {
 		await pickable.first().click();
-		const plan = page.getByRole('region', { name: 'Plan a day off' });
-		await expect(plan).toContainText('Casual left after');
-		await plan.getByRole('button', { name: 'Request these days' }).click();
-		await expect(dlg.getByLabel('From')).not.toHaveValue('');
-		await dlg.getByRole('button', { name: 'Cancel' }).click();
+		await expect(request.getByLabel('From')).not.toHaveValue('');
 	}
 	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/holidays-member.png', fullPage: true });
-	await mine.getByRole('button', { name: 'Request leave' }).click();
-	await dlg.getByLabel('Leave type').selectOption('sick');
-	await expect(dlg.getByLabel('Leave type')).toContainText(/Sick · \d+ of 14 left/);
-	await dlg.getByLabel('From').fill(SICK_FROM);
-	await dlg.getByLabel('To').fill(SICK_TO);
-	await dlg.getByLabel('Reason (optional)').fill('Doctor');
-	await dlg.getByRole('button', { name: 'Send request' }).click();
+	await request.getByRole('group', { name: 'Leave type' }).getByRole('button', { name: 'Sick' }).click();
+	await request.getByLabel('From').fill(SICK_FROM);
+	await request.getByLabel('To').fill(SICK_TO);
+	await request.getByLabel('Reason (optional)').fill('Doctor');
+	await expect(request).toContainText('Sick left after');
+	await request.getByRole('button', { name: 'Send request' }).click();
 	await page.getByText('Leave requested').waitFor();
 	const requests = page.getByRole('region', { name: 'My requests' });
 	await expect(requests.locator('.hol-li', { hasText: 'Sick leave' }).first()).toContainText('Waiting');
@@ -149,8 +136,9 @@ test('holidays', async ({ page }) => {
 	await expect(page.getByRole('region', { name: `Your ${new Date().getFullYear()}` })).toContainText('You joined');
 	await expect(page.getByRole('region', { name: 'Days this year' })).toContainText('of 10 a full year');
 	const months = 12 - new Date().getMonth();
-	await expect(first.getByRole('button', { name: /Casual leave/ })).toContainText(`of ${Math.floor((10 * months) / 12 + 0.5)} left`);
-	await expect(first.getByRole('button', { name: /Sick leave/ })).toContainText(`of ${Math.floor((14 * months) / 12 + 0.5)} left`);
+	const firstTotal = (name) => first.getByRole('region', { name }).locator('.bal-nums > span').first().locator('b');
+	await expect(firstTotal('Casual leave')).toHaveText(String(Math.floor((10 * months) / 12 + 0.5)));
+	await expect(firstTotal('Sick leave')).toHaveText(String(Math.floor((14 * months) / 12 + 0.5)));
 	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/holidays-joiner.png', fullPage: true });
 	await signOut(page);
 	noErrors();
