@@ -629,6 +629,14 @@ Every route checks the session, the CSRF token (for writes) and `permissions.can
 - `backend/eval/run_eval.py` runs every question through the real pipeline and reports correctness (graded by a Claude judge against the expected answer), the confidence score and cost.
 - It is used to set the threshold (high-confidence answers should be correct ≥ 95% of the time) and to compare models. Every run costs real money, so it runs only when the Owner starts it.
 
+- *Built in step 15:*
+  - **Questions file:** CSV with the columns `question` and `expected` (Excel's "CSV UTF-8" works), or JSON lines. An empty expected answer or `-` means the documents don't answer it, so "I couldn't find this in the knowledge base." is the correct reply. `backend/eval/questions.example.csv` shows the format.
+  - **What it runs:** for each question, the same retrieval, answer prompt, support check and confidence formula as the app, as a new chat (no follow-ups). Nothing is saved as a conversation, answer or review and nothing is sent to Telegram, so a run never reaches reviewers. The Claude cost is added to Settings → Usage as "System".
+  - **Judge:** `CHECK_MODEL` (or `--judge-model`), effort `low`, structured output `{verdict: correct|partly|wrong, reason}`. Only "correct" counts as right. "Couldn't find it" is graded without the judge: correct exactly when no answer was expected. A question that fails (for example, Claude unreachable) is marked ungraded and the run carries on.
+  - **Report** (`eval-results/eval-<time>.md` and `.json`): accuracy; with the current threshold, the share sent without review and how many of those were correct; a threshold table (0–100 in steps of 5); the **lowest safe threshold** (the lowest whose high-confidence answers are ≥ 95% correct, and stay so above it); the **best weights** (retrieval 0–1 in steps of 0.1, rescored from the saved parts without new Claude calls), chosen to send the most answers without review at a safe threshold; the cost; and every answer that wasn't correct with its sources and the judge's reason.
+  - **Command:** `python -m eval.run_eval questions.csv` (on the server: see `ops/deploy.md`). It prints the models and a rough cost (about $0.09 a question) and asks before spending. `--answer-model`, `--check-model`, `--judge-model` and `--effort` compare settings without changing them; `--limit N` runs the first N questions; `--yes` skips the question.
+  - **Results:** not run yet. It needs the Owner's 20–30 questions and sample files, and the real API keys. Once run, record here the accuracy, the chosen threshold and weights, and the chosen model (open decision 6), and set them in Settings.
+
 ## 13. Deployment (Hostinger VPS)
 
 ### 13.1 Server
