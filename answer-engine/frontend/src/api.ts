@@ -419,6 +419,7 @@ export type ThreadRow = {
   community: string | null;
   title: string;
   original_url: string;
+  person: string | null;
   status: ThreadStatus;
   created_by: Person | null;
   posted_by: Person[];
@@ -459,6 +460,13 @@ export type ThreadDetail = ThreadRow & {
   messages: ThreadMessage[];
   can_close: boolean;
   can_delete: boolean;
+};
+
+export type NameMatch = {
+  thread: ThreadRow;
+  first_question: string;
+  our_last_reply: string | null;
+  closest: boolean;
 };
 
 export type Resolved = {
@@ -803,12 +811,17 @@ export const api = {
 
   resolveThread: (url: string) => request<Resolved>("POST", "/threads/resolve", { url }),
   createThread: (body: {
-    url: string;
+    url?: string;
+    platform?: string;
     question: string;
     title?: string;
     author_name?: string;
-    confirm_new?: boolean;
   }) => request<ThreadDetail>("POST", "/threads", body),
+  threadsByName: (name: string, text?: string) => {
+    const params = new URLSearchParams({ name });
+    if (text) params.set("text", text);
+    return request<NameMatch[]>("GET", `/threads/by-name?${params.toString()}`);
+  },
   listThreads: (filters: ThreadFilters = {}) => {
     const params = new URLSearchParams();
     if (filters.status) params.set("status", filters.status);

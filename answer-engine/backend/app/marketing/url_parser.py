@@ -1,9 +1,12 @@
-"""Turn a pasted Reddit or Facebook URL into a thread ID (SPEC section 6.10). Pure functions.
+"""Turn a pasted Reddit link (or a post's bare code) into a thread ID (SPEC section 6.10).
+Pure functions.
 
-The same post can be linked in many ways (old.reddit, m.facebook, tracking parameters, a
-comment's permalink), so the URL is cleaned first and the post's own ID is taken from it.
-The thread ID is `{platform}:{post id}`, which is how a later reply in the same thread is
-found again.
+The same post can be linked in many ways (old.reddit, tracking parameters, a comment's
+permalink), so the URL is cleaned first and the post's own ID is taken from it. The thread
+ID is `{platform}:{post id}`, which is how a later reply in the same thread is found again.
+
+Facebook group posts have no reliable links, so Facebook threads are found by the person's
+name instead (`marketing/service.py`); a pasted Facebook link explains that.
 """
 
 import hashlib
@@ -13,7 +16,11 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 SHARE_LINK = "This is a share link. Open it and copy the full address from the browser bar."
 NOT_A_THREAD = "This doesn't look like a link to a post. Open the post and copy its address."
-NOT_A_URL = "Paste the full address, starting with https://"
+NOT_A_URL = "Paste the full address, starting with https://, or the post's code."
+FACEBOOK_BY_NAME = (
+    "Facebook posts are found by the person's name: choose Facebook and type their name."
+)
+_BARE_CODE = re.compile(r"^[a-z0-9]{4,12}$")
 
 _PREFIXES = ("www.", "m.", "old.", "new.", "np.", "mbasic.", "web.")
 _TRACKING = {
@@ -39,7 +46,6 @@ _TRACKING = {
     "_rdr",
 }
 _BASE36 = re.compile(r"^[a-z0-9]+$")
-_FB_ID = re.compile(r"^(?:\d+|pfbid[0-9A-Za-z]+)$")
 
 
 @dataclass(frozen=True)
@@ -131,24 +137,6 @@ def _reddit(host: str, path: list[str], cleaned: str) -> Parsed:
     raise UrlError(NOT_A_THREAD)
 
 
-def _facebook(host: str, path: list[str], query: dict[str, str], cleaned: str) -> Parsed:
-    if host == "fb.me" or (path and path[0].lower() == "share"):
-        raise UrlError(SHARE_LINK)
-    comment = query.get("reply_comment_id") or query.get("comment_id")
-    lower = [p.lower() for p in path]
-    post: str | None = None
-    community: str | None = None
-    if len(path) >= 4 and lower[0] == "groups" and lower[2] in ("posts", "permalink"):
-        community, post = path[1], path[3]
-    elif lower[:1] == ["permalink.php"] or lower[:1] == ["story.php"]:
-        post = query.get("story_fbid")
-    elif len(path) >= 3 and lower[1] == "posts":
-        community, post = path[0], path[2]
-    if post is None or not _FB_ID.match(post):
-        raise UrlError(NOT_A_THREAD)
-    return Parsed("facebook", f"facebook:{post}", community, comment, cleaned)
-
-
 def _generic(slug: str, host: str, path: list[str]) -> Parsed:
     # No query, no fragment: the same page's address with tracking removed.
     page = urlunsplit(("https", host, "/" + "/".join(path), "", ""))
@@ -156,9 +144,25 @@ def _generic(slug: str, host: str, path: list[str]) -> Parsed:
     return Parsed(slug, f"{slug}:{digest}", clean_url=page)
 
 
+def _bare_reddit_code(code: str, rules: list[PlatformRule]) -> Parsed:
+    """`1xd8w7u`: the code in a Reddit post's address, typed or pasted on its own."""
+    reddit = next((r for r in rules if r.parser == "reddit"), None)
+    if reddit is None:
+        raise UrlError(NOT_A_URL)
+    if not reddit.enabled:
+        raise UrlError(f"Answering on {reddit.name or reddit.slug} is switched off in Settings.")
+    return Parsed(
+        reddit.slug, f"{reddit.slug}:{code}", clean_url=f"https://www.reddit.com/comments/{code}/"
+    )
+
+
 def parse(url: str, rules: list[PlatformRule]) -> Parsed:
-    """The thread a URL points to, or UrlError with a message people can act on."""
-    cleaned, host, path, query = clean(url)
+    """The thread a URL (or a Reddit post's bare code) points to, or UrlError with a message
+    people can act on."""
+    code = url.strip().lower()
+    if _BARE_CODE.match(code):
+        return _bare_reddit_code(code, rules)
+    cleaned, host, path, _query = clean(url)
     for rule in rules:
         hosts = rule.hosts or (
             REDDIT_HOSTS
@@ -174,7 +178,7 @@ def parse(url: str, rules: list[PlatformRule]) -> Parsed:
         if rule.parser == "reddit":
             parsed = _reddit(host, path, cleaned)
         elif rule.parser == "facebook":
-            parsed = _facebook(host, path, query, cleaned)
+            raise UrlError(FACEBOOK_BY_NAME)
         else:
             parsed = _generic(rule.slug, host, path)
         if parsed.platform != rule.slug:

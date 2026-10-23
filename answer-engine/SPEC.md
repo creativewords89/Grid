@@ -12,7 +12,7 @@ It is a **separate product** from the GridRankers team portal (the WordPress plu
 - Uploads: PDF (text and scanned), Word, Excel/CSV and images (scans, photos). English only.
 - Every answer gets a **confidence score**. Low-confidence answers go to 3–5 reviewers in a **Telegram group**. Their approval or correction is sent back to the person who asked, replacing the answer in place, and is added to the knowledge base automatically.
 - The Owner can review **any** answer (high or low confidence) in the Answer Log and correct it, with the same effect.
-- **Marketing:** team members paste a Reddit or Facebook question by URL and get a draft reply. When someone replies in that thread, they paste the URL again, the engine finds the thread and drafts the follow-up using the whole conversation. **A human always posts.** The engine never posts or logs in to Reddit or Facebook.
+- **Marketing:** for Reddit, team members paste the post's link or its code; for Facebook, they type the person's name. The engine shows the conversation we already have (or starts a new one), they paste the new message, and get a draft reply that uses the whole conversation. **A human always posts.** The engine never posts or logs in to Reddit or Facebook.
 - Runs on the company's own Hostinger VPS at **answers.gridrankers.com** (section 13).
 - Every permission is enforced on the server. The browser is never trusted.
 
@@ -141,7 +141,7 @@ All tables have `id` (UUID v7 unless stated), `created_at` and `updated_at` (`ti
 | `answers` | kind ENUM(chat, marketing), asked_by, question, retrieval_query, original_text, current_text, sources JSONB `[{n, kind: doc|verified, ref_id, file_id, file_name, page, sheet, score}]`, confidence INT 0–100 NULL, confidence_parts JSONB, outcome ENUM(no_answer, low, high), status ENUM(auto, in_review, needs_info, verified, corrected, wrong_no_answer), flagged BOOL (👎), flag_note NULL, feedback NULL (`up`/`down`), delivered_at NULL (when a review changed what the asker sees), seen_at NULL (when the asker last opened it after that), model, usage JSONB (tokens in/out/cached, cost_usd), stop_reason |
 | `reviews` | number BIGINT IDENTITY (shown as #R-142), answer_id, reason ENUM(low_confidence, no_answer, admin, flag), state ENUM(open, claimed, needs_info, approved, edited, rejected, cancelled), claimed_by NULL, claimed_at, decided_by NULL, decided_at, final_text NULL, note NULL, telegram_message_id NULL, prompt_message_id NULL + prompt_action NULL (the bot's open "reply to this message" prompt), reminded_at NULL, escalated_at NULL. At most one undecided review per answer (partial unique index). |
 | `review_messages` | review_id, author_id, kind ENUM(question_to_asker, asker_reply, reviewer_note), body |
-| `threads` | id TEXT (canonical ID, section 6.9, e.g. `reddit:abc123`), platform_id, community NULL (e.g. `r/localseo`, a group name), title, original_url, status ENUM(waiting_for_us, in_review, ready_to_post, waiting_for_them, closed), created_by, last_activity_at, closed_at NULL, close_reason ENUM(manual, inactive) NULL, deleted_at NULL |
+| `threads` | id TEXT (canonical ID, section 6.9, e.g. `reddit:abc123`), platform_id, community NULL (e.g. `r/localseo`, a group name), title, original_url (empty for name-based threads), person NULL (who asked: a Facebook name such as "Dan Miller" or "Anonymous member", or a Reddit username), status ENUM(waiting_for_us, in_review, ready_to_post, waiting_for_them, closed), created_by, last_activity_at, closed_at NULL, close_reason ENUM(manual, inactive) NULL, deleted_at NULL |
 | `thread_messages` | thread_id, parent_id NULL (the message it replies to), author ENUM(them, us), author_name NULL (e.g. `u/john_smb`), body, external_url NULL, external_comment_id NULL, answer_id NULL (for our drafts), state ENUM(draft, in_review, ready, posted, discarded) (ours only), posted_by NULL, posted_at NULL, created_by |
 | `platforms` | slug UNIQUE (reddit, facebook, …), name, enabled BOOL, parser ENUM(reddit, facebook, generic), hosts TEXT[] (the websites a generic platform covers, e.g. quora.com), style_prompt TEXT, disclosure_line TEXT NULL, position. Reddit and Facebook are created the first time platforms are read. |
 | `communities` | platform_id, name (e.g. `r/SEO`), notes TEXT (e.g. "no links") |
@@ -350,6 +350,8 @@ Sources: [1] Onboarding.pdf p.3
 
 **Platforms:** Reddit and Facebook at launch (setting rows, section 10). The Owner can add, disable or reorder platforms and edit each one's style prompt and disclosure line without code changes. A new platform uses the `generic` URL parser.
 
+**Finding the conversation** (changed in step 17): **Reddit** threads are found by the post's unique code, from a pasted link or the code alone. **Facebook** group posts have no usable links (the app gives share links, and one post can show under several IDs), so Facebook threads are found by **the person's name**. Platforms the Owner adds use links (the generic parser).
+
 **URL → thread ID** (`marketing/url_parser.py`, pure function, unit-tested with fixtures). The parser returns `{platform, thread_id, community, comment_id}` or an error message.
 - **Before parsing:** trim the URL, require `http(s)`, lower-case the host, strip `www.`, `m.`, `old.`, `new.`, `np.`, `mbasic.` and `web.`, and drop `utm_*`, `fbclid`, `rdt`, `share_id`, `ref`, `__cft__` and similar tracking parameters.
 - **Reddit** (`reddit.com`, `redd.it`):
@@ -358,15 +360,20 @@ Sources: [1] Onboarding.pdf p.3
   - `redd.it/{post}` → `reddit:{post}`
   - Share links `/r/{sub}/s/{code}` → error: "This is a share link. Open it and copy the full address from the browser bar."
   - Post IDs are lower-cased and base-36 (`[a-z0-9]+`).
-- **Facebook** (`facebook.com`, `fb.com`):
-  - `/groups/{group}/posts/{post}` and `/groups/{group}/permalink/{post}` → `facebook:{post}`, community = group slug or ID
-  - `/permalink.php?story_fbid={post}&id={owner}` and `/{page}/posts/{post}` → `facebook:{post}`
-  - The `comment_id` / `reply_comment_id` query parameter is captured as the comment.
-  - `/share/p/{code}`, `/share/{code}` and `fb.me/...` → the same "share link" error as Reddit.
-  - Facebook can show one post under different IDs (a numeric ID or a `pfbid…` token). When a new Facebook thread is created, the engine also shows **"Possible matches"**: open threads in the same group whose text is similar (Postgres trigram similarity ≥ 0.6) so the user can choose an existing thread instead.
+- **Reddit code alone:** a bare post code such as `1xd8w7u` (base-36, 4–12 characters) → `reddit:{code}`.
+- **Facebook links** are not used: pasting one says "Facebook posts are found by the person's name: choose Facebook and type their name."
 - **Generic:** the thread ID is `{slug}:` + SHA-1 of the cleaned URL (no fragment, no query).
 
-**The "Paste a URL" box** (top of the Marketing screen) does one of two things:
+**Facebook: find by name** (step 17):
+- The person types a name (a real name, or "Anonymous member"). There is no group to choose: GridRankers is active in one or two groups.
+- The engine lists every Facebook thread whose `person` matches: the same name ignoring capitals and spaces, or a close spelling (trigram similarity ≥ 0.5). Newest activity first, at most 20, closed threads included. Each shows the first question, our last reply, the date and the status.
+- If the person also pasted the new message, the thread whose wording is closest to it is marked **Closest match**.
+- They pick one (the thread opens with **Add their reply** ready, the name filled in and the new message pasted), or **New conversation with {name}**: paste the question and draft. A new name-based thread's ID is `facebook:` + a random ID; its title is the question's start.
+- A shared name can't cause a mistake: a person always sees the earlier conversations and chooses.
+
+- *Built in step 17:* `threads.person` (migration 0014; existing threads take the name given with their first message). `GET /threads/by-name` lists Facebook threads by name; the closest one to the pasted message is found by word similarity with each thread's messages. Finding a Reddit post by link or code always opens its thread with **Add their reply** ready. Facebook threads have no "Open on Facebook" link and their reply form has no link field; a link given at Mark as posted is kept as a note only. Thread rows show the person's name.
+
+**The "Paste a Reddit link or code" box** (top of the Marketing screen) does one of two things:
 - **New ID:** opens *New thread*. It shows the detected platform and community, asks for the title (optional) and the question text (required), with the poster's username optional, then **Draft reply**.
 - **Existing ID:** opens that thread. If the thread was created by someone else, it shows "Ali started this thread on 10 Oct". If the URL has a comment ID matching a message in the thread, that message is preselected as the parent.
 - **Closed thread:** it reopens it.
@@ -397,7 +404,7 @@ Sources: [1] Onboarding.pdf p.3
 - **Later (not v1):** a read-only Reddit checker can fill in `them` messages automatically using the stored comment IDs. The data model already supports it.
 - *Built in step 13:*
   - **URL parser:** also accepts `/user/{name}/comments/{post}` (community `u/{name}`) and `story.php`; a URL typed without `https://` gets it. Besides `utm_*`, these tracking parameters are dropped: `fbclid`, `rdt`, `share_id`, `ref`, `ref_source`, `ref_campaign`, `__cft__`, `__tn__`, `mibextid`, `rdid`, `sh`, `context`, `s`, `si`, `igshid`, `notif_id`, `notif_t`, `acontext`, `_rdc`, `_rdr`. Facebook post IDs are numbers or `pfbid…` tokens; `reply_comment_id` wins over `comment_id`. A switched-off platform's links say "Answering on Reddit is switched off in Settings."; an unknown website says the Owner can add it. A generic platform is matched by its `hosts`.
-  - **New thread:** the title defaults to the question's first 120 characters. After the thread is made, the first draft is made straight away. **Possible matches** are checked when the thread is created (the question text is needed): open threads in the same Facebook group whose first message has trigram similarity ≥ 0.6. The person can open one of them or choose "It's a different post".
+  - **New thread:** the title defaults to the question's first 120 characters. After the thread is made, the first draft is made straight away. **Possible matches** are checked when the thread is created (the question text is needed): open threads in the same Facebook group whose first message has trigram similarity ≥ 0.6. The person can open one of them or choose "It's a different post". (Removed in step 17: Facebook threads are now found by name.)
   - **Opening by URL:** pasting the link to a comment we stored (ours or theirs) opens the thread with the **Add their reply** form already open and that comment chosen as the parent.
   - **Drafts:** retrieval uses the original question plus the message being answered. The thread is given to Claude as `<forum_message id="m1" by="them|us" author="…" reply_to="m…">` with `answer_this="true"` on the target. Only their messages and our posted replies are included, and a posted reply corrected since carries its corrected text. `max_tokens` 1500, effort `medium`, the same model and refusal fallback as answers. A refused draft says "I can't draft a reply to this one…" and scores 0, so a person decides. The disclosure line is added by code (not left to Claude) when a draft mentions GridRankers and doesn't already contain the line. Tokens go to `usage_daily` (kind `draft`).
   - **Regenerate** discards the earlier unposted draft for the same message and withdraws its review; the Telegram card shows "⏹ Withdrawn". **Edit by hand** changes the text to be posted. **Copy** and **Mark as posted** are locked while a draft is in review.
@@ -469,7 +476,7 @@ A clean, simple layout. Left sidebar: **Ask**, **Documents**, **Marketing**, **V
 - **Trash tab** (Owner only): deleted files with who deleted them, when they will be removed for good, and Restore / Delete forever.
 
 ### 7.3 Marketing
-- **Top:** the **Paste a Reddit or Facebook URL** box (section 6.10).
+- **Top:** two tabs: **Reddit** (paste the link or the post's code) and **Facebook** (type the person's name, optionally paste their new message) (section 6.10).
 - **Tabs with counts:** Waiting for us · In review · Ready to post · Waiting for them · Closed.
 - **Filters:** platform, community, posted by, mine only.
 - **Thread rows:** title, platform icon and community, last activity, posted by, and **Open on {platform}**.
@@ -523,7 +530,7 @@ Every route checks the session, the CSRF token (for writes) and `permissions.can
 | Reviews | `GET /reviews?show=waiting|mine|decided`, `GET /reviews/count` (the sidebar badge), `GET /reviews/{id}`, `POST /reviews/{id}/claim`, `POST /reviews/{id}/release`, `POST /reviews/{id}/decide` `{action: approve|edit|reject|needs_info|no_answer, text?, note?, add_to_kb?}` |
 | Answer Log | `GET /answer-log` (filters `outcome`, `status`, `flagged`, `kind`, `person`, `date_from`, `date_to`, `q`, `page`), `GET /answer-log/gaps`, `GET /answer-log/{id}`, `POST /answers/{id}/admin-review` `{action: approve|edit|reject|no_answer, text?, note?, verified_choice?}` |
 | Verified | `GET /verified?show=active|disabled|expired|needs_check|all&q=` (with counts per tab), `GET /verified/{id}`, `PATCH /verified/{id}` `{question?, answer?, expires_at?, clear_expiry?, checked?}`, `POST /verified/{id}/disable`, `POST /verified/{id}/enable`, `DELETE /verified/{id}`, `GET /verified/{id}/history`, `POST /verified/{id}/restore-version` `{version}` |
-| Marketing | `POST /threads/resolve` `{url}` → `{found, thread?, parsed, matched_message_id?, reopened, error?}`, `POST /threads` `{url, question, title?, author_name?, confirm_new?}` (409 `exists` or `possible_match` with details), `GET /threads`, `GET /threads/{id}`, `POST /threads/{id}/replies`, `POST /threads/{id}/draft` `{parent_id, instruction?}`, `PATCH /thread-messages/{id}`, `POST /thread-messages/{id}/posted` `{url?}`, `POST /threads/{id}/close`, `POST /threads/{id}/reopen`, `DELETE /threads/{id}`; platforms: `GET /platforms`, `POST /platforms` (Owner), `PATCH /platforms/{id}`, `POST /platforms/{id}/communities`, `PATCH /communities/{id}`, `DELETE /communities/{id}` |
+| Marketing | `POST /threads/resolve` `{url}` → `{found, thread?, parsed, matched_message_id?, reopened, error?}`, `POST /threads` `{url?, platform?, question, title?, author_name?}` (a link for Reddit; `platform: "facebook"` plus `author_name` for Facebook; 409 `exists`), `GET /threads/by-name?name=&text=` (Facebook threads for a name, closest match marked), `GET /threads`, `GET /threads/{id}`, `POST /threads/{id}/replies`, `POST /threads/{id}/draft` `{parent_id, instruction?}`, `PATCH /thread-messages/{id}`, `POST /thread-messages/{id}/posted` `{url?}`, `POST /threads/{id}/close`, `POST /threads/{id}/reopen`, `DELETE /threads/{id}`; platforms: `GET /platforms`, `POST /platforms` (Owner), `PATCH /platforms/{id}`, `POST /platforms/{id}/communities`, `PATCH /communities/{id}`, `DELETE /communities/{id}` |
 | Notifications | `GET /notifications` (your own, newest first, with the unread count), `POST /notifications/read` `{ids?}` (none: mark all), `GET`+`POST /notifications/stop-emails?u=&t=` (signed link, no session) |
 | Live updates | `GET /updates?since=` → `{cursor, answers, notifications, unread, files_changed, reviews_waiting}` |
 | Users | `GET /users`, `POST /users/invite`, `PATCH /users/{id}`, `POST /users/{id}/reset-password`, `POST /me/telegram-link` (a one-time code), `DELETE /me/telegram-link` |
@@ -689,3 +696,4 @@ Every route checks the session, the CSRF token (for writes) and `permissions.can
 14. **Usage and limits:** cost tracking, usage dashboard, per-user daily limit, monthly cost alert, rate limits, security headers.
 15. **Evaluation and tuning:** eval runner, run it on the Owner's questions and files, set the threshold, weights and model, and record the results in this spec.
 16. **Deployment and hardening:** production Compose, Caddyfile, backups and a restore test, `ops/deploy.md`, Playwright e2e (ask → low confidence → Telegram edit → asker sees the correction; URL → thread → draft → posted → reply via comment URL → follow-up draft; delete file → never cited again).
+17. **Marketing simplified (change requested after step 16):** Reddit by link or bare post code; Facebook by the person's name (list of their conversations, newest first, closest match marked, or a new conversation); Facebook links and "possible matches" removed. **Tests:** bare codes, Facebook links refused, name matching (case, spaces, close spellings, Anonymous member), new name-based threads, the e2e flow for Facebook.

@@ -14,6 +14,7 @@ const row: ThreadRow = {
   community: "r/localseo",
   title: "How long does GBP verification take?",
   original_url: URL,
+  person: "u/dentist_dan",
   status: "ready_to_post",
   created_by: { id: "u1", name: "Sara" },
   posted_by: [],
@@ -120,7 +121,7 @@ test("a new URL: paste the question, and it drafts straight away", async () => {
   });
   render(<App />);
 
-  await userEvent.type(await screen.findByLabelText("Paste a Reddit or Facebook URL"), URL);
+  await userEvent.type(await screen.findByLabelText("Paste a Reddit link or the post's code"), URL);
   await userEvent.click(screen.getByRole("button", { name: "Go" }));
   expect(await screen.findByText(/New thread/)).toBeVisible();
   await userEvent.type(screen.getByLabelText("Their question"), question.body);
@@ -133,7 +134,6 @@ test("a new URL: paste the question, and it drafts straight away", async () => {
     url: URL,
     question: question.body,
     author_name: "u/dentist_dan",
-    confirm_new: false,
   });
   expect(calls.find((c) => c.path.endsWith("/draft"))?.body).toEqual({ parent_id: "m1" });
 });
@@ -157,7 +157,7 @@ test("a URL someone else started opens their thread and says so", async () => {
   });
   render(<App />);
 
-  await userEvent.type(await screen.findByLabelText("Paste a Reddit or Facebook URL"), URL);
+  await userEvent.type(await screen.findByLabelText("Paste a Reddit link or the post's code"), URL);
   await userEvent.click(screen.getByRole("button", { name: "Go" }));
 
   expect(await screen.findByText(/Ali started this thread on/)).toBeVisible();
@@ -182,7 +182,7 @@ test("a share link explains what to paste instead", async () => {
   render(<App />);
 
   await userEvent.type(
-    await screen.findByLabelText("Paste a Reddit or Facebook URL"),
+    await screen.findByLabelText("Paste a Reddit link or the post's code"),
     "https://www.reddit.com/r/x/s/abc",
   );
   await userEvent.click(screen.getByRole("button", { name: "Go" }));
@@ -263,4 +263,122 @@ test("a reply corrected after posting offers the new text", async () => {
   expect(await screen.findByText(/corrected after posting/)).toBeVisible();
   expect(screen.getByText("2-3 weeks now.")).toBeVisible();
   expect(screen.getByRole("button", { name: "Copy the corrected reply" })).toBeVisible();
+});
+
+const fbRow: ThreadRow = {
+  ...row,
+  id: "facebook:0193abc",
+  platform: "facebook",
+  platform_name: "Facebook",
+  community: null,
+  title: "Can I use a PO box for my GBP?",
+  original_url: "",
+  person: "Dan Miller",
+  status: "waiting_for_them",
+};
+
+test("Facebook: find their conversations by name and pick the closest", async () => {
+  const calls = mockApi({
+    "GET /auth/me": me,
+    "GET /threads?status=waiting_for_us": [200, { items: [], counts }],
+    "GET /threads/by-name?name=Dan+Miller&text=Is+a+virtual+office+ok%3F": [
+      200,
+      [
+        {
+          thread: { ...fbRow, id: "facebook:new", title: "How long does verification take?" },
+          first_question: "How long does verification take?",
+          our_last_reply: null,
+          closest: false,
+        },
+        {
+          thread: fbRow,
+          first_question: "Can I use a PO box for my GBP?",
+          our_last_reply: "No, Google needs a real address.",
+          closest: true,
+        },
+      ],
+    ],
+    "GET /threads/facebook%3A0193abc": [
+      200,
+      detail([{ ...question, body: "Can I use a PO box for my GBP?", author_name: "Dan Miller" }], {
+        ...fbRow,
+      }),
+    ],
+  });
+  render(<App />);
+
+  await userEvent.click(await screen.findByRole("tab", { name: "Facebook" }));
+  await userEvent.type(screen.getByLabelText("Their name on Facebook"), "Dan Miller");
+  await userEvent.type(screen.getByLabelText(/Their new message/), "Is a virtual office ok?");
+  await userEvent.click(screen.getByRole("button", { name: "Find" }));
+
+  const closest = (await screen.findByText("Closest match")).closest("li") as HTMLElement;
+  expect(within(closest).getByText("Can I use a PO box for my GBP?")).toBeVisible();
+  expect(within(closest).getByText("No, Google needs a real address.")).toBeVisible();
+  await userEvent.click(within(closest).getByRole("button", { name: "This one" }));
+
+  // The thread opens with their new message ready to add, under their name.
+  expect(await screen.findByLabelText("Their reply")).toHaveValue("Is a virtual office ok?");
+  expect(screen.getByLabelText("Their name (optional)")).toHaveValue("Dan Miller");
+  expect(screen.queryByLabelText("Link to their comment (optional)")).toBeNull();
+  expect(screen.queryByRole("link", { name: /Open on/ })).toBeNull();
+  expect(calls.some((c) => c.path.startsWith("/threads/by-name"))).toBe(true);
+});
+
+test("Facebook: nobody found, start a new conversation and draft", async () => {
+  const calls = mockApi({
+    "GET /auth/me": me,
+    "GET /threads?status=waiting_for_us": [200, { items: [], counts }],
+    "GET /threads/by-name?name=Anonymous+member": [200, []],
+    "POST /threads": [201, detail([question], { ...fbRow, person: "Anonymous member" })],
+    "POST /threads/facebook%3A0193abc/draft": [200, detail([question, draftMsg("ready")], fbRow)],
+    "GET /threads/facebook%3A0193abc": [200, detail([question, draftMsg("ready")], fbRow)],
+  });
+  render(<App />);
+
+  await userEvent.click(await screen.findByRole("tab", { name: "Facebook" }));
+  await userEvent.type(screen.getByLabelText("Their name on Facebook"), "Anonymous member");
+  await userEvent.click(screen.getByRole("button", { name: "Find" }));
+  expect(await screen.findByText("No earlier conversations with Anonymous member.")).toBeVisible();
+  await userEvent.click(
+    screen.getByRole("button", { name: "+ New conversation with Anonymous member" }),
+  );
+  await userEvent.type(screen.getByLabelText("Their question"), "My listing got suspended?");
+  await userEvent.click(screen.getByRole("button", { name: "Draft reply" }));
+
+  expect(await screen.findByText("Usually 1-2 weeks.")).toBeVisible();
+  expect(calls.find((c) => c.method === "POST" && c.path === "/threads")?.body).toEqual({
+    platform: "facebook",
+    author_name: "Anonymous member",
+    question: "My listing got suspended?",
+  });
+});
+
+test("Reddit: a known post's code opens it ready for their reply", async () => {
+  mockApi({
+    "GET /auth/me": me,
+    "GET /threads?status=waiting_for_us": [200, { items: [], counts }],
+    "POST /threads/resolve": [
+      200,
+      {
+        found: true,
+        parsed: null,
+        thread: row,
+        matched_message_id: null,
+        reopened: false,
+        error: null,
+      },
+    ],
+    "GET /threads/reddit%3A1abc2de": [200, detail([question, draftMsg("posted")])],
+  });
+  render(<App />);
+
+  await userEvent.type(
+    await screen.findByLabelText("Paste a Reddit link or the post's code"),
+    "1abc2de",
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Go" }));
+
+  expect(await screen.findByLabelText("Their reply")).toHaveValue("");
+  expect(screen.getByLabelText("Replying to")).toHaveValue("m2"); // our posted reply
 });

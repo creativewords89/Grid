@@ -43,6 +43,7 @@ from app.db.models import (
     UsageKind,
     User,
 )
+from app.ids import uuid7
 from app.kb.store import VectorStore
 from app.marketing.url_parser import Parsed, PlatformRule, UrlError, parse
 from app.notifications import service as notifications
@@ -50,7 +51,8 @@ from app.reviews import service as reviews
 
 log = logging.getLogger(__name__)
 
-SIMILAR_POST = 0.6  # trigram similarity for "Possible matches" (Facebook)
+SIMILAR_NAME = 0.5  # trigram similarity for a close spelling of a name ("Dan Miller")
+NAME_RESULTS = 20
 MAX_TEXT = 20000
 
 DEFAULT_PLATFORMS: list[dict[str, Any]] = [
@@ -112,6 +114,7 @@ def rules(db: Session) -> list[PlatformRule]:
 
 
 def platform_of(db: Session, slug: str) -> Platform:
+    platforms(db)  # Reddit and Facebook exist from the first read
     platform = db.scalar(select(Platform).where(Platform.slug == slug))
     if platform is None:
         raise MarketingError(404, "not_found", "Unknown platform.")
@@ -207,7 +210,6 @@ class Resolved:
     thread: Thread | None
     matched_message_id: uuid.UUID | None
     reopened: bool
-    possible_matches: list[Thread]
 
 
 def live_thread(db: Session, thread_id: str) -> Thread | None:
@@ -224,7 +226,7 @@ def resolve(db: Session, url: str, by: User) -> Resolved:
         raise MarketingError(422, "bad_url", str(error)) from None
     thread = live_thread(db, parsed.thread_id)
     if thread is None:
-        return Resolved(parsed, None, None, False, [])
+        return Resolved(parsed, None, None, False)
     matched = None
     if parsed.comment_id:
         matched = db.scalar(
@@ -237,39 +239,132 @@ def resolve(db: Session, url: str, by: User) -> Resolved:
     if thread.closed_at is not None:
         reopen(db, thread, by)
         reopened = True
-    return Resolved(parsed, thread, matched, reopened, [])
+    return Resolved(parsed, thread, matched, reopened)
 
 
-def possible_matches(
-    db: Session, platform: Platform, community: str | None, text: str
-) -> list[Thread]:
-    """Open threads in the same Facebook group whose question reads the same: Facebook shows
-    one post under several IDs, so a pasted link may be one we already have."""
-    if platform.parser != PlatformParser.FACEBOOK or not community:
+# --- finding a Facebook thread by the person's name ---------------------------------------------
+
+
+def clean_name(name: str) -> str:
+    return re.sub(r"\s+", " ", name).strip()[:120]
+
+
+@dataclass
+class NameMatch:
+    thread: Thread
+    first_question: str
+    our_last_reply: str | None
+    closest: bool
+
+
+def by_name_platforms(db: Session) -> list[Platform]:
+    return [p for p in platforms(db) if p.parser == PlatformParser.FACEBOOK]
+
+
+def find_by_name(db: Session, name: str, text: str | None = None) -> list[NameMatch]:
+    """Facebook threads of the person with this name (or a close spelling), newest first.
+    With their new message, the thread whose wording is closest to it is marked. A person
+    always checks the list and chooses: two people may share a name (SPEC 6.10)."""
+    wanted = clean_name(name).lower()
+    if not wanted:
         return []
-    first = (
-        select(ThreadMessage.thread_id, func.min(ThreadMessage.created_at).label("at"))
-        .where(ThreadMessage.author == MessageAuthor.THEM)
-        .group_by(ThreadMessage.thread_id)
-        .subquery()
+    platform_ids = [p.id for p in by_name_platforms(db)]
+    person = func.lower(Thread.person)
+    threads = list(
+        db.scalars(
+            select(Thread)
+            .where(
+                Thread.platform_id.in_(platform_ids),
+                Thread.deleted_at.is_(None),
+                (person == wanted) | (func.similarity(person, wanted) >= SIMILAR_NAME),
+            )
+            .order_by(Thread.last_activity_at.desc())
+            .limit(NAME_RESULTS)
+        )
     )
-    rows = db.execute(
-        select(Thread, ThreadMessage.body)
-        .join(first, first.c.thread_id == Thread.id)
-        .join(
-            ThreadMessage,
-            (ThreadMessage.thread_id == Thread.id) & (ThreadMessage.created_at == first.c.at),
+    matches = [_name_match(t) for t in threads]
+    if text and text.strip() and matches:
+        scores = _similarities(db, text, [m.thread for m in matches])
+        best = max(range(len(matches)), key=lambda i: scores[i])
+        if scores[best] > 0:
+            matches[best].closest = True
+    return matches
+
+
+def _name_match(thread: Thread) -> NameMatch:
+    them = [m for m in thread.messages if m.author == MessageAuthor.THEM]
+    ours = [
+        m
+        for m in thread.messages
+        if m.author == MessageAuthor.US and m.state != DraftState.DISCARDED
+    ]
+    posted = [m for m in ours if m.state == DraftState.POSTED]
+    last = max(posted or ours, key=lambda m: m.posted_at or m.created_at) if ours else None
+    return NameMatch(
+        thread=thread,
+        first_question=them[0].body if them else thread.title,
+        our_last_reply=last.body if last else None,
+        closest=False,
+    )
+
+
+def _similarities(db: Session, text: str, threads: list[Thread]) -> list[float]:
+    """How close the new message reads to each thread's own messages (best one counts)."""
+    scores = []
+    for thread in threads:
+        bodies = [m.body for m in thread.messages if m.state != DraftState.DISCARDED]
+        best = 0.0
+        for body in bodies:
+            value = db.scalar(select(func.word_similarity(text, body)))
+            best = max(best, float(value or 0))
+        scores.append(best)
+    return scores
+
+
+def create_by_name(db: Session, platform: Platform, person: str, by: User, question: str) -> Thread:
+    """A new Facebook conversation: there is no link, so the ID is random (SPEC 6.10)."""
+    if platform.parser != PlatformParser.FACEBOOK:
+        raise MarketingError(422, "invalid", f"{platform.name} posts are found by their link.")
+    if not platform.enabled:
+        raise MarketingError(
+            422, "invalid", f"Answering on {platform.name} is switched off in Settings."
         )
-        .where(
-            Thread.platform_id == platform.id,
-            Thread.community == community,
-            Thread.deleted_at.is_(None),
-            Thread.closed_at.is_(None),
-            func.similarity(ThreadMessage.body, text) >= SIMILAR_POST,
+    person = clean_name(person)
+    if not person:
+        raise MarketingError(422, "invalid", "Type the person's name.")
+    question = _question(question)
+    thread = Thread(
+        id=f"{platform.slug}:{uuid7().hex}",
+        platform_id=platform.id,
+        title=_title(question),
+        original_url="",
+        person=person,
+        status=ThreadStatus.WAITING_FOR_US,
+        created_by=by.id,
+        last_activity_at=now(),
+    )
+    db.add(thread)
+    db.add(
+        ThreadMessage(
+            thread_id=thread.id,
+            author=MessageAuthor.THEM,
+            author_name=person,
+            body=question,
+            created_by=by.id,
         )
-        .limit(5)
-    ).all()
-    return [row[0] for row in rows]
+    )
+    audit.record(db, by, "create", "thread", thread.id, thread.title)
+    db.flush()
+    return thread
+
+
+def _question(question: str) -> str:
+    question = question.strip()
+    if not question:
+        raise MarketingError(422, "invalid", "Paste the question you want to answer.")
+    if len(question) > MAX_TEXT:
+        raise MarketingError(422, "invalid", "That text is too long.")
+    return question
 
 
 def _title(text: str) -> str:
@@ -284,7 +379,6 @@ def create_thread(
     question: str,
     title: str | None = None,
     author_name: str | None = None,
-    confirm_new: bool = False,
 ) -> Thread:
     resolved = resolve(db, url, by)
     if resolved.thread is not None:
@@ -294,28 +388,17 @@ def create_thread(
             "This thread is already here. Open it to add their reply.",
             {"thread_id": resolved.thread.id},
         )
-    question = question.strip()
-    if not question:
-        raise MarketingError(422, "invalid", "Paste the question you want to answer.")
-    if len(question) > MAX_TEXT:
-        raise MarketingError(422, "invalid", "That text is too long.")
+    question = _question(question)
     parsed = resolved.parsed
     platform = platform_of(db, parsed.platform)
-    if not confirm_new:
-        matches = possible_matches(db, platform, parsed.community, question)
-        if matches:
-            raise MarketingError(
-                409,
-                "possible_match",
-                "This may be a thread we already have.",
-                {"matches": [{"id": t.id, "title": t.title} for t in matches]},
-            )
+    person = clean_name(author_name or "") or None
     thread = Thread(
         id=parsed.thread_id,
         platform_id=platform.id,
         community=parsed.community,
         title=(title or "").strip()[:300] or _title(question),
         original_url=parsed.clean_url or url.strip(),
+        person=person,
         status=ThreadStatus.WAITING_FOR_US,
         created_by=by.id,
         last_activity_at=now(),
@@ -325,7 +408,7 @@ def create_thread(
         ThreadMessage(
             thread_id=thread.id,
             author=MessageAuthor.THEM,
-            author_name=(author_name or "").strip()[:120] or None,
+            author_name=person,
             body=question,
             external_url=parsed.clean_url,
             external_comment_id=parsed.comment_id,
@@ -351,15 +434,7 @@ def add_reply(
     body = body.strip()
     if not body:
         raise MarketingError(422, "invalid", "Paste their reply.")
-    comment_id = None
-    if url:
-        try:
-            parsed = parse(url, rules(db))
-        except UrlError as error:
-            raise MarketingError(422, "bad_url", str(error)) from None
-        if parsed.thread_id != thread.id:
-            raise MarketingError(422, "other_thread", "That link is for a different thread.")
-        comment_id = parsed.comment_id
+    comment_id = _comment_in(db, thread, url)
     ids = {m.id for m in thread.messages}
     if parent_id is not None and parent_id not in ids:
         raise MarketingError(422, "invalid", "Choose a message from this thread.")
@@ -381,6 +456,20 @@ def add_reply(
     touch(thread)
     refresh_status(db, thread)
     return reply
+
+
+def _comment_in(db: Session, thread: Thread, url: str | None) -> str | None:
+    """The comment a link points to, for threads found by link. A Facebook thread keeps a
+    link only as a note (its posts are found by name)."""
+    if not url or thread.platform.parser == PlatformParser.FACEBOOK:
+        return None
+    try:
+        parsed = parse(url, rules(db))
+    except UrlError as error:
+        raise MarketingError(422, "bad_url", str(error)) from None
+    if parsed.thread_id != thread.id:
+        raise MarketingError(422, "other_thread", "That link is for a different thread.")
+    return parsed.comment_id
 
 
 def _default_parent(thread: Thread) -> uuid.UUID | None:
@@ -585,15 +674,7 @@ def mark_posted(
             raise MarketingError(409, "in_review", "Waiting for review – don't post yet.")
         raise MarketingError(409, "not_a_draft", "Only a draft that is ready can be posted.")
     thread = message.thread
-    comment_id = None
-    if url:
-        try:
-            parsed = parse(url, rules(db))
-        except UrlError as error:
-            raise MarketingError(422, "bad_url", str(error)) from None
-        if parsed.thread_id != thread.id:
-            raise MarketingError(422, "other_thread", "That link is for a different thread.")
-        comment_id = parsed.comment_id
+    comment_id = _comment_in(db, thread, url)
     message.state = DraftState.POSTED
     message.posted_by = by.id
     message.posted_at = now()

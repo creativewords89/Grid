@@ -721,7 +721,8 @@ class CloseReason(enum.StrEnum):
 
 
 class Thread(TimestampMixin, Base):
-    """A forum thread we answer in. The ID comes from its URL (`reddit:1abc2de`)."""
+    """A forum thread we answer in. Reddit's ID comes from the post (`reddit:1abc2de`);
+    Facebook threads are found by `person` and get a random ID (SPEC 6.10)."""
 
     __tablename__ = "threads"
 
@@ -729,7 +730,9 @@ class Thread(TimestampMixin, Base):
     platform_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("platforms.id"))
     community: Mapped[str | None] = mapped_column(String(200))
     title: Mapped[str] = mapped_column(String(300))
-    original_url: Mapped[str] = mapped_column(Text)
+    original_url: Mapped[str] = mapped_column(Text)  # empty for Facebook (found by name)
+    # Who asked: a Facebook name ("Dan Miller", "Anonymous member") or a Reddit username.
+    person: Mapped[str | None] = mapped_column(String(120))
     status: Mapped[ThreadStatus] = mapped_column(
         _enum(ThreadStatus, "thread_status"), default=ThreadStatus.WAITING_FOR_US
     )

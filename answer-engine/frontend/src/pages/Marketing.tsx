@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from
 import {
   api,
   ApiError,
+  type NameMatch,
   type Resolved,
   type ThreadDetail,
   type ThreadList,
@@ -14,14 +15,25 @@ import { ago, formatDate } from "../format";
 import { THREAD_STATUSES } from "../labels";
 import { navigate, useSearch } from "../router";
 
-// Marketing (SPEC sections 6.10 and 7.3). The engine drafts; a person always posts.
+// Marketing (SPEC sections 6.10 and 7.3). Reddit threads are found by the post's link or
+// code, Facebook threads by the person's name. The engine drafts; a person always posts.
 
 const STATUS_NAME = Object.fromEntries(THREAD_STATUSES) as Record<ThreadStatus, string>;
 
-function openThread(id: string, replyTo?: string | null) {
+function openThread(id: string, replyTo?: string | null, reply?: Prefill) {
   const q = new URLSearchParams({ thread: id });
   if (replyTo) q.set("reply_to", replyTo);
+  prefill = reply ?? null;
   navigate(`/marketing?${q.toString()}`);
+}
+
+// What the "Add their reply" form starts with when a finder box just opened the thread.
+type Prefill = { author: string; body: string };
+let prefill: Prefill | null = null;
+function takePrefill(): Prefill | null {
+  const value = prefill;
+  prefill = null;
+  return value;
 }
 
 export function Marketing() {
@@ -67,7 +79,7 @@ function Threads() {
       <div className="page-head">
         <h1>Marketing</h1>
       </div>
-      <UrlBox />
+      <FindBox />
       <div className="tabs" role="tablist">
         {THREAD_STATUSES.map(([key, label]) => (
           <button
@@ -114,6 +126,7 @@ function Threads() {
                 <span className="review-main">
                   <strong>{t.title}</strong>
                   <span className="muted small">
+                    {t.person ? `${t.person} · ` : ""}
                     {t.community ? `${t.community} · ` : ""}
                     {ago(t.last_activity_at)}
                     {t.posted_by.length > 0 &&
@@ -121,9 +134,16 @@ function Threads() {
                   </span>
                 </span>
               </button>
-              <a className="small" href={t.original_url} target="_blank" rel="noopener noreferrer">
-                Open on {t.platform_name}
-              </a>
+              {t.original_url && (
+                <a
+                  className="small"
+                  href={t.original_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Open on {t.platform_name}
+                </a>
+              )}
             </li>
           ))}
         </ul>
@@ -132,7 +152,25 @@ function Threads() {
   );
 }
 
-function UrlBox() {
+// Reddit: paste the post's link or code. Facebook: type the person's name (SPEC 6.10).
+function FindBox() {
+  const [tab, setTab] = useState<"reddit" | "facebook">("reddit");
+  return (
+    <div className="card stack url-box">
+      <div className="tabs" role="tablist" aria-label="Find a conversation">
+        <button role="tab" aria-selected={tab === "reddit"} onClick={() => setTab("reddit")}>
+          Reddit
+        </button>
+        <button role="tab" aria-selected={tab === "facebook"} onClick={() => setTab("facebook")}>
+          Facebook
+        </button>
+      </div>
+      {tab === "reddit" ? <RedditBox /> : <FacebookBox />}
+    </div>
+  );
+}
+
+function RedditBox() {
   const { user } = useAuth();
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
@@ -157,7 +195,8 @@ function UrlBox() {
               ? "This thread was closed; it's open again."
               : "";
         if (note) setFlash(note);
-        openThread(found.thread.id, found.matched_message_id);
+        // Opened to add their latest message: the reply form is ready.
+        openThread(found.thread.id, found.matched_message_id, { author: "", body: "" });
       } else setFresh(found);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong.");
@@ -167,15 +206,15 @@ function UrlBox() {
   }
 
   return (
-    <div className="card stack url-box">
+    <>
       <form className="row" onSubmit={submit}>
         <label className="sr-only" htmlFor="thread-url">
-          Paste a Reddit or Facebook URL
+          Paste a Reddit link or the post's code
         </label>
         <input
           id="thread-url"
           className="input grow"
-          placeholder="Paste a Reddit or Facebook URL"
+          placeholder="Paste a Reddit link or the post's code, e.g. 1xd8w7u"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
         />
@@ -187,7 +226,191 @@ function UrlBox() {
       {fresh?.parsed && (
         <NewThread url={url.trim()} found={fresh} onCancel={() => setFresh(null)} />
       )}
-    </div>
+    </>
+  );
+}
+
+function FacebookBox() {
+  const [name, setName] = useState("");
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [matches, setMatches] = useState<NameMatch[] | null>(null);
+  const [searched, setSearched] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  async function find(event: FormEvent) {
+    event.preventDefault();
+    if (!name.trim()) return;
+    setBusy(true);
+    setError("");
+    setCreating(false);
+    try {
+      setMatches(await api.threadsByName(name.trim(), text.trim() || undefined));
+      setSearched(name.trim());
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Something went wrong.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <form className="stack" onSubmit={find}>
+        <div className="row">
+          <label className="sr-only" htmlFor="fb-name">
+            Their name on Facebook
+          </label>
+          <input
+            id="fb-name"
+            className="input grow"
+            placeholder="Their name, e.g. Dan Miller or Anonymous member"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <button className="button button-primary" disabled={busy || !name.trim()}>
+            {busy ? "Looking…" : "Find"}
+          </button>
+        </div>
+        <label htmlFor="fb-text">
+          Their new message (optional: finds the closest conversation)
+        </label>
+        <textarea
+          id="fb-text"
+          className="textarea"
+          rows={3}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        />
+      </form>
+      {error && <Alert kind="error">{error}</Alert>}
+      {matches && (
+        <div className="stack">
+          {matches.length === 0 ? (
+            <p className="muted">No earlier conversations with {searched}.</p>
+          ) : (
+            <p className="muted">
+              Conversations with {searched}, newest first. Check it's the same person and the same
+              post:
+            </p>
+          )}
+          <ul className="name-matches">
+            {matches.map((m) => (
+              <li key={m.thread.id} className={`card name-match ${m.closest ? "closest" : ""}`}>
+                <div className="stack">
+                  <p className="small muted">
+                    {m.thread.person} · {ago(m.thread.last_activity_at)} ·{" "}
+                    <span className={`pill pill-thread-${m.thread.status}`}>
+                      {STATUS_NAME[m.thread.status]}
+                    </span>
+                    {m.closest && <span className="tag tag-ok">Closest match</span>}
+                  </p>
+                  <p>
+                    <strong>{m.first_question}</strong>
+                  </p>
+                  {m.our_last_reply && (
+                    <p className="small">
+                      <span className="muted">Our last reply: </span>
+                      {m.our_last_reply}
+                    </p>
+                  )}
+                </div>
+                <button
+                  className="button"
+                  onClick={() =>
+                    openThread(m.thread.id, null, {
+                      author: m.thread.person ?? searched,
+                      body: text,
+                    })
+                  }
+                >
+                  This one
+                </button>
+              </li>
+            ))}
+          </ul>
+          {creating ? (
+            <NewFacebookThread
+              name={searched}
+              question={text}
+              onCancel={() => setCreating(false)}
+            />
+          ) : (
+            <div>
+              <button className="button" onClick={() => setCreating(true)}>
+                + New conversation with {searched}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+/** Create a thread and draft straight away: that's what the person came for. */
+async function createAndDraft(body: Parameters<typeof api.createThread>[0]): Promise<void> {
+  const thread = await api.createThread(body);
+  try {
+    await api.draftReply(thread.id, thread.messages[0]!.id);
+  } catch (err) {
+    setFlash(
+      err instanceof ApiError ? `The draft didn't work: ${err.message}` : "The draft didn't work.",
+    );
+  }
+  openThread(thread.id);
+}
+
+function NewFacebookThread({
+  name,
+  question: initial,
+  onCancel,
+}: {
+  name: string;
+  question: string;
+  onCancel: () => void;
+}) {
+  const [question, setQuestion] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      await createAndDraft({ platform: "facebook", author_name: name, question });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Not created.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="stack" onSubmit={submit}>
+      <p>
+        <strong>New conversation</strong> · Facebook · {name}
+      </p>
+      {error && <Alert kind="error">{error}</Alert>}
+      <label htmlFor="nf-question">Their question</label>
+      <textarea
+        id="nf-question"
+        className="textarea"
+        rows={5}
+        required
+        value={question}
+        onChange={(e) => setQuestion(e.target.value)}
+      />
+      <div className="row">
+        <button className="button button-primary" disabled={busy || !question.trim()}>
+          {busy ? "Drafting…" : "Draft reply"}
+        </button>
+        <button type="button" className="button" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -216,35 +439,20 @@ function NewThread({
   const [author, setAuthor] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [matches, setMatches] = useState<{ id: string; title: string }[] | null>(null);
   const parsed = found.parsed!;
 
-  async function create(confirmNew = false) {
+  async function create() {
     setBusy(true);
     setError("");
     try {
-      const thread = await api.createThread({
+      await createAndDraft({
         url,
         question,
         title: title.trim() || undefined,
         author_name: author.trim() || undefined,
-        confirm_new: confirmNew,
       });
-      // Draft straight away: that's what the person came for.
-      try {
-        await api.draftReply(thread.id, thread.messages[0]!.id);
-      } catch (err) {
-        setFlash(
-          err instanceof ApiError
-            ? `The draft didn't work: ${err.message}`
-            : "The draft didn't work.",
-        );
-      }
-      openThread(thread.id);
     } catch (err) {
-      if (err instanceof ApiError && err.code === "possible_match") {
-        setMatches((err.details?.matches as { id: string; title: string }[]) ?? []);
-      } else setError(err instanceof ApiError ? err.message : "Not created.");
+      setError(err instanceof ApiError ? err.message : "Not created.");
     } finally {
       setBusy(false);
     }
@@ -263,23 +471,6 @@ function NewThread({
         {parsed.community && ` · ${parsed.community}`}
       </p>
       {error && <Alert kind="error">{error}</Alert>}
-      {matches && (
-        <Alert kind="info">
-          This may be a thread we already have:
-          <ul>
-            {matches.map((m) => (
-              <li key={m.id}>
-                <button type="button" className="link-button" onClick={() => openThread(m.id)}>
-                  {m.title}
-                </button>
-              </li>
-            ))}
-          </ul>
-          <button type="button" className="button button-small" onClick={() => void create(true)}>
-            It's a different post: create it
-          </button>
-        </Alert>
-      )}
       <label htmlFor="nt-question">Their question</label>
       <textarea
         id="nt-question"
@@ -394,12 +585,17 @@ function ThreadView({ id, replyTo }: { id: string; replyTo: string | null }) {
           </span>{" "}
           {thread.community && `${thread.community} · `}
           <span className={`pill pill-thread-${thread.status}`}>{STATUS_NAME[thread.status]}</span>
-          {thread.created_by &&
-            ` · started by ${thread.created_by.name} ${ago(thread.created_at)}`}{" "}
-          ·{" "}
-          <a href={thread.original_url} target="_blank" rel="noopener noreferrer">
-            Open on {thread.platform_name}
-          </a>
+          {thread.person && ` · ${thread.person}`}
+          {thread.created_by && ` · started by ${thread.created_by.name} ${ago(thread.created_at)}`}
+          {thread.original_url && (
+            <>
+              {" "}
+              ·{" "}
+              <a href={thread.original_url} target="_blank" rel="noopener noreferrer">
+                Open on {thread.platform_name}
+              </a>
+            </>
+          )}
         </p>
         <div className="row">
           {thread.can_close &&
@@ -704,12 +900,14 @@ function AddReply({
   onAdded: (thread: ThreadDetail) => void;
 }) {
   const latestPosted = [...thread.messages].reverse().find((m) => m.state === "posted");
+  const [start] = useState(takePrefill);
+  const byName = thread.platform === "facebook";
   const [parent, setParent] = useState(replyTo ?? latestPosted?.id ?? thread.messages[0]?.id ?? "");
-  const [body, setBody] = useState("");
-  const [author, setAuthor] = useState("");
+  const [body, setBody] = useState(start?.body ?? "");
+  const [author, setAuthor] = useState(start?.author || (byName ? (thread.person ?? "") : ""));
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
-  const [open, setOpen] = useState(Boolean(replyTo));
+  const [open, setOpen] = useState(Boolean(replyTo) || start !== null);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -724,7 +922,7 @@ function AddReply({
         }),
       );
       setBody("");
-      setAuthor("");
+      setAuthor(byName ? (thread.person ?? "") : "");
       setUrl("");
       setOpen(false);
     } catch (err) {
@@ -774,7 +972,9 @@ function AddReply({
       />
       <div className="row">
         <div className="grow">
-          <label htmlFor="ar-author">Their username (optional)</label>
+          <label htmlFor="ar-author">
+            {byName ? "Their name (optional)" : "Their username (optional)"}
+          </label>
           <input
             id="ar-author"
             className="input"
@@ -782,15 +982,17 @@ function AddReply({
             onChange={(e) => setAuthor(e.target.value)}
           />
         </div>
-        <div className="grow">
-          <label htmlFor="ar-url">Link to their comment (optional)</label>
-          <input
-            id="ar-url"
-            className="input"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-          />
-        </div>
+        {!byName && (
+          <div className="grow">
+            <label htmlFor="ar-url">Link to their comment (optional)</label>
+            <input
+              id="ar-url"
+              className="input"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+            />
+          </div>
+        )}
       </div>
       <div className="row">
         <button className="button button-primary" disabled={!body.trim()}>

@@ -31,7 +31,9 @@ test("delete a file → it is never cited again", async ({ page }) => {
   await ask(page, question);
   const answer = page.locator(".bubble-answer").last();
   // 👍 appears once the answer is finished and saved.
-  await expect(answer.getByRole("button", { name: "Helpful", exact: true })).toBeVisible();
+  await expect(
+    answer.getByRole("button", { name: "Helpful", exact: true }),
+  ).toBeVisible();
   await expect(answer.getByText(/Old price list\.csv/)).toHaveCount(0);
   await expect(answer).not.toContainText("Platinum");
 });

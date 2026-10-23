@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, StringConstraints
 from sqlalchemy import func, select
 
@@ -65,6 +65,7 @@ class ThreadRow(BaseModel):
     community: str | None
     title: str
     original_url: str
+    person: str | None  # who asked (how Facebook threads are found)
     status: str
     created_by: Person | None
     posted_by: list[Person]
@@ -124,11 +125,21 @@ class ResolveOut(BaseModel):
 
 
 class NewThreadIn(Strict):
-    url: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
+    """Reddit (and added platforms): `url`, a link or a post's code. Facebook: `platform`
+    and `author_name`, the person's name (SPEC 6.10)."""
+
+    url: Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)] | None = None
+    platform: Annotated[str, StringConstraints(max_length=40)] | None = None
     question: Text
     title: Short | None = None
     author_name: Short | None = None
-    confirm_new: bool = False
+
+
+class NameMatchOut(BaseModel):
+    thread: ThreadRow
+    first_question: str
+    our_last_reply: str | None
+    closest: bool
 
 
 class ReplyIn(Strict):
@@ -174,6 +185,7 @@ def _row(thread: Thread, people: dict[uuid.UUID, Person]) -> dict[str, Any]:
         "community": thread.community,
         "title": thread.title,
         "original_url": thread.original_url,
+        "person": thread.person,
         "status": thread.status.value,
         "created_by": people.get(thread.created_by) if thread.created_by else None,
         "posted_by": posters,
@@ -438,9 +450,17 @@ def resolve(body: ResolveIn, me: CurrentUser, db: Db) -> ResolveOut:
 def create_thread(body: NewThreadIn, me: CurrentUser, db: Db) -> ThreadDetail:
     ensure(me, Action.WORK_THREADS)
     try:
-        thread = service.create_thread(
-            db, body.url, me, body.question, body.title, body.author_name, body.confirm_new
-        )
+        if body.url:
+            thread = service.create_thread(
+                db, body.url, me, body.question, body.title, body.author_name
+            )
+        elif body.platform:
+            platform = service.platform_of(db, body.platform)
+            thread = service.create_by_name(db, platform, body.author_name or "", me, body.question)
+        else:
+            raise MarketingError(
+                422, "invalid", "Paste the Reddit link, or choose Facebook and type the name."
+            )
     except MarketingError as error:
         db.rollback()
         raise _raise(error) from None
@@ -485,6 +505,28 @@ def list_threads(
     shown = [t for t in filtered if status is None or t.status.value == status][:300]
     people = _thread_people(db, shown)
     return ThreadList(items=[ThreadRow(**_row(t, people)) for t in shown], counts=counts)
+
+
+@router.get("/threads/by-name", response_model=list[NameMatchOut])
+def by_name(
+    me: CurrentUser,
+    db: Db,
+    name: Annotated[str, Query(max_length=120)],
+    text: Annotated[str | None, Query(max_length=20000)] = None,
+) -> list[NameMatchOut]:
+    """Facebook conversations with this person, newest first (SPEC 6.10)."""
+    ensure(me, Action.WORK_THREADS)
+    matches = service.find_by_name(db, name, text)
+    people = _thread_people(db, [m.thread for m in matches])
+    return [
+        NameMatchOut(
+            thread=ThreadRow(**_row(m.thread, people)),
+            first_question=m.first_question,
+            our_last_reply=m.our_last_reply,
+            closest=m.closest,
+        )
+        for m in matches
+    ]
 
 
 @router.get("/threads/{thread_id}", response_model=ThreadDetail)
