@@ -22,6 +22,8 @@ class Settings(BaseSettings):
 
     # Original uploads live here, under random names (SPEC section 2).
     upload_dir: str = "/data/uploads"
+    # ops/backup.sh writes its dumps and a last-backup.json status file here (SPEC 11).
+    backup_dir: str = "/data/backups"
 
     # Claude (SPEC section 9). Without a key, scanned pages and images are skipped with a
     # warning instead of being read.

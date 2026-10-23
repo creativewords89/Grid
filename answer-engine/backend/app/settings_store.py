@@ -1,5 +1,5 @@
-"""Owner-editable settings with their defaults (SPEC section 10). The Settings screen that
-edits them arrives in build step 14; until then the defaults apply."""
+"""Settings with their defaults (SPEC section 10). The Owner edits most of them in Settings
+(`app/api/settings.py` lists which); the rest keep their defaults."""
 
 from typing import Any
 
@@ -30,6 +30,14 @@ DEFAULTS: dict[str, Any] = {
     "telegram_seen_chats": [],
     # Marketing (SPEC section 6.10)
     "thread_auto_close_days": 14,
+    # Limits and answering (SPEC sections 7.8, 9.1 and 9.5). A model of None uses the
+    # server's .env setting.
+    "questions_per_user_per_day": 200,
+    "monthly_cost_alert_usd": 100,
+    "answer_model": None,
+    "rewrite_model": None,
+    "check_model": None,
+    "answer_effort": "medium",
 }
 
 

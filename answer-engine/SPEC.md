@@ -572,6 +572,18 @@ Every route checks the session, the CSRF token (for writes) and `permissions.can
 - Every call records tokens and the computed cost (prices from settings) in `answers.usage` and `usage_daily`.
 - An Owner alert fires when the month passes `monthly_cost_alert`. There is a per-user daily question limit (default 200).
 
+- *Built in step 14:*
+  - **Prices** live in `app/ai/pricing.py` (per million tokens), not in Settings: they change only when Anthropic's prices do, and an Owner can't usefully edit them. A model missing there is costed at $0 and logged.
+  - **Cost alert:** after every recorded call, the month's total in `usage_daily` (UTC months) is compared with `monthly_cost_alert_usd`. Each Owner is told once per month ("Claude usage passed $100 this month", in the bell and their channel). 0 switches the alert off. It is an alert, not a cap: answering carries on.
+  - **Daily question limit:** counts today's chat answers (UTC day) per person; the next question gets 429 `daily_limit` with "You've asked 200 questions today, the daily limit. It resets at midnight (UTC). The Owner can raise it in Settings." Marketing drafts don't count towards it.
+  - **Rate limits** are counted from rows the app writes anyway (sign-in attempts, chat messages), so they hold across restarts and several API processes: sign-in 10 a minute per IP (429 `rate_limited`, checked before the per-account lockout), asking 20 a minute per person.
+  - **Settings → Answering:** the answer, follow-up and support-check models (any model in the price table, or "Server default", the .env choice) and the answer effort (low–max; also used for drafts). Minimum relevance is edited here too. **Settings → Reviews** gains the verified-answer match level.
+  - **Settings → Limits:** largest upload (1–200 MB; Caddy's coarse limit is 210 MB), questions per person per day, the monthly cost alert and the marketing auto-close days.
+  - **Settings → Usage** (`GET /api/usage?month=YYYY-MM`, Owner): the month's total against the alert, cost per day as bars (hover a day for its cost), and tables by kind and by person ("System" is work nobody asked for, such as OCR of a file whose uploader was removed).
+  - **Settings → System** (`GET /api/system`, Owner): version and environment, jobs waiting (a growing number means the worker is stopped), failed jobs in the last 7 days with the last line of their error, and the last backup from `last-backup.json`, which `ops/backup.sh` writes to `BACKUP_DIR` (late after 36 h).
+  - **Settings → History:** the audit log, newest first, 30 at a time, with old → new values.
+  - **Security headers:** besides Caddy's, the API itself sends `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: same-origin`, `Cache-Control: no-store` and a `default-src 'none'` CSP, so they hold even when the API is reached without Caddy.
+
 **Rough cost with the defaults:** about $0.05–0.07 per question including the support check, and about $0.02 per OCR page (paid once). At 1,000 questions a month that is roughly $50–70, or about half with `claude-sonnet-5-5`.
 
 ## 10. Settings (defaults)
@@ -627,7 +639,7 @@ Every route checks the session, the CSRF token (for writes) and `permissions.can
 - A record `answers.gridrankers.com` → VPS IP. Caddy gets the certificate automatically.
 
 ### 13.3 `.env` (on the server only; `.env.example` lists the keys)
-`DATABASE_URL`, `SECRET_KEY` (32+ random characters; signs the stop-emails link; required in production), `APP_URL`, `ANTHROPIC_API_KEY`, `PINECONE_API_KEY`, `PINECONE_INDEX`, `PINECONE_HOST` (optional), `PINECONE_CLOUD`, `PINECONE_REGION`, `PINECONE_EMBED_MODEL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_API_URL` (optional, for tests), `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `ANSWER_MODEL`, `REWRITE_MODEL`, `CHECK_MODEL`, `OCR_MODEL`, `BACKUP_TARGET`.
+`DATABASE_URL`, `SECRET_KEY` (32+ random characters; signs the stop-emails link; required in production), `APP_URL`, `ANTHROPIC_API_KEY`, `PINECONE_API_KEY`, `PINECONE_INDEX`, `PINECONE_HOST` (optional), `PINECONE_CLOUD`, `PINECONE_REGION`, `PINECONE_EMBED_MODEL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_API_URL` (optional, for tests), `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `ANSWER_MODEL`, `REWRITE_MODEL`, `CHECK_MODEL`, `OCR_MODEL`, `BACKUP_DIR` (default `/data/backups`), `BACKUP_TARGET`.
 
 ### 13.4 Install and update
 - **Install:** `git clone` → copy `.env.example` to `.env` and fill it in → `docker compose up -d` → `docker compose exec api python -m app.cli create-owner --email … --name …` → `docker compose exec api python -m app.cli setup-pinecone` (creates the index) → `… setup-telegram` (registers the webhook).

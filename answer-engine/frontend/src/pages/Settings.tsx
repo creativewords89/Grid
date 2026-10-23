@@ -9,6 +9,7 @@ import {
 } from "../api";
 import { Alert, Confirm, Field } from "../components/ui";
 import { plural } from "../format";
+import { Answering, History, Limits, System, Usage } from "./SettingsCards";
 
 // Settings (SPEC section 7.8). Each card saves its own settings.
 export function Settings() {
@@ -16,8 +17,13 @@ export function Settings() {
     <section className="page">
       <h1>Settings</h1>
       <Reviews />
+      <Answering />
       <Platforms />
       <KnowledgeBase />
+      <Limits />
+      <Usage />
+      <System />
+      <History />
     </section>
   );
 }
@@ -305,6 +311,7 @@ function Reviews() {
     const v = next.values;
     setForm({
       confidence_threshold: String(v.confidence_threshold ?? ""),
+      verified_match: String(v.verified_match ?? ""),
       review_reminder_hours: String(v.review_reminder_hours ?? ""),
       review_escalation_hours: String(v.review_escalation_hours ?? ""),
       telegram_group_chat_id:
@@ -327,6 +334,7 @@ function Reviews() {
       fill(
         await api.updateSettings({
           confidence_threshold: Number(form.confidence_threshold),
+          verified_match: Number(form.verified_match),
           review_reminder_hours: Number(form.review_reminder_hours),
           review_escalation_hours: Number(form.review_escalation_hours),
           telegram_group_chat_id: form.telegram_group_chat_id || null,
@@ -378,6 +386,17 @@ function Reviews() {
             value={form.confidence_threshold ?? ""}
             error={errors.confidence_threshold}
             onChange={set("confidence_threshold")}
+          />
+          <Field
+            label="Verified answer match"
+            type="number"
+            step="0.01"
+            min={0.5}
+            max={1}
+            hint="How close (0.5–1) a question must be to a verified answer for it to be reused."
+            value={form.verified_match ?? ""}
+            error={errors.verified_match}
+            onChange={set("verified_match")}
           />
           <Field
             label="Remind the group after (hours)"

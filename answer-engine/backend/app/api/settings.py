@@ -11,8 +11,11 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app import audit, settings_store
+from app.ai.pricing import PER_MILLION
+from app.answering.claude_answer import EFFORTS
 from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
+from app.config import get_settings as get_app_settings
 from app.errors import ApiError
 from app.permissions import Action, ensure
 from app.reviews.jobs import group_chat
@@ -45,18 +48,47 @@ def chat_id(value: Any) -> Any:
         raise ValueError("A Telegram chat ID is a number, like -1001234567890.") from None
 
 
+def model(value: Any) -> Any:
+    """A Claude model with a known price, or None for the server's .env setting."""
+    if value in (None, ""):
+        return None
+    if value not in PER_MILLION:
+        raise ValueError("Choose one of the listed models.")
+    return value
+
+
+def effort(value: Any) -> Any:
+    if value not in EFFORTS:
+        raise ValueError("Choose low, medium, high, xhigh or max.")
+    return value
+
+
 EDITABLE: dict[str, Check] = {
+    # Reviews
     "confidence_threshold": number(0, 100, whole=True),
-    "min_relevance": number(0, 1),
+    "verified_match": number(0.5, 1),
     "review_reminder_hours": number(0.5, 168),
     "review_escalation_hours": number(1, 720),
     "telegram_group_chat_id": chat_id,
+    # Answering
+    "answer_model": model,
+    "rewrite_model": model,
+    "check_model": model,
+    "answer_effort": effort,
+    "min_relevance": number(0, 1),
+    # Limits
+    "max_upload_mb": number(1, 200, whole=True),
+    "questions_per_user_per_day": number(1, 10000, whole=True),
+    "monthly_cost_alert_usd": number(0, 100000),
+    "thread_auto_close_days": number(1, 365, whole=True),
 }
 
 
 class SettingsOut(BaseModel):
     values: dict[str, Any]
     telegram: dict[str, Any]
+    # For the Answering card: what "server default" means, and what may be chosen.
+    models: dict[str, Any]
 
 
 class SettingsPatch(Strict):
@@ -64,12 +96,25 @@ class SettingsPatch(Strict):
 
 
 def _out(db: Db) -> SettingsOut:
+    env = get_app_settings()
     return SettingsOut(
         values={key: settings_store.get(db, key) for key in EDITABLE},
         telegram={
             "configured": get_telegram() is not None,
             "bot_username": settings_store.get(db, "telegram_bot_username") or "",
             "seen_chats": settings_store.get(db, "telegram_seen_chats") or [],
+        },
+        models={
+            "choices": [
+                {"id": name, "input_usd": price[0], "output_usd": price[1]}
+                for name, price in PER_MILLION.items()
+            ],
+            "efforts": list(EFFORTS),
+            "server": {
+                "answer_model": env.answer_model,
+                "rewrite_model": env.rewrite_model,
+                "check_model": env.check_model,
+            },
         },
     )
 

@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import ColumnElement, and_, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
+from app import limits
 from app.answering.claude_answer import Answerer, get_answerer
 from app.answering.service import answer_stream, start_turn
 from app.api.schemas import Strict
@@ -34,8 +35,8 @@ router = APIRouter(prefix="/conversations", tags=["conversations"])
 NOT_SET_UP = "Answering isn't set up yet: the Owner needs to add the Claude and Pinecone API keys."
 
 
-def answerer_dep() -> Answerer | None:
-    return get_answerer()
+def answerer_dep(db: Db) -> Answerer | None:
+    return get_answerer(db)
 
 
 def store_dep() -> VectorStore | None:
@@ -253,6 +254,7 @@ def ask(
     conversation = _get(db, conversation_id, me, Action.ASK)
     if answerer is None or store is None:
         raise ApiError(503, "not_configured", NOT_SET_UP)
+    limits.check_question(db, me)
     turn = start_turn(db, conversation, body.question)
     return StreamingResponse(
         answer_stream(db.get_bind(), turn, answerer, store),  # type: ignore[arg-type]

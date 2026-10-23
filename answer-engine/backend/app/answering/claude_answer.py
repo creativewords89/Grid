@@ -6,11 +6,13 @@ import logging
 from collections.abc import Generator
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 import anthropic
 from anthropic.types.beta import BetaMessageParam, BetaTextBlockParam
+from sqlalchemy.orm import Session
 
+from app import settings_store
 from app.ai.ocr_client import FALLBACK_BETA
 from app.answering.prompts import (
     ANSWER_SYSTEM,
@@ -27,6 +29,9 @@ ANSWER_MAX_TOKENS = 4000
 REWRITE_MAX_TOKENS = 300
 CHECK_MAX_TOKENS = 2000
 DRAFT_MAX_TOKENS = 1500
+
+Effort = Literal["low", "medium", "high", "xhigh", "max"]
+EFFORTS: tuple[Effort, ...] = ("low", "medium", "high", "xhigh", "max")
 
 
 @dataclass(frozen=True)
@@ -92,11 +97,13 @@ class ClaudeAnswerer:
         answer_model: str,
         rewrite_model: str,
         check_model: str = "claude-opus-5-5",
+        effort: Effort = "medium",
     ) -> None:
         self.client = client
         self.answer_model = answer_model
         self.rewrite_model = rewrite_model
         self.check_model = check_model
+        self.effort = effort
 
     def rewrite(self, transcript: str, question: str) -> Completion:
         message = self.client.beta.messages.create(
@@ -126,7 +133,7 @@ class ClaudeAnswerer:
             max_tokens=ANSWER_MAX_TOKENS,
             betas=[FALLBACK_BETA],
             fallbacks="default",
-            output_config={"effort": "medium"},
+            output_config={"effort": self.effort},
             system=system,
             messages=[*history, {"role": "user", "content": prompt}],
         ) as stream:
@@ -159,7 +166,7 @@ class ClaudeAnswerer:
             max_tokens=DRAFT_MAX_TOKENS,
             betas=[FALLBACK_BETA],
             fallbacks="default",
-            output_config={"effort": "medium"},
+            output_config={"effort": self.effort},
             system=system,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -171,13 +178,28 @@ def _client(api_key: str) -> anthropic.Anthropic:
     return anthropic.Anthropic(api_key=api_key, max_retries=2, timeout=120.0)
 
 
-def get_answerer() -> Answerer | None:
+def get_answerer(db: Session | None = None) -> Answerer | None:
+    """Claude for answering, or None without an API key. The Owner can choose other models
+    and the answer effort in Settings (SPEC 7.8); otherwise the .env models apply."""
     settings = get_settings()
     if not settings.anthropic_api_key:
         return None
+
+    def pick(key: str, default: str) -> str:
+        chosen = settings_store.get(db, key) if db is not None else None
+        return str(chosen) if chosen else default
+
     return ClaudeAnswerer(
         _client(settings.anthropic_api_key),
-        settings.answer_model,
-        settings.rewrite_model,
-        settings.check_model,
+        pick("answer_model", settings.answer_model),
+        pick("rewrite_model", settings.rewrite_model),
+        pick("check_model", settings.check_model),
+        _effort(pick("answer_effort", "medium")),
     )
+
+
+def _effort(value: str) -> Effort:
+    for effort in EFFORTS:
+        if value == effort:
+            return effort
+    return "medium"

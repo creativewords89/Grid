@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import limits
 from app.api.schemas import (
     EmailIn,
     LoginIn,
@@ -51,6 +52,7 @@ def _check_password(password: str, email: str) -> None:
 @router.post("/login", response_model=MeOut)
 def login(body: LoginIn, request: Request, response: Response, db: Db) -> MeOut:
     ip = client_ip(request)
+    limits.check_login(db, ip)
     if lockout.locked_until(db, body.email, ip) is not None:
         raise ApiError(429, "locked", "Too many attempts. Wait 15 minutes, then try again.")
     user = db.scalar(select(User).where(User.email == body.email))

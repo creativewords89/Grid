@@ -281,6 +281,56 @@ export type SettingsData = {
     bot_username: string;
     seen_chats: { id: number; title: string }[];
   };
+  models: {
+    choices: { id: string; input_usd: number; output_usd: number }[];
+    efforts: string[];
+    server: { answer_model: string; rewrite_model: string; check_model: string };
+  };
+};
+
+export type UsageTotals = {
+  requests: number;
+  tokens_in: number;
+  tokens_out: number;
+  cost_usd: number;
+};
+
+export type UsageData = {
+  month: string;
+  total: UsageTotals;
+  alert_usd: number;
+  by_kind: (UsageTotals & { kind: string })[];
+  by_day: (UsageTotals & { date: string })[];
+  by_person: (UsageTotals & { user_id: string | null; name: string })[];
+};
+
+export type SystemData = {
+  version: string;
+  environment: string;
+  queued_jobs: number;
+  oldest_queued_at: string | null;
+  failed_jobs_7d: number;
+  failed_jobs: { id: string; kind: string; attempts: number; error: string; at: string }[];
+  backup: {
+    found: boolean;
+    ok: boolean | null;
+    at: string | null;
+    size_bytes: number | null;
+    off_server: boolean | null;
+    message: string | null;
+    late: boolean;
+  };
+};
+
+export type AuditEntry = {
+  id: string;
+  actor: string | null;
+  action: string;
+  entity: string;
+  entity_id: string | null;
+  title: string | null;
+  changes: { field: string; from: unknown; to: unknown }[];
+  at: string;
 };
 
 export type TelegramCode = { code: string; expires_at: string; bot_username: string };
@@ -791,6 +841,14 @@ export const api = {
   updateSettings: (values: Record<string, unknown>) =>
     request<SettingsData>("PATCH", "/settings", { values }),
   telegramTest: () => request<{ message: string }>("POST", "/settings/telegram-test"),
+  usage: (month?: string) =>
+    request<UsageData>("GET", month ? `/usage?month=${encodeURIComponent(month)}` : "/usage"),
+  system: () => request<SystemData>("GET", "/system"),
+  audit: (before?: string) =>
+    request<AuditEntry[]>(
+      "GET",
+      before ? `/audit?limit=30&before=${encodeURIComponent(before)}` : "/audit?limit=30",
+    ),
   getConversation: (id: string) => request<ConversationDetail>("GET", `/conversations/${id}`),
   deleteConversation: (id: string) => request<void>("DELETE", `/conversations/${id}`),
   ask: askStream,
