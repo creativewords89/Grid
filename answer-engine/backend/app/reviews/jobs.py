@@ -53,7 +53,7 @@ def card(db: Session, review: Review) -> ReviewCard:
         number=review.number,
         reason_label=service.reason_label(review),
         asker=asker.name if asker else "Someone",
-        channel=service.channel_label(answer),
+        channel=service.channel_label(db, answer),
         question=answer.question,
         answer=answer.original_text,
         sources=[f"[{s['n']}] {s.get('label') or s.get('file_name', '')}" for s in answer.sources],

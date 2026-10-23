@@ -12,7 +12,13 @@ import anthropic
 from anthropic.types.beta import BetaMessageParam, BetaTextBlockParam
 
 from app.ai.ocr_client import FALLBACK_BETA
-from app.answering.prompts import ANSWER_SYSTEM, CHECK_SCHEMA, CHECK_SYSTEM, REWRITE_SYSTEM
+from app.answering.prompts import (
+    ANSWER_SYSTEM,
+    CHECK_SCHEMA,
+    CHECK_SYSTEM,
+    DRAFT_SYSTEM,
+    REWRITE_SYSTEM,
+)
 from app.config import get_settings
 
 log = logging.getLogger(__name__)
@@ -20,6 +26,7 @@ log = logging.getLogger(__name__)
 ANSWER_MAX_TOKENS = 4000
 REWRITE_MAX_TOKENS = 300
 CHECK_MAX_TOKENS = 2000
+DRAFT_MAX_TOKENS = 1500
 
 
 @dataclass(frozen=True)
@@ -47,6 +54,7 @@ class Answerer(Protocol):
         self, history: list[BetaMessageParam], prompt: str
     ) -> Generator[str, None, Completion]: ...
     def check(self, prompt: str) -> CheckResult: ...
+    def draft(self, prompt: str) -> Completion: ...
 
 
 def parse_check(completion: Completion) -> CheckResult:
@@ -140,6 +148,22 @@ class ClaudeAnswerer:
             messages=[{"role": "user", "content": prompt}],
         )
         return parse_check(_completion(message))
+
+    def draft(self, prompt: str) -> Completion:
+        """A marketing reply (SPEC 6.10). Not streamed: drafts are short."""
+        system: list[BetaTextBlockParam] = [
+            {"type": "text", "text": DRAFT_SYSTEM, "cache_control": {"type": "ephemeral"}}
+        ]
+        message = self.client.beta.messages.create(
+            model=self.answer_model,
+            max_tokens=DRAFT_MAX_TOKENS,
+            betas=[FALLBACK_BETA],
+            fallbacks="default",
+            output_config={"effort": "medium"},
+            system=system,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return _completion(message)
 
 
 @lru_cache

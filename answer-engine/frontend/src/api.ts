@@ -234,6 +234,8 @@ export type ReviewRow = {
   asked_by: Person | null;
   claimed_by: Person | null;
   answer_id: string;
+  channel: string;
+  thread_id: string | null;
 };
 
 export type ReviewDetail = ReviewRow & {
@@ -339,6 +341,95 @@ export type VerifiedPatch = {
   expires_at?: string;
   clear_expiry?: boolean;
   checked?: boolean;
+};
+
+export type Community = { id: string; name: string; notes: string };
+
+export type Platform = {
+  id: string;
+  slug: string;
+  name: string;
+  enabled: boolean;
+  parser: "reddit" | "facebook" | "generic";
+  hosts: string[];
+  style_prompt: string;
+  disclosure_line: string | null;
+  position: number;
+  communities: Community[];
+};
+
+export type ThreadStatus =
+  "waiting_for_us" | "in_review" | "ready_to_post" | "waiting_for_them" | "closed";
+
+export type ThreadRow = {
+  id: string;
+  platform: string;
+  platform_name: string;
+  community: string | null;
+  title: string;
+  original_url: string;
+  status: ThreadStatus;
+  created_by: Person | null;
+  posted_by: Person[];
+  last_activity_at: string;
+  created_at: string;
+};
+
+export type ThreadList = { items: ThreadRow[]; counts: Record<ThreadStatus, number> };
+
+export type DraftState = "draft" | "in_review" | "ready" | "posted" | "discarded";
+
+export type ThreadMessage = {
+  id: string;
+  parent_id: string | null;
+  author: "them" | "us";
+  author_name: string | null;
+  body: string;
+  external_url: string | null;
+  state: DraftState | null;
+  posted_by: Person | null;
+  posted_at: string | null;
+  created_by: Person | null;
+  created_at: string;
+  draft: {
+    answer_id: string;
+    confidence: number | null;
+    outcome: Outcome | null;
+    status: AnswerStatus;
+    sources: Source[];
+    needs_info: { question: string; asked_by: string } | null;
+    corrected_after_post: string | null;
+  } | null;
+};
+
+export type ThreadDetail = ThreadRow & {
+  closed_at: string | null;
+  close_reason: "manual" | "inactive" | null;
+  messages: ThreadMessage[];
+  can_close: boolean;
+  can_delete: boolean;
+};
+
+export type Resolved = {
+  found: boolean;
+  parsed: {
+    platform: string;
+    platform_name: string;
+    thread_id: string;
+    community: string | null;
+    comment_id: string | null;
+  } | null;
+  thread: ThreadRow | null;
+  matched_message_id: string | null;
+  reopened: boolean;
+  error: string | null;
+};
+
+export type ThreadFilters = {
+  status?: ThreadStatus;
+  platform?: string;
+  community?: string;
+  mine?: boolean;
 };
 
 /** Sent back with a 409 "duplicate" when a verified answer to the question exists. */
@@ -599,8 +690,15 @@ export const api = {
     text?: string,
     note?: string,
     verified_choice?: string,
+    add_to_kb?: boolean,
   ) =>
-    request<ReviewDetail>("POST", `/reviews/${id}/decide`, { action, text, note, verified_choice }),
+    request<ReviewDetail>("POST", `/reviews/${id}/decide`, {
+      action,
+      text,
+      note,
+      verified_choice,
+      add_to_kb,
+    }),
   adminReview: (
     answerId: string,
     action: Exclude<ReviewAction, "needs_info">,
@@ -631,6 +729,63 @@ export const api = {
 
   telegramCode: () => request<TelegramCode>("POST", "/me/telegram-link"),
   telegramUnlink: () => request<void>("DELETE", "/me/telegram-link"),
+
+  platforms: () => request<Platform[]>("GET", "/platforms"),
+  addPlatform: (body: {
+    name: string;
+    slug: string;
+    hosts: string[];
+    style_prompt?: string;
+    disclosure_line?: string | null;
+  }) => request<Platform>("POST", "/platforms", body),
+  updatePlatform: (
+    id: string,
+    patch: Partial<
+      Pick<Platform, "name" | "enabled" | "hosts" | "style_prompt" | "disclosure_line">
+    >,
+  ) => request<Platform>("PATCH", `/platforms/${id}`, patch),
+  addCommunity: (platformId: string, name: string, notes: string) =>
+    request<Platform>("POST", `/platforms/${platformId}/communities`, { name, notes }),
+  updateCommunity: (id: string, notes: string) =>
+    request<Platform>("PATCH", `/communities/${id}`, { notes }),
+  deleteCommunity: (id: string) => request<void>("DELETE", `/communities/${id}`),
+
+  resolveThread: (url: string) => request<Resolved>("POST", "/threads/resolve", { url }),
+  createThread: (body: {
+    url: string;
+    question: string;
+    title?: string;
+    author_name?: string;
+    confirm_new?: boolean;
+  }) => request<ThreadDetail>("POST", "/threads", body),
+  listThreads: (filters: ThreadFilters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.status) params.set("status", filters.status);
+    if (filters.platform) params.set("platform", filters.platform);
+    if (filters.community) params.set("community", filters.community);
+    if (filters.mine) params.set("mine", "true");
+    const query = params.toString();
+    return request<ThreadList>("GET", `/threads${query ? `?${query}` : ""}`);
+  },
+  getThread: (id: string) => request<ThreadDetail>("GET", `/threads/${encodeURIComponent(id)}`),
+  addReply: (
+    id: string,
+    body: { body: string; parent_id?: string; author_name?: string; url?: string },
+  ) => request<ThreadDetail>("POST", `/threads/${encodeURIComponent(id)}/replies`, body),
+  draftReply: (id: string, parent_id: string, instruction?: string) =>
+    request<ThreadDetail>("POST", `/threads/${encodeURIComponent(id)}/draft`, {
+      parent_id,
+      instruction,
+    }),
+  editDraft: (messageId: string, body: string) =>
+    request<ThreadDetail>("PATCH", `/thread-messages/${messageId}`, { body }),
+  markPosted: (messageId: string, url?: string) =>
+    request<ThreadDetail>("POST", `/thread-messages/${messageId}/posted`, url ? { url } : {}),
+  closeThread: (id: string) =>
+    request<ThreadDetail>("POST", `/threads/${encodeURIComponent(id)}/close`),
+  reopenThread: (id: string) =>
+    request<ThreadDetail>("POST", `/threads/${encodeURIComponent(id)}/reopen`),
+  deleteThread: (id: string) => request<void>("DELETE", `/threads/${encodeURIComponent(id)}`),
 
   getSettings: () => request<SettingsData>("GET", "/settings"),
   updateSettings: (values: Record<string, unknown>) =>

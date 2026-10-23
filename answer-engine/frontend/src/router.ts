@@ -23,6 +23,21 @@ export function usePath(): string {
   return path;
 }
 
+/** The query string (`?thread=…`), updated on every navigate() and back/forward. */
+export function useSearch(): string {
+  const [search, setSearch] = useState(window.location.search);
+  useEffect(() => {
+    const update = () => setSearch(window.location.search);
+    listeners.add(update);
+    window.addEventListener("popstate", update);
+    return () => {
+      listeners.delete(update);
+      window.removeEventListener("popstate", update);
+    };
+  }, []);
+  return search;
+}
+
 /** The secret in links like /invite#<token>, kept out of server logs. */
 export function hashToken(): string {
   return window.location.hash.replace(/^#/, "");

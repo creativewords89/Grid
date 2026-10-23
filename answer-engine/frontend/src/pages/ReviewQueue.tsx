@@ -85,8 +85,8 @@ function Queue({ onOpen }: { onOpen: (id: string) => void }) {
                 <span className="review-main">
                   <strong>{row.question}</strong>
                   <span className="muted small">
-                    {row.reason_label} · {row.asked_by?.name ?? "Someone"} ·{" "}
-                    {row.kind === "chat" ? "Chat" : "Marketing"} · {ago(row.created_at)}
+                    {row.reason_label} · {row.asked_by?.name ?? "Someone"} · {row.channel} ·{" "}
+                    {ago(row.created_at)}
                   </span>
                 </span>
                 <span className={`pill pill-${row.state}`}>
@@ -118,6 +118,8 @@ function Review({
   const [text, setText] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  // Marketing drafts only (SPEC 6.10): null = the default for the action.
+  const [addToKb, setAddToKb] = useState<boolean | null>(null);
   const [duplicate, setDuplicate] = useState<{
     details: DuplicateDetails;
     retry: (choice: string) => void;
@@ -152,9 +154,21 @@ function Review({
 
   const decide = (action: ReviewAction, withText?: string, choice?: string): Promise<void> =>
     run(
-      () => api.decideReview(id, action, withText, note.trim() || undefined, choice),
+      () =>
+        api.decideReview(
+          id,
+          action,
+          withText,
+          note.trim() || undefined,
+          choice,
+          review?.kind === "marketing" ? kbFor(action) : undefined,
+        ),
       (picked) => void decide(action, withText, picked),
     );
+
+  function kbFor(action: ReviewAction): boolean {
+    return addToKb ?? (action === "edit" || action === "reject");
+  }
 
   function choose(next: "edit" | "reject" | "needs_info") {
     setMode(next);
@@ -182,8 +196,7 @@ function Review({
               #R-{review.number} · {review.reason_label}
             </h1>
             <p className="muted">
-              {review.asked_by?.name ?? "Someone"} · {review.kind === "chat" ? "Chat" : "Marketing"}{" "}
-              · {ago(review.created_at)} ·{" "}
+              {review.asked_by?.name ?? "Someone"} · {review.channel} · {ago(review.created_at)} ·{" "}
               <span className={`pill pill-${review.state}`}>{REVIEW_STATES[review.state]}</span>
             </p>
           </div>
@@ -250,8 +263,31 @@ function Review({
             </Alert>
           )}
           {othersHaveIt && <Alert kind="info">{review.claimed_by?.name} is handling this.</Alert>}
+          {review.thread_id && (
+            <p>
+              <a
+                href={`/marketing?thread=${encodeURIComponent(review.thread_id)}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate(`/marketing?thread=${encodeURIComponent(review.thread_id!)}`);
+                }}
+              >
+                Open the thread
+              </a>
+            </p>
+          )}
           {undecided && !othersHaveIt && (
             <div className="card stack">
+              {review.kind === "marketing" && (
+                <label className="inline">
+                  <input
+                    type="checkbox"
+                    checked={addToKb ?? (mode === "edit" || mode === "reject")}
+                    onChange={(e) => setAddToKb(e.target.checked)}
+                  />
+                  Add to knowledge base (forum replies are often too specific to reuse)
+                </label>
+              )}
               <div className="row">
                 {!review.no_answer && (
                   <button

@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { api, ApiError, type KbStatus, type SettingsData } from "../api";
+import {
+  api,
+  ApiError,
+  type Community,
+  type KbStatus,
+  type Platform,
+  type SettingsData,
+} from "../api";
 import { Alert, Confirm, Field } from "../components/ui";
 import { plural } from "../format";
 
@@ -9,12 +16,283 @@ export function Settings() {
     <section className="page">
       <h1>Settings</h1>
       <Reviews />
+      <Platforms />
       <KnowledgeBase />
     </section>
   );
 }
 
 type Notice = { kind: "error" | "success"; text: string } | null;
+
+// Platforms & communities (SPEC sections 6.10 and 7.8).
+function Platforms() {
+  const [list, setList] = useState<Platform[] | null>(null);
+  const [notice, setNotice] = useState<Notice>(null);
+  const [adding, setAdding] = useState(false);
+
+  const load = useCallback(() => {
+    api
+      .platforms()
+      .then(setList)
+      .catch(() => setNotice({ kind: "error", text: "Platforms couldn't be loaded." }));
+  }, []);
+  useEffect(load, [load]);
+
+  async function run(call: () => Promise<unknown>, done: string) {
+    setNotice(null);
+    try {
+      await call();
+      setNotice({ kind: "success", text: done });
+      load();
+    } catch (err) {
+      setNotice({ kind: "error", text: err instanceof ApiError ? err.message : "Not saved." });
+    }
+  }
+
+  return (
+    <div className="card stack">
+      <h2>Platforms &amp; communities</h2>
+      <p className="muted">
+        How drafts sound on each platform, the line added when a draft mentions GridRankers, and
+        notes about each community (for example "no links").
+      </p>
+      {notice && <Alert kind={notice.kind}>{notice.text}</Alert>}
+      {list?.map((p) => (
+        <PlatformCard key={p.id} platform={p} run={run} />
+      ))}
+      {adding ? (
+        <AddPlatform
+          onDone={() => {
+            setAdding(false);
+            load();
+          }}
+          onCancel={() => setAdding(false)}
+        />
+      ) : (
+        <div>
+          <button className="button" onClick={() => setAdding(true)}>
+            + Add a platform
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type Run = (call: () => Promise<unknown>, done: string) => Promise<void>;
+
+function PlatformCard({ platform, run }: { platform: Platform; run: Run }) {
+  const [style, setStyle] = useState(platform.style_prompt);
+  const [disclosure, setDisclosure] = useState(platform.disclosure_line ?? "");
+  const [hosts, setHosts] = useState(platform.hosts.join(", "));
+  const [name, setName] = useState("");
+  const [notes, setNotes] = useState("");
+
+  function save(event: FormEvent) {
+    event.preventDefault();
+    void run(
+      () =>
+        api.updatePlatform(platform.id, {
+          style_prompt: style,
+          disclosure_line: disclosure.trim() || null,
+          ...(platform.parser === "generic"
+            ? {
+                hosts: hosts
+                  .split(",")
+                  .map((h) => h.trim())
+                  .filter(Boolean),
+              }
+            : {}),
+        }),
+      `${platform.name} saved.`,
+    );
+  }
+
+  return (
+    <details className="platform-card">
+      <summary>
+        <strong>{platform.name}</strong>{" "}
+        <span className="muted small">
+          {platform.enabled ? "on" : "switched off"} · {platform.communities.length} communities
+        </span>
+      </summary>
+      <div className="stack">
+        <label className="inline">
+          <input
+            type="checkbox"
+            checked={platform.enabled}
+            onChange={(e) =>
+              void run(
+                () => api.updatePlatform(platform.id, { enabled: e.target.checked }),
+                e.target.checked ? `${platform.name} is on.` : `${platform.name} is switched off.`,
+              )
+            }
+          />
+          Answer threads on {platform.name}
+        </label>
+        <form className="stack" onSubmit={save}>
+          <label htmlFor={`style-${platform.id}`}>Style for drafts</label>
+          <textarea
+            id={`style-${platform.id}`}
+            className="textarea"
+            rows={3}
+            value={style}
+            onChange={(e) => setStyle(e.target.value)}
+          />
+          <label htmlFor={`disclosure-${platform.id}`}>Disclosure line</label>
+          <input
+            id={`disclosure-${platform.id}`}
+            className="input"
+            placeholder="(I work at GridRankers.)"
+            value={disclosure}
+            onChange={(e) => setDisclosure(e.target.value)}
+          />
+          {platform.parser === "generic" && (
+            <>
+              <label htmlFor={`hosts-${platform.id}`}>Websites (comma-separated)</label>
+              <input
+                id={`hosts-${platform.id}`}
+                className="input"
+                value={hosts}
+                onChange={(e) => setHosts(e.target.value)}
+              />
+            </>
+          )}
+          <div>
+            <button className="button button-primary">Save {platform.name}</button>
+          </div>
+        </form>
+        <h4>Communities</h4>
+        {platform.communities.length === 0 && <p className="muted small">None yet.</p>}
+        {platform.communities.map((c) => (
+          <CommunityRow key={c.id} community={c} run={run} />
+        ))}
+        <form
+          className="row"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run(() => api.addCommunity(platform.id, name, notes), `${name} added.`).then(
+              () => {
+                setName("");
+                setNotes("");
+              },
+            );
+          }}
+        >
+          <input
+            className="input"
+            aria-label={`New ${platform.name} community`}
+            placeholder={platform.slug === "reddit" ? "r/localseo" : "Group name"}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <input
+            className="input grow"
+            aria-label="Notes"
+            placeholder="Notes, e.g. no links"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
+          <button className="button" disabled={!name.trim()}>
+            Add
+          </button>
+        </form>
+      </div>
+    </details>
+  );
+}
+
+function CommunityRow({ community, run }: { community: Community; run: Run }) {
+  const [notes, setNotes] = useState(community.notes);
+  return (
+    <form
+      className="row"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void run(() => api.updateCommunity(community.id, notes), `${community.name} saved.`);
+      }}
+    >
+      <strong className="community-name">{community.name}</strong>
+      <input
+        className="input grow"
+        aria-label={`Notes for ${community.name}`}
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+      />
+      <button className="button button-small">Save</button>
+      <button
+        type="button"
+        className="button button-small"
+        onClick={() =>
+          void run(() => api.deleteCommunity(community.id), `${community.name} removed.`)
+        }
+      >
+        Remove
+      </button>
+    </form>
+  );
+}
+
+function AddPlatform({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
+  const [name, setName] = useState("");
+  const [hosts, setHosts] = useState("");
+  const [style, setStyle] = useState("");
+  const [error, setError] = useState("");
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    try {
+      await api.addPlatform({
+        name,
+        slug,
+        hosts: hosts
+          .split(",")
+          .map((h) => h.trim())
+          .filter(Boolean),
+        style_prompt: style,
+        disclosure_line: "(I work at GridRankers.)",
+      });
+      onDone();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Not added.");
+    }
+  }
+
+  return (
+    <form className="card stack" onSubmit={submit}>
+      <h3>Add a platform</h3>
+      {error && <Alert kind="error">{error}</Alert>}
+      <Field label="Name" value={name} onChange={(e) => setName(e.target.value)} />
+      <Field
+        label="Website(s)"
+        hint="Comma-separated, e.g. quora.com"
+        value={hosts}
+        onChange={(e) => setHosts(e.target.value)}
+      />
+      <label htmlFor="new-style">Style for drafts</label>
+      <textarea
+        id="new-style"
+        className="textarea"
+        rows={3}
+        value={style}
+        onChange={(e) => setStyle(e.target.value)}
+      />
+      <div className="row">
+        <button className="button button-primary" disabled={!slug || !hosts.trim()}>
+          Add platform
+        </button>
+        <button type="button" className="button" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
 
 function Reviews() {
   const [data, setData] = useState<SettingsData | null>(null);

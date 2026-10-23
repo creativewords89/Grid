@@ -178,3 +178,12 @@ def verified_expiry(db: Session, payload: Payload) -> None:
     """Daily 02:00: verified answers past their expiry date stop being used (SPEC 6.9)."""
     verified.expire_due(db)
     db.commit()
+
+
+@job("thread_auto_close")
+def thread_auto_close(db: Session, payload: Payload) -> None:
+    """Daily 04:30: marketing threads quiet for 14 days are closed (SPEC 6.10)."""
+    from app.marketing import service as marketing
+
+    marketing.auto_close(db)
+    db.commit()

@@ -4,7 +4,7 @@ import { AnswerLog } from "./pages/AnswerLog";
 import { Ask } from "./pages/Ask";
 import { Documents } from "./pages/Documents";
 import { Forgot } from "./pages/Forgot";
-import { Placeholder } from "./pages/Placeholder";
+import { Marketing } from "./pages/Marketing";
 import { Profile } from "./pages/Profile";
 import { ReviewQueue } from "./pages/ReviewQueue";
 import { SetPassword } from "./pages/SetPassword";
@@ -15,10 +15,6 @@ import { Verified } from "./pages/Verified";
 import { usePath } from "./router";
 import { reviewsChanged } from "./events";
 import { Shell } from "./Shell";
-
-const PLACEHOLDERS: Record<string, [string, number]> = {
-  "/marketing": ["Marketing", 13],
-};
 
 function Routes() {
   const path = usePath();
@@ -40,10 +36,8 @@ function Routes() {
   else if (path === "/verified") page = <Verified />;
   else if (path === "/reviews" && user.role !== "user")
     page = <ReviewQueue onChange={reviewsChanged} />;
-  else {
-    const known = PLACEHOLDERS[path];
-    page = known ? <Placeholder title={known[0]} step={known[1]} /> : <Ask />;
-  }
+  else if (path === "/marketing") page = <Marketing />;
+  else page = <Ask />;
   return <Shell path={path}>{page}</Shell>;
 }
 

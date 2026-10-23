@@ -28,6 +28,8 @@ DEFAULTS: dict[str, Any] = {
     "telegram_group_chat_id": None,
     "telegram_bot_username": "",
     "telegram_seen_chats": [],
+    # Marketing (SPEC section 6.10)
+    "thread_auto_close_days": 14,
 }
 
 

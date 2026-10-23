@@ -14,6 +14,7 @@ DAILY: dict[str, time] = {
     "verified_expiry": time(2, 0),
     "kb_check": time(3, 0),
     "trash_purge": time(4, 0),
+    "thread_auto_close": time(4, 30),
     "session_cleanup": time(5, 0),
 }
 

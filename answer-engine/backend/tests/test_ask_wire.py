@@ -13,7 +13,7 @@ import pytest
 from pinecone import Pinecone
 
 from app.answering.claude_answer import ClaudeAnswerer, Completion
-from app.answering.prompts import ANSWER_SYSTEM, CHECK_SCHEMA, CHECK_SYSTEM
+from app.answering.prompts import ANSWER_SYSTEM, CHECK_SCHEMA, CHECK_SYSTEM, DRAFT_SYSTEM
 from app.kb.store import Hit, PineconeStore
 
 
@@ -236,4 +236,39 @@ def test_the_support_check_request_uses_structured_output() -> None:
     }
     assert sent["system"] == CHECK_SYSTEM
     assert sent["messages"] == [{"role": "user", "content": "CHECK PROMPT"}]
+    assert sent["fallbacks"] == "default"
+
+
+def test_the_draft_request() -> None:
+    sent: dict[str, Any] = {}
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        sent.update(json.loads(request.content))
+        return httpx2.Response(
+            200,
+            json={
+                "id": "msg_4",
+                "type": "message",
+                "role": "assistant",
+                "model": "claude-opus-5-5",
+                "content": [{"type": "text", "text": "Usually 1-2 weeks."}],
+                "stop_reason": "end_turn",
+                "stop_sequence": None,
+                "usage": {"input_tokens": 2500, "output_tokens": 40},
+            },
+        )
+
+    client = anthropic.Anthropic(
+        api_key="sk-ant-test", http_client=httpx2.Client(transport=httpx2.MockTransport(handler))
+    )
+
+    done = ClaudeAnswerer(client, "claude-opus-5-5", "claude-opus-5-5").draft("DRAFT PROMPT")
+
+    assert done.text == "Usually 1-2 weeks."
+    assert sent["max_tokens"] == 1500
+    assert sent["output_config"] == {"effort": "medium"}
+    assert sent["system"] == [
+        {"type": "text", "text": DRAFT_SYSTEM, "cache_control": {"type": "ephemeral"}}
+    ]
+    assert sent["messages"] == [{"role": "user", "content": "DRAFT PROMPT"}]
     assert sent["fallbacks"] == "default"

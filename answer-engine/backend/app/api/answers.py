@@ -77,6 +77,7 @@ class AdminReviewIn(Strict):
     text: Annotated[str, StringConstraints(max_length=20000)] | None = None
     note: Annotated[str, StringConstraints(max_length=2000)] | None = None
     verified_choice: Annotated[str, StringConstraints(max_length=60)] | None = None
+    add_to_kb: bool | None = None
 
 
 class AdminReviewOut(BaseModel):
@@ -96,7 +97,13 @@ def admin_review(
     """The Owner approves, corrects or rejects any answer, high or low (SPEC 6.7, 7.5)."""
     ensure(me, Action.ADMIN_REVIEW)
     answer = get_answer(db, answer_id)
-    decision = Decision(body.action, body.text, body.note, verified_choice=body.verified_choice)
+    decision = Decision(
+        body.action,
+        body.text,
+        body.note,
+        verified_choice=body.verified_choice,
+        add_to_kb=body.add_to_kb,
+    )
     try:
         done = reviews.admin_decide(db, answer, me, decision, store)
     except ReviewError as error:

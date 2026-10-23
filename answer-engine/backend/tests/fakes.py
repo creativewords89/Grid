@@ -113,6 +113,9 @@ class FakeAnswerer:
     verdict: str | None = "full"  # the support check's verdict; None = it raises
     unsupported: list[str] = field(default_factory=list)
     checks: list[str] = field(default_factory=list)
+    draft_reply: str = "Verification usually takes 1-2 weeks. Keep your details consistent."
+    draft_stop: str = "end_turn"
+    drafts: list[str] = field(default_factory=list)
 
     def rewrite(self, transcript: str, question: str) -> "Completion":
         from app.answering.claude_answer import Completion
@@ -134,6 +137,13 @@ class FakeAnswerer:
         if self.stop_reason == "refusal":
             text = ""
         return Completion(text, self.stop_reason, "claude-opus-5-5", 3000, 120, 2500)
+
+    def draft(self, prompt: str) -> "Completion":
+        from app.answering.claude_answer import Completion
+
+        self.drafts.append(prompt)
+        text = "" if self.draft_stop == "refusal" else self.draft_reply
+        return Completion(text, self.draft_stop, "claude-opus-5-5", 2500, 150)
 
     def check(self, prompt: str) -> "CheckResult":
         from app.answering.claude_answer import CheckResult, Completion

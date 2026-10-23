@@ -671,3 +671,132 @@ class Notification(TimestampMixin, Base):
         Index("ix_notifications_user_created", "user_id", "created_at"),
         Index("ix_notifications_ref", "kind", "ref_id"),
     )
+
+
+class PlatformParser(enum.StrEnum):
+    REDDIT = "reddit"
+    FACEBOOK = "facebook"
+    GENERIC = "generic"
+
+
+class Platform(TimestampMixin, Base):
+    """Where marketing replies are posted (SPEC section 6.10). Owner-editable."""
+
+    __tablename__ = "platforms"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    slug: Mapped[str] = mapped_column(String(40), unique=True)
+    name: Mapped[str] = mapped_column(String(80))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    parser: Mapped[PlatformParser] = mapped_column(_enum(PlatformParser, "platform_parser"))
+    # For the generic parser: the websites this platform covers (e.g. quora.com).
+    hosts: Mapped[list[str]] = mapped_column(ARRAY(String), default=list, server_default="{}")
+    style_prompt: Mapped[str] = mapped_column(Text, default="")
+    disclosure_line: Mapped[str | None] = mapped_column(Text)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class Community(TimestampMixin, Base):
+    __tablename__ = "communities"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    platform_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("platforms.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(200))
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+    __table_args__ = (UniqueConstraint("platform_id", "name", name="uq_communities_platform_name"),)
+
+
+class ThreadStatus(enum.StrEnum):
+    WAITING_FOR_US = "waiting_for_us"
+    IN_REVIEW = "in_review"
+    READY_TO_POST = "ready_to_post"
+    WAITING_FOR_THEM = "waiting_for_them"
+    CLOSED = "closed"
+
+
+class CloseReason(enum.StrEnum):
+    MANUAL = "manual"
+    INACTIVE = "inactive"
+
+
+class Thread(TimestampMixin, Base):
+    """A forum thread we answer in. The ID comes from its URL (`reddit:1abc2de`)."""
+
+    __tablename__ = "threads"
+
+    id: Mapped[str] = mapped_column(String(120), primary_key=True)
+    platform_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("platforms.id"))
+    community: Mapped[str | None] = mapped_column(String(200))
+    title: Mapped[str] = mapped_column(String(300))
+    original_url: Mapped[str] = mapped_column(Text)
+    status: Mapped[ThreadStatus] = mapped_column(
+        _enum(ThreadStatus, "thread_status"), default=ThreadStatus.WAITING_FOR_US
+    )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    last_activity_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    close_reason: Mapped[CloseReason | None] = mapped_column(_enum(CloseReason, "close_reason"))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    platform: Mapped[Platform] = relationship()
+    messages: Mapped[list["ThreadMessage"]] = relationship(
+        back_populates="thread", order_by="ThreadMessage.created_at", passive_deletes=True
+    )
+
+    __table_args__ = (Index("ix_threads_status_activity", "status", "last_activity_at"),)
+
+    @property
+    def owner_ids(self) -> frozenset[uuid.UUID]:
+        """Theirs: who started it, and who posted in it (SPEC section 3)."""
+        ids = {m.posted_by for m in self.messages if m.posted_by} | {self.created_by}
+        return frozenset(i for i in ids if i is not None)
+
+
+class MessageAuthor(enum.StrEnum):
+    THEM = "them"
+    US = "us"
+
+
+class DraftState(enum.StrEnum):
+    DRAFT = "draft"
+    IN_REVIEW = "in_review"
+    READY = "ready"
+    POSTED = "posted"
+    DISCARDED = "discarded"
+
+
+class ThreadMessage(TimestampMixin, Base):
+    __tablename__ = "thread_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    thread_id: Mapped[str] = mapped_column(ForeignKey("threads.id", ondelete="CASCADE"))
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("thread_messages.id", ondelete="SET NULL")
+    )
+    author: Mapped[MessageAuthor] = mapped_column(_enum(MessageAuthor, "message_author"))
+    author_name: Mapped[str | None] = mapped_column(String(120))
+    body: Mapped[str] = mapped_column(Text)
+    external_url: Mapped[str | None] = mapped_column(Text)
+    external_comment_id: Mapped[str | None] = mapped_column(String(120))
+    answer_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("answers.id", ondelete="SET NULL")
+    )
+    state: Mapped[DraftState | None] = mapped_column(_enum(DraftState, "draft_state"))
+    posted_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+    thread: Mapped[Thread] = relationship(back_populates="messages")
+    answer: Mapped[Answer | None] = relationship()
+
+    __table_args__ = (
+        Index("ix_thread_messages_thread", "thread_id", "created_at"),
+        Index("ix_thread_messages_answer", "answer_id"),
+    )

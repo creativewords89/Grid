@@ -21,6 +21,8 @@ const row: ReviewRow = {
   asked_by: { id: "u1", name: "Sara" },
   claimed_by: null,
   answer_id: "a1",
+  channel: "Chat",
+  thread_id: null,
 };
 const detail: ReviewDetail = {
   ...row,

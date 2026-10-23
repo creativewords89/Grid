@@ -1519,3 +1519,185 @@ details.original summary {
   gap: 8px;
   align-items: baseline;
 }
+
+/* Marketing (SPEC sections 6.10, 7.3) */
+.url-box .row {
+  flex-wrap: nowrap;
+}
+
+.grow {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.platform-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--surface-2);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.platform-reddit {
+  background: #ffe9e0;
+  color: #b23a00;
+}
+
+.platform-facebook {
+  background: #e3ecfd;
+  color: #1a4fb4;
+}
+
+@media (prefers-color-scheme: dark) {
+  .platform-reddit {
+    background: #3a2219;
+    color: #ff9a6b;
+  }
+
+  .platform-facebook {
+    background: #1b2840;
+    color: #8db3ff;
+  }
+}
+
+.thread-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 16px;
+}
+
+.thread-row .review-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.thread-head h1 {
+  margin-bottom: 4px;
+}
+
+.thread-tree {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.tree-node {
+  display: grid;
+  gap: 10px;
+}
+
+.depth-1 {
+  margin-left: 20px;
+}
+
+.depth-2 {
+  margin-left: 40px;
+}
+
+.depth-3 {
+  margin-left: 60px;
+}
+
+.depth-4 {
+  margin-left: 80px;
+}
+
+.bubble-them {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  max-width: 720px;
+}
+
+.bubble-us {
+  background: var(--info-bg);
+  border-radius: 12px;
+  padding: 12px 14px;
+  max-width: 720px;
+  margin-left: auto;
+  width: 100%;
+}
+
+.bubble-us.draft {
+  border: 1px dashed var(--brand);
+}
+
+.pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.pre.corrected {
+  margin: 8px 0;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.draft-ask,
+.draft-tools {
+  margin-top: 10px;
+}
+
+.tag-ok {
+  margin-left: 6px;
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.pill-thread-waiting_for_us {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.pill-thread-in_review {
+  background: var(--info-bg);
+  color: var(--brand);
+}
+
+.pill-thread-ready_to_post {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.pill-thread-waiting_for_them,
+.pill-thread-closed {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+@media (max-width: 700px) {
+  .depth-1,
+  .depth-2,
+  .depth-3,
+  .depth-4 {
+    margin-left: 12px;
+  }
+
+  .url-box .row {
+    flex-wrap: wrap;
+  }
+}
+
+.platform-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+.platform-card summary {
+  cursor: pointer;
+}
+
+.platform-card > .stack {
+  margin-top: 12px;
+}
+
+.community-name {
+  min-width: 120px;
+}

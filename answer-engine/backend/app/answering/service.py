@@ -227,13 +227,26 @@ def _score(
     answerer: Answerer,
     verified_hit: bool = False,
 ) -> None:
-    """The support check and the confidence score (SPEC section 6.6)."""
+    score_answer(db, turn.question, turn.user_id, answer, items, answerer, verified_hit)
+
+
+def score_answer(
+    db: Session,
+    question: str,
+    user_id: uuid.UUID | None,
+    answer: Answer,
+    items: list[ContextItem],
+    answerer: Answerer,
+    verified_hit: bool = False,
+) -> None:
+    """The support check and the confidence score (SPEC section 6.6), for chat answers and
+    marketing drafts alike. A low score opens a review. Commits."""
     spent = Usage()
     verdict: str | None = None
     claims: list[str] = []
     if answer.stop_reason not in ZERO_STOP_REASONS:
         try:
-            result = answerer.check(check_message(items, turn.question, answer.current_text))
+            result = answerer.check(check_message(items, question, answer.current_text))
             done = result.completion
             spent.add(done.model, done.input_tokens, done.output_tokens)
             verdict, claims = result.verdict, result.unsupported_claims
@@ -264,7 +277,7 @@ def _score(
     }
     usage["cost_usd"] = round(float(usage.get("cost_usd", 0)) + spent.cost_usd, 6)
     answer.usage = usage
-    usage_log.record(db, turn.user_id, UsageKind.CHECK, spent)
+    usage_log.record(db, user_id, UsageKind.CHECK, spent)
     db.commit()
 
 

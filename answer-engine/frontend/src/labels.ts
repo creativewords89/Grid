@@ -1,4 +1,4 @@
-import type { AnswerStatus, ReviewState } from "./api";
+import type { AnswerStatus, ReviewState, ThreadStatus } from "./api";
 
 // Names for answer statuses in lists (SPEC sections 6.8 and 7.5).
 export const STATUS_NAMES: Record<AnswerStatus, string> = {
@@ -19,3 +19,11 @@ export const REVIEW_STATES: Record<ReviewState, string> = {
   rejected: "Rejected",
   cancelled: "Cancelled",
 };
+
+export const THREAD_STATUSES: [ThreadStatus, string][] = [
+  ["waiting_for_us", "Waiting for us"],
+  ["in_review", "In review"],
+  ["ready_to_post", "Ready to post"],
+  ["waiting_for_them", "Waiting for them"],
+  ["closed", "Closed"],
+];

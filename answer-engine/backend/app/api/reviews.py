@@ -13,7 +13,15 @@ from app.api.answer_log import Person
 from app.api.conversations import store_dep
 from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
-from app.db.models import UNDECIDED, Review, ReviewState, User
+from app.db.models import (
+    UNDECIDED,
+    Answer,
+    AnswerKind,
+    Review,
+    ReviewState,
+    ThreadMessage,
+    User,
+)
 from app.errors import ApiError
 from app.kb.store import VectorStore
 from app.permissions import Action, ensure
@@ -35,6 +43,8 @@ class ReviewRow(BaseModel):
     asked_by: Person | None
     claimed_by: Person | None
     answer_id: uuid.UUID
+    channel: str  # "Chat" or "Marketing · Reddit · r/localseo"
+    thread_id: str | None
 
 
 class ReviewNote(BaseModel):
@@ -66,6 +76,8 @@ class DecideIn(Strict):
     note: Annotated[str, StringConstraints(max_length=2000)] | None = None
     # After a "duplicate" reply: "new", or "update:<verified answer id>".
     verified_choice: Annotated[str, StringConstraints(max_length=60)] | None = None
+    # Marketing drafts: add the reply to the knowledge base (default per SPEC 6.10).
+    add_to_kb: bool | None = None
 
 
 class CountOut(BaseModel):
@@ -80,7 +92,13 @@ def _people(db: Db, *ids: uuid.UUID | None) -> dict[uuid.UUID, Person]:
     return {r.id: Person(id=r.id, name=r.name) for r in rows}
 
 
-def _row(review: Review, people: dict[uuid.UUID, Person]) -> dict[str, Any]:
+def _thread_of(db: Db, answer: Answer) -> str | None:
+    if answer.kind != AnswerKind.MARKETING:
+        return None
+    return db.scalar(select(ThreadMessage.thread_id).where(ThreadMessage.answer_id == answer.id))
+
+
+def _row(db: Db, review: Review, people: dict[uuid.UUID, Person]) -> dict[str, Any]:
     answer = review.answer
     return {
         "id": review.id,
@@ -91,6 +109,8 @@ def _row(review: Review, people: dict[uuid.UUID, Person]) -> dict[str, Any]:
         "created_at": review.created_at,
         "question": answer.question,
         "kind": answer.kind.value,
+        "channel": service.channel_label(db, answer),
+        "thread_id": _thread_of(db, answer),
         "asked_by": people.get(answer.asked_by) if answer.asked_by else None,
         "claimed_by": people.get(review.claimed_by) if review.claimed_by else None,
         "answer_id": answer.id,
@@ -117,7 +137,7 @@ def list_reviews(
         query = query.where(Review.state.in_(UNDECIDED)).order_by(Review.created_at)
     reviews = db.scalars(query.limit(100)).all()
     people = _people(db, *[r.answer.asked_by for r in reviews], *[r.claimed_by for r in reviews])
-    return [ReviewRow(**_row(r, people)) for r in reviews]
+    return [ReviewRow(**_row(db, r, people)) for r in reviews]
 
 
 @router.get("/count", response_model=CountOut)
@@ -138,7 +158,7 @@ def detail(db: Db, review: Review, me: User) -> ReviewDetail:
     people = _people(db, answer.asked_by, review.claimed_by, review.decided_by, *authors)
     parts = answer.confidence_parts or {}
     return ReviewDetail(
-        **_row(review, people),
+        **_row(db, review, people),
         original_text=answer.original_text,
         current_text=answer.current_text,
         sources=answer.sources,
@@ -207,7 +227,13 @@ def decide(
     store: Annotated[VectorStore | None, Depends(store_dep)],
 ) -> ReviewDetail:
     ensure(me, Action.DECIDE_REVIEW)
-    decision = Decision(body.action, body.text, body.note, verified_choice=body.verified_choice)
+    decision = Decision(
+        body.action,
+        body.text,
+        body.note,
+        verified_choice=body.verified_choice,
+        add_to_kb=body.add_to_kb,
+    )
     try:
         review = service.decide(db, review_id, me, decision, store)
     except ReviewError as error:

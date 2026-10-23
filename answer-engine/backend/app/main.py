@@ -16,6 +16,7 @@ from app.api import (
     notifications,
     reviews,
     telegram,
+    threads,
     trash,
     updates,
     users,
@@ -54,6 +55,7 @@ def create_app() -> FastAPI:
         verified,
         notifications,
         updates,
+        threads,
     ):
         app.include_router(module.router, prefix="/api")
     return app

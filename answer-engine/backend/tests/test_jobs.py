@@ -227,6 +227,7 @@ def test_daily_jobs_are_queued_once_per_day_after_their_time(db: Session) -> Non
     enqueue_due(db, datetime(2026, 10, 8, 4, 30, tzinfo=UTC))
     assert kinds() == [
         "kb_check:2026-10-08",
+        "thread_auto_close:2026-10-08",
         "trash_purge:2026-10-08",
         "verified_expiry:2026-10-08",
     ]
@@ -238,6 +239,8 @@ def test_daily_jobs_are_queued_once_per_day_after_their_time(db: Session) -> Non
         "kb_check:2026-10-09",
         "session_cleanup:2026-10-08",
         "session_cleanup:2026-10-09",
+        "thread_auto_close:2026-10-08",
+        "thread_auto_close:2026-10-09",
         "trash_purge:2026-10-08",
         "trash_purge:2026-10-09",
         "verified_expiry:2026-10-08",

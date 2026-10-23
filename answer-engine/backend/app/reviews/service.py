@@ -70,8 +70,18 @@ def reason_label(review: Review) -> str:
     }[review.reason]
 
 
-def channel_label(answer: Answer) -> str:
-    return "Chat" if answer.kind == AnswerKind.CHAT else "Marketing"
+def channel_label(db: Session, answer: Answer) -> str:
+    """ "Chat", or "Marketing · Reddit · r/localseo" for a draft (SPEC 6.10)."""
+    if answer.kind == AnswerKind.CHAT:
+        return "Chat"
+    from app.marketing import service as marketing  # marketing builds on reviews
+
+    return marketing.channel_label(db, answer)
+
+
+def enqueue_update(db: Session, review: Review) -> None:
+    """Show the review's end on its Telegram card (decided, or withdrawn)."""
+    enqueue(db, UPDATE_JOB, {"review_id": str(review.id)})
 
 
 def explanation(review: Review) -> str:
@@ -154,6 +164,9 @@ class Decision:
     # verified_choice: "new" or "update:<id>".
     on_duplicate: Literal["ask", "update"] = "ask"
     verified_choice: str | None = None
+    # Marketing drafts only: add the approved reply to the knowledge base? None = the
+    # default (on for Edit and Reject-with-text, off for Approve; SPEC 6.10).
+    add_to_kb: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -268,11 +281,13 @@ def decide_full(
             "Our team needs more information",
             f"{user.name} asks: {text}",
         )
+        _marketing_hook(db, answer, action, user)
         audit.record(db, user, "review_needs_info", "review", review.id, f"#R-{review.number}")
         return Decided(review)
 
     target, merged = (None, False)
-    if action != "no_answer":
+    to_kb = _adds_to_kb(answer, decision)
+    if to_kb:
         target, merged = _target(db, answer, decision, store)
 
     if action == "approve":
@@ -293,9 +308,13 @@ def decide_full(
     made: VerifiedAnswer | None = None
     if action == "no_answer":
         verified.withdraw_for_answer(db, answer, user)
-    else:
+    elif to_kb:
         origin = (
-            VerifiedOrigin.ADMIN if review.reason == ReviewReason.ADMIN else VerifiedOrigin.REVIEW
+            VerifiedOrigin.MARKETING
+            if answer.kind == AnswerKind.MARKETING
+            else VerifiedOrigin.ADMIN
+            if review.reason == ReviewReason.ADMIN
+            else VerifiedOrigin.REVIEW
         )
         made = verified.from_answer(db, answer, user, origin, update=target)
     audit.record(
@@ -308,9 +327,30 @@ def decide_full(
         [{"field": "status", "from": None, "to": answer.status.value}],
     )
     enqueue(db, UPDATE_JOB, {"review_id": str(review.id)})
-    title, body = _reviewed_message(answer)
-    _tell_asker(db, answer, user, notifications.ANSWER_REVIEWED, title, body)
+    if answer.kind == AnswerKind.MARKETING:
+        _marketing_hook(db, answer, action, user)
+    else:
+        title, body = _reviewed_message(answer)
+        _tell_asker(db, answer, user, notifications.ANSWER_REVIEWED, title, body)
     return Decided(review, made, merged)
+
+
+def _adds_to_kb(answer: Answer, decision: Decision) -> bool:
+    if decision.action == "no_answer":
+        return False
+    if answer.kind == AnswerKind.CHAT:
+        return True
+    if decision.add_to_kb is not None:
+        return decision.add_to_kb
+    return decision.action in ("edit", "reject")
+
+
+def _marketing_hook(db: Session, answer: Answer, action: str, by: User) -> None:
+    if answer.kind != AnswerKind.MARKETING:
+        return
+    from app.marketing import service as marketing  # marketing builds on reviews
+
+    marketing.on_review_decided(db, answer, action, by)
 
 
 def _reviewed_message(answer: Answer) -> tuple[str, str]:
@@ -373,6 +413,8 @@ def decided_line(db: Session, review: Review) -> str:
         what = "🚫 No answer known"
     elif review.state == ReviewState.REJECTED:
         what = "❌ Rejected and corrected"
+    elif review.state == ReviewState.CANCELLED:
+        return "⏹ Withdrawn: a new draft replaced it, or the thread was deleted"
     else:
         what = "Closed"
     return f"{what} by {who} · {at}".rstrip(" ·")
