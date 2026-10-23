@@ -35,5 +35,25 @@ docker compose exec api python -m app.cli create-owner --email you@example.com -
 ```
 
 While SMTP is not set up in `.env`, invites and password resets show the Owner a link to pass on
-instead of emailing it. Server installation on the Hostinger VPS is documented in build
-step 16 (`ops/deploy.md`).
+instead of emailing it.
+
+## End-to-end tests
+
+The main flows run in a real browser against the API, worker and web app, with fake Claude,
+Pinecone and Telegram, so they need no keys and cost nothing:
+
+```sh
+cd e2e
+npm ci && npx playwright install chromium   # once
+npx playwright test                         # starts everything itself (see serve.sh)
+```
+
+They need the backend (`uv sync`) and frontend (`npm ci`) installed, and a PostgreSQL user
+that may create databases (`E2E_DATABASE_URL`, default `answers:answers@localhost`; the
+database `answers_e2e` is recreated on every run).
+
+## Running it on the server
+
+- [ops/deploy.md](ops/deploy.md): installing on the Hostinger VPS, updating, the evaluation
+  run and what to do when something goes wrong, in plain language.
+- [ops/restore.md](ops/restore.md): restoring a backup.

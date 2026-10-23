@@ -11,6 +11,7 @@ from types import FrameType
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from app import logs
 from app.auth.tokens import now
 from app.db.session import get_engine
 from app.jobs import handlers  # noqa: F401  (registers every job type)
@@ -51,7 +52,7 @@ def run(stop: threading.Event) -> None:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    logs.setup(json_logs=True)
     stop = threading.Event()
 
     def _stop(_signum: int, _frame: FrameType | None) -> None:

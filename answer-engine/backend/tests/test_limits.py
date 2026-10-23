@@ -389,6 +389,7 @@ def test_models_effort_and_limits_can_be_changed(owner: TestClient) -> None:
     assert values["answer_model"] == "claude-sonnet-5-5"
     assert values["answer_effort"] == "high"
     assert values["monthly_cost_alert_usd"] == 25.5
+    assert owner.get("/api/files").json()["max_upload_mb"] == 20  # shown on the upload box
     reset = owner.patch("/api/settings", json={"values": {"answer_model": ""}})
     assert reset.json()["values"]["answer_model"] is None
 

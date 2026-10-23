@@ -21,8 +21,10 @@
 			max_size 210MB
 		}
 		# flush_interval -1 streams answers (SSE) to the browser without buffering.
+		# The same ID is in the API's JSON logs and its X-Request-ID response header.
 		reverse_proxy api:8000 {
 			flush_interval -1
+			header_up X-Request-ID {http.request.uuid}
 		}
 	}
 

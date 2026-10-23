@@ -7,6 +7,7 @@ type's `on_failure` runs (e.g. to mark the file Failed with a readable reason).
 
 import logging
 import traceback
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -16,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from app import logs
 from app.auth.tokens import now
 from app.db.models import Job, JobState
 
@@ -131,7 +133,16 @@ def run_next(session_factory: Callable[[], Session], worker_id: str) -> bool:
         if found is None:
             return False
         job_id, kind, payload = found.id, found.kind, dict(found.payload)
+    token = logs.job.set(f"{kind}:{job_id}")
+    try:
+        return _run(session_factory, job_id, kind, payload)
+    finally:
+        logs.job.reset(token)
 
+
+def _run(
+    session_factory: Callable[[], Session], job_id: uuid.UUID, kind: str, payload: Payload
+) -> bool:
     job_type = REGISTRY.get(kind)
     error: str | None = None
     permanent = False

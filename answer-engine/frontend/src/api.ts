@@ -69,6 +69,7 @@ export type StoredFile = {
 export type FileList = {
   files: StoredFile[];
   totals: { files: number; pages: number; ocr_pages_this_month: number };
+  max_upload_mb?: number;
 };
 
 export type UploadResult = {

@@ -95,6 +95,7 @@ class Totals(BaseModel):
 class FileListOut(BaseModel):
     files: list[FileOut]
     totals: Totals
+    max_upload_mb: int  # the Owner's limit (Settings → Limits), shown on the upload box
 
 
 class UploadError(BaseModel):
@@ -156,6 +157,7 @@ def list_files(
     return FileListOut(
         files=[FileOut.of(record, me, record.id in pending) for record in records],
         totals=Totals(files=count, pages=pages, ocr_pages_this_month=ocr or 0),
+        max_upload_mb=settings_store.get_int(db, "max_upload_mb"),
     )
 
 

@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable
 
 from fastapi import FastAPI, Request, Response
 
-from app import __version__, errors
+from app import __version__, errors, logs
 from app.api import (
     answer_log,
     answers,
@@ -64,6 +64,7 @@ def create_app() -> FastAPI:
     )
     errors.install(app)
     app.middleware("http")(security_headers)
+    app.middleware("http")(logs.request_ids)  # added last, so it runs first
     for module in (
         health,
         auth,
@@ -88,6 +89,12 @@ def create_app() -> FastAPI:
     ):
         app.include_router(module.router, prefix="/api")
     return app
+
+
+def serve() -> FastAPI:
+    """The production entry point (`uvicorn --factory app.main:serve`): JSON logs first."""
+    logs.setup(json_logs=True)
+    return create_app()
 
 
 app = create_app()

@@ -162,7 +162,7 @@ function Files() {
 
   return (
     <>
-      <DropZone onFiles={(files) => void uploadAll(files)} />
+      <DropZone onFiles={(files) => void uploadAll(files)} maxMb={data?.max_upload_mb ?? 50} />
       {uploads.length > 0 && (
         <UploadList
           uploads={uploads}
@@ -261,7 +261,7 @@ function Files() {
   );
 }
 
-function DropZone({ onFiles }: { onFiles: (files: File[]) => void }) {
+function DropZone({ onFiles, maxMb }: { onFiles: (files: File[]) => void; maxMb: number }) {
   const input = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
 
@@ -288,8 +288,8 @@ function DropZone({ onFiles }: { onFiles: (files: File[]) => void }) {
         </button>
       </p>
       <p className="muted small">
-        PDF, Word, Excel, CSV and images (scans or photos) · up to 50 MB each · {MAX_BATCH} at a
-        time
+        PDF, Word, Excel, CSV and images (scans or photos) · up to {maxMb} MB each · {MAX_BATCH} at
+        a time
       </p>
       <input
         ref={input}
