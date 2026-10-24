@@ -9,6 +9,7 @@ import {
 } from "../api";
 import { Alert, Confirm, Field } from "../components/ui";
 import { plural } from "../format";
+import { Connections } from "./Connections";
 import { Answering, History, Limits, System, Usage } from "./SettingsCards";
 
 // Settings (SPEC section 7.8). Each card saves its own settings.
@@ -16,6 +17,7 @@ export function Settings() {
   return (
     <section className="page">
       <h1>Settings</h1>
+      <Connections />
       <Reviews />
       <Answering />
       <Platforms />
@@ -370,9 +372,8 @@ function Reviews() {
       {notice && <Alert kind={notice.kind}>{notice.text}</Alert>}
       {data && !data.telegram.configured && (
         <Alert kind="info">
-          Telegram isn't set up: reviews wait in the Review Queue only. To use a Telegram group, add
-          TELEGRAM_BOT_TOKEN and TELEGRAM_WEBHOOK_SECRET to the server's .env and run{" "}
-          <code>python -m app.cli setup-telegram</code>.
+          Telegram isn't set up: reviews wait in the Review Queue only. To use a Telegram group,
+          enter the bot token under Connections → Telegram and press Connect the bot.
         </Alert>
       )}
       {data && (
@@ -512,9 +513,9 @@ function KnowledgeBase() {
       {notice && <Alert kind={notice.kind}>{notice.text}</Alert>}
       {!status.configured && (
         <Alert kind="error">
-          Pinecone isn't set up yet, so documents can't be searched. Add PINECONE_API_KEY to the
-          server's .env, run <code>python -m app.cli setup-pinecone</code>, then press Rebuild
-          index. Changes made meanwhile are kept and sent once it's set up.
+          Pinecone isn't set up yet, so documents can't be searched. Enter the API key under
+          Connections → Pinecone, press Test and create index, then press Rebuild index here.
+          Changes made meanwhile are kept and sent once it's set up.
         </Alert>
       )}
       <dl className="facts">

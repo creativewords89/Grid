@@ -10,8 +10,8 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Body, Header
 
+from app import connections
 from app.auth.deps import Db
-from app.config import get_settings
 from app.errors import ApiError
 from app.reviews import bot
 from app.reviews.telegram import get_telegram
@@ -25,7 +25,7 @@ def webhook(
     update: Annotated[dict[str, Any], Body(default_factory=dict)],
     x_telegram_bot_api_secret_token: Annotated[str, Header()] = "",
 ) -> dict[str, bool]:
-    secret = get_settings().telegram_webhook_secret
+    secret = connections.current().telegram_webhook_secret
     sent = x_telegram_bot_api_secret_token.encode()
     if not secret or not hmac.compare_digest(sent, secret.encode()):
         raise ApiError(403, "forbidden", "Not allowed.")

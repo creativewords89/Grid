@@ -1,8 +1,10 @@
 """FastAPI application. Every route lives under `/api`; Caddy serves the React app."""
 
+import logging
 from collections.abc import Awaitable, Callable
 
 from fastapi import FastAPI, Request, Response
+from sqlalchemy.orm import Session
 
 from app import __version__, errors, logs
 from app.api import (
@@ -10,6 +12,7 @@ from app.api import (
     answers,
     audit_log,
     auth,
+    connections,
     conversations,
     files,
     health,
@@ -17,6 +20,7 @@ from app.api import (
     me,
     notifications,
     reviews,
+    setup,
     system,
     telegram,
     threads,
@@ -28,6 +32,7 @@ from app.api import (
 )
 from app.api import settings as settings_api
 from app.config import get_settings
+from app.db.session import get_engine
 
 # Caddy sets these for the whole site (SPEC 11). The API sets them as well so they hold even
 # when it is reached without Caddy (on the server itself, or in development).
@@ -79,6 +84,8 @@ def create_app() -> FastAPI:
         answer_log,
         reviews,
         settings_api,
+        connections,
+        setup,
         telegram,
         verified,
         notifications,
@@ -94,7 +101,13 @@ def create_app() -> FastAPI:
 def serve() -> FastAPI:
     """The production entry point (`uvicorn --factory app.main:serve`): JSON logs first."""
     logs.setup(json_logs=True)
-    return create_app()
+    app = create_app()
+    try:
+        with Session(get_engine()) as db:
+            setup.announce(db)
+    except Exception:
+        logging.getLogger(__name__).warning("couldn't check for a first Owner", exc_info=True)
+    return app
 
 
 app = create_app()

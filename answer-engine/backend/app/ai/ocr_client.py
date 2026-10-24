@@ -8,7 +8,7 @@ from typing import Literal, Protocol, cast
 import anthropic
 from anthropic.types.beta import BetaImageBlockParam, BetaMessageParam, BetaTextBlockParam
 
-from app.config import get_settings
+from app import connections
 
 INSTRUCTION = (
     "Transcribe all text in this image exactly. Keep headings, lists and reading order. "
@@ -92,7 +92,7 @@ def _client(api_key: str) -> anthropic.Anthropic:
 
 def get_ocr() -> Ocr | None:
     """The OCR service, or None while no API key is set."""
-    settings = get_settings()
+    settings = connections.current()
     if not settings.anthropic_api_key:
         return None
     return ClaudeOcr(_client(settings.anthropic_api_key), settings.ocr_model)

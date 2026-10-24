@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { api } from "./api";
 import { AuthProvider, useAuth } from "./auth";
 import { AnswerLog } from "./pages/AnswerLog";
 import { Ask } from "./pages/Ask";
 import { Documents } from "./pages/Documents";
+import { FirstRun } from "./pages/FirstRun";
 import { Forgot } from "./pages/Forgot";
 import { Marketing } from "./pages/Marketing";
 import { Profile } from "./pages/Profile";
@@ -20,10 +22,20 @@ function Routes() {
   const path = usePath();
   const { user, loading } = useAuth();
   const [notice, setNotice] = useState("");
+  // A brand-new install has no accounts: offer to create the Owner instead of signing in.
+  const [firstRun, setFirstRun] = useState(false);
+  useEffect(() => {
+    if (loading || user) return;
+    api
+      .setupState()
+      .then((state) => setFirstRun(state.needed))
+      .catch(() => setFirstRun(false));
+  }, [loading, user]);
 
   if (path === "/invite") return <SetPassword mode="invite" onReset={setNotice} />;
   if (path === "/reset") return <SetPassword mode="reset" onReset={setNotice} />;
   if (loading) return <p className="loading">Loading…</p>;
+  if (!user && firstRun) return <FirstRun />;
   if (!user) return path === "/forgot" ? <Forgot /> : <SignIn notice={notice} />;
 
   let page;

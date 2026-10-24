@@ -1828,3 +1828,31 @@ details.original summary {
     align-items: stretch;
   }
 }
+
+/* Settings → Connections */
+.connection {
+  display: grid;
+  gap: 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.connection-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.connection-head h3 {
+  margin: 0;
+}
+
+.connection-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0 16px;
+}
+
+.connection-fields input {
+  font-family: ui-monospace, monospace;
+}

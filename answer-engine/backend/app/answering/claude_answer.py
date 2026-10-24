@@ -12,7 +12,7 @@ import anthropic
 from anthropic.types.beta import BetaMessageParam, BetaTextBlockParam
 from sqlalchemy.orm import Session
 
-from app import settings_store
+from app import connections, settings_store
 from app.ai.ocr_client import FALLBACK_BETA
 from app.answering.prompts import (
     ANSWER_SYSTEM,
@@ -21,7 +21,6 @@ from app.answering.prompts import (
     DRAFT_SYSTEM,
     REWRITE_SYSTEM,
 )
-from app.config import get_settings
 
 log = logging.getLogger(__name__)
 
@@ -181,7 +180,7 @@ def _client(api_key: str) -> anthropic.Anthropic:
 def get_answerer(db: Session | None = None) -> Answerer | None:
     """Claude for answering, or None without an API key. The Owner can choose other models
     and the answer effort in Settings (SPEC 7.8); otherwise the .env models apply."""
-    settings = get_settings()
+    settings = connections.current()
     if not settings.anthropic_api_key:
         return None
 

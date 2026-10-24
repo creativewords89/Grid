@@ -289,6 +289,22 @@ export type SettingsData = {
   };
 };
 
+export type ConnectionField = {
+  name: string;
+  label: string;
+  secret: boolean;
+  number: boolean;
+  placeholder: string;
+  set: boolean;
+  source: "portal" | "server" | "default" | null;
+  value: string | null;
+  hint: string | null;
+};
+
+export type Connections = {
+  groups: { id: string; name: string; ready: boolean; fields: ConnectionField[] }[];
+};
+
 export type UsageTotals = {
   requests: number;
   tokens_in: number;
@@ -662,6 +678,14 @@ export const api = {
   me: () => request<Me>("GET", "/auth/me"),
   login: (email: string, password: string) =>
     request<Me>("POST", "/auth/login", { email, password }),
+  setupState: () => request<{ needed: boolean }>("GET", "/setup"),
+  setupOwner: (body: { code: string; name: string; email: string; password: string }) =>
+    request<Me>("POST", "/setup", body),
+  connections: () => request<Connections>("GET", "/connections"),
+  updateConnections: (values: Record<string, string | null>) =>
+    request<Connections>("PATCH", "/connections", { values }),
+  testConnection: (group: string) =>
+    request<{ ok: boolean; message: string }>("POST", `/connections/${group}/test`),
   logout: () => request<void>("POST", "/auth/logout"),
   forgot: (email: string) => request<{ message: string }>("POST", "/auth/forgot", { email }),
   checkToken: (token: string, kind: "invite" | "reset") =>

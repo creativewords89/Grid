@@ -44,10 +44,10 @@ def create_owner(email: str, name: str, password_from_stdin: bool) -> None:
 
 
 def setup_pinecone() -> None:
-    from app.config import get_settings
+    from app.connections import current
     from app.kb.store import PineconeStore
 
-    settings = get_settings()
+    settings = current()
     if not settings.pinecone_api_key:
         raise SystemExit("Set PINECONE_API_KEY in .env first.")
     store = PineconeStore(settings.pinecone_api_key, settings.pinecone_index)
@@ -63,10 +63,10 @@ def setup_pinecone() -> None:
 def setup_telegram() -> None:
     """Point Telegram at our webhook, with the secret it must send (SPEC section 6.7)."""
     from app import settings_store
-    from app.config import get_settings
+    from app.connections import current
     from app.reviews.telegram import TelegramError, get_telegram
 
-    settings = get_settings()
+    settings = current()
     telegram = get_telegram()
     if telegram is None:
         raise SystemExit("Set TELEGRAM_BOT_TOKEN in .env first.")
@@ -88,6 +88,17 @@ def setup_telegram() -> None:
     print("Settings → Reviews (Detect group).")
 
 
+def setup_code() -> None:
+    from app.api.setup import needed
+    from app.api.setup import setup_code as code
+
+    with Session(get_engine()) as db:
+        if not needed(db):
+            raise SystemExit("The Owner account already exists: sign in on the website.")
+    print(f"Setup code: {code()}")
+    print("Open the website and enter it on the Create the Owner account page.")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -99,6 +110,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     commands.add_parser("setup-pinecone", help="create the Pinecone index if it doesn't exist")
     commands.add_parser("setup-telegram", help="register the review bot's webhook")
+    commands.add_parser("setup-code", help="show the code for creating the first Owner online")
     args = parser.parse_args(argv)
     if args.command == "create-owner":
         create_owner(args.email, args.name, args.password_stdin)
@@ -106,6 +118,8 @@ def main(argv: list[str] | None = None) -> None:
         setup_pinecone()
     elif args.command == "setup-telegram":
         setup_telegram()
+    elif args.command == "setup-code":
+        setup_code()
 
 
 if __name__ == "__main__":
