@@ -8,7 +8,8 @@ from typing import Annotated, Protocol
 
 from fastapi import Depends
 
-from app.config import Settings, get_settings
+from app import connections
+from app.config import Settings
 
 log = logging.getLogger(__name__)
 
@@ -93,7 +94,7 @@ class UnconfiguredMailer:
 
 
 def get_mailer() -> Mailer:
-    settings = get_settings()
+    settings = connections.current()
     return SmtpMailer(settings) if settings.email_configured else UnconfiguredMailer(settings)
 
 

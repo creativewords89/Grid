@@ -35,5 +35,16 @@ PYTHONPATH=. uv run python "$HERE/seed.py"
 uv run uvicorn app.main:app --port 8100 > "$RUN/api.log" 2>&1 &
 uv run python -m app.worker > "$RUN/worker.log" 2>&1 &
 
+# Playwright starts testing once the web app answers, so the API must be up before it is.
+tries=0
+until curl -sf http://localhost:8100/api/health > /dev/null; do
+  tries=$((tries + 1))
+  if [ "$tries" -gt 120 ]; then
+    echo "the API didn't start; see $RUN/api.log" >&2
+    exit 1
+  fi
+  sleep 0.5
+done
+
 cd "$HERE/../frontend"
 npx vite --port 5180 --strictPort

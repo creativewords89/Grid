@@ -7,9 +7,8 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
-from app import audit
+from app import audit, connections
 from app.auth.deps import CurrentUser, Db
-from app.config import get_settings
 from app.db.models import Chunk, FileStatus, KbOp, KbOpState, Setting, StoredFile
 from app.jobs.queue import enqueue
 from app.kb.reconcile import LAST_CHECK
@@ -34,7 +33,7 @@ class KbStatus(BaseModel):
 @router.get("/status", response_model=KbStatus)
 def status(me: CurrentUser, db: Db) -> KbStatus:
     ensure(me, Action.MANAGE_KB)
-    settings = get_settings()
+    settings = connections.current()
     pending = KbOp.state == KbOpState.PENDING
     ops, records, oldest, retrying = db.execute(
         select(

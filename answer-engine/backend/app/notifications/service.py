@@ -14,6 +14,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import connections
 from app.auth.tokens import now
 from app.config import get_settings
 from app.db.models import Notification, NotifyChannel, Role, User
@@ -169,7 +170,7 @@ def send(db: Session, payload: Payload) -> None:
     elif channel == NotifyChannel.EMAIL:
         text, body_html, stop = email_parts(note, user)
         if not get_mailer().send(user.email, note.title, text, body_html, stop):
-            if get_settings().email_configured:
+            if connections.current().email_configured:
                 raise RuntimeError("the email could not be sent")
             return  # email isn't set up: the bell is enough
     else:

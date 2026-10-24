@@ -38,6 +38,9 @@ DEFAULTS: dict[str, Any] = {
     "rewrite_model": None,
     "check_model": None,
     "answer_effort": "medium",
+    # API keys and connection details from Settings → Connections, encrypted
+    # (`app/connections.py`).
+    "connections": {},
 }
 
 

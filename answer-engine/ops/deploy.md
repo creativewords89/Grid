@@ -63,14 +63,19 @@ In the DNS settings of `gridrankers.com`, add an **A record**:
 It can take up to an hour to work. Check it from your computer with
 `ping answers.gridrankers.com`: it should show the server's IP.
 
-## 4. Download the app and fill in its settings
+## 4. Download the app and make its settings file
+
+Copy these lines into the server's terminal. The last command makes the settings file and
+fills in long random passwords by itself, so there is nothing to type.
 
 ```sh
 cd /opt
 git clone https://github.com/creativewords89/Grid.git gridrankers
 cd gridrankers/answer-engine
-cp .env.example .env
-nano .env
+cp .env.example .env && \
+sed -i "s|^SECRET_KEY=.*|SECRET_KEY=$(openssl rand -hex 32)|" .env && \
+sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 24)|" .env && \
+chmod 600 .env
 ```
 
 If the repository is private, GitHub asks for a username and a password: use a
@@ -78,28 +83,14 @@ If the repository is private, GitHub asks for a username and a password: use a
 (GitHub → Settings → Developer settings). If the app moves to its own repository (open
 decision 4), use that address and folder instead.
 
-`nano` is a simple editor: move with the arrow keys, save with **Ctrl+O** then **Enter**,
-leave with **Ctrl+X**. Fill in at least:
+The web address is already set to `answers.gridrankers.com`. To use another one, change
+`APP_DOMAIN` and `APP_URL` in `.env` (`nano .env`; save with **Ctrl+O**, **Enter**, leave
+with **Ctrl+X**).
 
-| Setting | What to put |
-|---|---|
-| `APP_DOMAIN`, `APP_URL` | `answers.gridrankers.com` and `https://answers.gridrankers.com` |
-| `SECRET_KEY` | a long random text. Make one with `openssl rand -base64 48` |
-| `POSTGRES_PASSWORD` | another long random text (`openssl rand -base64 32`) |
-| `ANTHROPIC_API_KEY` | from console.anthropic.com → API keys |
-| `PINECONE_API_KEY` | from app.pinecone.io → API keys |
-| `TELEGRAM_BOT_TOKEN` | from @BotFather in Telegram (`/newbot`) |
-| `TELEGRAM_WEBHOOK_SECRET` | another random text (`openssl rand -hex 24`) |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | from your email provider (for invites, password resets and notifications) |
-
-Leave the model settings as they are until the evaluation (section 9) says otherwise.
-`BACKUP_TARGET` is for the off-server copy of backups (section 7); it can wait.
-
-Protect the file so only the server's administrator can read it:
-
-```sh
-chmod 600 .env
-```
+**API keys don't go in this file.** You enter them in the website (section 6), where they
+are stored encrypted. (Keys put in `.env` still work, if you prefer that.) Keep `.env`
+safe: whoever has `SECRET_KEY` can read the stored keys, and if it changes, the keys must
+be entered again.
 
 ## 5. Start it
 
@@ -118,27 +109,34 @@ curl -s https://answers.gridrankers.com/api/health
 If the address doesn't load, wait a few minutes: Caddy fetches the HTTPS certificate on
 its first start, and the DNS record (step 3) must already work.
 
-## 6. One-time setup
+## 6. Create your account and connect the services, in the browser
 
-```sh
-# The first Owner (you'll be asked for a password, at least 12 characters).
-docker compose exec api python -m app.cli create-owner --email you@gridrankers.com --name "Your Name"
+1. Get the one-time setup code (it proves you're the server's administrator, so nobody
+   else can claim the new site first):
 
-# Create the Pinecone index. It prints a "host"; you may add it to .env as PINECONE_HOST.
-docker compose exec api python -m app.cli setup-pinecone
+   ```sh
+   docker compose exec api python -m app.cli setup-code
+   ```
 
-# Connect the Telegram bot to the app.
-docker compose exec api python -m app.cli setup-telegram
-```
+2. Open **https://answers.gridrankers.com**. It shows **Create the Owner account**: enter
+   the setup code, your name, email and a password (at least 10 characters).
+3. You land on **Settings → Connections**. For each service, paste the key, press **Save**,
+   then the button next to it:
 
-Then, in the browser at https://answers.gridrankers.com:
+   | Service | Where the key comes from | Then press |
+   |---|---|---|
+   | **Claude (Anthropic)** | console.anthropic.com → API keys (add credit under Billing first) | **Test the key** |
+   | **Pinecone** | app.pinecone.io → API keys | **Test and create index**, then **Knowledge base → Rebuild index** |
+   | **Telegram** | @BotFather in Telegram: send `/newbot` and follow the steps | **Connect the bot** |
+   | **Email (SMTP)** | your email provider: server, port (587), username, password, From address | **Send a test email** |
 
-1. Sign in with the Owner account.
-2. **Users** → invite the reviewers and staff.
-3. Add the bot to your **private reviewers' group** in Telegram, then choose that group in
+   After saving, a key shows only its last four characters. To change it, paste the new
+   one; to stop using it, press **Remove**.
+4. **Users** → invite the reviewers and staff.
+5. Add the bot to your **private reviewers' group** in Telegram, then choose that group in
    **Settings → Reviews** and press **Send a test message**.
-4. Each reviewer: **Profile → Link Telegram**, and send the code to the bot.
-5. **Documents** → upload the company documents.
+6. Each reviewer: **Profile → Link Telegram**, and send the code to the bot.
+7. **Documents** → upload the company documents.
 
 ## 7. Backups
 
@@ -210,7 +208,7 @@ and the best weights. Set the threshold and model in **Settings → Reviews** an
 | The site doesn't load | `docker compose ps`; if something isn't running: `docker compose up -d`. Then `docker compose logs --tail 100 caddy api` |
 | Someone reports an error | Ask for the time it happened. Each request has an ID (the `X-Request-ID` header); find its log lines with `docker compose logs api \| grep <the ID>` |
 | Documents stay "Processing" | `docker compose logs --tail 100 worker`; Settings → System shows failed jobs |
-| Answers say the service is busy | Check the Anthropic key and credit at console.anthropic.com |
+| Answers say the service is busy | **Settings → Connections → Test the key**, and check your credit at console.anthropic.com |
 | Settings → System says backups failed | Its message says why; run `docker compose exec backup /ops/backup.sh` to try again |
 | The disk is filling up | `df -h`; old backups are removed after 14 days (`BACKUP_KEEP_DAYS`); Docker logs are rotated automatically. `docker system prune` removes old images |
 

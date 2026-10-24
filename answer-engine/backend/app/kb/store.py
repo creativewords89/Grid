@@ -7,7 +7,7 @@ from typing import Any, Protocol
 
 from pinecone import Pinecone
 
-from app.config import get_settings
+from app import connections
 
 DOCS = "docs"  # one record per chunk
 VERIFIED = "verified"  # one record per verified answer (build step 11)
@@ -89,6 +89,9 @@ class PineconeStore:
         description = self.client.describe_index(self.index_name)
         return f"Index {self.index_name} {created} (host {description.host})."
 
+    def index_host(self) -> str:
+        return str(self.client.describe_index(self.index_name).host)
+
 
 @lru_cache
 def _store(api_key: str, index_name: str, host: str) -> PineconeStore:
@@ -97,7 +100,7 @@ def _store(api_key: str, index_name: str, host: str) -> PineconeStore:
 
 def get_store() -> VectorStore | None:
     """Pinecone, or None while no API key is set (changes then wait in the outbox)."""
-    settings = get_settings()
+    settings = connections.current()
     if not settings.pinecone_api_key:
         return None
     return _store(settings.pinecone_api_key, settings.pinecone_index, settings.pinecone_host)

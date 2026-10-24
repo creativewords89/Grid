@@ -12,7 +12,7 @@ from typing import Any, Protocol
 
 import httpx2
 
-from app.config import get_settings
+from app import connections
 
 log = logging.getLogger(__name__)
 
@@ -118,7 +118,7 @@ def _client(token: str, api_url: str) -> HttpTelegram:
 
 def get_telegram() -> Telegram | None:
     """The bot, or None while TELEGRAM_BOT_TOKEN isn't set (reviews then use the web only)."""
-    settings = get_settings()
+    settings = connections.current()
     if not settings.telegram_bot_token:
         return None
     return _client(settings.telegram_bot_token, settings.telegram_api_url)

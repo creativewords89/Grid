@@ -22,6 +22,7 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
+from app import connections
 from app.api.conversations import answerer_dep, store_dep
 from app.auth.passwords import hash_password
 from app.config import get_settings
@@ -49,6 +50,9 @@ def upload_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "")
     monkeypatch.setenv("TELEGRAM_WEBHOOK_SECRET", "")
     get_settings.cache_clear()
+    # Without a database fixture, nothing was saved in Settings → Connections.
+    monkeypatch.setattr(connections, "session_factory", lambda: None)
+    connections.invalidate()
     yield folder
     get_settings.cache_clear()
 
@@ -98,8 +102,12 @@ def engine() -> Iterator[Engine]:
 
 
 @pytest.fixture
-def clean_engine(engine: Engine) -> Iterator[Engine]:
+def clean_engine(engine: Engine, monkeypatch: pytest.MonkeyPatch) -> Iterator[Engine]:
+    # Keys saved in Settings → Connections are read from this test's database.
+    monkeypatch.setattr(connections, "session_factory", lambda: Session(engine))
+    connections.invalidate()
     yield engine
+    connections.invalidate()
     tables = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
     with engine.begin() as conn:
         conn.execute(text(f"TRUNCATE {tables} CASCADE"))
