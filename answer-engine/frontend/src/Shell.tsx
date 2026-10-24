@@ -1,0 +1,167 @@
+import { useEffect, useState, type ReactNode } from "react";
+import { api, type Role } from "./api";
+import { useAuth } from "./auth";
+import { Bell } from "./components/Bell";
+import { ANSWERS_CHANGED, FILES_CHANGED, REVIEWS_CHANGED } from "./events";
+import { navigate } from "./router";
+
+type NavItem = { path: string; label: string; roles?: Role[] };
+
+// Sidebar of SPEC section 7. Hiding items is for tidiness only: the server enforces access.
+const NAV: NavItem[] = [
+  { path: "/", label: "Ask" },
+  { path: "/documents", label: "Documents" },
+  { path: "/marketing", label: "Marketing" },
+  { path: "/verified", label: "Verified Answers" },
+  { path: "/reviews", label: "Review Queue", roles: ["owner", "reviewer"] },
+  { path: "/answer-log", label: "Answer Log", roles: ["owner", "reviewer"] },
+  { path: "/users", label: "Users", roles: ["owner"] },
+  { path: "/settings", label: "Settings", roles: ["owner"] },
+];
+
+function useWaitingReviews(path: string, staff: boolean): [number, (n: number) => void] {
+  const [waiting, setWaiting] = useState(0);
+  useEffect(() => {
+    if (!staff) return;
+    let current = true;
+    const load = () =>
+      api
+        .reviewCount()
+        .then((count) => current && setWaiting(count.waiting))
+        .catch(() => undefined);
+    load();
+    window.addEventListener(REVIEWS_CHANGED, load);
+    return () => {
+      current = false;
+      window.removeEventListener(REVIEWS_CHANGED, load);
+    };
+  }, [path, staff]);
+  return [waiting, setWaiting];
+}
+
+const POLL_MS = 15_000;
+
+/** Live updates (SPEC section 2): poll every 15 s while the tab is visible, and tell the
+ * screens what changed. */
+function useUpdates(signedIn: boolean, onWaiting: (n: number) => void) {
+  const [unread, setUnread] = useState(0);
+  useEffect(() => {
+    if (!signedIn) return;
+    let since: string | null = null;
+    let stopped = false;
+    let timer = 0;
+    const poll = async () => {
+      window.clearTimeout(timer);
+      if (document.visibilityState === "visible") {
+        const u = await api.updates(since).catch(() => null);
+        if (stopped) return;
+        if (u) {
+          since = u.cursor;
+          setUnread(u.unread);
+          if (u.reviews_waiting !== null) onWaiting(u.reviews_waiting);
+          if (u.answers.length)
+            window.dispatchEvent(new CustomEvent(ANSWERS_CHANGED, { detail: u.answers }));
+          if (u.files_changed) window.dispatchEvent(new Event(FILES_CHANGED));
+        }
+      }
+      if (!stopped) timer = window.setTimeout(() => void poll(), POLL_MS);
+    };
+    const onVisible = () => document.visibilityState === "visible" && void poll();
+    void poll();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [signedIn, onWaiting]);
+  return [unread, setUnread] as const;
+}
+
+export function Shell({ path, children }: { path: string; children: ReactNode }) {
+  const { user, signOut } = useAuth();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
+  const [waiting, setWaiting] = useWaitingReviews(
+    path,
+    user?.role === "owner" || user?.role === "reviewer",
+  );
+  const [unread, setUnread] = useUpdates(Boolean(user), setWaiting);
+  if (!user) return null;
+
+  const go = (to: string) => {
+    setMenuOpen(false);
+    setNavOpen(false);
+    navigate(to);
+  };
+
+  return (
+    <div className="app">
+      <header className="topbar">
+        <button
+          className="icon-button nav-toggle"
+          aria-label="Menu"
+          aria-expanded={navOpen}
+          onClick={() => setNavOpen(!navOpen)}
+        >
+          ☰
+        </button>
+        <span className="mark" aria-hidden="true">
+          GR
+        </span>
+        <span className="brand">Answer Engine</span>
+        <div className="spacer" />
+        <Bell unread={unread} onChange={setUnread} />
+        <div className="menu">
+          <button
+            className="chip"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen(!menuOpen)}
+          >
+            {user.name}
+          </button>
+          {menuOpen && (
+            <div className="menu-list" role="menu">
+              <button role="menuitem" onClick={() => go("/profile")}>
+                Profile
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  void signOut().then(() => navigate("/", true));
+                }}
+              >
+                Sign out
+              </button>
+            </div>
+          )}
+        </div>
+      </header>
+      <div className="body">
+        <nav className={`sidebar ${navOpen ? "open" : ""}`} aria-label="Main">
+          {NAV.filter((item) => !item.roles || item.roles.includes(user.role)).map((item) => (
+            <a
+              key={item.path}
+              href={item.path}
+              aria-current={path === item.path ? "page" : undefined}
+              onClick={(e) => {
+                e.preventDefault();
+                go(item.path);
+              }}
+            >
+              {item.label}
+              {item.path === "/reviews" && waiting > 0 && (
+                <span className="badge" aria-label={`${waiting} waiting`}>
+                  {waiting}
+                </span>
+              )}
+            </a>
+          ))}
+        </nav>
+        <main className="main">{children}</main>
+      </div>
+    </div>
+  );
+}

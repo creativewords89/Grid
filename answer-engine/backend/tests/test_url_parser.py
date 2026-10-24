@@ -1,0 +1,171 @@
+"""The URL parser (SPEC section 6.10): every Reddit pattern, bare post codes, share links,
+tracking parameters, and Facebook links (found by name instead)."""
+
+import pytest
+
+from app.marketing.url_parser import (
+    FACEBOOK_BY_NAME,
+    NOT_A_THREAD,
+    NOT_A_URL,
+    SHARE_LINK,
+    Parsed,
+    PlatformRule,
+    UrlError,
+    clean,
+    parse,
+)
+
+RULES = [
+    PlatformRule("reddit", "reddit", name="Reddit"),
+    PlatformRule("facebook", "facebook", name="Facebook"),
+    PlatformRule("quora", "generic", ("quora.com",), name="Quora"),
+]
+
+
+def p(url: str, rules: list[PlatformRule] = RULES) -> Parsed:
+    return parse(url, rules)
+
+
+@pytest.mark.parametrize(
+    ("url", "thread_id", "community", "comment"),
+    [
+        # Reddit
+        (
+            "https://www.reddit.com/r/localseo/comments/1abc2de/how_long_gbp/",
+            "reddit:1abc2de",
+            "r/localseo",
+            None,
+        ),
+        (
+            "https://old.reddit.com/r/LocalSEO/comments/1ABC2DE/how_long/",
+            "reddit:1abc2de",
+            "r/LocalSEO",
+            None,
+        ),
+        (
+            "https://reddit.com/r/localseo/comments/1abc2de/x/kx9z0p1/",
+            "reddit:1abc2de",
+            "r/localseo",
+            "kx9z0p1",
+        ),
+        (
+            "https://www.reddit.com/r/localseo/comments/1abc2de/x/kx9z0p1/?context=3",
+            "reddit:1abc2de",
+            "r/localseo",
+            "kx9z0p1",
+        ),
+        ("https://m.reddit.com/r/SEO/comments/1abc2de", "reddit:1abc2de", "r/SEO", None),
+        ("https://new.reddit.com/r/SEO/comments/1abc2de/", "reddit:1abc2de", "r/SEO", None),
+        ("https://np.reddit.com/r/SEO/comments/1abc2de/t/", "reddit:1abc2de", "r/SEO", None),
+        ("https://www.reddit.com/comments/1abc2de", "reddit:1abc2de", None, None),
+        ("https://redd.it/1abc2de", "reddit:1abc2de", None, None),
+        (
+            "https://www.reddit.com/user/bob/comments/1abc2de/hello/",
+            "reddit:1abc2de",
+            "u/bob",
+            None,
+        ),
+        (
+            "https://www.reddit.com/r/localseo/comments/1abc2de/t/?utm_source=share&utm_medium=web2x&share_id=xyz&rdt=123",
+            "reddit:1abc2de",
+            "r/localseo",
+            None,
+        ),
+        (
+            "  https://www.reddit.com/r/localseo/comments/1abc2de/t/#comments  ",
+            "reddit:1abc2de",
+            "r/localseo",
+            None,
+        ),
+        ("www.reddit.com/r/localseo/comments/1abc2de/t/", "reddit:1abc2de", "r/localseo", None),
+    ],
+)
+def test_patterns(url: str, thread_id: str, community: str | None, comment: str | None) -> None:
+    parsed = p(url)
+    assert (parsed.thread_id, parsed.community, parsed.comment_id) == (
+        thread_id,
+        community,
+        comment,
+    )
+    assert parsed.platform == thread_id.split(":")[0]
+
+
+@pytest.mark.parametrize(
+    ("url", "message"),
+    [
+        ("https://www.reddit.com/r/localseo/s/AbC123xyz", SHARE_LINK),
+        ("https://www.reddit.com/r/localseo/", NOT_A_THREAD),
+        ("https://www.reddit.com/r/localseo/comments/", NOT_A_THREAD),
+        ("https://redd.it/", NOT_A_THREAD),
+        ("ftp://reddit.com/r/x/comments/abc", NOT_A_URL),
+        ("just some text", NOT_A_URL),
+        ("", NOT_A_URL),
+    ],
+)
+def test_errors(url: str, message: str) -> None:
+    with pytest.raises(UrlError) as error:
+        p(url)
+    assert str(error.value) == message
+
+
+@pytest.mark.parametrize("code", ["1xd8w7u", "1XD8W7U", "  1abc2de  ", "kx9z"])
+def test_a_reddit_post_code_on_its_own(code: str) -> None:
+    parsed = p(code)
+    wanted = code.strip().lower()
+    assert parsed.platform == "reddit"
+    assert parsed.thread_id == f"reddit:{wanted}"
+    assert parsed.clean_url == f"https://www.reddit.com/comments/{wanted}/"
+    # The same post as its full link.
+    assert p(
+        f"https://www.reddit.com/r/DunderMifflin/comments/{wanted}/kevins_wife_btw/"
+    ).thread_id == (parsed.thread_id)
+
+
+def test_a_bare_code_needs_reddit_switched_on() -> None:
+    off = [PlatformRule("reddit", "reddit", enabled=False, name="Reddit")]
+    with pytest.raises(UrlError, match="Answering on Reddit is switched off"):
+        p("1xd8w7u", off)
+    with pytest.raises(UrlError):
+        p("1xd8w7u", [PlatformRule("quora", "generic", ("quora.com",))])
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.facebook.com/groups/localbiz/posts/1234567890/",
+        "https://m.facebook.com/groups/987654/permalink/1234567890/?comment_id=555",
+        "https://www.facebook.com/share/p/1AbCdEf/",
+        "https://fb.me/abc123",
+        "https://web.facebook.com/permalink.php?story_fbid=1&id=2",
+    ],
+)
+def test_facebook_links_say_to_use_the_name(url: str) -> None:
+    with pytest.raises(UrlError) as error:
+        p(url)
+    assert str(error.value) == FACEBOOK_BY_NAME
+
+
+def test_unknown_and_disabled_platforms() -> None:
+    with pytest.raises(UrlError, match="isn't set up for answering"):
+        p("https://example.com/forum/thread/1")
+    off = [PlatformRule("reddit", "reddit", enabled=False, name="Reddit")]
+    with pytest.raises(UrlError, match="Answering on Reddit is switched off"):
+        p("https://www.reddit.com/r/x/comments/abc", off)
+
+
+def test_generic_platforms_hash_the_clean_page_address() -> None:
+    a = p("https://www.quora.com/How-long-does-GBP-verification-take?utm_source=x#answer")
+    b = p("https://quora.com/How-long-does-GBP-verification-take")
+    assert a.thread_id == b.thread_id
+    assert a.thread_id.startswith("quora:") and len(a.thread_id) == len("quora:") + 40
+    assert a.clean_url == "https://quora.com/How-long-does-GBP-verification-take"
+
+
+def test_cleaning_keeps_only_meaningful_parameters() -> None:
+    cleaned, host, path, query = clean(
+        "HTTPS://WWW.Facebook.com/permalink.php?story_fbid=12&id=34&utm_campaign=x&fbclid=y#top"
+    )
+    assert host == "facebook.com"
+    assert query == {"story_fbid": "12", "id": "34"}
+    assert cleaned == "https://facebook.com/permalink.php?story_fbid=12&id=34"
+    assert path == ["permalink.php"]

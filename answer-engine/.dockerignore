@@ -1,0 +1,9 @@
+# Build context for the caddy and backup images (the backend has its own).
+.env
+backend
+frontend/node_modules
+frontend/dist
+frontend/test-results
+frontend/playwright-report
+e2e
+**/__pycache__

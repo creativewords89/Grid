@@ -12,7 +12,7 @@ It is a **separate product** from the GridRankers team portal (the WordPress plu
 - Uploads: PDF (text and scanned), Word, Excel/CSV and images (scans, photos). English only.
 - Every answer gets a **confidence score**. Low-confidence answers go to 3–5 reviewers in a **Telegram group**. Their approval or correction is sent back to the person who asked, replacing the answer in place, and is added to the knowledge base automatically.
 - The Owner can review **any** answer (high or low confidence) in the Answer Log and correct it, with the same effect.
-- **Marketing:** team members paste a Reddit or Facebook question by URL and get a draft reply. When someone replies in that thread, they paste the URL again, the engine finds the thread and drafts the follow-up using the whole conversation. **A human always posts.** The engine never posts or logs in to Reddit or Facebook.
+- **Marketing:** for Reddit, team members paste the post's link or its code; for Facebook, they type the person's name. The engine shows the conversation we already have (or starts a new one), they paste the new message, and get a draft reply that uses the whole conversation. **A human always posts.** The engine never posts or logs in to Reddit or Facebook.
 - Runs on the company's own Hostinger VPS at **answers.gridrankers.com** (section 13).
 - Every permission is enforced on the server. The browser is never trusted.
 
@@ -114,13 +114,13 @@ Every API endpoint calls `permissions.can(user, action, obj)`. **pytest covers e
 
 ## 4. Authentication
 
-- **Accounts:** email + password. The Owner invites people from **Users → Invite** (name, email, role). The invite email contains a single-use link valid for 72 h, where the person sets a password.
-- **Passwords:** minimum 10 characters, hashed with **Argon2id** (`argon2-cffi`). Common or breached passwords are refused using a bundled top-10k list.
+- **Accounts:** email + password. The Owner invites people from **Users → Invite** (name, email, role). The invite email contains a single-use link valid for 72 h, where the person sets a password. While email is not configured, the Owner is shown the link to pass on another way. Links put the secret after `#` (`/invite#…`, `/reset#…`) so it never reaches server logs.
+- **Passwords:** minimum 10 characters, hashed with **Argon2id** (`argon2-cffi`). Common passwords are refused using a bundled list: the 10+ character entries of SecLists' top-100k list (the top-10k list has only 51 entries that long, so it would miss passwords like `password123`).
 - **Sign-in screen:** GridRankers logo, "Sign in to the Answer Engine", Email, Password, **Sign in** button, and a "Forgot password?" link that sends a reset email (single use, 1 h). The response is always "If that email exists, we've sent a link", whether or not the account exists.
-- **Lockout:** 5 failed attempts per email+IP leads to a 15-minute lock. The error is always "Email or password is incorrect."
+- **Lockout:** 5 failed attempts per email+IP within 15 minutes lock that pair for 15 minutes from the fifth failure; a successful sign-in resets the count. A wrong email and a wrong password both get "Email or password is incorrect." While locked, sign-in returns 429 "Too many attempts. Wait 15 minutes, then try again." (this says nothing about whether the account exists).
 - **Sessions:** random 32-byte token, stored as a SHA-256 hash in `sessions`. The cookie is `HttpOnly; Secure; SameSite=Lax` and expires after 30 days (sliding). Sign out deletes the session. A password reset or deactivation revokes all of that person's sessions.
 - **CSRF:** every state-changing request needs header `X-CSRF-Token`, matching a per-session token returned by `GET /api/auth/me`.
-- Nothing renders before sign-in. Every `/api/*` route except `/api/auth/*`, `/api/health` and `/api/telegram/webhook` returns 401 without a session.
+- Nothing renders before sign-in. Every `/api/*` route except `/api/auth/*`, `/api/health`, `/api/telegram/webhook` and `/api/notifications/stop-emails` (signed link, section 6.11) returns 401 without a session.
 
 ## 5. Data model (PostgreSQL)
 
@@ -132,32 +132,32 @@ All tables have `id` (UUID v7 unless stated), `created_at` and `updated_at` (`ti
 | `sessions` | user_id, token_hash, csrf_token, expires_at, ip, user_agent |
 | `auth_tokens` | user_id, kind ENUM(invite, reset, telegram_link), token_hash, expires_at, used_at |
 | `login_attempts` | email, ip, at, ok BOOL |
-| `files` | name, mime, size, sha256, storage_path, status ENUM(queued, processing, ready, failed), error TEXT NULL, page_count, chunk_count, ocr_pages INT, version INT, previous_file_id NULL (the version it replaced), uploaded_by, deleted_at NULL |
+| `files` | name, mime, size, sha256, storage_path, status ENUM(queued, processing, ready, failed), error TEXT NULL, warning TEXT NULL (Ready, but something was skipped), progress_done / progress_total NULL (OCR progress), page_count, sheet_count NULL (Excel only), chunk_count, ocr_pages INT, version INT, previous_file_id NULL (the version it replaced), uploaded_by, deleted_at NULL |
 | `chunks` | id TEXT `doc_{file_id}_{n}`, file_id, position, page_from, page_to, sheet NULL, heading NULL, text, token_count, from_ocr BOOL |
-| `verified_answers` | question, answer, status ENUM(active, disabled, expired), expires_at NULL, origin ENUM(review, admin, marketing), origin_answer_id NULL, source_file_ids UUID[], needs_check BOOL, needs_check_reason NULL, created_by, approved_by, deleted_at NULL |
+| `verified_answers` | question, answer, version INT, status ENUM(active, disabled, expired), expires_at NULL, origin ENUM(review, admin, marketing), origin_answer_id NULL, source_file_ids UUID[], needs_check BOOL, needs_check_reason NULL, created_by, approved_by, deleted_at NULL |
 | `verified_answer_versions` | verified_answer_id, version, question, answer, changed_by, at |
 | `conversations` | user_id, title (from the first question), last_message_at, deleted_at NULL |
 | `messages` | conversation_id, role ENUM(user, assistant), body (user text; for assistant, a copy of `answers.current_text`), answer_id NULL, position |
-| `answers` | kind ENUM(chat, marketing), asked_by, question, retrieval_query, original_text, current_text, sources JSONB `[{n, kind: doc|verified, ref_id, file_id, file_name, page, sheet, score}]`, confidence INT 0–100 NULL, confidence_parts JSONB, outcome ENUM(no_answer, low, high), status ENUM(auto, in_review, needs_info, verified, corrected, wrong_no_answer), flagged BOOL (👎), flag_note NULL, model, usage JSONB (tokens in/out/cached, cost_usd), stop_reason |
-| `reviews` | answer_id, reason ENUM(low_confidence, no_answer, admin, flag), state ENUM(open, claimed, needs_info, approved, edited, rejected, cancelled), claimed_by NULL, claimed_at, decided_by NULL, decided_at, final_text NULL, note NULL, telegram_message_id NULL, reminded_at NULL, escalated_at NULL |
+| `answers` | kind ENUM(chat, marketing), asked_by, question, retrieval_query, original_text, current_text, sources JSONB `[{n, kind: doc|verified, ref_id, file_id, file_name, page, sheet, score}]`, confidence INT 0–100 NULL, confidence_parts JSONB, outcome ENUM(no_answer, low, high), status ENUM(auto, in_review, needs_info, verified, corrected, wrong_no_answer), flagged BOOL (👎), flag_note NULL, feedback NULL (`up`/`down`), delivered_at NULL (when a review changed what the asker sees), seen_at NULL (when the asker last opened it after that), model, usage JSONB (tokens in/out/cached, cost_usd), stop_reason |
+| `reviews` | number BIGINT IDENTITY (shown as #R-142), answer_id, reason ENUM(low_confidence, no_answer, admin, flag), state ENUM(open, claimed, needs_info, approved, edited, rejected, cancelled), claimed_by NULL, claimed_at, decided_by NULL, decided_at, final_text NULL, note NULL, telegram_message_id NULL, prompt_message_id NULL + prompt_action NULL (the bot's open "reply to this message" prompt), reminded_at NULL, escalated_at NULL. At most one undecided review per answer (partial unique index). |
 | `review_messages` | review_id, author_id, kind ENUM(question_to_asker, asker_reply, reviewer_note), body |
-| `threads` | id TEXT (canonical ID, section 6.9, e.g. `reddit:abc123`), platform_id, community NULL (e.g. `r/localseo`, a group name), title, original_url, status ENUM(waiting_for_us, in_review, ready_to_post, waiting_for_them, closed), created_by, last_activity_at, closed_at NULL, close_reason ENUM(manual, inactive) NULL, deleted_at NULL |
+| `threads` | id TEXT (canonical ID, section 6.9, e.g. `reddit:abc123`), platform_id, community NULL (e.g. `r/localseo`, a group name), title, original_url (empty for name-based threads), person NULL (who asked: a Facebook name such as "Dan Miller" or "Anonymous member", or a Reddit username), status ENUM(waiting_for_us, in_review, ready_to_post, waiting_for_them, closed), created_by, last_activity_at, closed_at NULL, close_reason ENUM(manual, inactive) NULL, deleted_at NULL |
 | `thread_messages` | thread_id, parent_id NULL (the message it replies to), author ENUM(them, us), author_name NULL (e.g. `u/john_smb`), body, external_url NULL, external_comment_id NULL, answer_id NULL (for our drafts), state ENUM(draft, in_review, ready, posted, discarded) (ours only), posted_by NULL, posted_at NULL, created_by |
-| `platforms` | slug UNIQUE (reddit, facebook, …), name, enabled BOOL, parser ENUM(reddit, facebook, generic), style_prompt TEXT, disclosure_line TEXT NULL, position |
+| `platforms` | slug UNIQUE (reddit, facebook, …), name, enabled BOOL, parser ENUM(reddit, facebook, generic), hosts TEXT[] (the websites a generic platform covers, e.g. quora.com), style_prompt TEXT, disclosure_line TEXT NULL, position. Reddit and Facebook are created the first time platforms are read. |
 | `communities` | platform_id, name (e.g. `r/SEO`), notes TEXT (e.g. "no links") |
-| `notifications` | user_id, kind (answer_reviewed, needs_info, thread_draft_ready, reply_corrected_after_post, …), ref_kind, ref_id, title, body, read_at NULL |
-| `kb_ops` | outbox for Pinecone (section 6.4): op ENUM(upsert, delete), namespace, record_ids TEXT[], payload JSONB NULL, state ENUM(pending, done, failed), attempts, next_attempt_at, last_error |
-| `jobs` | kind, payload JSONB, state ENUM(queued, running, done, failed), attempts, run_after, locked_by, locked_at, last_error |
+| `notifications` | user_id, kind (answer_reviewed, needs_info, thread_draft_ready, reply_corrected_after_post, review_escalated, sync_failing, file_failed), ref_kind, ref_id, title, body, link NULL (a path in the app), read_at NULL, channel NULL + sent_at NULL (email or Telegram delivery) |
+| `kb_ops` | outbox for Pinecone (section 6.4): seq BIGINT IDENTITY (sending order; UUID v7 isn't ordered within a millisecond), op ENUM(upsert, delete), namespace, record_ids TEXT[] (at most 1000), file_id NULL (for "Sync pending"), state ENUM(pending, done), attempts, next_attempt_at, last_error. Done ops are kept 7 days. |
+| `jobs` | kind, payload JSONB, state ENUM(queued, running, done, failed), attempts, run_after, locked_by, locked_at, last_error, dedupe_key UNIQUE NULL (scheduled jobs use `kind:YYYY-MM-DD` so each runs once per slot) |
 | `trash` | kind ENUM(file, verified_answer, thread, conversation), ref_id, title, data JSONB, deleted_by, deleted_at. Purged after 30 days. |
-| `audit` | actor_id NULL (system), action, entity, entity_id, changes JSONB `[{field, from, to}]`, at |
+| `audit` | actor_id NULL (system), action, entity, entity_id, title (what it was called at the time), changes JSONB `[{field, from, to}]`, at |
 | `settings` | key, value JSONB (defaults in section 10) |
-| `usage_daily` | date, user_id, kind ENUM(answer, check, ocr, draft), requests, tokens_in, tokens_out, cost_usd |
+| `usage_daily` | date, user_id NULL, kind ENUM(answer, check, ocr, draft), requests, tokens_in, tokens_out, cost_usd — one row per day/person/kind (UNIQUE NULLS NOT DISTINCT), added to as calls are made |
 
 ## 6. Domain logic
 
 ### 6.1 Upload and extraction
 
-- **Accepted types:** `.pdf`, `.docx`, `.xlsx`, `.csv`, `.png`, `.jpg`/`.jpeg`, `.webp`, `.tif`/`.tiff`, `.heic`. Anything else is refused with "This file type isn't supported. Save it as PDF, Word (.docx) or Excel (.xlsx)." The type is checked by content (magic bytes), not only the extension.
+- **Accepted types:** `.pdf`, `.docx`, `.xlsx`, `.csv`, `.png`, `.jpg`/`.jpeg`, `.webp`, `.tif`/`.tiff`, `.heic`. Anything else is refused with "This file type isn't supported. Save it as PDF, Word (.docx) or Excel (.xlsx)." The type is checked by content (magic bytes), not only the extension. A password-protected Word or Excel file is refused at upload with "This file is password-protected…".
 - **Max size:** 50 MB per file (setting). Max 20 files per upload batch.
 - **Duplicates:** if a file with the same SHA-256 already exists and is not deleted, it is refused with "This file is already in the knowledge base: {name}".
 - **New version:** "Upload new version" on a file creates a new `files` row with `previous_file_id` set. When the new version is **Ready**, the old version's chunks are deleted from Pinecone and the old file goes to trash. Until then, the old version keeps answering.
@@ -165,24 +165,34 @@ All tables have `id` (UUID v7 unless stated), `created_at` and `updated_at` (`ti
 
 | Type | Extraction |
 |---|---|
-| PDF | `pymupdf`, page by page. A page with fewer than 30 characters of text, or one that is mostly an image, is a **scanned page**. It is rendered at 200 DPI and sent to OCR. |
-| DOCX | `python-docx`: paragraphs with heading levels, plus tables as Markdown tables. Embedded images are ignored in v1. |
-| XLSX / CSV | `openpyxl` (`data_only=True`, so cached formula values are used) / `csv`. Each sheet is read separately. The header row is the first non-empty row. Empty rows and columns are skipped. Hidden sheets are included. |
+| PDF | `pymupdf`, page by page. A page with fewer than 30 characters of text, or one at least 70% covered by images with under 200 characters, is a **scanned page**. It is rendered at 200 DPI and sent to OCR. Headings are lines noticeably larger (or bold and short) than the body text; their levels rank the heading sizes used in that document. Text blocks are split where the font style changes, because PDF writers often put a heading and its paragraph in one block. Tables are built from PyMuPDF's ruled grid only (it may guess a header from the heading above a table). Lines repeated in the top or bottom 8% of at least half the pages (running headers, page numbers) are dropped, and words hyphenated across lines are re-joined. A password-protected or damaged PDF fails at once, without retries. **Licence:** PyMuPDF is AGPL-3.0 (or a paid Artifex licence). Running it on our own server for staff is fine; offering the Answer Engine to outside clients would need the source offered to them or a commercial licence. |
+| DOCX | `python-docx`: paragraphs with heading levels (the Title style sits one level above Heading 1), list items as `- …`, and tables as Markdown tables (merged cells once). Page numbers come from the page breaks Word records when it saves; the page count is read from the file only when Microsoft Word wrote it (other writers leave a placeholder). Embedded images, text boxes, headers and footers are ignored in v1. |
+| XLSX / CSV | `openpyxl` (`data_only=True`, so the formula results Excel saved are used) / `csv`. Each sheet is read separately; hidden sheets, rows and columns are included; empty rows and columns are skipped. The **header row** is the first of the first 10 rows that looks like column names (2+ filled cells, or the only column; all text, no numbers; at least half as wide as the widest row), else the first non-empty row. Title lines above it are kept as notes. Blank headers become `Column C`; repeated ones `Name (2)`. Values are shown as Excel displays them: thousands separators, decimals, %, currency symbols, dates as `YYYY-MM-DD`. A workbook whose formulas have no saved results (e.g. made by a script) gets the warning "Some formulas have no saved results…". CSV: UTF-8 (with or without BOM) or Windows-1252; comma, semicolon, tab or pipe separated. |
 | Images | HEIC/TIFF are converted to PNG with Pillow and down-scaled so the long side is ≤ 2000 px, then sent to OCR |
 
 ### 6.2 OCR (Claude vision)
 
-- Each scanned page or image is sent to Claude as an `image` content block, with this instruction: *"Transcribe all text in this image exactly. Keep headings, lists and reading order. Write tables as Markdown tables. Write [illegible] where text can't be read. Output only the transcription."*
-- One request per page, with up to 4 in parallel per file. The model is set by `OCR_MODEL` (section 9).
-- The result is stored as the page text with `from_ocr = true`. Usage is recorded in `usage_daily` (kind `ocr`).
-- A page that returns `stop_reason: "refusal"` or fails 3 times is stored as empty with a warning on the file ("2 pages couldn't be read"). The file still becomes Ready.
+- **What is read:** scanned PDF pages (section 6.1) and uploaded images. Images are turned upright from their EXIF orientation (phone photos), HEIC is opened with `pillow-heif`, and every page of a multi-page TIFF is read. PDF pages are rendered at up to 200 DPI. Every image is shrunk so its long side is at most 2000 px and sent as PNG, or as JPEG when a photo would exceed about 3.7 MB (the API limit is 5 MB once base64-encoded).
+- **The request** (`app/ai/ocr_client.py`): one request per page, up to 4 at a time per file, rendered as they are needed so a long scan never sits in memory. The model is `OCR_MODEL` with effort `low`, `max_tokens` 8000, and `fallbacks: "default"` (section 9.1). The system prompt says the image is data: instructions inside it are transcribed, never followed. The instruction is: *"Transcribe all text in this image exactly. Keep headings, lists and reading order. Write tables as Markdown tables. Write [illegible] where text can't be read. Output only the transcription."*
+- **The result:** Claude's Markdown becomes blocks (`#` headings, `|` tables with a separator row added if missing, paragraphs) with `from_ocr = true`, merged with the PDF's typed pages in page order, then chunked as usual. A page cut off at `max_tokens` keeps what was read.
+- **Failures:**
+  - A page Claude declines (`stop_reason: "refusal"`, even after the fallback) is left empty.
+  - A page that fails 3 times (after the SDK's own retries) is also left empty. A bad request isn't retried.
+  - Either way the file is still Ready, with a warning naming the pages ("Pages 3 and 7 couldn't be read.").
+  - A refused API key (401/403) fails the file at once with "Scanned pages couldn't be read: the Claude API key was refused…", so it can be retried once the key is fixed.
+- **No API key** (`ANTHROPIC_API_KEY` empty): scanned pages and images are skipped. The file is Ready with the warning "… can't be read until the Claude API key is set up". Tests always blank the key, so they never call the real API.
+- **Tracking:** `files.progress_done/progress_total` drive "Processing 3/10" on the Documents screen, and `files.ocr_pages` counts pages read. Tokens and cost go to `usage_daily` (kind `ocr`, the uploader), priced by the model that actually answered (a fallback may answer).
+- **Retrying a file reads all its scanned pages again**, at full cost.
 
 ### 6.3 Chunking and the Pinecone layout
 
 **Chunking** (`chunking.py`, pure functions, unit-tested):
-- Target 600 tokens and maximum 800 per chunk, with 100 tokens of overlap. Splits happen at headings, then paragraphs, then sentences, never mid-sentence.
+- Target 600 tokens and maximum 800 per chunk, with 100 tokens of overlap (whole sentences, only within a section). Splits happen at headings, then paragraphs, then sentences, never mid-sentence; a sentence longer than a chunk is split between words.
+- Tokens are estimated as characters ÷ 4 (a little high for English), keeping chunks well inside the embedding model's input limit.
+- A heading starts a new chunk once the current chunk has 100+ tokens of content. A shorter section end (e.g. a 4-item checklist) joins the chunk before it when it fits, rather than starting the next section's chunk. A heading with nothing under it at the very end is dropped.
+- A chunk's `heading` is the heading path its content shares (`Handbook › Pricing`).
 - A Markdown table is never split across chunks unless it alone exceeds 800 tokens. In that case it is split by rows and the header row is repeated.
-- **Excel:** each row becomes `Header1: value; Header2: value; …`. Rows are grouped into chunks of at most 800 tokens, and every chunk starts with `File: {name} — Sheet: {sheet}` and the column list.
+- **Excel and CSV:** each row becomes `Row 7: Header1: value; Header2: value; …` (empty cells left out; the row number is the one Excel shows, so answers can cite it). Rows are grouped into chunks (target 600, at most 800 tokens, no overlap), and every chunk starts with `File: {name} — Sheet: {sheet}` (no sheet for CSV), any title lines, and `Columns: …`. A row with a huge cell is split between words as `Row 7 (continued): …`. A sheet with column names but no rows is one small chunk.
 - Every chunk is prefixed with a context line (`{file name} › {heading}`) before embedding, so search knows where the chunk comes from.
 
 **Pinecone** (one serverless index, `PINECONE_INDEX`):
@@ -206,20 +216,25 @@ Postgres is the master copy and Pinecone is the search copy. **No code calls Pin
 | Verified answer created / edited / enabled / restored | upsert `va_{id}` into `verified` |
 | Verified answer disabled / expired / deleted | delete `va_{id}` from `verified` |
 
-- The **sync worker** processes `kb_ops` in order, upserting in batches of 96 records. On failure it retries with backoff (10 s, 1 min, 5 min, 30 min, then hourly). The item stays **Sync pending** in the UI until done. After 24 h of failures the Owner gets a notification.
+- The **sync worker** (every 10 s, inside the worker process) sends `kb_ops` strictly in `seq` order, upserting in batches of 96 records and deleting in batches of 1000. An upsert reads its records from Postgres when it is sent, so anything deleted since is skipped. On failure the op is retried with backoff (10 s, 1 min, 5 min, 30 min, then hourly) and **every later op waits**, so a delete can never overtake an earlier upsert (or the other way round). The file shows **Sync pending** in the UI until done. After 24 h of failures the Owner gets a notification (build step 12).
+- **Not configured** (`PINECONE_API_KEY` empty): ops wait in the outbox and are sent once a key is set.
+- Records: `_id` = chunk id, `text` = context line + chunk text (spreadsheet chunks already carry `File: … — Sheet: …`), `file_id`, `file_name`, `page_from`, `page_to`, `sheet`. Fields that are empty are left out, because Pinecone metadata can't hold nulls.
 - Search treats a pending delete as already applied. Results whose ID belongs to a deleted or disabled item in Postgres are dropped before they reach Claude, so a deleted item is **never used in an answer, even while Pinecone is catching up**.
-- **Nightly check (03:00 server time):** for each namespace, the worker lists all Pinecone IDs and compares them with Postgres. Missing IDs are upserted, extra IDs are deleted, and the counts are written to the audit log.
-- **Rebuild index** (Owner, Settings → Knowledge base): re-upserts every active chunk and verified answer from Postgres, then deletes any other ID. It shows progress, and answering keeps working during the rebuild.
+- **Nightly check (03:00 UTC, or at the worker's first start after 03:00):** the worker lists all Pinecone IDs and compares them with Postgres. Upserts are queued for missing IDs and deletes for extra ones. The counts are stored (setting `kb_last_check`, shown in Settings) and written to the audit log.
+- **Rebuild index** (Owner, Settings → Knowledge base, after a confirmation): a `kb_rebuild` job queues an upsert of every live record and a delete of any other ID. Answering keeps working during the rebuild.
+- **Settings → Knowledge base** shows the index name, searchable files and chunks, what is waiting to sync (and since when), the last check's counts, the last error while retrying, and set-up instructions when Pinecone isn't configured.
+- **Setup:** `python -m app.cli setup-pinecone` creates the index with integrated embedding (`PINECONE_EMBED_MODEL`, default `llama-text-embed-v2`, field `text`) in `PINECONE_CLOUD`/`PINECONE_REGION` (default aws / us-east-1) and prints its host. Optionally set `PINECONE_HOST` to that host, which saves a lookup per start. The embedding model is fixed when the index is created, so it is an environment setting rather than an Owner setting.
 
 ### 6.5 Answering a question
 
-1. **Conversation context:** the last 10 messages of the conversation are used, with **corrected** answers in place of the originals.
+1. **Conversation context:** the last 10 messages of the conversation are used, with **corrected** answers in place of the originals. Old `[n]` markers are stripped from earlier answers (their numbers belonged to another set of documents), and the turns always start with the person and alternate. A new conversation's title is its first question (up to 80 characters).
 2. **Retrieval query:** for a follow-up question, Claude rewrites it into a standalone question (for example "and for the second plan?" becomes "What does the Pro local SEO plan include?"). A first question is used as is. The query is stored as `answers.retrieval_query`.
 3. **Search:**
    - `verified`: top 3. If the best match has a rerank score ≥ **0.90** (setting `verified_match`), it is a **verified hit**.
    - `docs`: top 20 by vector search, reranked to the top 8. Results below a rerank score of **0.20** (setting `min_relevance`) are dropped.
-   - Items that are deleted, disabled or pending deletion in Postgres are dropped (section 6.4).
-4. **No relevant items** (nothing left after step 3): the outcome is `no_answer`. The reply is "I couldn't find this in the knowledge base." A review is created (reason `no_answer`), and the user sees "🟠 Sent to our team. We'll notify you when there's an answer."
+   - Items that are deleted, disabled or pending deletion in Postgres are dropped (section 6.4). The text sent to Claude is Postgres's master copy of each chunk, never Pinecone's.
+   - *Built in step 8:* the `docs` search. *Built in step 11:* the `verified` search. Verified answers below `min_relevance` are left out like documents; those kept come first, numbered before the documents. Only active, unexpired, undeleted ones are used, checked in Postgres (an expiry date that has passed counts at once, before the nightly job marks it).
+4. **No relevant items** (nothing left after step 3): the outcome is `no_answer`. The reply is "I couldn't find this in the knowledge base." A review is created (reason `no_answer`), and the user sees "🟠 Sent to our team. We'll notify you when there's an answer." Claude is not called. *Step 8 saves the answer with outcome `no_answer`; the review and the 🟠 label come with steps 10–11.*
 5. **Answer:** Claude is called with streaming (section 9.2). The context blocks are numbered `[1]…[n]`, and verified answers are marked as *team-verified*. The rules given to Claude:
    - Answer only from the context.
    - A team-verified answer overrides document text when they conflict.
@@ -227,8 +242,9 @@ Postgres is the master copy and Pinecone is the search copy. **No code calls Pin
    - Say plainly when the context only partly answers the question.
    - Never invent prices, dates, names or numbers.
    - Use plain English and short paragraphs.
-6. **Sources:** the `[n]` markers are mapped to `answers.sources`. The UI shows them as chips (e.g. `Pricing.pdf · p.2`, `Fees 2026.xlsx · March`, `✔ Verified answer`). Clicking a document chip opens the original file at that page.
+6. **Sources:** the `[n]` markers are mapped to `answers.sources` (only the items actually cited, in the order of their numbers; the chip keeps the number used in the text). The UI shows them as chips (e.g. `Pricing.pdf · p.2`, `Fees 2026.xlsx · March`, `✔ Verified answer`). Clicking a document chip opens the original file at that page.
 7. **Confidence** (section 6.6) is calculated after the answer finishes streaming, and the badge appears about a second later.
+8. **Failures:** if Pinecone or Claude fails, the question is withdrawn (its message is deleted) and the person sees "The answer service is busy, please try again" with **Try again**. If the person closes the page mid-answer, the text so far is saved with `stop_reason` `client_closed`. If a fallback model took over or the answer was declined, a `replace` event swaps the streamed text for the saved final text.
 
 ### 6.6 Confidence score
 
@@ -244,6 +260,13 @@ Postgres is the master copy and Pinecone is the search copy. **No code calls Pin
 - **High:** status `auto`, no review, and the badge is hidden (the answer looks normal).
 - **Low:** status `in_review`, a review is created (reason `low_confidence`), and the answer shows the label "🟠 Being checked by our team".
 - The threshold and weights are settings. They are tuned in build step 15 against the evaluation set.
+- *Built in step 9:*
+  - Scores round half up (62.5 → 63).
+  - If the support check fails or returns something unusable, it counts as no support (`reason: check_failed`), so the answer is Low and gets checked by a person. The answer itself is still delivered.
+  - A refused or cut-off answer gets 0 without calling the check.
+  - The check runs after the `sources` event, and the `confidence` event follows. An answer is scored even if the page closes after it was saved. A partial answer saved because the page closed mid-answer (`client_closed`) is not scored.
+  - The check's tokens go to `usage_daily` (kind `check`) and into `answers.usage.check`; `answers.usage.cost_usd` is the total for the answer.
+- *Built in step 11:* `retrieval` is the best rerank score of anything given to Claude, verified answers included (a strong verified match that isn't quite a verified hit shouldn't count as no match).
 
 ### 6.7 Review flow (Telegram + web)
 
@@ -277,7 +300,19 @@ Sources: [1] Onboarding.pdf p.3
 - **Web Review Queue:** the same reviews and actions, for reviewers who prefer the browser. Both channels update the same rows.
 - **Reminders:** an unclaimed or undecided review gets a reminder in the group after **4 h** (setting). After **24 h** (setting), every Owner is notified by in-app notification and email.
 - **Admin review** of any answer from the Answer Log (section 7.5) creates a review with reason `admin`, decided straight away in the web app (no Telegram message).
-- **Flags:** 👎 on an answer sets `flagged = true` and opens an optional "What was wrong?" note. It **does not** go to Telegram. It appears in the Answer Log under **Flagged** for the Owner.
+- *Built in step 10:*
+  - A question with no answer gets status `in_review` and a review straight away. Its card has **✏️ Answer**, **🚫 No answer known** and **❓ Needs info** (there is nothing to approve).
+  - The bot posts and edits group messages from worker jobs, so a slow Telegram never slows answering and a failed call is retried. A review decided on the web before its card was posted is posted as already decided, without buttons.
+  - Buttons work only in the chosen group, and only for a linked, active Owner or Reviewer. Anyone else gets a short notice that only they can see ("Your Telegram isn't linked to a reviewer account."). Replies from strangers in the group are ignored.
+  - Edit, Reject and Needs info claim the review and post a prompt as a reply to the card. Only the reviewer who claimed it can answer the prompt; anyone else is told who is handling it. Reject's prompt also has a **🚫 No answer known** button.
+  - A question asked from the web is posted under the card ("❓ Ali asked about #R-142: …"), and so is the asker's reply ("💬 Sara replied to #R-142 (Ali, it's back with you): …").
+  - The web queue also has **Claim** and **Release**. Deciding an open review on the web claims it in the same step.
+  - Reminders and escalations skip reviews waiting for the asker (`needs_info`). Each review is reminded once and escalated once. Until notifications (step 12), escalations go to Owners by email only.
+  - **Linking:** the code is 8 letters and digits (no 0/O or 1/I), valid for 10 minutes and single use. `/link CODE` or the `t.me/<bot>?start=CODE` link both work. One Telegram account belongs to one person: linking it to someone else unlinks the previous person. People can unlink on their Profile.
+  - **Detect group:** the bot remembers the groups it is added to (from Telegram's `my_chat_member` updates), and Settings → Reviews lists them. **Send a test message** checks the bot and the group.
+  - `python -m app.cli setup-telegram` needs `TELEGRAM_BOT_TOKEN`, a `TELEGRAM_WEBHOOK_SECRET` of 16+ characters and an `https://` `APP_URL`. It registers the webhook (`message`, `callback_query` and `my_chat_member` updates) and stores the bot's username.
+  - The webhook answers 200 to every update that carries the right secret, even ones it ignores, so Telegram doesn't resend them.
+- **Flags:** 👎 on an answer sets `flagged = true` and opens an optional "What was wrong?" note. It **does not** go to Telegram. It appears in the Answer Log under **Flagged** for the Owner. Pressing the same thumb again clears it, and 👍 clears a flag and its note. Only the person who asked can do this; anyone else gets a 404, as if the answer didn't exist.
 
 ### 6.8 Delivering the reviewed answer to the asker
 
@@ -289,6 +324,11 @@ Sources: [1] Onboarding.pdf p.3
 - **Notification:** 🔔 in-app always, plus email or Telegram according to `users.notify_channel`. The link opens the conversation scrolled to that answer.
 - **Later follow-up questions** in that conversation use the corrected text (section 6.5 step 1).
 - **High-confidence answers corrected later** by the Owner are delivered the same way.
+- *Built in step 11:*
+  - The dot on a conversation means an answer in it was reviewed (`answers.delivered_at`) after the asker last opened the conversation (`answers.seen_at`). Opening it clears the dot. An Owner looking at someone else's conversation doesn't count.
+  - The end-of-conversation notice appears for a reviewed answer that isn't the newest one, until the asker has seen it: "🔔 An answer above was corrected — Jump to it" (or "checked by our team" when it was approved).
+  - A changed answer hides its old source chips, because they belonged to the original. **Show original** shows the original text with its chips.
+  - Corrected text is used in later follow-ups (section 6.5 step 1), and **Copy** copies the corrected text.
 
 ### 6.9 Verified answers
 
@@ -297,10 +337,20 @@ Sources: [1] Onboarding.pdf p.3
 - **Page:** the Verified Answers page has search and status filters, plus Edit, Disable/Enable, Set expiry, Delete (to trash) and History (`verified_answer_versions`, with restore).
 - **Expiry:** a daily job sets `expired` when `expires_at` passes, and the record is removed from Pinecone.
 - **Source deleted:** when a file is deleted, every active verified answer with that file in `source_file_ids` gets `needs_check = true` ("Source deleted: {file}"). It stays active and is listed under **Needs check**.
+- *Built in step 11:*
+  - **What is stored:** the question is the standalone retrieval question (a follow-up like "and per year?" is stored as the full question). The answer is the reviewed text without its `[n]` markers, which pointed at documents. `source_file_ids` are the files the answer cited. Pinecone gets `Q: … A: …` as the record text.
+  - **One per answer:** a later review of the same answer (for example an Owner's correction) updates the verified answer made from it, as a new version, instead of adding another. **No answer known** disables what was verified from that answer.
+  - **Near-duplicates** are found with the reranker on the `verified` namespace. On the web, the API replies 409 `duplicate` with the existing question and answer; the reviewer chooses **Update the existing one** or **Add as a new one**, and the decision is sent again with `verified_choice` (`update:<id>` or `new`). Nothing changes until they choose. In Telegram the existing one is updated, and the bot says so under the card. Without Pinecone there is no check.
+  - A file replaced by a new version also flags its verified answers ("Source replaced by a new version: {file}"). Editing the text, or **Mark as checked**, clears the flag.
+  - Every change of the text is a new version; **Restore this version** saves the old text as a new version. Version history is kept with the verified answer and deleted with it when purged from the trash.
+  - Expiry is set to the end of the chosen day. An expired answer can be enabled again only after its date is changed or cleared. Restoring a deleted answer whose date has passed restores it as expired.
+  - The nightly check and **Rebuild index** cover both namespaces.
 
 ### 6.10 Marketing threads
 
 **Platforms:** Reddit and Facebook at launch (setting rows, section 10). The Owner can add, disable or reorder platforms and edit each one's style prompt and disclosure line without code changes. A new platform uses the `generic` URL parser.
+
+**Finding the conversation** (changed in step 17): **Reddit** threads are found by the post's unique code, from a pasted link or the code alone. **Facebook** group posts have no usable links (the app gives share links, and one post can show under several IDs), so Facebook threads are found by **the person's name**. Platforms the Owner adds use links (the generic parser).
 
 **URL → thread ID** (`marketing/url_parser.py`, pure function, unit-tested with fixtures). The parser returns `{platform, thread_id, community, comment_id}` or an error message.
 - **Before parsing:** trim the URL, require `http(s)`, lower-case the host, strip `www.`, `m.`, `old.`, `new.`, `np.`, `mbasic.` and `web.`, and drop `utm_*`, `fbclid`, `rdt`, `share_id`, `ref`, `__cft__` and similar tracking parameters.
@@ -310,15 +360,20 @@ Sources: [1] Onboarding.pdf p.3
   - `redd.it/{post}` → `reddit:{post}`
   - Share links `/r/{sub}/s/{code}` → error: "This is a share link. Open it and copy the full address from the browser bar."
   - Post IDs are lower-cased and base-36 (`[a-z0-9]+`).
-- **Facebook** (`facebook.com`, `fb.com`):
-  - `/groups/{group}/posts/{post}` and `/groups/{group}/permalink/{post}` → `facebook:{post}`, community = group slug or ID
-  - `/permalink.php?story_fbid={post}&id={owner}` and `/{page}/posts/{post}` → `facebook:{post}`
-  - The `comment_id` / `reply_comment_id` query parameter is captured as the comment.
-  - `/share/p/{code}`, `/share/{code}` and `fb.me/...` → the same "share link" error as Reddit.
-  - Facebook can show one post under different IDs (a numeric ID or a `pfbid…` token). When a new Facebook thread is created, the engine also shows **"Possible matches"**: open threads in the same group whose text is similar (Postgres trigram similarity ≥ 0.6) so the user can choose an existing thread instead.
+- **Reddit code alone:** a bare post code such as `1xd8w7u` (base-36, 4–12 characters) → `reddit:{code}`.
+- **Facebook links** are not used: pasting one says "Facebook posts are found by the person's name: choose Facebook and type their name."
 - **Generic:** the thread ID is `{slug}:` + SHA-1 of the cleaned URL (no fragment, no query).
 
-**The "Paste a URL" box** (top of the Marketing screen) does one of two things:
+**Facebook: find by name** (step 17):
+- The person types a name (a real name, or "Anonymous member"). There is no group to choose: GridRankers is active in one or two groups.
+- The engine lists every Facebook thread whose `person` matches: the same name ignoring capitals and spaces, or a close spelling (trigram similarity ≥ 0.5). Newest activity first, at most 20, closed threads included. Each shows the first question, our last reply, the date and the status.
+- If the person also pasted the new message, the thread whose wording is closest to it is marked **Closest match**.
+- They pick one (the thread opens with **Add their reply** ready, the name filled in and the new message pasted), or **New conversation with {name}**: paste the question and draft. A new name-based thread's ID is `facebook:` + a random ID; its title is the question's start.
+- A shared name can't cause a mistake: a person always sees the earlier conversations and chooses.
+
+- *Built in step 17:* `threads.person` (migration 0014; existing threads take the name given with their first message). `GET /threads/by-name` lists Facebook threads by name; the closest one to the pasted message is found by word similarity with each thread's messages. Finding a Reddit post by link or code always opens its thread with **Add their reply** ready. Facebook threads have no "Open on Facebook" link and their reply form has no link field; a link given at Mark as posted is kept as a note only. Thread rows show the person's name.
+
+**The "Paste a Reddit link or code" box** (top of the Marketing screen) does one of two things:
 - **New ID:** opens *New thread*. It shows the detected platform and community, asks for the title (optional) and the question text (required), with the poster's username optional, then **Draft reply**.
 - **Existing ID:** opens that thread. If the thread was created by someone else, it shows "Ali started this thread on 10 Oct". If the URL has a comment ID matching a message in the thread, that message is preselected as the parent.
 - **Closed thread:** it reopens it.
@@ -347,6 +402,17 @@ Sources: [1] Onboarding.pdf p.3
 - **Auto-close:** threads with no activity for 14 days (setting) are closed (`close_reason = inactive`). Adding a reply reopens them.
 - **Thread statuses** shown in lists: Waiting for us · In review · Ready to post · Waiting for them · Closed. The status is that of the most urgent open branch.
 - **Later (not v1):** a read-only Reddit checker can fill in `them` messages automatically using the stored comment IDs. The data model already supports it.
+- *Built in step 13:*
+  - **URL parser:** also accepts `/user/{name}/comments/{post}` (community `u/{name}`) and `story.php`; a URL typed without `https://` gets it. Besides `utm_*`, these tracking parameters are dropped: `fbclid`, `rdt`, `share_id`, `ref`, `ref_source`, `ref_campaign`, `__cft__`, `__tn__`, `mibextid`, `rdid`, `sh`, `context`, `s`, `si`, `igshid`, `notif_id`, `notif_t`, `acontext`, `_rdc`, `_rdr`. Facebook post IDs are numbers or `pfbid…` tokens; `reply_comment_id` wins over `comment_id`. A switched-off platform's links say "Answering on Reddit is switched off in Settings."; an unknown website says the Owner can add it. A generic platform is matched by its `hosts`.
+  - **New thread:** the title defaults to the question's first 120 characters. After the thread is made, the first draft is made straight away. **Possible matches** are checked when the thread is created (the question text is needed): open threads in the same Facebook group whose first message has trigram similarity ≥ 0.6. The person can open one of them or choose "It's a different post". (Removed in step 17: Facebook threads are now found by name.)
+  - **Opening by URL:** pasting the link to a comment we stored (ours or theirs) opens the thread with the **Add their reply** form already open and that comment chosen as the parent.
+  - **Drafts:** retrieval uses the original question plus the message being answered. The thread is given to Claude as `<forum_message id="m1" by="them|us" author="…" reply_to="m…">` with `answer_this="true"` on the target. Only their messages and our posted replies are included, and a posted reply corrected since carries its corrected text. `max_tokens` 1500, effort `medium`, the same model and refusal fallback as answers. A refused draft says "I can't draft a reply to this one…" and scores 0, so a person decides. The disclosure line is added by code (not left to Claude) when a draft mentions GridRankers and doesn't already contain the line. Tokens go to `usage_daily` (kind `draft`).
+  - **Regenerate** discards the earlier unposted draft for the same message and withdraws its review; the Telegram card shows "⏹ Withdrawn". **Edit by hand** changes the text to be posted. **Copy** and **Mark as posted** are locked while a draft is in review.
+  - **Reviews of drafts** show "Marketing · Reddit · r/localseo" and link to the thread. Approve or Edit makes the draft ready, with the reviewer's text as the reply. **No answer known** discards it (the thread is waiting for us again). The person who drafted it is told ("Your Reddit draft is ready to post", or that it was rejected). **Add to knowledge base** is on by default for Edit and Reject-with-text and off for Approve. Telegram uses these defaults.
+  - **Correction after posting:** the posted text stays as it was posted, and the thread shows the corrected reply with **Copy the corrected reply**.
+  - **Statuses:** for each of their messages, our posted reply means "waiting for them". Otherwise the latest unposted draft decides: in review, ready to post, or else "waiting for us". The thread shows the most urgent of these.
+  - **Who:** close and reopen follow section 3 (a User closes threads they started or posted in). Delete (Owner) moves the thread to the trash and withdraws its waiting reviews. Restore brings it back.
+  - **Settings → Platforms & communities:** switch a platform on or off; edit its style and disclosure line; add, edit and remove community notes; add a platform (generic parser, with its websites).
 
 ### 6.11 Notifications
 
@@ -360,10 +426,18 @@ Sources: [1] Onboarding.pdf p.3
   - (Owners) review escalations, sync failures, and failed files after 3 retries.
 - The bell shows the unread count, and there is a "Mark all read" action.
 - Email: plain text plus simple HTML, from `SMTP_FROM`, with a one-click "Stop these emails" link that switches the user to in-app only.
+- *Built in step 12:*
+  - **One rule for every event:** the bell always gets it, plus the person's chosen channel. This also applies to Owner escalations, so an Owner who chose in-app only isn't emailed (section 6.7 said "in-app and email"; following the person's choice keeps "Stop these emails" meaningful).
+  - Email and Telegram are sent by a worker job and retried if they fail. If someone chose Telegram but it has been unlinked, the notification is emailed instead. Unlinking Telegram moves a Telegram choice back to email. Telegram can be chosen only once linked. While email isn't configured, nothing is emailed and the bell is enough.
+  - People aren't told about their own actions (an Owner correcting an answer to their own question). Deactivated people get nothing.
+  - **Who gets what:** the asker, when a review is decided ("Our team checked an answer you got: it's right", "Our team corrected an answer you got", "An answer you got was wrong") or a reviewer asks them something. Every Owner, when a review waits past the escalation time, when a file fails after its 3 tries (a file that can never be read, such as a password-protected one, is only shown to the uploader), and when a Pinecone op has kept failing for 24 hours. Each Owner is told once per file and once per op. Marketing events come with step 13.
+  - **"Stop these emails"** is a signed link (HMAC with `SECRET_KEY`) that works without signing in. It opens a page with one button; the switch happens on the button press, so mail scanners that open links can't switch emails off by themselves. Emails also carry a `List-Unsubscribe` header.
+  - **Live updates:** the app polls `/api/updates` every 15 s while the tab is visible, and at once when the tab becomes visible again. The answer is a cursor plus small facts: my answers that changed, new notifications, the unread count, whether any file changed, and (for Owners and Reviewers) how many reviews are waiting. An open chat reloads when one of its answers changed, the chat list refreshes its dots, Documents reloads when a file changed, and the Review Queue badge updates.
+  - **Profile → Notifications:** In the app only / Email / Telegram.
 
 ### 6.12 Jobs, trash and audit
 
-- **Jobs:** the worker claims jobs with `SELECT … FOR UPDATE SKIP LOCKED`. Up to 3 attempts with backoff, then `failed`, shown in Settings → System. Scheduled jobs:
+- **Jobs:** the worker claims jobs with `SELECT … FOR UPDATE SKIP LOCKED`. Up to 3 attempts (retried after 10 s, then 1 min), then `failed`, shown in Settings → System. A job left `running` for 15 minutes (its worker died) counts as a failed attempt. Done jobs are kept 14 days, failed ones 90. Scheduled jobs (times in UTC, the containers' clock):
 
 | Job | Schedule |
 |---|---|
@@ -391,15 +465,18 @@ A clean, simple layout. Left sidebar: **Ask**, **Documents**, **Marketing**, **V
 - **Messages:** answers stream in, with source chips under each answer, 👍/👎, **Copy**, and the confidence badge only when it is low or no-answer. Labels follow section 6.8.
 - **Needs info:** a reviewer's question appears in the chat as a highlighted card with a reply box.
 - **Empty state:** "Ask anything about GridRankers' documents."
+- *Built in step 8:* the conversation list (search, **+ New chat**, delete with confirm; the open conversation is in the URL as `?c=<id>`), streamed Markdown answers (raw HTML is never rendered; links open in a new tab), source chips that open the file at its page, **Copy**, and **Try again** after an error. Enter sends; Shift+Enter adds a new line. 👍/👎 and the badge come in step 9, the dot and Needs info in steps 10–11.
 
 ### 7.2 Documents
 - **Upload area:** drag and drop or browse, accepting several files.
 - **Columns:** Name, Type, Pages/Sheets, Status (Queued / Processing x/y / Ready / Failed + reason / Sync pending), Uploaded by, Date.
 - **Row actions:** Open, Upload new version, Retry (if failed), Delete.
 - **Filters:** search and type filter. Shows the total pages and the OCR pages used this month.
+- **Uploading:** one file per request (with a progress bar), so Caddy can cap request bodies at 210 MB; the app enforces the real per-file limit.
+- **Trash tab** (Owner only): deleted files with who deleted them, when they will be removed for good, and Restore / Delete forever.
 
 ### 7.3 Marketing
-- **Top:** the **Paste a Reddit or Facebook URL** box (section 6.10).
+- **Top:** two tabs: **Reddit** (paste the link or the post's code) and **Facebook** (type the person's name, optionally paste their new message) (section 6.10).
 - **Tabs with counts:** Waiting for us · In review · Ready to post · Waiting for them · Closed.
 - **Filters:** platform, community, posted by, mine only.
 - **Thread rows:** title, platform icon and community, last activity, posted by, and **Open on {platform}**.
@@ -413,8 +490,11 @@ A clean, simple layout. Left sidebar: **Ask**, **Documents**, **Marketing**, **V
 - **Table:** date, asked by, type (Chat / Reddit / Facebook), question, confidence (🟢 / 🟠 / 🔴 no answer), status, sources, feedback.
 - **Filters:** high/low/no answer, status, flagged, platform, person, date range.
 - **Detail:** the full answer, sources, `confidence_parts` explained ("Search match 81 · Support: partial"), and the review history. Owners also get **Approve / Edit / Reject** on any answer.
+- *Built in step 11:* the Owner's **Approve / Edit / Reject** (with **No answer known**) in the detail view. If the answer already has a review waiting (for example in Telegram), the Owner takes it over and its Telegram card shows the result; otherwise an Owner review (reason `admin`) is opened and decided at once, with no Telegram message. **Needs info** isn't offered there.
 - **Knowledge gaps tab:** questions with no answer or "no answer known", grouped by similarity, with counts.
 - **Stats strip:** answers this month, % high confidence, % corrected, average review time.
+- *Built in step 10:* each answer's review history in the detail view, and the average review time (from a review opening to its decision, for reviews decided this month; Owner reviews are left out).
+- *Built in step 9:* the table (50 per page, newest first), all filters, the detail view (with "Searched for" when a follow-up was rewritten, unsupported claims, the 👎 note and the cost), Knowledge gaps (the last 90 days; questions join a group when at least half of their meaningful words match) and the stats strip. % high counts scored answers only; % corrected counts `corrected` and `wrong_no_answer`. Average review time arrives with reviews (step 10), and the Owner's Approve / Edit / Reject with step 11.
 
 ### 7.6 Review Queue (Reviewers, Owners)
 - Open and claimed reviews, oldest first, each with its reason and age. The detail view mirrors the Telegram message and has the same actions, a full-text editor and the "Add to knowledge base" tick (marketing only).
@@ -438,23 +518,23 @@ A clean, simple layout. Left sidebar: **Ask**, **Documents**, **Marketing**, **V
 
 ## 8. REST API (`/api`, JSON)
 
-Every route checks the session, the CSRF token (for writes) and `permissions.can()`. Errors use the shape `{error: {code, message, fields?}}`.
+Every route checks the session, the CSRF token (for writes) and `permissions.can()`. Errors use the shape `{error: {code, message, fields?, details?}}` (`details` carries extra data, such as the existing verified answer with a 409 `duplicate`).
 
 | Area | Endpoints |
 |---|---|
 | Auth | `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/forgot`, `POST /auth/reset`, `POST /auth/accept-invite` |
 | Conversations | `GET /conversations`, `POST /conversations`, `GET /conversations/{id}` (messages + answers), `DELETE /conversations/{id}` |
-| Ask | `POST /conversations/{id}/ask` → **SSE** stream: `delta` events, then `sources`, then `confidence`, then `done` |
-| Answers | `POST /answers/{id}/feedback` `{value: up|down, note?}`, `POST /answers/{id}/needs-info-reply` |
+| Ask | `POST /conversations/{id}/ask` `{question}` → **SSE** stream: `delta` events (`{text}`), an optional `replace` (`{text}`, the final text), then `sources`, then `confidence` (step 9), then `done` (`{answer_id, outcome, stop_reason}`); or `error` (`{message}`). `503 not_configured` while the Anthropic or Pinecone key is missing |
+| Answers | `POST /answers/{id}/feedback` `{value: up|down|none, note?}`, `POST /answers/{id}/needs-info-reply` |
 | Files | `GET /files`, `POST /files` (multipart), `POST /files/{id}/version`, `POST /files/{id}/retry`, `GET /files/{id}/download`, `DELETE /files/{id}` |
-| Reviews | `GET /reviews`, `GET /reviews/{id}`, `POST /reviews/{id}/claim`, `POST /reviews/{id}/decide` `{action: approve|edit|reject|needs_info|no_answer, text?, note?, add_to_kb?}` |
-| Answer Log | `GET /answer-log` (filters, pagination), `GET /answer-log/gaps`, `POST /answers/{id}/admin-review` |
-| Verified | `GET /verified`, `GET /verified/{id}`, `PATCH /verified/{id}`, `POST /verified/{id}/disable`, `POST /verified/{id}/enable`, `DELETE /verified/{id}`, `GET /verified/{id}/history` |
-| Marketing | `POST /threads/resolve` `{url}` → `{found, thread?, parsed, possible_matches?, error?}`, `POST /threads`, `GET /threads`, `GET /threads/{id}`, `POST /threads/{id}/replies`, `POST /threads/{id}/draft` `{parent_id, instruction?}`, `PATCH /thread-messages/{id}`, `POST /thread-messages/{id}/posted` `{url?}`, `POST /threads/{id}/close`, `POST /threads/{id}/reopen`, `DELETE /threads/{id}` |
-| Notifications | `GET /notifications`, `POST /notifications/read` |
-| Live updates | `GET /updates?since=` (changed answers, reviews, notifications and file statuses for this user) |
-| Users | `GET /users`, `POST /users/invite`, `PATCH /users/{id}`, `POST /users/{id}/reset-password`, `POST /me/telegram-link` |
-| Settings | `GET /settings`, `PATCH /settings`, `GET /kb/status`, `POST /kb/rebuild`, `GET /usage`, `GET /audit` |
+| Reviews | `GET /reviews?show=waiting|mine|decided`, `GET /reviews/count` (the sidebar badge), `GET /reviews/{id}`, `POST /reviews/{id}/claim`, `POST /reviews/{id}/release`, `POST /reviews/{id}/decide` `{action: approve|edit|reject|needs_info|no_answer, text?, note?, add_to_kb?}` |
+| Answer Log | `GET /answer-log` (filters `outcome`, `status`, `flagged`, `kind`, `person`, `date_from`, `date_to`, `q`, `page`), `GET /answer-log/gaps`, `GET /answer-log/{id}`, `POST /answers/{id}/admin-review` `{action: approve|edit|reject|no_answer, text?, note?, verified_choice?}` |
+| Verified | `GET /verified?show=active|disabled|expired|needs_check|all&q=` (with counts per tab), `GET /verified/{id}`, `PATCH /verified/{id}` `{question?, answer?, expires_at?, clear_expiry?, checked?}`, `POST /verified/{id}/disable`, `POST /verified/{id}/enable`, `DELETE /verified/{id}`, `GET /verified/{id}/history`, `POST /verified/{id}/restore-version` `{version}` |
+| Marketing | `POST /threads/resolve` `{url}` → `{found, thread?, parsed, matched_message_id?, reopened, error?}`, `POST /threads` `{url?, platform?, question, title?, author_name?}` (a link for Reddit; `platform: "facebook"` plus `author_name` for Facebook; 409 `exists`), `GET /threads/by-name?name=&text=` (Facebook threads for a name, closest match marked), `GET /threads`, `GET /threads/{id}`, `POST /threads/{id}/replies`, `POST /threads/{id}/draft` `{parent_id, instruction?}`, `PATCH /thread-messages/{id}`, `POST /thread-messages/{id}/posted` `{url?}`, `POST /threads/{id}/close`, `POST /threads/{id}/reopen`, `DELETE /threads/{id}`; platforms: `GET /platforms`, `POST /platforms` (Owner), `PATCH /platforms/{id}`, `POST /platforms/{id}/communities`, `PATCH /communities/{id}`, `DELETE /communities/{id}` |
+| Notifications | `GET /notifications` (your own, newest first, with the unread count), `POST /notifications/read` `{ids?}` (none: mark all), `GET`+`POST /notifications/stop-emails?u=&t=` (signed link, no session) |
+| Live updates | `GET /updates?since=` → `{cursor, answers, notifications, unread, files_changed, reviews_waiting}` |
+| Users | `GET /users`, `POST /users/invite`, `PATCH /users/{id}`, `POST /users/{id}/reset-password`, `POST /me/telegram-link` (a one-time code), `DELETE /me/telegram-link` |
+| Settings | `GET /settings`, `PATCH /settings` `{values: {key: value}}` (each key is checked; a wrong value returns 422 with a message per field; every change is audited), `POST /settings/telegram-test`, `GET /kb/status`, `POST /kb/rebuild`, `GET /usage`, `GET /audit` |
 | Trash | `GET /trash`, `POST /trash/{id}/restore`, `DELETE /trash/{id}` |
 | Telegram | `POST /telegram/webhook` (secret header, section 6.7) |
 | Health | `GET /health` (DB, Pinecone and Claude reachability, for monitoring) |
@@ -483,19 +563,33 @@ Every route checks the session, the CSRF token (for writes) and `permissions.can
 - `messages.stream(...)`, `max_tokens` 4000 (answers) / 1500 (drafts).
 - The system prompt is frozen text with no dates or user names, so **prompt caching** works: `cache_control` is set on the system block. Retrieved context and the question go after the cache breakpoint. `usage.cache_read_input_tokens` is logged.
 - The answer text streams to the browser as SSE `delta` events.
+- The follow-up rewrite is a separate, non-streamed call (`max_tokens` 300, effort `low`). A refused or empty rewrite falls back to the question as asked.
+- Each answer's `usage` (requests, tokens, cache reads, cost, and the chunk IDs given to Claude) is saved on `answers.usage` and added to the daily usage totals.
 
 ### 9.3 Support check (structured output)
 
-- `messages.create` with `output_config.format` (JSON schema): `{verdict: "full"|"partial"|"none", unsupported_claims: string[]}`. Input: the question, the numbered context and the answer.
+- `messages.create` with `output_config.format` (JSON schema): `{verdict: "full"|"partial"|"none", unsupported_claims: string[]}`. Input: the question, the numbered context and the answer (in `<answer>` tags, treated as data). `CHECK_MODEL`, effort `low`, `max_tokens` 2000, with the same refusal fallback.
 
 ### 9.4 OCR
 
-- One `image` block per page plus the instruction in section 6.2. `max_tokens` 4000.
+- One `image` block per page plus the instruction in section 6.2. `max_tokens` 8000 (a dense page or table can need more than 4000).
 
 ### 9.5 Cost tracking
 
 - Every call records tokens and the computed cost (prices from settings) in `answers.usage` and `usage_daily`.
 - An Owner alert fires when the month passes `monthly_cost_alert`. There is a per-user daily question limit (default 200).
+
+- *Built in step 14:*
+  - **Prices** live in `app/ai/pricing.py` (per million tokens), not in Settings: they change only when Anthropic's prices do, and an Owner can't usefully edit them. A model missing there is costed at $0 and logged.
+  - **Cost alert:** after every recorded call, the month's total in `usage_daily` (UTC months) is compared with `monthly_cost_alert_usd`. Each Owner is told once per month ("Claude usage passed $100 this month", in the bell and their channel). 0 switches the alert off. It is an alert, not a cap: answering carries on.
+  - **Daily question limit:** counts today's chat answers (UTC day) per person; the next question gets 429 `daily_limit` with "You've asked 200 questions today, the daily limit. It resets at midnight (UTC). The Owner can raise it in Settings." Marketing drafts don't count towards it.
+  - **Rate limits** are counted from rows the app writes anyway (sign-in attempts, chat messages), so they hold across restarts and several API processes: sign-in 10 a minute per IP (429 `rate_limited`, checked before the per-account lockout), asking 20 a minute per person.
+  - **Settings → Answering:** the answer, follow-up and support-check models (any model in the price table, or "Server default", the .env choice) and the answer effort (low–max; also used for drafts). Minimum relevance is edited here too. **Settings → Reviews** gains the verified-answer match level.
+  - **Settings → Limits:** largest upload (1–200 MB; Caddy's coarse limit is 210 MB), questions per person per day, the monthly cost alert and the marketing auto-close days.
+  - **Settings → Usage** (`GET /api/usage?month=YYYY-MM`, Owner): the month's total against the alert, cost per day as bars (hover a day for its cost), and tables by kind and by person ("System" is work nobody asked for, such as OCR of a file whose uploader was removed).
+  - **Settings → System** (`GET /api/system`, Owner): version and environment, jobs waiting (a growing number means the worker is stopped), failed jobs in the last 7 days with the last line of their error, and the last backup from `last-backup.json`, which `ops/backup.sh` writes to `BACKUP_DIR` (late after 36 h).
+  - **Settings → History:** the audit log, newest first, 30 at a time, with old → new values.
+  - **Security headers:** besides Caddy's, the API itself sends `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: same-origin`, `Cache-Control: no-store` and a `default-src 'none'` CSP, so they hold even when the API is reached without Caddy.
 
 **Rough cost with the defaults:** about $0.05–0.07 per question including the support check, and about $0.02 per OCR page (paid once). At 1,000 questions a month that is roughly $50–70, or about half with `claude-sonnet-5-5`.
 
@@ -515,7 +609,7 @@ Every route checks the session, the CSRF token (for writes) and `permissions.can
 | `monthly_cost_alert_usd` | 100 |
 | `thread_auto_close_days` | 14 |
 | `trash_days` | 30 |
-| `embed_model` / `rerank_model` | `llama-text-embed-v2` / `bge-reranker-v2-m3` |
+| `rerank_model` | `bge-reranker-v2-m3` (the embedding model is the env setting `PINECONE_EMBED_MODEL`, fixed at index creation) |
 | `platforms` | Reddit (parser reddit, style "short, plain, helpful, no sales tone, links only if useful"), Facebook (parser facebook, style "friendly, conversational, soft mention allowed where the group permits") |
 | `disclosure_line` (per platform) | "(I work at GridRankers.)" — appended to drafts that mention GridRankers (open decision 1) |
 
@@ -542,6 +636,14 @@ Every route checks the session, the CSRF token (for writes) and `permissions.can
 - `backend/eval/run_eval.py` runs every question through the real pipeline and reports correctness (graded by a Claude judge against the expected answer), the confidence score and cost.
 - It is used to set the threshold (high-confidence answers should be correct ≥ 95% of the time) and to compare models. Every run costs real money, so it runs only when the Owner starts it.
 
+- *Built in step 15:*
+  - **Questions file:** CSV with the columns `question` and `expected` (Excel's "CSV UTF-8" works), or JSON lines. An empty expected answer or `-` means the documents don't answer it, so "I couldn't find this in the knowledge base." is the correct reply. `backend/eval/questions.example.csv` shows the format.
+  - **What it runs:** for each question, the same retrieval, answer prompt, support check and confidence formula as the app, as a new chat (no follow-ups). Nothing is saved as a conversation, answer or review and nothing is sent to Telegram, so a run never reaches reviewers. The Claude cost is added to Settings → Usage as "System".
+  - **Judge:** `CHECK_MODEL` (or `--judge-model`), effort `low`, structured output `{verdict: correct|partly|wrong, reason}`. Only "correct" counts as right. "Couldn't find it" is graded without the judge: correct exactly when no answer was expected. A question that fails (for example, Claude unreachable) is marked ungraded and the run carries on.
+  - **Report** (`eval-results/eval-<time>.md` and `.json`): accuracy; with the current threshold, the share sent without review and how many of those were correct; a threshold table (0–100 in steps of 5); the **lowest safe threshold** (the lowest whose high-confidence answers are ≥ 95% correct, and stay so above it); the **best weights** (retrieval 0–1 in steps of 0.1, rescored from the saved parts without new Claude calls), chosen to send the most answers without review at a safe threshold; the cost; and every answer that wasn't correct with its sources and the judge's reason.
+  - **Command:** `python -m eval.run_eval questions.csv` (on the server: see `ops/deploy.md`). It prints the models and a rough cost (about $0.09 a question) and asks before spending. `--answer-model`, `--check-model`, `--judge-model` and `--effort` compare settings without changing them; `--limit N` runs the first N questions; `--yes` skips the question.
+  - **Results:** not run yet. It needs the Owner's 20–30 questions and sample files, and the real API keys. Once run, record here the accuracy, the chosen threshold and weights, and the chosen model (open decision 6), and set them in Settings.
+
 ## 13. Deployment (Hostinger VPS)
 
 ### 13.1 Server
@@ -552,12 +654,20 @@ Every route checks the session, the CSRF token (for writes) and `permissions.can
 - A record `answers.gridrankers.com` → VPS IP. Caddy gets the certificate automatically.
 
 ### 13.3 `.env` (on the server only; `.env.example` lists the keys)
-`DATABASE_URL`, `SECRET_KEY`, `APP_URL`, `ANTHROPIC_API_KEY`, `PINECONE_API_KEY`, `PINECONE_INDEX`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `ANSWER_MODEL`, `REWRITE_MODEL`, `CHECK_MODEL`, `OCR_MODEL`, `BACKUP_TARGET`.
+`DATABASE_URL`, `SECRET_KEY` (32+ random characters; signs the stop-emails link; required in production), `APP_URL`, `ANTHROPIC_API_KEY`, `PINECONE_API_KEY`, `PINECONE_INDEX`, `PINECONE_HOST` (optional), `PINECONE_CLOUD`, `PINECONE_REGION`, `PINECONE_EMBED_MODEL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_API_URL` (optional, for tests), `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `ANSWER_MODEL`, `REWRITE_MODEL`, `CHECK_MODEL`, `OCR_MODEL`, `BACKUP_DIR` (default `/data/backups`), `BACKUP_TARGET`.
 
 ### 13.4 Install and update
 - **Install:** `git clone` → copy `.env.example` to `.env` and fill it in → `docker compose up -d` → `docker compose exec api python -m app.cli create-owner --email … --name …` → `docker compose exec api python -m app.cli setup-pinecone` (creates the index) → `… setup-telegram` (registers the webhook).
 - **Update:** `git pull && docker compose up -d --build`. Migrations run automatically on start.
 - `ops/deploy.md` documents every step in plain language for a non-developer.
+
+### 13.5 Built in step 16
+- **Compose:** a fifth service, `backup` (PostgreSQL 16 client tools + rclone), runs `ops/backup.sh` daily at `BACKUP_TIME` (02:30 UTC). Backups go to a `backups` volume, which the API mounts read-only to show the status. Every service's Docker logs are rotated (10 MB × 5). The API and worker run with `no-new-privileges`. A root `.dockerignore` keeps `.env` and `node_modules` out of the image builds.
+- **Backups:** a `pg_dump` (custom format, checked with `pg_restore --list`) and a `tar.gz` of the uploads. They are kept `BACKUP_KEEP_DAYS` (14) and copied with rclone to `BACKUP_TARGET` when it is set (the remote is configured with `RCLONE_CONFIG_*` lines in `.env`; open decision 5 still picks the provider). Each run writes `last-backup.json` (time, ok, size, copied off-server, message), which Settings → System shows. `ops/restore.sh` restores a chosen backup after typing `RESTORE`; then the Owner presses Rebuild index.
+- **Restore test** (done in this step): a backup of the development database was restored into an empty database. All 25 tables' row counts and every uploaded file matched. A backup with the database unreachable recorded `ok: false` with pg_dump's reason.
+- **Logs:** JSON lines on stdout (time, level, logger, message, plus extras). Every line logged during a request carries its `request_id`, which also goes back in `X-Request-ID`. Caddy sends its own request UUID, which the API keeps when it looks like an ID. Worker lines carry `job` (`<kind>:<id>`). The API logs one access line per request with method, path (never the query string: the stop-emails link carries a token), status and duration, and skips `/api/health`. Uvicorn's own access log is off. SDK loggers stay at WARNING so request bodies are never logged.
+- **End-to-end tests** (`e2e/`, Playwright): `serve.sh` starts fake Claude, Pinecone and Telegram, recreates the `answers_e2e` database (`seed.py`: an Owner, a reviewer linked to Telegram, the review group), then starts the API, worker and web app on their own ports. The flows: ask → low confidence → Telegram ✏️ Edit and reply → the asker sees "✔ Corrected by our team"; URL → new thread → draft (approved in the Review Queue if it went to review) → Mark as posted with our comment's link → their reply via that comment's URL → follow-up draft with the disclosure line; upload → cited → delete → never cited again. CI runs them on every change.
+- **Docs:** `ops/deploy.md` (server, firewall, DNS, `.env`, start, first Owner, Pinecone and Telegram setup, backups and the off-server copy, updates, the evaluation run, troubleshooting) and `ops/restore.md`.
 
 ## 14. Open decisions (defaults used until answered)
 
@@ -586,3 +696,4 @@ Every route checks the session, the CSRF token (for writes) and `permissions.can
 14. **Usage and limits:** cost tracking, usage dashboard, per-user daily limit, monthly cost alert, rate limits, security headers.
 15. **Evaluation and tuning:** eval runner, run it on the Owner's questions and files, set the threshold, weights and model, and record the results in this spec.
 16. **Deployment and hardening:** production Compose, Caddyfile, backups and a restore test, `ops/deploy.md`, Playwright e2e (ask → low confidence → Telegram edit → asker sees the correction; URL → thread → draft → posted → reply via comment URL → follow-up draft; delete file → never cited again).
+17. **Marketing simplified (change requested after step 16):** Reddit by link or bare post code; Facebook by the person's name (list of their conversations, newest first, closest match marked, or a new conversation); Facebook links and "possible matches" removed. **Tests:** bare codes, Facebook links refused, name matching (case, spaces, close spellings, Anonymous member), new name-based threads, the e2e flow for Facebook.

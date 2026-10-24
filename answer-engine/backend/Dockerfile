@@ -17,6 +17,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 COPY alembic.ini docker-entrypoint.sh ./
 COPY app ./app
+COPY eval ./eval
 
 RUN useradd --system --uid 10001 --home /app answers \
     && mkdir -p /data/uploads && chown answers /data/uploads
