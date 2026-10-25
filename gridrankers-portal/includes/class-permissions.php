@@ -206,6 +206,12 @@ class GRP_Permissions {
 	 */
 	const TICK_STEP = 'tick_step';
 
+	/**
+	 * Hand in files and links on a step's checklist (SPEC.md 6.16, design SH-2B). Context: `{task,
+	 * step}`. The step's own person, or managers. Never on completed work.
+	 */
+	const HAND_IN_STEP = 'hand_in_step';
+
 	/** Delete a client request. Context: `{request}`. Whoever added it, or the Super Admin. */
 	const DELETE_CLIENT_REQUEST = 'delete_client_request';
 
@@ -271,6 +277,7 @@ class GRP_Permissions {
 		self::CLIENT_REQUEST,
 		self::DELETE_CLIENT_REQUEST,
 		self::TICK_STEP,
+		self::HAND_IN_STEP,
 	);
 
 	/**
@@ -405,6 +412,11 @@ class GRP_Permissions {
 
 			case self::TICK_PROGRESS:
 				return self::can_tick_progress( $user, $manager, $context );
+
+			case self::HAND_IN_STEP:
+				$context['delta'] = 1;
+				// A hand-in goes with moving one's own step forward.
+				return self::can( $user, self::TICK_STEP, $context );
 
 			case self::TICK_STEP:
 				$task = (array) ( $context['task'] ?? array() );

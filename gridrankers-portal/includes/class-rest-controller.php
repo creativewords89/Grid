@@ -457,6 +457,125 @@ abstract class GRP_REST_Controller {
 	}
 
 	/**
+	 * What a step request hands in (design SH-2B): `handins` `{itemId: {files: [id], links: [{url,
+	 * name?}]}}` for items on the step's checklist, merged into the task's `handins`. An item sent
+	 * empty is cleared; an image item takes images only.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @param array           $step    Step.
+	 * @param mixed           $handins Current `handins`.
+	 * @return array|null|WP_Error New `handins`, or null when the request hands nothing in.
+	 */
+	protected static function step_handins( WP_REST_Request $request, array $step, $handins ) {
+		$raw = $request['handins'];
+		if ( null === $raw ) {
+			return null;
+		}
+		if ( ! is_array( $raw ) ) {
+			return self::invalid( __( 'Invalid hand-in.', 'gridrankers-portal' ) );
+		}
+		$items = array();
+		foreach ( GRP_Steps::handin( $step ) as $item ) {
+			$items[ $item['id'] ] = $item;
+		}
+		$handins = is_array( $handins ) ? $handins : array();
+		$mine    = (array) ( $handins[ $step['id'] ] ?? array() );
+		foreach ( $raw as $item_id => $got ) {
+			$item_id = (string) $item_id;
+			if ( ! isset( $items[ $item_id ] ) ) {
+				return self::invalid( __( 'That hand-in is no longer asked for.', 'gridrankers-portal' ) );
+			}
+			$got   = (array) $got;
+			$files = self::attached_files( $got['files'] ?? array() );
+			if ( is_wp_error( $files ) ) {
+				return $files;
+			}
+			if ( 'image' === $items[ $item_id ]['kind'] ) {
+				foreach ( $files as $file ) {
+					if ( 0 !== strpos( $file['mime'], 'image/' ) ) {
+						/* translators: %s: what to hand in. */
+						return self::invalid( sprintf( __( '“%s” takes images only.', 'gridrankers-portal' ), $items[ $item_id ]['label'] ) );
+					}
+				}
+			}
+			$links = self::handin_links( $got['links'] ?? array() );
+			if ( is_wp_error( $links ) ) {
+				return $links;
+			}
+			if ( ! $files && ! $links ) {
+				unset( $mine[ $item_id ] );
+				continue;
+			}
+			$mine[ $item_id ] = array(
+				'files' => $files,
+				'links' => $links,
+				'by'    => self::actor()['id'],
+				'at'    => gmdate( 'c' ),
+			);
+		}
+		if ( $mine ) {
+			$handins[ $step['id'] ] = $mine;
+		} else {
+			unset( $handins[ $step['id'] ] );
+		}
+
+		return $handins;
+	}
+
+	/**
+	 * The audit text of a step request: what was handed in, then the move.
+	 *
+	 * @param array      $step    Step.
+	 * @param array|null $handins `handins` sent, or null.
+	 * @param string     $moved   "Not started → In progress", or ''.
+	 * @return string
+	 */
+	protected static function step_text( array $step, $handins, $moved ) {
+		$got = array();
+		if ( null !== $handins ) {
+			foreach ( GRP_Steps::handin( $step ) as $item ) {
+				if ( GRP_Steps::handed_in( $handins, $step['id'], $item['id'] ) ) {
+					$got[] = $item['label'];
+				}
+			}
+		}
+		$parts = array_filter( array( $got ? 'handed in ' . implode( ', ', $got ) : ( null !== $handins ? 'hand-in cleared' : '' ), $moved ) );
+
+		return implode( ' · ', $parts );
+	}
+
+	/**
+	 * Links handed in: `[{url, name}]`, http(s) only, at most GRP_Steps::MAX_HANDIN.
+	 *
+	 * @param mixed $raw Raw links.
+	 * @return array|WP_Error
+	 */
+	protected static function handin_links( $raw ) {
+		$raw = is_array( $raw ) ? array_values( $raw ) : array();
+		if ( count( $raw ) > GRP_Steps::MAX_HANDIN ) {
+			return self::invalid( __( 'Add at most 10 links.', 'gridrankers-portal' ) );
+		}
+		$out = array();
+		foreach ( $raw as $link ) {
+			$link = is_array( $link ) ? $link : array( 'url' => (string) $link );
+			$url  = self::url( $link['url'] ?? '' );
+			if ( is_wp_error( $url ) ) {
+				return $url;
+			}
+			if ( '' === $url ) {
+				continue;
+			}
+			$name  = self::text( $link['name'] ?? '', 120 );
+			$out[] = array(
+				'url'  => $url,
+				'name' => '' !== $name ? $name : (string) wp_parse_url( $url, PHP_URL_HOST ),
+			);
+		}
+
+		return $out;
+	}
+
+	/**
 	 * A new review for completed work: managers' work is accepted automatically unless they
 	 * asked someone to review it in the submission form; members' work waits for review
 	 * (SPEC.md section 6.6).

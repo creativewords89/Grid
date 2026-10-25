@@ -197,7 +197,7 @@ class GRP_REST_Records extends GRP_REST_Controller {
 	}
 
 	/**
-	 * POST /records/step `{taskId, periodKey, step, status | delta, note?, links?, files?, comment?, reviewer?}`
+	 * POST /records/step `{taskId, periodKey, step, status | delta, handins?, note?, links?, files?, comment?, reviewer?}`
 	 * (SPEC.md 6.16): one step of this period moves by one unit. Same rules as a meeting task's steps.
 	 *
 	 * @param WP_REST_Request $request Request.
@@ -247,9 +247,29 @@ class GRP_REST_Records extends GRP_REST_Controller {
 			);
 		}
 
+		$handins = self::step_handins( $request, $step, $rec['handins'] ?? null );
+		if ( is_wp_error( $handins ) ) {
+			return $handins;
+		}
+		if ( null !== $handins && ! self::can(
+			GRP_Permissions::HAND_IN_STEP,
+			array(
+				'task' => self::as_task( $task, $rec ),
+				'step' => $step,
+			)
+		) ) {
+			/* translators: 1: step name, 2: person's name. */
+			return self::forbidden( sprintf( __( '“%1$s” is %2$s’s step.', 'gridrankers-portal' ), $step['name'], self::name_of( $step['member'] ) ) );
+		}
+
 		$done = GRP_Steps::apply( $steps, $before, $step['id'], $change, $n, self::actor()['id'] );
 		if ( is_wp_error( $done ) ) {
 			return $done;
+		}
+		// A step with a hand-in checklist is Completed only with its required items (design SH-2B).
+		$kept = GRP_Steps::check_handins( $step, $before, $done, $rec['handins'] ?? null, $handins, $n );
+		if ( is_wp_error( $kept ) ) {
+			return $kept;
 		}
 		$count      = GRP_Steps::count( $steps, $done );
 		$finishes   = $count >= $n && self::count_of( $rec ) < $n;
@@ -260,7 +280,7 @@ class GRP_REST_Records extends GRP_REST_Controller {
 
 		return rest_ensure_response(
 			GRP_Store::transaction(
-				static function () use ( $task, $period_key, $week, $rec, $steps, $step, $before, $done, $count, $n, $completion ) {
+				static function () use ( $task, $period_key, $week, $rec, $steps, $step, $before, $done, $count, $n, $completion, $handins, $change ) {
 					$id   = GRP_Cycles::record_id( $task['id'], $period_key );
 					$prev = $rec ? $rec : array();
 					$row  = array(
@@ -274,6 +294,9 @@ class GRP_REST_Records extends GRP_REST_Controller {
 						'done_at'      => $count >= $n ? ( $prev['done_at'] ?? GRP_Ids::now() ) : null,
 						'undo_request' => null,
 					);
+					if ( null !== $handins ) {
+						$row['handins'] = $handins ? $handins : null;
+					}
 					if ( $count >= $n ) {
 						$row['review']     = (int) ( $prev['count'] ?? 0 ) >= $n && ! empty( $prev['review'] ) ? $prev['review'] : self::new_review();
 						$row['completion'] = $completion ? $completion : ( $prev['completion'] ?? null );
@@ -295,7 +318,7 @@ class GRP_REST_Records extends GRP_REST_Controller {
 						'doing' => 'In progress',
 						'done'  => 'Completed',
 					);
-					GRP_Activity::audit( $count >= $n ? 'done' : 'progress', 'monthly', $task, self::actor(), self::period_label( $task, $week ) . ' · ' . $step['name'] . ' · ' . self::name_of( $step['member'] ) . ': ' . $text[ GRP_Steps::state( $before, $step['id'], $n ) ] . ' → ' . $text[ GRP_Steps::state( $done, $step['id'], $n ) ] . ( $n > 1 ? " · $k of $n" : '' ) );
+					GRP_Activity::audit( $count >= $n ? 'done' : 'progress', 'monthly', $task, self::actor(), self::period_label( $task, $week ) . ' · ' . $step['name'] . ' · ' . self::name_of( $step['member'] ) . ': ' . self::step_text( $step, $handins, $change ? $text[ GRP_Steps::state( $before, $step['id'], $n ) ] . ' → ' . $text[ GRP_Steps::state( $done, $step['id'], $n ) ] . ( $n > 1 ? " · $k of $n" : '' ) : '' ) );
 
 					return self::save( $id, $prev, $row );
 				}

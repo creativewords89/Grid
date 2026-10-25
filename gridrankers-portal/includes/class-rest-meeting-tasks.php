@@ -412,7 +412,8 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 	}
 
 	/**
-	 * POST /meeting-tasks/{id}/step `{step, delta, note?, links?, files?, comment?, reviewer?}` (SPEC.md 6.16).
+	 * POST /meeting-tasks/{id}/step `{step, status | delta, handins?, note?, links?, files?, comment?, reviewer?}` (SPEC.md 6.16).
+	 * `handins` alone hands in without moving the step (design SH-2B).
 	 *
 	 * Moves one step by one unit. A step counts only what the step before has finished; the last
 	 * step's count is the task's, so its last unit completes the task (with the submission form).
@@ -460,9 +461,29 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 			);
 		}
 
+		$handins = self::step_handins( $request, $step, $task['handins'] ?? null );
+		if ( is_wp_error( $handins ) ) {
+			return $handins;
+		}
+		if ( null !== $handins && ! self::can(
+			GRP_Permissions::HAND_IN_STEP,
+			array(
+				'task' => $task,
+				'step' => $step,
+			)
+		) ) {
+			/* translators: 1: step name, 2: person's name. */
+			return self::forbidden( sprintf( __( '“%1$s” is %2$s’s step.', 'gridrankers-portal' ), $step['name'], self::name_of( $step['member'] ) ) );
+		}
+
 		$done = GRP_Steps::apply( $steps, $task['step_done'] ?? null, $step['id'], $change, $target, self::actor()['id'] );
 		if ( is_wp_error( $done ) ) {
 			return $done;
+		}
+		// A step with a hand-in checklist is Completed only with its required items (design SH-2B).
+		$kept = GRP_Steps::check_handins( $step, $task['step_done'] ?? null, $done, $task['handins'] ?? null, $handins, $target );
+		if ( is_wp_error( $kept ) ) {
+			return $kept;
 		}
 		$count  = GRP_Steps::count( $steps, $done );
 		$status = $count >= $target ? 'done' : ( GRP_Steps::begun( $steps, $done, $target ) ? 'doing' : 'todo' );
@@ -474,8 +495,8 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 
 		return rest_ensure_response(
 			GRP_Store::transaction(
-				static function () use ( $task, $step, $done, $status, $completion, $target ) {
-					$changes = array( 'step_done' => $done );
+				static function () use ( $task, $step, $done, $status, $completion, $target, $handins, $change ) {
+					$changes = array( 'step_done' => $done ) + ( null !== $handins ? array( 'handins' => $handins ? $handins : null ) : array() );
 					if ( $status !== $task['status'] ) {
 						$changes += self::status_changes( $task, $status, $completion, false );
 					}
@@ -493,7 +514,7 @@ class GRP_REST_Meeting_Tasks extends GRP_REST_Controller {
 						'doing' => 'In progress',
 						'done'  => 'Completed',
 					);
-					GRP_Activity::audit( 'progress', 'items', $updated, self::actor(), $step['name'] . ' · ' . self::name_of( $step['member'] ) . ': ' . $text[ GRP_Steps::state( $task['step_done'] ?? null, $step['id'], $target ) ] . ' → ' . $text[ GRP_Steps::state( $done, $step['id'], $target ) ] . ( $target > 1 ? " · $n of $target" : '' ) );
+					GRP_Activity::audit( 'progress', 'items', $updated, self::actor(), $step['name'] . ' · ' . self::name_of( $step['member'] ) . ': ' . self::step_text( $step, $handins, $change ? $text[ GRP_Steps::state( $task['step_done'] ?? null, $step['id'], $target ) ] . ' → ' . $text[ GRP_Steps::state( $done, $step['id'], $target ) ] . ( $target > 1 ? " · $n of $target" : '' ) : '' ) );
 					return $updated;
 				}
 			)

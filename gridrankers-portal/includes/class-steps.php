@@ -16,11 +16,25 @@ defined( 'ABSPATH' ) || exit;
  * record. A step is Not started, In progress (started, or part of its quantity done) or Completed.
  * A step counts only what the step before it has finished (the first one up to the quantity); the
  * task's count is its last step's, so finishing the last step completes the task.
+ *
+ * A step may also have a hand-in checklist (design SH-2B): `handin` `[{id, label, kind, required}]`,
+ * kind file, link or image. What was handed in is kept as `handins` `{stepId: {itemId: {files, links,
+ * by, at}}}` next to `step_done`; a step can't be Completed until its required items are in.
  */
 class GRP_Steps {
 
 	const MIN = 2;
 	const MAX = 10;
+
+	/**
+	 * Most items on one step's hand-in checklist, and most files or links in one item.
+	 */
+	const MAX_HANDIN = 10;
+
+	/**
+	 * Kinds of hand-in item: a file (any accepted type), a link (Figma, Google Doc …) or an image.
+	 */
+	const HANDIN_KINDS = array( 'file', 'link', 'image' );
 
 	/**
 	 * Validates steps from a request.
@@ -76,16 +90,134 @@ class GRP_Steps {
 				/* translators: 1: step name, 2: the step before. */
 				return new WP_Error( 'grp_invalid', sprintf( __( '“%1$s” is due before “%2$s” — each step’s date must be on or after the one before.', 'gridrankers-portal' ), trim( $name ), $last['name'] ), array( 'status' => 400 ) );
 			}
+			$handin = self::clean_handin( $step['handin'] ?? null );
+			if ( is_wp_error( $handin ) ) {
+				return $handin;
+			}
 			$seen[ $id ] = true;
 			$steps[]     = array(
 				'id'     => $id,
 				'name'   => trim( $name ),
 				'member' => $person['id'],
 				'due'    => $when,
-			);
+			) + ( $handin ? array( 'handin' => $handin ) : array() );
 		}
 
 		return $steps;
+	}
+
+	/**
+	 * Validates a step's hand-in checklist: `[{id, label, kind, required}]`, at most MAX_HANDIN.
+	 *
+	 * @param mixed $raw Raw items.
+	 * @return array|WP_Error Items, empty for none.
+	 */
+	public static function clean_handin( $raw ) {
+		if ( empty( $raw ) ) {
+			return array();
+		}
+		if ( ! is_array( $raw ) ) {
+			return new WP_Error( 'grp_invalid', __( 'Invalid hand-in checklist.', 'gridrankers-portal' ), array( 'status' => 400 ) );
+		}
+		$raw = array_values( $raw );
+		if ( count( $raw ) > self::MAX_HANDIN ) {
+			/* translators: %d: most items. */
+			return new WP_Error( 'grp_invalid', sprintf( __( 'A step can ask for at most %d things to hand in.', 'gridrankers-portal' ), self::MAX_HANDIN ), array( 'status' => 400 ) );
+		}
+		$items = array();
+		$seen  = array();
+		foreach ( $raw as $i => $item ) {
+			$item  = (array) $item;
+			$label = trim( sanitize_text_field( (string) ( $item['label'] ?? '' ) ) );
+			$label = function_exists( 'mb_substr' ) ? mb_substr( $label, 0, 80 ) : substr( $label, 0, 80 );
+			if ( '' === $label ) {
+				return new WP_Error( 'grp_invalid', __( 'Say what to hand in, e.g. Article draft.', 'gridrankers-portal' ), array( 'status' => 400 ) );
+			}
+			$kind = (string) ( $item['kind'] ?? 'file' );
+			if ( ! in_array( $kind, self::HANDIN_KINDS, true ) ) {
+				return new WP_Error( 'grp_invalid', __( 'A hand-in is a file, a link or an image.', 'gridrankers-portal' ), array( 'status' => 400 ) );
+			}
+			$id = preg_replace( '/[^\w-]/', '', (string) ( $item['id'] ?? '' ) );
+			if ( '' === $id || isset( $seen[ $id ] ) ) {
+				$id = 'h' . strtolower( substr( GRP_Ids::ulid(), -8 ) ) . $i;
+			}
+			$id          = substr( $id, 0, 40 );
+			$seen[ $id ] = true;
+			$items[]     = array(
+				'id'       => $id,
+				'label'    => $label,
+				'kind'     => $kind,
+				'required' => ! empty( $item['required'] ),
+			);
+		}
+
+		return $items;
+	}
+
+	/**
+	 * A step's hand-in checklist.
+	 *
+	 * @param array $step Step.
+	 * @return array
+	 */
+	public static function handin( array $step ) {
+		return is_array( $step['handin'] ?? null ) ? array_values( $step['handin'] ) : array();
+	}
+
+	/**
+	 * Whether an item of a step has something handed in (a file or a link).
+	 *
+	 * @param mixed  $handins `handins`.
+	 * @param string $step_id Step id.
+	 * @param string $item_id Item id.
+	 * @return bool
+	 */
+	public static function handed_in( $handins, $step_id, $item_id ) {
+		$got = is_array( $handins ) ? (array) ( $handins[ $step_id ][ $item_id ] ?? array() ) : array();
+
+		return ! empty( $got['files'] ) || ! empty( $got['links'] );
+	}
+
+	/**
+	 * The required items of a step not handed in yet.
+	 *
+	 * @param array $step    Step.
+	 * @param mixed $handins `handins`.
+	 * @return array Items.
+	 */
+	public static function missing( array $step, $handins ) {
+		return array_values(
+			array_filter(
+				self::handin( $step ),
+				static function ( $item ) use ( $step, $handins ) {
+					return $item['required'] && ! self::handed_in( $handins, $step['id'], $item['id'] );
+				}
+			)
+		);
+	}
+
+	/**
+	 * Why a step can't be Completed yet: its first missing required item (409), or null.
+	 *
+	 * @param array $step    Step.
+	 * @param mixed $handins `handins`.
+	 * @return WP_Error|null
+	 */
+	public static function handin_needed( array $step, $handins ) {
+		$missing = self::missing( $step, $handins );
+		if ( ! $missing ) {
+			return null;
+		}
+
+		return new WP_Error(
+			'grp_handin_needed',
+			/* translators: %s: what to hand in. */
+			sprintf( __( 'Hand in “%s” first.', 'gridrankers-portal' ), $missing[0]['label'] ),
+			array(
+				'status'  => 409,
+				'missing' => wp_list_pluck( $missing, 'id' ),
+			)
+		);
 	}
 
 	/**
@@ -327,10 +459,11 @@ class GRP_Steps {
 	}
 
 	/**
-	 * What a step request asks for: `{status}` (todo, doing, done) or `{delta}` (+1 / −1).
+	 * What a step request asks for: `{status}` (todo, doing, done) or `{delta}` (+1 / −1), or
+	 * nothing when it only hands in.
 	 *
 	 * @param WP_REST_Request $request Request.
-	 * @return array|WP_Error `{status}` or `{delta}`.
+	 * @return array|WP_Error `{status}`, `{delta}` or empty.
 	 */
 	public static function change( WP_REST_Request $request ) {
 		$status = (string) ( $request['status'] ?? '' );
@@ -341,6 +474,10 @@ class GRP_Steps {
 			return array( 'status' => $status );
 		}
 		$delta = (int) $request['delta'];
+		if ( 0 === $delta && null !== $request['handins'] ) {
+			// Only a hand-in (design SH-2B): the step stays where it is.
+			return array();
+		}
 		if ( 1 !== abs( $delta ) ) {
 			return new WP_Error( 'grp_invalid', __( 'Progress changes one unit at a time.', 'gridrankers-portal' ), array( 'status' => 400 ) );
 		}
@@ -360,6 +497,9 @@ class GRP_Steps {
 	public static function direction( array $change, $done, $step_id, $target ) {
 		if ( isset( $change['delta'] ) ) {
 			return $change['delta'];
+		}
+		if ( ! isset( $change['status'] ) ) {
+			return 1;
 		}
 		$order = array(
 			'todo'  => 0,
@@ -382,12 +522,39 @@ class GRP_Steps {
 	 * @return array|WP_Error
 	 */
 	public static function apply( array $steps, $done, $step_id, array $change, $target, $actor_id ) {
+		if ( ! $change ) {
+			return is_array( $done ) ? $done : array();
+		}
 		if ( isset( $change['delta'] ) ) {
 			return self::tick( $steps, $done, $step_id, $change['delta'], $target, $actor_id );
 		}
 		$moved = self::set_state( $steps, $done, $step_id, $change['status'], $target, $actor_id );
 
 		return is_wp_error( $moved ) ? $moved : $moved[0];
+	}
+
+	/**
+	 * The `handins` after a step request, or why the step can't be Completed: a step that is
+	 * Completed after the request (newly, or with its hand-ins changed) needs every required item.
+	 *
+	 * @param array      $step    Step.
+	 * @param mixed      $before  `step_done` before.
+	 * @param mixed      $after   `step_done` after.
+	 * @param mixed      $was     `handins` before.
+	 * @param array|null $handins `handins` sent, or null.
+	 * @param int        $target  Quantity.
+	 * @return array|null|WP_Error The `handins` to keep.
+	 */
+	public static function check_handins( array $step, $before, $after, $was, $handins, $target ) {
+		$now = null !== $handins ? $handins : $was;
+		if ( 'done' === self::state( $after, $step['id'], $target ) && ( null !== $handins || 'done' !== self::state( $before, $step['id'], $target ) ) ) {
+			$needed = self::handin_needed( $step, $now );
+			if ( $needed ) {
+				return $needed;
+			}
+		}
+
+		return $now;
 	}
 
 	/**

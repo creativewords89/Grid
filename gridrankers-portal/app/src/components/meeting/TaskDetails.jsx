@@ -63,7 +63,7 @@ export function ShareSteppers({ task, members, me, onTick }) {
 // Details window (SPEC.md 7.2): header, info grid, progress, details, page link, completion & review.
 export default function TaskDetails({ taskId, onClose }) {
 	const { data, me, today } = usePortal();
-	const { tick, tickStep, setStep } = useTaskActions();
+	const { tick, tickStep, setStep, handIn } = useTaskActions();
 	const task = data.meeting_tasks[taskId];
 	const members = data.members;
 
@@ -128,7 +128,7 @@ export default function TaskDetails({ taskId, onClose }) {
 				{hasSteps(task) ? (
 					<section className="dt-sec">
 						<h4>Steps</h4>
-						<StepTrack task={task} done={task.step_done} status={task.status} onStatus={(row, to) => setStep(task, row, to)} onTick={(row, delta) => tickStep(task, row, delta)} />
+						<StepTrack task={task} done={task.step_done} status={task.status} handins={task.handins} onHandIn={(row) => handIn(task, row)} onStatus={(row, to) => setStep(task, row, to)} onTick={(row, delta) => tickStep(task, row, delta)} />
 					</section>
 				) : (
 					target > 1 && (

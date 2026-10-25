@@ -10,6 +10,7 @@ import Setup from './components/Setup.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import TopBar from './components/TopBar.jsx';
 import CompletionDialog from './components/CompletionDialog.jsx';
+import HandinDialog from './components/HandinDialog.jsx';
 import MeetingMinutes from './components/meeting/MeetingMinutes.jsx';
 import MonthlyTasks from './components/monthly/MonthlyTasks.jsx';
 import GeneralTasks from './components/general/GeneralTasks.jsx';
@@ -183,6 +184,14 @@ export default function App({ config }) {
 		setCompletion(null);
 	};
 
+	// Hand in "{step}" (design SH-2B) — resolves the step's hand-ins {itemId: {files, links}} or null.
+	const [handin, setHandin] = useState(null);
+	const askHandin = useCallback((step, value, finish) => new Promise((resolve) => setHandin({ step, value: value || {}, finish: !!finish, resolve, key: Date.now() })), []);
+	const finishHandin = (value) => {
+		if (handin) handin.resolve(value);
+		setHandin(null);
+	};
+
 	const signOutLocally = useCallback(() => {
 		dispatch({ type: 'reset' });
 		setAuth({ status: 'signedOut', me: null });
@@ -292,7 +301,7 @@ export default function App({ config }) {
 		setView('team');
 	};
 
-	const ctx = { api, data, dispatch, me, view, setView, project, setProject, search, setSearch, toast, confirm, config, cycleOff, setCycleOff, today, askCompletion, teamPerson, setTeamPerson, setViewAs: startTour, reports, pay };
+	const ctx = { api, data, dispatch, me, view, setView, project, setProject, search, setSearch, toast, confirm, config, cycleOff, setCycleOff, today, askCompletion, askHandin, teamPerson, setTeamPerson, setViewAs: startTour, reports, pay };
 
 	const target = viewAs && data.members[viewAs];
 	const viewing = canTour(me, target) ? target : null;
@@ -400,6 +409,7 @@ export default function App({ config }) {
 			{toastView}
 			{confirmView}
 			<SignOutDialog open={askOut} onClose={() => setAskOut(false)} onSignOut={signOutNow} dueText={fmtDue(reports.state && reports.state.due)} />
+			{handin && <HandinDialog key={handin.key} ask={handin} onCancel={() => finishHandin(null)} onSubmit={finishHandin} />}
 			<CompletionDialog open={!!completion} title={completion ? completion.title : ''} edit={!!(completion && completion.edit)} initial={completion ? completion.initial : null} onCancel={() => finishCompletion(null)} onSubmit={finishCompletion} />
 		</PortalContext.Provider>
 	);

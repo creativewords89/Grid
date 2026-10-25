@@ -99,10 +99,10 @@ function Stepper({ got, max, label, onMinus, onPlus, can, plusDisabled }) {
 // Progress for the Details window: breakdown rows, per-person shares, or one stepper.
 export function ProgressBox({ task, period }) {
 	const { data, me } = usePortal();
-	const { tick, tickStep, setStep } = useRecordActions();
+	const { tick, tickStep, setStep, handIn } = useRecordActions();
 	if (hasSteps(task)) {
 		const rec = period.rec && period.rec.status !== 'skipped' ? period.rec : null;
-		return <StepTrack task={task} done={rec && rec.step_done} status={period.st} project={period.project} onStatus={(row, to) => setStep(task, period.periodKey, row, to)} onTick={(row, delta) => tickStep(task, period.periodKey, row, delta)} />;
+		return <StepTrack task={task} done={rec && rec.step_done} handins={rec && rec.handins} onHandIn={(row) => handIn(task, period.periodKey, row)} status={period.st} project={period.project} onStatus={(row, to) => setStep(task, period.periodKey, row, to)} onTick={(row, delta) => tickStep(task, period.periodKey, row, delta)} />;
 	}
 	const members = data.members;
 	const { periodKey, rec, wk, sel, aw, n, count, st, name, unit } = period;
@@ -251,7 +251,7 @@ export function ProgressBox({ task, period }) {
 // Monthly / weekly task card (SPEC.md 7.3).
 export default function MonthlyCard({ task, selWeek, onSelectWeek, missed, onDetails, onEdit }) {
 	const { data, me, cycleOff, today } = usePortal();
-	const { setStatus, tickStep, setStep, remove, requestUndo, decideUndo } = useRecordActions();
+	const { setStatus, tickStep, setStep, handIn, remove, requestUndo, decideUndo } = useRecordActions();
 	const period = usePeriod(task, selWeek);
 	const steps = hasSteps(task);
 	const { project, wk, aw, sel, slots, name, unit, freqLabel, tag, range, periodKey, st, n, count } = period;
@@ -326,7 +326,7 @@ export default function MonthlyCard({ task, selWeek, onSelectWeek, missed, onDet
 			</div>
 			<ReviewBadge review={period.rec && period.rec.review} me={me} members={members} />
 			{weeks}
-			{steps && <StepCard task={task} done={period.rec && period.rec.status !== 'skipped' ? period.rec.step_done : null} status={st} project={project} onStatus={(row, to) => setStep(task, periodKey, row, to)} onTick={(row, delta) => tickStep(task, periodKey, row, delta)} />}
+			{steps && <StepCard task={task} done={period.rec && period.rec.status !== 'skipped' ? period.rec.step_done : null} handins={period.rec && period.rec.handins} onHandIn={(row) => handIn(task, periodKey, row)} status={st} project={project} onStatus={(row, to) => setStep(task, periodKey, row, to)} onTick={(row, delta) => tickStep(task, periodKey, row, delta)} />}
 			{!steps && n > 1 && (
 				<div className="mini-prog">
 					<span className="mp-bar">
