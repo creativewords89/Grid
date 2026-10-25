@@ -12,6 +12,71 @@ export const PRESETS = [
 	['Design', 'Review'],
 ];
 
+// Hand-ins (design SH-2B): a step's checklist `handin` [{id, label, kind, required}] — kind file,
+// link or image — and what was handed in, `handins` {stepId: {itemId: {files, links, by, at}}}.
+// Same rules as GRP_Steps::missing on the server: a step is Completed only with its required items.
+export const MAX_HANDIN = 10;
+export const HANDIN_KINDS = { file: 'File', link: 'Link', image: 'Image' };
+export const newHandinId = () => 'h' + Math.random().toString(36).slice(2, 10);
+export const handinOf = (step) => (step && Array.isArray(step.handin) ? step.handin : []);
+export const handinGot = (handins, stepId, itemId) => ((handins || {})[stepId] || {})[itemId] || null;
+export const handedIn = (handins, stepId, itemId) => {
+	const got = handinGot(handins, stepId, itemId);
+	return !!got && ((got.files || []).length > 0 || (got.links || []).length > 0);
+};
+export const missingHandins = (step, handins) => handinOf(step).filter((it) => it.required && !handedIn(handins, step.id, it.id));
+
+// "2 of 3 · 1 required left" for the Hand in window and the step.
+export function handinCount(step, handins) {
+	const items = handinOf(step);
+	const got = items.filter((it) => handedIn(handins, step.id, it.id)).length;
+	const left = missingHandins(step, handins).length;
+	return { got, total: items.length, left, text: `${got} of ${items.length}${left ? ` · ${left} required left` : ''}` };
+}
+
+// A pasted link's name: Figma, Google Doc / Sheet / Slides / Drive, or the site.
+export function linkName(url) {
+	let host = '';
+	let path = '';
+	try {
+		const u = new URL(url);
+		host = u.hostname.replace(/^www\./, '');
+		path = u.pathname;
+	} catch {
+		return '';
+	}
+	if (/(^|\.)figma\.com$/.test(host)) return 'Figma';
+	if (host === 'docs.google.com') return /^\/spreadsheets/.test(path) ? 'Google Sheet' : /^\/presentation/.test(path) ? 'Google Slides' : 'Google Doc';
+	if (host === 'drive.google.com') return 'Google Drive';
+	return host;
+}
+
+// An http(s) link, or '' (same check as the server).
+export const cleanLink = (raw) => {
+	const url = String(raw || '').trim();
+	if (!url) return '';
+	const full = /^[a-z][\w+.-]*:/i.test(url) ? url : 'https://' + url;
+	try {
+		const u = new URL(full);
+		return /^https?:$/.test(u.protocol) && u.hostname.includes('.') ? full : '';
+	} catch {
+		return '';
+	}
+};
+
+// Whether moving a step asks for its hand-ins first: Completed, or the +1 that completes it.
+export const asksHandin = (row, change) => handinOf(row).length > 0 && (change === 'done' || (change === 1 && row.n + 1 >= row.target));
+
+// The dialog's check of a step's checklist (same as GRP_Steps::clean_handin).
+export function checkHandin(items) {
+	if ((items || []).length > MAX_HANDIN) return `A step can ask for at most ${MAX_HANDIN} things to hand in.`;
+	if ((items || []).some((it) => !String(it.label || '').trim())) return 'Say what to hand in, e.g. Article draft.';
+	return '';
+}
+
+// The request body's `handins` for one step: {itemId: {files: [id], links: [{url, name}]}}.
+export const handinBody = (value) => Object.fromEntries(Object.entries(value || {}).map(([k, v]) => [k, { files: (v.files || []).map((f) => f.id), links: v.links || [] }]));
+
 export const hasSteps = (t) => !!t && Array.isArray(t.steps) && t.steps.length >= MIN_STEPS;
 
 export const stepN = (done, id) => +((done || {})[id] || {}).n || 0;
@@ -70,6 +135,10 @@ export function canTickStep(me, row, delta, status) {
 	if (delta < 0) return isManager(me) && row.n > 0;
 	return (isManager(me) || row.member === me.id) && row.n < row.ready;
 }
+
+// Who may hand in on a step (same as GRP_Permissions::HAND_IN_STEP): its person or a leader,
+// never on completed work.
+export const canHandIn = (me, row, status) => !!me && status !== 'done' && handinOf(row).length > 0 && (isManager(me) || row.member === me.id);
 
 // The step the task is on: the first one not completed (null when all are).
 export const currentStep = (task, done) => stepRows(task, done).find((r) => r.status !== 'done') || null;
@@ -130,9 +199,17 @@ export function readyItems(task, done, me, members, now = Date.now()) {
 		.filter(Boolean);
 }
 
-// Steps from the dialog's rows, as the server takes them: names trimmed, empty rows dropped.
+// Steps from the dialog's rows, as the server takes them: names trimmed, empty rows dropped; a
+// hand-in checklist keeps its named items.
 export const cleanSteps = (rows) =>
-	rows.filter((r) => r.name.trim() || r.member).map((r) => ({ id: r.id, name: r.name.trim(), member: r.member, due: r.due === '' || r.due == null ? null : typeof r.due === 'string' && !/^\d{4}-/.test(r.due) ? +r.due : r.due }));
+	rows
+		.filter((r) => r.name.trim() || r.member)
+		.map((r) => {
+			const handin = handinOf(r)
+				.filter((it) => String(it.label || '').trim())
+				.map((it) => ({ id: it.id, label: it.label.trim(), kind: HANDIN_KINDS[it.kind] ? it.kind : 'file', required: !!it.required }));
+			return { id: r.id, name: r.name.trim(), member: r.member, due: r.due === '' || r.due == null ? null : typeof r.due === 'string' && !/^\d{4}-/.test(r.due) ? +r.due : r.due, ...(handin.length ? { handin } : {}) };
+		});
 
 // What's wrong with the dialog's steps, or ''.
 export function stepsError(rows) {
@@ -143,6 +220,8 @@ export function stepsError(rows) {
 	if (bad) return 'Name every step, e.g. Write, Edit, Proofread.';
 	const nobody = list.find((s) => !s.member);
 	if (nobody) return `Pick who does “${nobody.name}”.`;
+	const many = list.find((s) => checkHandin(s.handin));
+	if (many) return `“${many.name}”: ${checkHandin(many.handin)}`;
 	let last = null;
 	for (const s of list) {
 		if (s.due == null) continue;

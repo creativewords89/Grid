@@ -1,4 +1,5 @@
 import { usePortal } from '../../context.js';
+import { asksHandin, handinBody } from '../../lib/steps.js';
 
 // The fields the server takes from the submission form.
 export const submission = ({ note, links, files, comment, reviewer }) => ({ note, links, files, comment, ...(reviewer ? { reviewer } : {}) });
@@ -6,8 +7,14 @@ export const submission = ({ note, links, files, comment, reviewer }) => ({ note
 // Status, progress and delete for meeting tasks. Each write stores the row the server
 // returns; errors become toasts with the server's message.
 export default function useTaskActions() {
-	const { api, dispatch, toast, confirm, askCompletion } = usePortal();
+	const { api, dispatch, toast, confirm, askCompletion, askHandin } = usePortal();
 	const save = (row) => dispatch({ type: 'upsert', table: 'meeting_tasks', row });
+	// A step with a hand-in checklist asks for it before it is completed (design SH-2B).
+	const handinFirst = async (task, row, change) => {
+		if (!asksHandin(row, change)) return {};
+		const value = await askHandin(row, (task.handins || {})[row.id], true);
+		return value ? { handins: handinBody(value) } : null;
+	};
 
 	const setStatus = async (task, to) => {
 		if (task.status === to) return;
@@ -51,12 +58,13 @@ export default function useTaskActions() {
 	// Steps (SPEC.md 6.16): one step moves by one unit; the last unit of the last step completes the
 	// task, so it asks for the submission first.
 	const tickStep = async (task, row, delta) => {
-		let extra = {};
+		let extra = delta > 0 ? await handinFirst(task, row, 1) : {};
+		if (!extra) return;
 		const last = row.i === task.steps.length - 1;
 		if (delta > 0 && last && row.n + 1 >= row.target && task.status !== 'done') {
 			const sub = await askCompletion(task.title);
 			if (!sub) return;
-			extra = submission(sub);
+			extra = { ...extra, ...submission(sub) };
 		}
 		try {
 			const saved = await api.post(`meeting-tasks/${task.id}/step`, { step: row.id, delta, ...extra });
@@ -71,17 +79,30 @@ export default function useTaskActions() {
 	// A step's status (SPEC.md 6.16): Completed on the last step completes the task, so it asks for
 	// the submission first; the next step's person is told when one is completed.
 	const setStep = async (task, row, to) => {
-		let extra = {};
+		let extra = await handinFirst(task, row, to);
+		if (!extra) return;
 		if (to === 'done' && row.i === task.steps.length - 1 && task.status !== 'done') {
 			const sub = await askCompletion(task.title);
 			if (!sub) return;
-			extra = submission(sub);
+			extra = { ...extra, ...submission(sub) };
 		}
 		try {
 			const saved = await api.post(`meeting-tasks/${task.id}/step`, { step: row.id, status: to, ...extra });
 			save(saved);
 			if (saved.status === 'done' && task.status !== 'done') toast(saved.review && saved.review.state === 'pending' ? 'All steps done — sent for review' : 'All steps done — completed');
 			else toast(to === 'done' ? `${row.name}: completed${row.next ? ` — ${row.next.name} is next` : ''}` : `${row.name}: ${to === 'doing' ? 'in progress' : 'not started'}`);
+		} catch (err) {
+			toast(err.message);
+		}
+	};
+
+	// 📎 Hand in on a step without moving it: hand in early, or replace what was handed in.
+	const handIn = async (task, row) => {
+		const value = await askHandin(row, (task.handins || {})[row.id], false);
+		if (!value) return;
+		try {
+			save(await api.post(`meeting-tasks/${task.id}/step`, { step: row.id, handins: handinBody(value) }));
+			toast(`${row.name}: hand-in saved`);
 		} catch (err) {
 			toast(err.message);
 		}
@@ -153,5 +174,5 @@ export default function useTaskActions() {
 		}
 	};
 
-	return { setStatus, tick, tickStep, setStep, remove, requestUndo, decideUndo };
+	return { setStatus, tick, tickStep, setStep, handIn, remove, requestUndo, decideUndo };
 }

@@ -604,6 +604,7 @@ class GRP_Import {
 			'review'     => is_array( $d['review'] ?? null ) ? $d['review'] : null,
 			'completion' => is_array( $d['completion'] ?? null ) ? $d['completion'] : null,
 			'step_done'  => self::step_done( $d['stepDone'] ?? null ),
+			'handins'    => self::handins( $d['handins'] ?? null ),
 			'done_at'    => self::time( $d['doneAt'] ?? ( $d['skippedAt'] ?? null ) ),
 			'cleared_by' => isset( $d['clearedBy'] ) ? (string) $d['clearedBy'] : null,
 			'created_at' => self::time( $d['createdAt'] ?? ( $d['updatedAt'] ?? null ) ),
@@ -899,10 +900,17 @@ class GRP_Import {
 					'member' => (string) $step['member'],
 					'due'    => $meeting ? ( is_string( $due ) && preg_match( '/^\d{4}-\d{2}-\d{2}$/', $due ) ? $due : null ) : ( (int) $due >= 1 && (int) $due <= 31 ? (int) $due : null ),
 				);
+				$handin  = GRP_Steps::clean_handin( $step['handin'] ?? null );
+				if ( ! is_wp_error( $handin ) && $handin ) {
+					$steps[ count( $steps ) - 1 ]['handin'] = $handin;
+				}
 			}
 		}
 		if ( count( $steps ) < GRP_Steps::MIN ) {
-			return array( 'steps' => null ) + ( $meeting ? array( 'step_done' => null ) : array() );
+			return array( 'steps' => null ) + ( $meeting ? array(
+				'step_done' => null,
+				'handins'   => null,
+			) : array() );
 		}
 		$out = array(
 			'steps'     => array_slice( $steps, 0, GRP_Steps::MAX ),
@@ -911,6 +919,7 @@ class GRP_Import {
 		);
 		if ( $meeting ) {
 			$out['step_done'] = self::step_done( $d['stepDone'] ?? null );
+			$out['handins']   = self::handins( $d['handins'] ?? null );
 		}
 
 		return $out;
@@ -936,6 +945,47 @@ class GRP_Import {
 					'name' => sanitize_file_name( (string) ( $f['name'] ?? 'file' ) ),
 					'size' => (int) ( $f['size'] ?? 0 ),
 				);
+			}
+		}
+
+		return $out ? $out : null;
+	}
+
+	/**
+	 * `handins` `{stepId: {itemId: {files, links, by, at}}}` (SPEC.md 6.16, design SH-2B); file details only.
+	 *
+	 * @param mixed $raw Raw value.
+	 * @return array|null
+	 */
+	private static function handins( $raw ) {
+		$raw = is_object( $raw ) ? json_decode( wp_json_encode( $raw ), true ) : $raw;
+		if ( ! is_array( $raw ) || ! $raw ) {
+			return null;
+		}
+		$out = array();
+		foreach ( $raw as $step_id => $items ) {
+			foreach ( is_array( $items ) ? $items : array() as $item_id => $got ) {
+				$got   = (array) $got;
+				$links = array();
+				foreach ( is_array( $got['links'] ?? null ) ? $got['links'] : array() as $link ) {
+					$link = (array) $link;
+					$url  = esc_url_raw( (string) ( $link['url'] ?? '' ), array( 'http', 'https' ) );
+					if ( '' !== $url ) {
+						$links[] = array(
+							'url'  => $url,
+							'name' => sanitize_text_field( (string) ( $link['name'] ?? '' ) ),
+						);
+					}
+				}
+				$files = (array) self::files( $got['files'] ?? null );
+				if ( $files || $links ) {
+					$out[ (string) $step_id ][ (string) $item_id ] = array(
+						'files' => $files,
+						'links' => $links,
+						'by'    => (string) ( $got['by'] ?? '' ),
+						'at'    => (string) ( $got['at'] ?? '' ),
+					);
+				}
 			}
 		}
 

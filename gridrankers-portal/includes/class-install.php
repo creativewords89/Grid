@@ -15,7 +15,7 @@ class GRP_Install {
 	/**
 	 * Current schema version. Bump it whenever get_schema() or migrations() changes.
 	 */
-	const DB_VERSION = 21;
+	const DB_VERSION = 22;
 
 	/**
 	 * Option that stores the installed schema version.
@@ -41,6 +41,7 @@ class GRP_Install {
  * Schema 17 adds `grp_daily_reports`: what each person did today, written by hand (6.18).
  * Schema 18 adds `grp_pay` (working hours, salary, payment details) and `grp_payslips` (6.19).
  * Schema 21 adds `grp_report_changes`: asking to change the time of a past daily report (6.18).
+ * Schema 22 adds `handins` (files and links handed in on a step's checklist, 6.16) to meeting tasks and cycle records.
 	 *
 	 * @var string[]
 	 */
@@ -367,6 +368,7 @@ class GRP_Install {
 				steps json NULL,
 				step_done json NULL,
 				files json NULL,
+				handins json NULL,
 				created_by varchar(64) NULL,
 				created_at datetime NOT NULL,
 				updated_at datetime NOT NULL,
@@ -415,6 +417,7 @@ class GRP_Install {
 				completion json NULL,
 				undo_request json NULL,
 				step_done json NULL,
+				handins json NULL,
 				done_at datetime NULL,
 				cleared_by varchar(64) NULL,
 				created_at datetime NOT NULL,

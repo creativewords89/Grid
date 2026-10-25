@@ -1032,6 +1032,60 @@ dialog.bl-fees{width:min(640px,94vw)}
 .stp-more .linkbtn{font-weight:700}
 .mp-turn{font-size:.72rem;font-weight:800;border-radius:99px;padding:2px 8px;white-space:nowrap;background:var(--panel-2);color:var(--ink-2)}
 .mp-turn.t-go{background:color-mix(in srgb,var(--accent) 14%,var(--panel));color:var(--accent)}
+/* Hand-ins per step (design SH-2B): the checklist in the dialog, the Hand in window, the chips. */
+.stp-hi{height:28px;padding:0 8px;border:1px dashed var(--line);border-radius:7px;background:var(--panel);color:var(--ink-2);cursor:pointer;font:inherit;font-size:.76rem;font-weight:700;white-space:nowrap}
+.stp-hi.on{border-style:solid;border-color:color-mix(in srgb,var(--accent) 35%,var(--line));background:color-mix(in srgb,var(--accent) 8%,var(--panel));color:var(--accent)}
+.stp-hi:disabled{opacity:.4;cursor:default}
+.hi-edit{grid-column:1 / -1;display:flex;flex-direction:column;gap:6px;margin:2px 0 6px 30px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2)}
+.hi-edit-h{display:flex;align-items:center;gap:10px;font-size:.8rem;color:var(--ink-2)}
+.hi-edit-h span{flex:1}
+.hi-item{display:grid;grid-template-columns:30px minmax(0,1fr) auto auto auto;gap:8px;align-items:center}
+.hi-item input,.hi-item select{min-width:0}
+.hi-ico{width:30px;height:30px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;background:var(--panel);border:1px solid var(--line);font-size:.85rem}
+.hi-req{height:28px;padding:0 10px;border-radius:99px;border:1px solid var(--line);background:var(--panel);color:var(--ink-2);font:inherit;font-size:.76rem;font-weight:700;cursor:pointer}
+.hi-req.on{color:var(--urgent);border-color:color-mix(in srgb,var(--urgent) 35%,var(--line));background:var(--urgent-bg)}
+.hi-add{align-self:flex-start;font-weight:700;font-size:.82rem}
+.hi-more{align-self:flex-start;font-size:.8rem;font-weight:700}
+.hi-dlg{width:min(600px,calc(100vw - 32px))}
+.hi-box{display:flex;flex-direction:column;gap:10px;padding:18px 20px}
+.hi-top{display:flex;align-items:center;gap:10px}
+.hi-top h2{margin:0;font-size:1.1rem;flex:1;min-width:0}
+.hi-count{font-size:.76rem;font-weight:700;padding:3px 9px;border-radius:99px;background:var(--doing-bg);color:var(--doing);white-space:nowrap}
+.hi-count.ok{background:var(--done-bg);color:var(--done)}
+.hi-bar{height:5px;border-radius:99px;background:var(--panel-2);overflow:hidden}
+.hi-bar i{display:block;height:100%;background:var(--done);border-radius:99px;transition:width .2s}
+.hi-slot{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.hi-slot.ok{border-color:color-mix(in srgb,var(--done) 35%,var(--line))}
+.hi-slot-h{display:flex;align-items:center;gap:8px;font-size:.88rem}
+.hi-slot-h b{flex:1;min-width:0}
+.hi-tick{flex:none;width:20px;height:20px;border-radius:50%;border:2px solid var(--line);display:inline-flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:800;color:#fff}
+.hi-slot.ok .hi-tick{background:var(--done);border-color:var(--done)}
+.hi-tag{font-size:.72rem;font-weight:700;color:var(--ink-2)}
+.hi-tag.req{color:var(--urgent)}
+.hi-got{display:flex;flex-direction:column;gap:6px}
+.hi-got .sf-row{background:color-mix(in srgb,var(--done) 6%,var(--panel))}
+.hi-got .sf-row small a{color:var(--ink-2);overflow-wrap:anywhere}
+.sf-badge.lnk{background:#E8EEFC;color:#2753C9;font-size:.85rem}
+.hi-add-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.hi-add-row.link-first .hi-link{order:-1}
+.hi-drop{display:flex;align-items:center;justify-content:center;gap:4px;min-height:36px;padding:6px 10px;border:1.5px dashed var(--line);border-radius:9px;font-size:.8rem;color:var(--ink-2);text-align:center}
+.hi-drop.over{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 7%,var(--panel))}
+.hi-link{display:flex;align-items:center;gap:6px;min-height:36px;padding:0 10px;border:1px solid var(--line);border-radius:9px;font-size:.8rem}
+.hi-link input{flex:1;min-width:0;border:0;background:transparent;padding:6px 0;font:inherit;color:var(--ink)}
+.hi-link input:focus{outline:none}
+.hi-link:focus-within{border-color:var(--accent)}
+.hi-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px}
+.hi-foot .muted{flex:1;min-width:180px;font-size:.78rem}
+.hi-btn{align-self:flex-start;display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:99px;border:1px solid color-mix(in srgb,var(--doing) 40%,var(--line));background:var(--doing-bg);color:var(--doing);font:inherit;font-size:.76rem;font-weight:700;cursor:pointer}
+.hi-btn.ok{border-color:color-mix(in srgb,var(--done) 40%,var(--line));background:var(--done-bg);color:var(--done)}
+.hi-btn.static{cursor:default}
+.hi-step{display:flex;flex-direction:column;gap:6px}
+.hi-chips{display:flex;flex-wrap:wrap;gap:6px}
+.hi-chip{display:inline-flex;align-items:center;gap:4px;max-width:100%;padding:3px 9px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);font:inherit;font-size:.76rem;font-weight:600;text-decoration:none;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hi-chip small{color:var(--ink-2);font-weight:500}
+.hi-chip:hover{border-color:var(--accent)}
+.hi-from{display:flex;flex-direction:column;gap:4px}
+@media (max-width:600px){.hi-item{grid-template-columns:30px minmax(0,1fr) auto}.hi-item select,.hi-item .hi-req{grid-column:2}.hi-add-row{grid-template-columns:1fr}.hi-edit{margin-left:0}}
 @media (max-width:600px){.stp-edit li{grid-template-columns:22px minmax(0,1fr);}.stp-edit li select,.stp-edit .stp-due-in,.stp-moves{grid-column:2}}
 
 /* Files added with a task (SPEC.md 6.17). */

@@ -1,9 +1,17 @@
 import { usePortal } from '../../context.js';
 import { submission } from '../meeting/useTaskActions.js';
+import { asksHandin, handinBody } from '../../lib/steps.js';
 
 // Ticks and status moves on a recurring task's period record, plus delete with Undo.
 export default function useRecordActions() {
-	const { api, dispatch, toast, confirm, askCompletion } = usePortal();
+	const { api, data, dispatch, toast, confirm, askCompletion, askHandin } = usePortal();
+	// What this period's record has handed in for a step (design SH-2B).
+	const handinsOf = (task, periodKey, row) => (((data.records || {})[`${task.id}__${periodKey}`] || {}).handins || {})[row.id];
+	const handinFirst = async (task, periodKey, row, change) => {
+		if (!asksHandin(row, change)) return {};
+		const value = await askHandin(row, handinsOf(task, periodKey, row), true);
+		return value ? { handins: handinBody(value) } : null;
+	};
 
 	const store = (res) => {
 		if (res.record) dispatch({ type: 'upsert', table: 'records', row: res.record });
@@ -34,8 +42,10 @@ export default function useRecordActions() {
 
 	// Steps (SPEC.md 6.16): one step of this period moves by one unit.
 	const tickStep = async (task, periodKey, row, delta) => {
+		const extra = delta > 0 ? await handinFirst(task, periodKey, row, 1) : {};
+		if (!extra) return;
 		try {
-			const body = { taskId: task.id, periodKey, step: row.id, delta };
+			const body = { taskId: task.id, periodKey, step: row.id, delta, ...extra };
 			let res;
 			try {
 				res = await api.post('records/step', body);
@@ -56,8 +66,10 @@ export default function useRecordActions() {
 
 	// A step's status this period (SPEC.md 6.16).
 	const setStep = async (task, periodKey, row, to) => {
+		const extra = await handinFirst(task, periodKey, row, to);
+		if (!extra) return;
 		try {
-			const body = { taskId: task.id, periodKey, step: row.id, status: to };
+			const body = { taskId: task.id, periodKey, step: row.id, status: to, ...extra };
 			let res;
 			try {
 				res = await api.post('records/step', body);
@@ -70,6 +82,18 @@ export default function useRecordActions() {
 			const rec = store(res);
 			if (rec && rec.status === 'done') toast(rec.review && rec.review.state === 'pending' ? 'All steps done — sent for review' : 'All steps done');
 			else toast(to === 'done' ? `${row.name}: completed${row.next ? ` — ${row.next.name} is next` : ''}` : `${row.name}: ${to === 'doing' ? 'in progress' : 'not started'}`);
+		} catch (err) {
+			toast(err.message);
+		}
+	};
+
+	// 📎 Hand in on a step without moving it.
+	const handIn = async (task, periodKey, row) => {
+		const value = await askHandin(row, handinsOf(task, periodKey, row), false);
+		if (!value) return;
+		try {
+			store(await api.post('records/step', { taskId: task.id, periodKey, step: row.id, handins: handinBody(value) }));
+			toast(`${row.name}: hand-in saved`);
 		} catch (err) {
 			toast(err.message);
 		}
@@ -154,5 +178,5 @@ export default function useRecordActions() {
 		}
 	};
 
-	return { tick, tickStep, setStep, setStatus, remove, requestUndo, decideUndo };
+	return { tick, tickStep, setStep, handIn, setStatus, remove, requestUndo, decideUndo };
 }
