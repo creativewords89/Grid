@@ -1,7 +1,7 @@
 import { MAX_STEPS, PRESETS, newStepId } from '../lib/steps.js';
 
 // "Who does it" in the task dialogs (SPEC.md 6.16, designs DEP-B, DEP-F): One step (the people picker,
-// as before) or Steps in order — 2 to 4 steps, each with a name, one person and a due date (meeting
+// as before) or Steps in order — 2 to 10 steps, each with a name, one person and a due date (meeting
 // tasks) or day of the cycle (monthly tasks), moved with ↑ ↓.
 export function WhoToggle({ on, onChange, disabled }) {
 	return (

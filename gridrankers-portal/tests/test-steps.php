@@ -113,9 +113,19 @@ class Test_GRP_Steps extends GRP_REST_TestCase {
 			'title'      => 'x',
 		);
 		$one  = array( $this->chain()[0] );
-		$five = array_merge( $this->chain(), $this->chain() );
+		$many = function ( $n ) {
+			return array_map(
+				fn ( $i ) => array(
+					'id'     => "s{$i}",
+					'name'   => "Step {$i}",
+					'member' => $this->team['member']['id'],
+				),
+				range( 1, $n )
+			);
+		};
 		$this->assertStatus( 400, $this->api_as( 'member', 'POST', '/meeting-tasks', $base + array( 'steps' => $one ) ), 'at least 2' );
-		$this->assertStatus( 400, $this->api_as( 'member', 'POST', '/meeting-tasks', $base + array( 'steps' => array_slice( $five, 0, 5 ) ) ), 'at most 4' );
+		$this->assertStatus( 201, $this->api_as( 'member', 'POST', '/meeting-tasks', $base + array( 'steps' => $many( 10 ) ) ), 'up to 10' );
+		$this->assertStatus( 400, $this->api_as( 'member', 'POST', '/meeting-tasks', $base + array( 'steps' => $many( 11 ) ) ), 'at most 10' );
 		$nameless            = $this->chain();
 		$nameless[1]['name'] = ' ';
 		$this->assertStatus( 400, $this->api_as( 'member', 'POST', '/meeting-tasks', $base + array( 'steps' => $nameless ) ) );

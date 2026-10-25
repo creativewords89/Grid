@@ -10,7 +10,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Pure helpers shared by meeting tasks and monthly tasks.
  *
- * A task's `steps` is `[{id, name, member, due}]` (2–4 steps, in order) or null; `due` is a date on
+ * A task's `steps` is `[{id, name, member, due}]` (2–10 steps, in order) or null; `due` is a date on
  * meeting tasks and a day of the cycle (1–31) on monthly tasks, or null. Progress per step is kept as
  * `step_done` `{stepId: {n, at, by, started}}` — on the meeting task, or on the monthly task's cycle
  * record. A step is Not started, In progress (started, or part of its quantity done) or Completed.
@@ -20,7 +20,7 @@ defined( 'ABSPATH' ) || exit;
 class GRP_Steps {
 
 	const MIN = 2;
-	const MAX = 4;
+	const MAX = 10;
 
 	/**
 	 * Validates steps from a request.
