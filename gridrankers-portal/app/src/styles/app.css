@@ -1623,3 +1623,21 @@ button.hol-day:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .add-b i{width:26px;height:26px;border-radius:8px;background:var(--tone);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-style:normal;font-size:1rem}
 .add-b:disabled{opacity:.5;cursor:default}
 @media (max-width:700px){.ev-r{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.ev-r>span:first-child{grid-column:1 / -1}.ev-th{display:none}}
+/* RC-1: asking to change a past report */
+.rc-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.rc-h h3{margin:0;flex:1}
+.rc-tag{font-size:.74rem;font-weight:700;background:color-mix(in srgb,var(--accent) 14%,var(--panel));color:var(--accent);border-radius:99px;padding:3px 10px}
+.rc-tag.wait{background:var(--doing-bg);color:var(--doing)}
+.rc-lock{font-size:.8rem;margin:4px 0 0}
+.rc-no{font-size:.84rem;color:var(--urgent);margin:4px 0 0}
+.rc-was{color:var(--ink-2);font-weight:500;margin-right:6px}
+.rc-form{display:flex;flex-direction:column;gap:10px;min-width:min(460px,86vw)}
+.rc-form h2{margin:0}
+.rc-row{display:grid;grid-template-columns:minmax(0,1fr) 72px 72px;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.rc-row>span:first-child{display:flex;flex-direction:column;min-width:0}
+.rc-head{font-size:.66rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);border-top:0}
+.rc-row input{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:9px;padding:6px 8px;font:inherit;text-align:center;background:var(--panel);color:var(--ink)}
+.rc-row.on input{border-color:var(--accent)}
+.rc-total{display:flex;justify-content:space-between;margin:0;padding-top:8px;border-top:1px solid var(--line)}
+.rc-form label{display:flex;flex-direction:column;gap:4px;font-size:.8rem;color:var(--ink-2)}
+.rc-form label input{border:1px solid var(--line);border-radius:9px;padding:7px 9px;font:inherit;color:var(--ink);background:var(--panel)}

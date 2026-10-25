@@ -15,7 +15,7 @@ class GRP_Install {
 	/**
 	 * Current schema version. Bump it whenever get_schema() or migrations() changes.
 	 */
-	const DB_VERSION = 20;
+	const DB_VERSION = 21;
 
 	/**
 	 * Option that stores the installed schema version.
@@ -40,6 +40,7 @@ class GRP_Install {
  * Schema 16 adds `files` (attachments added with the task) to meeting and monthly tasks (6.17).
  * Schema 17 adds `grp_daily_reports`: what each person did today, written by hand (6.18).
  * Schema 18 adds `grp_pay` (working hours, salary, payment details) and `grp_payslips` (6.19).
+ * Schema 21 adds `grp_report_changes`: asking to change the time of a past daily report (6.18).
 	 *
 	 * @var string[]
 	 */
@@ -69,6 +70,7 @@ class GRP_Install {
 		'grp_daily_reports',
 		'grp_pay',
 		'grp_payslips',
+		'grp_report_changes',
 	);
 
 	/**
@@ -755,6 +757,29 @@ class GRP_Install {
 				PRIMARY KEY  (id),
 				UNIQUE KEY member_month (member_id,month),
 				KEY month (month)
+			) $collate;",
+
+			"CREATE TABLE {$t['grp_report_changes']} (
+				id varchar(64) NOT NULL,
+				member_id varchar(64) NOT NULL,
+				member_role varchar(16) NOT NULL DEFAULT 'member',
+				day date NOT NULL,
+				entries json NULL,
+				from_minutes smallint NOT NULL DEFAULT 0,
+				to_minutes smallint NOT NULL DEFAULT 0,
+				reason text NULL,
+				status enum('pending','approved','rejected','cancelled') NOT NULL DEFAULT 'pending',
+				decided_by varchar(64) NULL,
+				decided_at datetime NULL,
+				message text NULL,
+				created_by varchar(64) NULL,
+				created_at datetime NOT NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				KEY member_id (member_id),
+				KEY day (day),
+				KEY status (status),
+				KEY updated_at (updated_at)
 			) $collate;",
 		);
 	}

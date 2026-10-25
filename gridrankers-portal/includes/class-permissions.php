@@ -224,6 +224,12 @@ class GRP_Permissions {
 	/** Remind someone to send their daily report. Context: `{member_id, role}`. Managers, for someone whose report they may read, not themselves. */
 	const REMIND_DAILY_REPORT = 'remind_daily_report';
 
+	/** Ask to change the time of one's own sent daily report from an earlier day (SPEC.md 6.18, design RC-1). Context: `{member_id}`. Team Leaders and Team Members, for themselves only. */
+	const ASK_REPORT_CHANGE = 'ask_report_change';
+
+	/** Approve or reject a request to change a daily report. Context: `{member_id, role}` of the person asking. The Super Admin anyone's; a Team Leader Team Members'; never one's own. */
+	const DECIDE_REPORT_CHANGE = 'decide_report_change';
+
 	/** Set one's own working hours, salary and payment details (SPEC.md 6.19). Context: `{member_id}`. Team Leaders and Team Members, for themselves only. */
 	const SET_OWN_PAY = 'set_own_pay';
 
@@ -325,8 +331,16 @@ class GRP_Permissions {
 				return $manager;
 
 			case self::WRITE_DAILY_REPORT:
+			case self::ASK_REPORT_CHANGE:
 				// The Super Admin reads reports but writes none (SPEC.md 6.18).
 				return ! $admin && self::is_self( $user, $context['member_id'] ?? null );
+
+			case self::DECIDE_REPORT_CHANGE:
+				// A Team Leader's own change goes to the Super Admin (design RC-1).
+				if ( self::is_self( $user, $context['member_id'] ?? null ) ) {
+					return false;
+				}
+				return $admin ? in_array( $context['role'] ?? '', array( self::ROLE_LEAD, self::ROLE_MEMBER ), true ) : $manager && self::ROLE_MEMBER === ( $context['role'] ?? '' );
 
 			case self::VIEW_DAILY_REPORT:
 				return self::is_self( $user, $context['member_id'] ?? null ) || $admin || ( $manager && in_array( $context['role'] ?? '', array( self::ROLE_LEAD, self::ROLE_MEMBER ), true ) );

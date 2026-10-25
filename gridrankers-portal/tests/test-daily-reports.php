@@ -412,6 +412,181 @@ class Test_GRP_Daily_Reports extends GRP_REST_TestCase {
 		$this->assertNotNull( $row['sent_at'] );
 	}
 
+	/**
+	 * A sent report from an earlier day, straight into the table.
+	 *
+	 * @param string $handle Person.
+	 * @param string $day    Day.
+	 * @return array
+	 */
+	private function sent( $handle, $day ) {
+		return GRP_Store::insert(
+			'grp_daily_reports',
+			array(
+				'id'        => GRP_Daily_Reports::row_id( $this->team[ $handle ]['id'], $day ),
+				'member_id' => $this->team[ $handle ]['id'],
+				'day'       => $day,
+				'entries'   => array(
+					array(
+						'id'      => 'e1',
+						'title'   => 'BMW content',
+						'minutes' => 360,
+					),
+					array(
+						'id'      => 'e2',
+						'title'   => 'Images Sorting',
+						'minutes' => 600,
+					),
+				),
+				'sent_at'   => gmdate( 'Y-m-d H:i:s' ),
+			)
+		);
+	}
+
+	public function test_asking_to_change_a_past_report() {
+		$day    = $this->yesterday();
+		$ask    = fn ( $who, array $params, $d = null ) => $this->api_as( $who, 'POST', '/daily-reports/' . ( $d ?? $day ) . '/change', $params );
+		$decide = fn ( $who, $id, $action, $message = '' ) => $this->api_as(
+			$who,
+			'PATCH',
+			"/report-changes/{$id}",
+			array(
+				'action'  => $action,
+				'message' => $message,
+			)
+		);
+		$fix    = array(
+			'entries' => array( 'e2' => 60 ),
+			'reason'  => 'Typed 10h instead of 1h',
+		);
+
+		// Permission rows: ask for oneself (not the Super Admin); decide a Team Member's as a leader, anyone's as the Super Admin.
+		$ctx = fn ( $m ) => array(
+			'member_id' => $m['id'],
+			'role'      => $m['role'],
+		);
+		$this->assertTrue( GRP_Permissions::can( $this->team['member'], GRP_Permissions::ASK_REPORT_CHANGE, array( 'member_id' => $this->team['member']['id'] ) ) );
+		$this->assertFalse( GRP_Permissions::can( $this->team['admin'], GRP_Permissions::ASK_REPORT_CHANGE, array( 'member_id' => $this->team['admin']['id'] ) ) );
+		$this->assertTrue( GRP_Permissions::can( $this->team['lead'], GRP_Permissions::DECIDE_REPORT_CHANGE, $ctx( $this->team['member'] ) ) );
+		$this->assertFalse( GRP_Permissions::can( $this->team['lead'], GRP_Permissions::DECIDE_REPORT_CHANGE, $ctx( $this->lead2 ) ), 'a Team Leader’s change goes to the Super Admin' );
+		$this->assertFalse( GRP_Permissions::can( $this->team['lead'], GRP_Permissions::DECIDE_REPORT_CHANGE, $ctx( $this->team['lead'] ) ) );
+		$this->assertTrue( GRP_Permissions::can( $this->team['admin'], GRP_Permissions::DECIDE_REPORT_CHANGE, $ctx( $this->team['lead'] ) ) );
+		$this->assertFalse( GRP_Permissions::can( $this->team['other'], GRP_Permissions::DECIDE_REPORT_CHANGE, $ctx( $this->team['member'] ) ) );
+
+		// Nothing sent that day; today's report is edited instead.
+		$this->assertStatus( 404, $ask( 'member', $fix ) );
+		$this->sent( 'member', $day );
+		$this->put(
+			'member',
+			$this->today(),
+			array(
+				'entries' => array( $this->entry() ),
+				'send'    => true,
+			)
+		);
+		$this->assertSame( 'grp_report_open', $ask( 'member', $fix, $this->today() )->get_data()['code'] );
+		$this->assertSame( 'grp_report_locked', $this->put( 'member', $day, array( 'entries' => array( $this->entry() ) ) )->get_data()['code'], 'still locked' );
+
+		// The request is checked: a reason, a real change, sensible times.
+		$this->assertSame( 'grp_change_reason', $ask( 'member', array( 'entries' => array( 'e2' => 60 ) ) )->get_data()['code'] );
+		$this->assertSame(
+			'grp_change_none',
+			$ask(
+				'member',
+				array(
+					'entries' => array( 'e2' => 600 ),
+					'reason'  => 'x',
+				)
+			)->get_data()['code']
+		);
+		$this->assertStatus(
+			400,
+			$ask(
+				'member',
+				array(
+					'entries' => array( 'e2' => 0 ),
+					'reason'  => 'x',
+				)
+			)
+		);
+
+		$asked = $ask( 'member', $fix );
+		$this->assertStatus( 201, $asked );
+		$change = $asked->get_data();
+		$this->assertSame( 'pending', $change['status'] );
+		$this->assertSame( 960, (int) $change['from_minutes'] );
+		$this->assertSame( 420, (int) $change['to_minutes'] );
+		$this->assertEquals(
+			array(
+				'id'    => 'e2',
+				'title' => 'Images Sorting',
+				'from'  => 600,
+				'to'    => 60,
+			),
+			$change['entries'][0]
+		);
+		$this->assertSame( 'grp_change_waiting', $ask( 'member', $fix )->get_data()['code'], 'one waiting request per report' );
+
+		// Who sees it: the person and the leaders; not other Team Members.
+		$seen = fn ( $who ) => array_column( $this->api_as( $who, 'GET', '/sync' )->get_data()['changes']['report_changes'], 'id' );
+		$this->assertContains( $change['id'], $seen( 'member' ) );
+		$this->assertContains( $change['id'], $seen( 'lead' ) );
+		$this->assertContains( $change['id'], $seen( 'admin' ) );
+		$this->assertNotContains( $change['id'], $seen( 'other' ) );
+
+		// Only a leader decides; approving puts the new time on the report.
+		$this->assertStatus( 403, $decide( 'other', $change['id'], 'approve' ) );
+		$this->assertStatus( 403, $decide( 'member', $change['id'], 'approve' ) );
+		$ok = $decide( 'lead', $change['id'], 'approve', 'Fixed' );
+		$this->assertStatus( 200, $ok );
+		$this->assertSame( 'approved', $ok->get_data()['status'] );
+		$this->assertSame( $this->team['lead']['id'], $ok->get_data()['decided_by'] );
+		$report = GRP_Store::get( 'grp_daily_reports', GRP_Daily_Reports::row_id( $this->team['member']['id'], $day ) );
+		$this->assertSame( 420, GRP_Daily_Reports::minutes( $report ) );
+		$this->assertSame( 'grp_change_decided', $decide( 'lead', $change['id'], 'reject' )->get_data()['code'] );
+
+		// A Team Leader's own change: only the Super Admin decides; they may cancel it while it waits.
+		$this->sent( 'lead', $day );
+		$mine = $ask( 'lead', $fix )->get_data();
+		$this->assertStatus( 403, $decide( 'lead2', $mine['id'], 'approve' ) );
+		$this->assertStatus( 403, $decide( 'admin', $mine['id'], 'cancel' ), 'only the person cancels' );
+		$this->assertSame( 'cancelled', $decide( 'lead', $mine['id'], 'cancel' )->get_data()['status'] );
+		$again = $ask( 'lead', $fix )->get_data();
+		$this->assertSame( 'rejected', $decide( 'admin', $again['id'], 'reject', 'Looks right' )->get_data()['status'] );
+		$this->assertSame( 960, GRP_Daily_Reports::minutes( GRP_Store::get( 'grp_daily_reports', GRP_Daily_Reports::row_id( $this->team['lead']['id'], $day ) ) ), 'rejected: as sent' );
+	}
+
+	public function test_a_change_recalculates_an_unpaid_payslip_and_a_paid_month_stays() {
+		$day   = $this->yesterday();
+		$month = substr( $day, 0, 7 );
+		$this->sent( 'member', $day );
+		$slip   = GRP_Store::insert(
+			'grp_payslips',
+			array(
+				'id'        => GRP_Pay::slip_id( $this->team['member']['id'], $month ),
+				'member_id' => $this->team['member']['id'],
+				'month'     => $month,
+				'salary'    => 30000,
+				'extra'     => 480,
+				'total'     => 99999,
+			)
+		);
+		$fix    = array(
+			'entries' => array( 'e2' => 60 ),
+			'reason'  => 'Typed 10h instead of 1h',
+		);
+		$change = $this->api_as( 'member', 'POST', "/daily-reports/{$day}/change", $fix )->get_data();
+		$this->assertStatus( 200, $this->api_as( 'lead', 'PATCH', "/report-changes/{$change['id']}", array( 'action' => 'approve' ) ) );
+		$after = GRP_Store::get( 'grp_payslips', $slip['id'] );
+		$this->assertSame( 0, (int) $after['extra'], '7h on an 8h day: no extra time' );
+		$this->assertNotSame( 99999, (int) $after['total'] );
+
+		// Once the salary is marked paid, the month's reports stay as they are.
+		GRP_Store::update( 'grp_payslips', $slip['id'], array( 'paid_at' => gmdate( 'Y-m-d H:i:s' ) ) );
+		$fix['entries'] = array( 'e2' => 120 );
+		$this->assertSame( 'grp_month_paid', $this->api_as( 'member', 'POST', "/daily-reports/{$day}/change", $fix )->get_data()['code'] );
+	}
+
 	public function test_reports_are_not_synced() {
 		$this->put( 'member', $this->today(), array( 'entries' => array( $this->entry() ) ) );
 		$data = $this->api_as( 'lead', 'GET', '/sync' )->get_data();

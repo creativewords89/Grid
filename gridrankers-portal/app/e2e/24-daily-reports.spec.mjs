@@ -3,7 +3,7 @@
 // Ray, who closed the browser without a report, sends it before anything else; the Super Admin
 // only reads.
 import { test, expect } from '@playwright/test';
-import { LEAD, MAX, signIn, signInOwner, signOut, watchErrors } from './helpers.mjs';
+import { LEAD, MAX, signIn, signInOwner, signOut, waiting, watchErrors } from './helpers.mjs';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
 
@@ -137,6 +137,37 @@ test('daily reports', async ({ page }) => {
 	await page.getByRole('button', { name: /^Send/ }).click();
 	await page.getByText('Shared with your team · live').waitFor();
 	await expect(page.getByRole('heading', { name: /report is missing/ })).toHaveCount(0);
+
+	// Ray typed the wrong time: that report is locked now, so he asks to change it (design RC-1).
+	await openReports();
+	await page.getByRole('button', { name: 'Earlier reports ›' }).click();
+	await expect(page.locator('.rc-lock')).toBeVisible();
+	await page.getByRole('button', { name: 'Ask to change' }).click();
+	await dlg.getByLabel('Hours for Citations for Bright Dental').fill('1');
+	await dlg.getByLabel('Reason (required)').fill('It took one hour');
+	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/rc-ask.png' });
+	await dlg.getByRole('button', { name: 'Send request' }).click();
+	await page.getByText('Change asked — your Team Leaders will answer').waitFor();
+	await expect(page.locator('.rc-tag.wait')).toContainText('waiting for your Team Leaders');
+	await page.context().clearCookies();
+
+	// Lee approves it on My day; the report shows the new time.
+	await signIn(page, LEAD);
+	const asks = await waiting(page);
+	await asks.locator('.ap-item', { hasText: 'Ray Reporter asks to change' }).first().getByRole('button', { name: 'Approve' }).click();
+	await dlg.getByRole('button', { name: 'Approve' }).click();
+	await page.getByText(/^Change approved/).waitFor();
+	await signOut(page);
+	await page.goto('/');
+	await page.getByLabel('Your code').fill('RAYCODE11');
+	await page.getByRole('button', { name: 'Sign in' }).click();
+	await page.getByText('Shared with your team · live').waitFor();
+	await openReports();
+	await page.getByRole('button', { name: 'Earlier reports ›' }).click();
+	await expect(page.locator('.rc-tag')).toContainText('approved by Lee');
+	await expect(page.locator('.dr-dayreport .dr-row-m')).toContainText('1h');
+	await expect(page.locator('.rc-was')).toHaveText('2h');
+	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/rc-changed.png' });
 	await page.context().clearCookies();
 
 	// The Super Admin reads every report but writes none: Team only.

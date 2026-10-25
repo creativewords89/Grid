@@ -41,6 +41,7 @@ class Test_GRP_Install extends WP_UnitTestCase {
 		'grp_daily_reports'    => array( 'id', 'member_id', 'day', 'entries', 'blocking', 'tomorrow', 'sent_at', 'late' ),
 		'grp_pay'              => array( 'id', 'member_id', 'day_minutes', 'salary', 'method', 'bank_name', 'branch', 'account_name', 'account_number', 'routing' ),
 		'grp_payslips'         => array( 'id', 'member_id', 'month', 'salary', 'day_minutes', 'worked', 'extra', 'extra_pay', 'leave_taken', 'leave_pay', 'deducted_days', 'deducted', 'total', 'account', 'paid_at', 'paid_by' ),
+		'grp_report_changes'   => array( 'id', 'member_id', 'member_role', 'day', 'entries', 'from_minutes', 'to_minutes', 'reason', 'status', 'decided_by', 'decided_at', 'message', 'created_by' ),
 	);
 
 	/**

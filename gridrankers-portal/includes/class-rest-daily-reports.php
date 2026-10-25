@@ -28,6 +28,8 @@ class GRP_REST_Daily_Reports extends GRP_REST_Controller {
 		self::route( '/daily-reports/remind', WP_REST_Server::CREATABLE, 'remind' );
 		self::route( '/daily-reports', WP_REST_Server::READABLE, 'person' );
 		self::route( '/daily-reports/(?P<day>\d{4}-\d{2}-\d{2})', 'PUT', 'save' );
+		self::route( '/daily-reports/(?P<day>\d{4}-\d{2}-\d{2})/change', WP_REST_Server::CREATABLE, 'ask_change' );
+		self::route( '/report-changes/(?P<id>[\w-]+)', WP_REST_Server::EDITABLE, 'decide_change' );
 	}
 
 	/**
@@ -538,6 +540,217 @@ class GRP_REST_Daily_Reports extends GRP_REST_Controller {
 				'skipped'  => array_values( array_diff( $ids, $reminded ) ),
 			),
 			201
+		);
+	}
+
+	/**
+	 * Whether a person's salary for the month of `$day` is marked paid (then its reports stay as they are).
+	 *
+	 * @param string $member_id Member id.
+	 * @param string $day       `Y-m-d`.
+	 * @return bool
+	 */
+	private static function month_paid( $member_id, $day ) {
+		$slip = GRP_Store::get( 'grp_payslips', GRP_Pay::slip_id( $member_id, substr( $day, 0, 7 ) ) );
+
+		return $slip && ! empty( $slip['paid_at'] );
+	}
+
+	/**
+	 * POST /daily-reports/{day}/change `{entries: {entryId: minutes}, reason}` (design RC-1): asks to
+	 * change the time of one's own sent report from an earlier day. One waiting request per report;
+	 * Team Leaders (for Team Members) and the Super Admin decide. Not once that month's salary is paid.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function ask_change( WP_REST_Request $request ) {
+		$actor = self::actor();
+		if ( ! self::can( GRP_Permissions::ASK_REPORT_CHANGE, array( 'member_id' => $actor['id'] ) ) ) {
+			return self::forbidden( __( 'You can only ask to change your own reports.', 'gridrankers-portal' ) );
+		}
+		$day    = (string) $request['day'];
+		$report = GRP_Store::get( self::TABLE, GRP_Daily_Reports::row_id( $actor['id'], $day ) );
+		if ( ! $report || empty( $report['sent_at'] ) ) {
+			return self::not_found();
+		}
+		if ( $day >= GRP_Cycles::today() ) {
+			return self::conflict( __( 'Today’s report can still be changed — edit it instead.', 'gridrankers-portal' ), 'grp_report_open' );
+		}
+		if ( self::month_paid( $actor['id'], $day ) ) {
+			return self::conflict( __( 'That month’s salary is paid, so its reports can’t be changed.', 'gridrankers-portal' ), 'grp_month_paid' );
+		}
+		if ( GRP_Store::find(
+			'grp_report_changes',
+			array(
+				'member_id' => $actor['id'],
+				'day'       => $day,
+				'status'    => 'pending',
+			)
+		) ) {
+			return self::conflict( __( 'A change to this report is already waiting.', 'gridrankers-portal' ), 'grp_change_waiting' );
+		}
+		$reason = self::textarea( $request['reason'] ?? '', 500 );
+		if ( '' === $reason ) {
+			return self::invalid( __( 'Say why the time was wrong.', 'gridrankers-portal' ), 'grp_change_reason' );
+		}
+
+		$asked = (array) ( $request['entries'] ?? array() );
+		$lines = array();
+		$from  = 0;
+		$to    = 0;
+		foreach ( array_values( (array) $report['entries'] ) as $entry ) {
+			$was = (int) $entry['minutes'];
+			$now = array_key_exists( $entry['id'], $asked ) ? $asked[ $entry['id'] ] : $was;
+			if ( ! is_numeric( $now ) || (int) $now < 1 || (int) $now > GRP_Daily_Reports::MAX_MINUTES ) {
+				/* translators: %s: what they did. */
+				return self::invalid( sprintf( __( 'Add the time spent on “%s”.', 'gridrankers-portal' ), $entry['title'] ) );
+			}
+			$from += $was;
+			$to   += (int) $now;
+			if ( (int) $now !== $was ) {
+				$lines[] = array(
+					'id'    => $entry['id'],
+					'title' => $entry['title'],
+					'from'  => $was,
+					'to'    => (int) $now,
+				);
+			}
+		}
+		if ( ! $lines ) {
+			return self::invalid( __( 'Change at least one time.', 'gridrankers-portal' ), 'grp_change_none' );
+		}
+		if ( $to > GRP_Daily_Reports::MAX_MINUTES ) {
+			return self::invalid( __( 'A day has at most 24 hours.', 'gridrankers-portal' ) );
+		}
+
+		$row = GRP_Store::transaction(
+			static function () use ( $actor, $day, $lines, $from, $to, $reason ) {
+				$row = GRP_Store::insert(
+					'grp_report_changes',
+					array(
+						'member_id'    => $actor['id'],
+						'member_role'  => GRP_Permissions::effective_role( $actor ),
+						'day'          => $day,
+						'entries'      => $lines,
+						'from_minutes' => $from,
+						'to_minutes'   => $to,
+						'reason'       => $reason,
+						'status'       => 'pending',
+						'created_by'   => $actor['id'],
+					)
+				);
+				GRP_Activity::audit( 'add', 'report_change', $row, $actor, "$day: " . GRP_Daily_Reports::hours( $from ) . ' → ' . GRP_Daily_Reports::hours( $to ) );
+				return $row;
+			}
+		);
+
+		return new WP_REST_Response( $row, 201 );
+	}
+
+	/**
+	 * PATCH /report-changes/{id} `{action: approve|reject|cancel, message?}`. Approving puts the new
+	 * times on the report and recalculates a payslip not yet paid; the person may cancel while it waits.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function decide_change( WP_REST_Request $request ) {
+		$actor  = self::actor();
+		$change = GRP_Store::get( 'grp_report_changes', (string) $request['id'] );
+		if ( ! $change ) {
+			return self::not_found();
+		}
+		$action = (string) $request['action'];
+		if ( ! in_array( $action, array( 'approve', 'reject', 'cancel' ), true ) ) {
+			return self::invalid( __( 'Approve, reject or cancel.', 'gridrankers-portal' ) );
+		}
+		$own = (string) $change['member_id'] === (string) $actor['id'];
+		if ( 'cancel' === $action ? ! $own : ! self::can(
+			GRP_Permissions::DECIDE_REPORT_CHANGE,
+			array(
+				'member_id' => $change['member_id'],
+				'role'      => $change['member_role'],
+			)
+		) ) {
+			return self::forbidden( 'cancel' === $action ? __( 'Only the person who asked can cancel it.', 'gridrankers-portal' ) : __( 'You can’t decide this change.', 'gridrankers-portal' ) );
+		}
+		if ( 'pending' !== $change['status'] ) {
+			return self::conflict( __( 'That change was already answered.', 'gridrankers-portal' ), 'grp_change_decided' );
+		}
+		$report = GRP_Store::get( self::TABLE, GRP_Daily_Reports::row_id( $change['member_id'], $change['day'] ) );
+		if ( 'approve' === $action ) {
+			if ( self::month_paid( $change['member_id'], $change['day'] ) ) {
+				return self::conflict( __( 'That month’s salary is paid, so its reports can’t be changed.', 'gridrankers-portal' ), 'grp_month_paid' );
+			}
+			if ( ! $report ) {
+				return self::conflict( __( 'That report is gone.', 'gridrankers-portal' ), 'grp_change_stale' );
+			}
+		}
+		$message = self::textarea( $request['message'] ?? '', 500 );
+
+		$saved = GRP_Store::transaction(
+			static function () use ( $action, $change, $report, $actor, $message ) {
+				if ( 'approve' === $action ) {
+					$to      = array_column( (array) $change['entries'], 'to', 'id' );
+					$entries = array_map(
+						static function ( $entry ) use ( $to ) {
+							if ( isset( $to[ $entry['id'] ] ) ) {
+								$entry['minutes'] = (int) $to[ $entry['id'] ];
+							}
+							return $entry;
+						},
+						array_values( (array) $report['entries'] )
+					);
+					GRP_Store::update( self::TABLE, $report['id'], array( 'entries' => $entries ) );
+					self::rebill( $change['member_id'], substr( $change['day'], 0, 7 ) );
+				}
+				$status = array(
+					'approve' => 'approved',
+					'reject'  => 'rejected',
+					'cancel'  => 'cancelled',
+				)[ $action ];
+				$saved  = GRP_Store::update(
+					'grp_report_changes',
+					$change['id'],
+					array(
+						'status'     => $status,
+						'decided_by' => $actor['id'],
+						'decided_at' => GRP_Ids::now(),
+						'message'    => '' !== $message ? $message : null,
+					)
+				);
+				GRP_Activity::audit( 'edit', 'report_change', $saved, $actor, ucfirst( $status ) . ': ' . $change['day'] );
+				return $saved;
+			}
+		);
+
+		return rest_ensure_response( $saved );
+	}
+
+	/**
+	 * Recalculates a payslip that is made but not paid yet, after a report's time changed.
+	 *
+	 * @param string $member_id Member id.
+	 * @param string $month     `YYYY-MM`.
+	 */
+	private static function rebill( $member_id, $month ) {
+		$slip   = GRP_Store::get( 'grp_payslips', GRP_Pay::slip_id( $member_id, $month ) );
+		$member = GRP_Store::get( 'grp_members', $member_id );
+		$pay    = GRP_Store::get( 'grp_pay', $member_id );
+		if ( ! $slip || ! empty( $slip['paid_at'] ) || ! $member || ! $pay ) {
+			return;
+		}
+		$sum = GRP_Pay::month_of( $member, $pay, $month, GRP_Cycles::today() );
+		GRP_Store::update(
+			'grp_payslips',
+			$slip['id'],
+			array(
+				'worked'    => $sum['worked'],
+				'extra'     => $sum['extra'],
+				'extra_pay' => $sum['extra_pay'],
+				'total'     => $sum['total'],
+			)
 		);
 	}
 }
