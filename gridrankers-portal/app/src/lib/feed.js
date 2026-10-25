@@ -4,6 +4,7 @@
 // descriptions); `sub` is kept for the bell. What waits for a leader's answer (approvals) is
 // shown above it, not in it (design NF-C). Keys are shared with
 // the bell, so reading an item in one place marks it read in the other.
+import { fmtMinutes } from './reports.js';
 import { commentBell } from './comments.js';
 import { allReminders } from './cycleSetup.js';
 import { approvals, dismissedKeys, notices, recipientsOf, strips } from './day.js';
@@ -125,6 +126,22 @@ export function feedOf(data, me, today, now = Date.now()) {
 			});
 		});
 
+	// Answers to my requests to change a past report (design RC-1).
+	rowsOf(data, 'report_changes')
+		.filter((c) => c.member_id === me.id && (c.status === 'approved' || c.status === 'rejected') && c.decided_by && recent(c.decided_at))
+		.forEach((c) => {
+			const ok = c.status === 'approved';
+			push({
+				key: `change:${c.id}:${c.status}`,
+				cat: 'report',
+				tone: ok ? 'green' : 'red',
+				icon: ok ? '⏱' : '✕',
+				title: `Change to your report of ${range(c.day, c.day)} ${ok ? 'approved' : 'not approved'}`,
+				sub: `${fmtMinutes(c.from_minutes)} → ${fmtMinutes(c.to_minutes)}${c.message ? ` — “${c.message}”` : ''} — ${name(data, c.decided_by)}`,
+				at: c.decided_at,
+			});
+		});
+
 	// Events and office days off from today to two weeks ahead; birthdays today.
 	const horizon = new Date(Date.parse(today + 'T00:00:00Z') + 14 * DAY_MS).toISOString().slice(0, 10);
 	rowsOf(data, 'days_off')
@@ -179,6 +196,7 @@ export function waitTitle(item) {
 	const who = item.who ? item.who.name : 'Someone';
 	if (item.kind === 'undo') return `${who} asked to undo “${item.title}”`;
 	if (item.kind === 'untick') return `${who} asked to untick ${item.col.name} · ${item.kw.keyword}`;
+	if (item.kind === 'report_change') return `${who} asks to change ${range(item.change.day, item.change.day)} · ${fmtMinutes(item.change.from_minutes)} → ${fmtMinutes(item.change.to_minutes)}`;
 	if (item.kind === 'leave') {
 		const l = item.leave;
 		return `${who} asks for ${l.type === 'sick' ? 'sick' : 'casual'} leave · ${range(l.from_date, l.to_date)}`;

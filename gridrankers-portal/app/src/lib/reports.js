@@ -139,3 +139,30 @@ export function missLine(p, isToday, time) {
 	const run = p.missed > 1 ? `${p.missed} working days in a row` : isToday ? 'Not sent yet today' : 'Missed this day';
 	return `${run} · ${p.reminded_at ? `reminded ${time(p.reminded_at)}` : 'not reminded yet'}`;
 }
+
+// Asking to change a past report (SPEC.md 6.18, design RC-1): the latest request for a person's day.
+export function changeOf(data, memberId, day) {
+	return Object.values(data.report_changes || {})
+		.filter((c) => c.member_id === memberId && c.day === day && c.status !== 'cancelled')
+		.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
+}
+
+// Whether the viewer may ask to change this report: their own, sent, from an earlier day.
+export const mayAskChange = (report, me, today) => !!report && !!report.sent_at && report.member_id === me.id && me.role !== 'admin' && report.day < today;
+
+// The request from the dialog's rows (`{id: minutes}` of the entries whose time changed) or an error.
+export function changeRequest(entries, times, reason) {
+	const out = {};
+	for (const e of entries) {
+		const t = times[e.id];
+		if (t == null) continue;
+		if (!(t > 0)) return { error: `Add the time spent on “${e.title}”.` };
+		if (t > 24 * 60) return { error: 'That’s more than 24 hours.' };
+		if (t !== +e.minutes) out[e.id] = t;
+	}
+	const total = entries.reduce((n, e) => n + (times[e.id] != null ? times[e.id] : +e.minutes), 0);
+	if (!Object.keys(out).length) return { error: 'Change at least one time.' };
+	if (total > 24 * 60) return { error: 'A day has at most 24 hours.' };
+	if (!String(reason || '').trim()) return { error: 'Say why the time was wrong.' };
+	return { entries: out, total };
+}

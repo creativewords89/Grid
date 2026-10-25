@@ -235,4 +235,17 @@ class GRP_Daily_Reports {
 
 		return $total;
 	}
+
+	/**
+	 * Minutes as "8h", "7h 30m" or "45m".
+	 *
+	 * @param int $minutes Minutes.
+	 * @return string
+	 */
+	public static function hours( $minutes ) {
+		$h = intdiv( (int) $minutes, 60 );
+		$m = (int) $minutes % 60;
+
+		return $h ? ( $m ? "{$h}h {$m}m" : "{$h}h" ) : "{$m}m";
+	}
 }

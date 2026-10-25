@@ -5,7 +5,7 @@ import { addDays, cycleRange, daysBetween } from './cycles.js';
 import { isManager } from './roles.js';
 
 export const MIN_STEPS = 2;
-export const MAX_STEPS = 4;
+export const MAX_STEPS = 10;
 export const PRESETS = [
 	['Write', 'Edit'],
 	['Write', 'Edit', 'Proofread'],

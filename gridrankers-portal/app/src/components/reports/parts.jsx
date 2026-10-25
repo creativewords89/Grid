@@ -52,7 +52,8 @@ export function ProjectTag({ project }) {
 
 // One entry as a quiet row (design DR-A): title and time spent, one line of details, project, files
 // and links. `onOpen` makes the row editable (click to edit).
-export function EntryRow({ entry, onOpen }) {
+// `was`: the time sent before an approved change (design RC-1), shown crossed out.
+export function EntryRow({ entry, onOpen, was }) {
 	const chips = (
 		<span className="dr-chipsrow">
 			<ProjectTag project={entry.project} />
@@ -74,7 +75,10 @@ export function EntryRow({ entry, onOpen }) {
 				) : (
 					<b className="dr-row-t">{entry.title}</b>
 				)}
-				<b className="dr-row-m">{fmtMinutes(entry.minutes)}</b>
+				<b className="dr-row-m">
+					{was != null && was !== +entry.minutes && <s className="rc-was">{fmtMinutes(was)}</s>}
+					{fmtMinutes(entry.minutes)}
+				</b>
 			</div>
 			{entry.details && <p className="dr-row-d">{entry.details}</p>}
 			{chips}

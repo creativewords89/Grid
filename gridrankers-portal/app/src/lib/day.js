@@ -207,7 +207,11 @@ export function approvals(data, me) {
 	// Leaders and the Super Admin decide.
 	const unticks = isManager(me) ? untickRequests(data) : [];
 	const undos = isManager(me) ? undoRequests(data) : [];
-	return [...leave, ...reviews, ...unticks, ...undos].sort((a, b) => String(b.at).localeCompare(String(a.at)));
+	// Asking to change a past report (design RC-1): Team Members' for leaders, anyone's for the Super Admin.
+	const changes = rowsOf(data, 'report_changes')
+		.filter((c) => c.status === 'pending' && c.member_id !== me.id && data.members[c.member_id] && (me.role === 'admin' || (isManager(me) && c.member_role === 'member')))
+		.map((c) => ({ kind: 'report_change', id: c.id, at: c.created_at, who: data.members[c.member_id], change: c }));
+	return [...leave, ...reviews, ...unticks, ...undos, ...changes].sort((a, b) => String(b.at).localeCompare(String(a.at)));
 }
 
 // Projects tab: everything that needs attention across active projects.

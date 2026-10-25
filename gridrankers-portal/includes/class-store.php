@@ -28,6 +28,7 @@ class GRP_Store {
 		'grp_monthly_tasks'    => array( 'assignees', 'parts', 'steps', 'files' ),
 		'grp_cycle_records'    => array( 'by_person', 'parts', 'review', 'completion', 'undo_request', 'step_done' ),
 		'grp_audit'            => array( 'changes' ),
+		'grp_report_changes'   => array( 'entries' ),
 		'grp_trash'            => array( 'data' ),
 		'grp_settings'         => array( 'value' ),
 		'grp_billing'          => array( 'payments' ),

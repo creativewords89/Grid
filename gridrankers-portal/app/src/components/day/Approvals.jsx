@@ -1,6 +1,7 @@
 import { usePortal } from '../../context.js';
 import { ago, waitTitle } from '../../lib/feed.js';
 import { short } from '../../lib/format.js';
+import { fmtMinutes } from '../../lib/reports.js';
 import { leaveRules, overBy, teamWeekly } from '../../lib/people.js';
 import { rowsOf } from '../../lib/store.js';
 import useReview from '../review/useReview.js';
@@ -97,6 +98,38 @@ export function ApprovalItem({ item }) {
 				</button>
 				<button type="button" className="btn small" onClick={() => answer({ keep: { column: col.id } }, 'Kept ticked')}>
 					Keep ticked
+				</button>
+			</Row>
+		);
+	}
+
+	if (item.kind === 'report_change') {
+		const c = item.change;
+		const lines = (c.entries || []).map((e) => `${e.title} ${fmtMinutes(e.from)} → ${fmtMinutes(e.to)}`).join(' · ');
+		const answer = async (action) => {
+			const message = await confirm({
+				title: action === 'approve' ? `Approve ${item.who.name}’s change?` : `Reject ${item.who.name}’s change?`,
+				message: `${short(c.day)} · ${fmtMinutes(c.from_minutes)} → ${fmtMinutes(c.to_minutes)} · ${lines}${c.reason ? ` · “${c.reason}”` : ''}`,
+				input: 'Message (optional)',
+				placeholder: action === 'approve' ? 'e.g. Fixed' : 'Why not',
+				ok: action === 'approve' ? 'Approve' : 'Reject',
+				danger: action === 'reject',
+			});
+			if (message === null) return;
+			try {
+				dispatch({ type: 'upsert', table: 'report_changes', row: await api.patch(`report-changes/${c.id}`, { action, message }) });
+				toast(action === 'approve' ? 'Change approved — the report and salary are updated' : 'Change rejected');
+			} catch (err) {
+				toast(err.message);
+			}
+		};
+		return (
+			<Row item={item} tone="blue" icon="⏱" title={waitTitle(item)}>
+				<button type="button" className="btn small ok-btn" onClick={() => answer('approve')}>
+					Approve
+				</button>
+				<button type="button" className="btn small danger-soft" onClick={() => answer('reject')}>
+					Reject
 				</button>
 			</Row>
 		);

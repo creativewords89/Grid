@@ -72,6 +72,10 @@ describe('the dialog', () => {
 		expect(stepsError([{ id: 'a', name: 'Write', member: 'max', due: '2026-10-07' }, { id: 'b', name: 'Edit', member: 'nia', due: '2026-10-03' }])).toBe('“Edit” is due before “Write” — each step’s date must be on or after the one before.');
 		expect(stepsError([{ id: 'a', name: 'Write', member: 'max', due: 3 }, { id: 'b', name: 'Edit', member: 'nia', due: 40 }])).toBe('“Edit”: pick a day of the cycle, 1 to 31.');
 		expect(stepsError(rows)).toBe('Add at least 2 steps, or switch to One step.');
+		// Up to 10 steps (was 4).
+		const steps = (n) => Array.from({ length: n }, (_, i) => ({ id: 's' + i, name: 'Step ' + i, member: 'max', due: '' }));
+		expect(stepsError(steps(10))).toBe('');
+		expect(stepsError(steps(11))).toBe('Up to 10 steps.');
 		expect(stepsError([...rows.slice(0, 1), { id: 'b', name: 'Edit', member: '' }])).toBe('Pick who does “Edit”.');
 		expect(stepsError([...rows.slice(0, 1), { id: 'b', name: '', member: 'nia' }])).toBe('Name every step, e.g. Write, Edit, Proofread.');
 		expect(stepsError([...rows.slice(0, 1), { id: 'b', name: 'Edit', member: 'nia' }])).toBe('');

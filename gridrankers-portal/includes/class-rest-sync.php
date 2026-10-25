@@ -41,6 +41,7 @@ class GRP_REST_Sync extends GRP_REST_Controller {
 		'grp_billing_fees'     => 'billing_fees',
 		'grp_client_requests'  => 'client_requests',
 		'grp_request_messages' => 'request_messages',
+		'grp_report_changes'   => 'report_changes',
 	);
 
 	/**
@@ -112,6 +113,17 @@ class GRP_REST_Sync extends GRP_REST_Controller {
 						$rows,
 						static function ( $row ) use ( $actor ) {
 							return GRP_REST_Posts::visible_to( $row, $actor );
+						}
+					)
+				);
+			}
+			if ( 'grp_report_changes' === $table && ! $admin ) {
+				// Their own requests; a Team Leader also Team Members' (whose reports they read).
+				$rows = array_values(
+					array_filter(
+						$rows,
+						static function ( $row ) use ( $actor, $manager ) {
+							return (string) $row['member_id'] === (string) $actor['id'] || ( $manager && 'member' === $row['member_role'] );
 						}
 					)
 				);
