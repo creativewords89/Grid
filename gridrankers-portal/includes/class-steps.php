@@ -37,6 +37,16 @@ class GRP_Steps {
 	const HANDIN_KINDS = array( 'file', 'link', 'image' );
 
 	/**
+	 * The hand-in of a step without a checklist: optional files or links.
+	 */
+	const DEFAULT_HANDIN = array(
+		'id'       => 'work',
+		'label'    => 'Files or links',
+		'kind'     => 'file',
+		'required' => false,
+	);
+
+	/**
 	 * Validates steps from a request.
 	 *
 	 * @param mixed  $raw Raw steps.
@@ -155,13 +165,16 @@ class GRP_Steps {
 	}
 
 	/**
-	 * A step's hand-in checklist.
+	 * What a step can hand in: its checklist, or — on a step without one — a single optional
+	 * "Files or links" item, so anyone completing a step can hand in their work.
 	 *
 	 * @param array $step Step.
 	 * @return array
 	 */
 	public static function handin( array $step ) {
-		return is_array( $step['handin'] ?? null ) ? array_values( $step['handin'] ) : array();
+		$items = is_array( $step['handin'] ?? null ) ? array_values( $step['handin'] ) : array();
+
+		return $items ? $items : array( self::DEFAULT_HANDIN );
 	}
 
 	/**

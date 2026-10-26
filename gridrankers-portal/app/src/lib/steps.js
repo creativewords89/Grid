@@ -19,16 +19,21 @@ export const MAX_HANDIN = 10;
 export const HANDIN_KINDS = { file: 'File', link: 'Link', image: 'Image' };
 export const newHandinId = () => 'h' + Math.random().toString(36).slice(2, 10);
 export const handinOf = (step) => (step && Array.isArray(step.handin) ? step.handin : []);
+// What a step can hand in: its checklist, or on a step without one a single optional "Files or
+// links" (same as GRP_Steps::handin), so whoever completes a step can hand in their work.
+export const DEFAULT_HANDIN = { id: 'work', label: 'Files or links', kind: 'file', required: false };
+export const handinItems = (step) => (handinOf(step).length ? handinOf(step) : [DEFAULT_HANDIN]);
+export const hasChecklist = (step) => handinOf(step).length > 0;
 export const handinGot = (handins, stepId, itemId) => ((handins || {})[stepId] || {})[itemId] || null;
 export const handedIn = (handins, stepId, itemId) => {
 	const got = handinGot(handins, stepId, itemId);
 	return !!got && ((got.files || []).length > 0 || (got.links || []).length > 0);
 };
-export const missingHandins = (step, handins) => handinOf(step).filter((it) => it.required && !handedIn(handins, step.id, it.id));
+export const missingHandins = (step, handins) => handinItems(step).filter((it) => it.required && !handedIn(handins, step.id, it.id));
 
 // "2 of 3 · 1 required left" for the Hand in window and the step.
 export function handinCount(step, handins) {
-	const items = handinOf(step);
+	const items = handinItems(step);
 	const got = items.filter((it) => handedIn(handins, step.id, it.id)).length;
 	const left = missingHandins(step, handins).length;
 	return { got, total: items.length, left, text: `${got} of ${items.length}${left ? ` · ${left} required left` : ''}` };
@@ -64,8 +69,12 @@ export const cleanLink = (raw) => {
 	}
 };
 
-// Whether moving a step asks for its hand-ins first: Completed, or the +1 that completes it.
-export const asksHandin = (row, change) => handinOf(row).length > 0 && (change === 'done' || (change === 1 && row.n + 1 >= row.target));
+// Whether moving a step asks for its hand-ins first: Completed, or the +1 that completes it —
+// on every step (one without a checklist gets the optional Files or links).
+export const asksHandin = (row, change) => change === 'done' || (change === 1 && row.n + 1 >= row.target);
+
+// Whether a step's hand-ins hold anything at all (a step without a checklist may finish with none).
+export const anyHandedIn = (value) => Object.values(value || {}).some((got) => !!got && ((got.files || []).length > 0 || (got.links || []).length > 0));
 
 // The dialog's check of a step's checklist (same as GRP_Steps::clean_handin).
 export function checkHandin(items) {
@@ -138,7 +147,7 @@ export function canTickStep(me, row, delta, status) {
 
 // Who may hand in on a step (same as GRP_Permissions::HAND_IN_STEP): its person or a leader,
 // never on completed work.
-export const canHandIn = (me, row, status) => !!me && status !== 'done' && handinOf(row).length > 0 && (isManager(me) || row.member === me.id);
+export const canHandIn = (me, row, status) => !!me && status !== 'done' && (isManager(me) || row.member === me.id);
 
 // The step the task is on: the first one not completed (null when all are).
 export const currentStep = (task, done) => stepRows(task, done).find((r) => r.status !== 'done') || null;

@@ -287,6 +287,53 @@ class Test_GRP_Step_Handins extends GRP_REST_TestCase {
 		$this->assertStatus( 200, $send( 'lead', array( 'draft' => array( 'files' => array( $draft['id'] ) ) ) ) );
 	}
 
+	public function test_a_step_without_a_checklist_takes_optional_files_or_links() {
+		$task = $this->item();
+		$this->step(
+			'member',
+			$task,
+			array(
+				'step'   => 'write',
+				'status' => 'doing',
+			)
+		);
+		GRP_Store::update( 'grp_meeting_tasks', $task['id'], array( 'step_done' => array( 'write' => array( 'n' => 1 ) ) ) );
+		// Edit has no checklist: Completed needs nothing, and files or links may go with it.
+		$this->assertStatus(
+			200,
+			$this->step(
+				'other',
+				$task,
+				array(
+					'step'   => 'edit',
+					'status' => 'doing',
+				)
+			)
+		);
+		$res = $this->step(
+			'other',
+			$task,
+			array(
+				'step'    => 'edit',
+				'handins' => array( 'work' => array( 'links' => array( 'https://docs.google.com/document/d/2' ) ) ),
+			)
+		);
+		$this->assertStatus( 200, $res );
+		$this->assertSame( 'docs.google.com', $res->get_data()['handins']['edit']['work']['links'][0]['name'] );
+		// A step with a checklist doesn't take the general item.
+		$this->assertStatus(
+			400,
+			$this->step(
+				'member',
+				$task,
+				array(
+					'step'    => 'write',
+					'handins' => array( 'work' => array( 'links' => array( 'https://example.com/a' ) ) ),
+				)
+			)
+		);
+	}
+
 	public function test_permission_rows() {
 		$task = array(
 			'status'    => 'doing',

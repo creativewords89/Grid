@@ -66,7 +66,15 @@ test('task steps', async ({ page }) => {
 	await expect(card(page, title)).toHaveClass(/st-doing/);
 	await expect(status('Write').getByRole('button', { name: 'Not started' })).toBeDisabled();
 	await status('Write').getByRole('button', { name: 'Completed' }).click();
+	// Every step offers its hand-in: optional Files or links when it has no checklist.
+	await expect(dlg.getByRole('heading', { name: 'Hand in “Write”' })).toBeVisible();
+	await expect(dlg.getByRole('region', { name: 'Files or links' })).toContainText('Optional');
+	await dlg.getByLabel('Link for Files or links').fill('https://docs.google.com/document/d/water-heater');
+	await dlg.getByLabel('Link for Files or links').press('Enter');
+	if (process.env.SHOTS) await dlg.screenshot({ path: process.env.SHOTS + '/handin-general.png' });
+	await dlg.getByRole('button', { name: 'Finish Write' }).click();
 	await page.getByText('Write: completed — Edit is next').waitFor();
+	await expect(step().locator('.hi-from a.hi-chip')).toHaveText(/Google Doc/);
 	await expect(step().locator('.stpc-badge')).toHaveText(/Step 2 of 3/i);
 	await expect(step().locator('.stpc-who b')).toHaveText('Edit');
 	await expect(status('Edit').getByRole('button', { name: 'Completed' })).toBeDisabled();
@@ -79,6 +87,7 @@ test('task steps', async ({ page }) => {
 	await expect(ready).toBeVisible();
 	await ready.getByRole('button', { name: 'Open task ›' }).click();
 	await status('Edit').getByRole('button', { name: 'Completed' }).click();
+	await dlg.getByRole('button', { name: 'Finish Edit' }).click();
 	await page.getByText('Edit: completed — Proofread is next').waitFor();
 	await card(page, title).getByRole('button', { name: 'Details' }).click();
 	const details = page.locator('dialog[open]');
@@ -87,10 +96,13 @@ test('task steps', async ({ page }) => {
 	await details.getByRole('group', { name: 'Status of Edit' }).getByRole('button', { name: 'In progress' }).click();
 	await page.getByText('Edit: in progress').waitFor();
 	await details.getByRole('group', { name: 'Status of Edit' }).getByRole('button', { name: 'Completed' }).click();
+	await dlg.getByRole('button', { name: 'Finish Edit' }).click();
+	await page.getByText('Edit: completed — Proofread is next').waitFor();
 	await page.keyboard.press('Escape');
 
 	// The last step's Completed asks for the submission and completes the task.
 	await status('Proofread').getByRole('button', { name: 'Completed' }).click();
+	await dlg.getByRole('button', { name: 'Finish Proofread' }).click();
 	await expect(dlg.getByRole('heading', { name: 'Submit completed work' })).toBeVisible();
 	await dlg.getByLabel('What you did').fill('Proofread and published');
 	await dlg.getByRole('button', { name: 'Complete' }).click();

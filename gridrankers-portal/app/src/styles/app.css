@@ -1053,6 +1053,8 @@ dialog.bl-fees{width:min(640px,94vw)}
 .hi-count{font-size:.76rem;font-weight:700;padding:3px 9px;border-radius:99px;background:var(--doing-bg);color:var(--doing);white-space:nowrap}
 .hi-count.ok{background:var(--done-bg);color:var(--done)}
 .hi-bar{height:5px;border-radius:99px;background:var(--panel-2);overflow:hidden}
+.hi-bar.none{display:none}
+.hi-sub{margin:0;font-size:.82rem}
 .hi-bar i{display:block;height:100%;background:var(--done);border-radius:99px;transition:width .2s}
 .hi-slot{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
 .hi-slot.ok{border-color:color-mix(in srgb,var(--done) 35%,var(--line))}
