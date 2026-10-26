@@ -668,6 +668,6 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 
 86. (Released as 0.1.44.) Hand-ins on every step (6.16): Completed on any step opens Hand in “{step}”; a step without a checklist has one optional Files or links (server item `work`), and finishing with nothing handed in sends nothing. **Tests:** PHPUnit (a step without a checklist completes with nothing and takes files or links; a step with a checklist refuses the general item), Vitest (the general item, every step asks, who may hand in), Playwright (task steps: Write is finished with a Google Doc link, which shows on Edit's card).
 
-87. No hand-in button on the task card (6.16): the card shows only the step and its status; the Hand in window opens from Completed, and 📎 Hand in is in Details. **Tests:** Playwright (no hand-in button on the card; Completed still opens Hand in).
+87. (Released as 0.1.45.) No hand-in button on the task card (6.16): the card shows only the step and its status; the Hand in window opens from Completed, and 📎 Hand in is in Details. **Tests:** Playwright (no hand-in button on the card; Completed still opens Hand in).
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).
