@@ -1,7 +1,7 @@
 import { usePortal } from '../context.js';
 import { short, localYmd } from '../lib/format.js';
 import { openFile } from '../lib/files.js';
-import { canHandIn, canSetStep, canTickStep, currentStep, dueBadge, handinCount, handinGot, handinOf, linkName, stepDue, stepN, stepRows } from '../lib/steps.js';
+import { canHandIn, canSetStep, canTickStep, currentStep, dueBadge, handinCount, handinGot, handinItems, hasChecklist, linkName, stepDue, stepN, stepRows } from '../lib/steps.js';
 import Avatar from './Avatar.jsx';
 import { KIND_ICON } from './StepsEditor.jsx';
 
@@ -63,7 +63,7 @@ function StepCount({ row, status, done, onTick }) {
 // a new tab. `label` shows the item's name before its files.
 export function HandinChips({ step, handins, label }) {
 	const { api, toast } = usePortal();
-	const chips = handinOf(step).flatMap((it) => {
+	const chips = handinItems(step).flatMap((it) => {
 		const got = handinGot(handins, step.id, it.id) || {};
 		return [...(got.files || []).map((f) => ({ key: f.id, it, file: f })), ...(got.links || []).map((l, i) => ({ key: it.id + i, it, link: l }))];
 	});
@@ -74,12 +74,12 @@ export function HandinChips({ step, handins, label }) {
 				c.file ? (
 					<button key={c.key} type="button" className="hi-chip" title={label ? `${c.it.label}: ${c.file.name}` : c.it.label} onClick={() => openFile(api, c.file, !/^(image\/|application\/pdf)/.test(c.file.mime || '')).catch((err) => toast(err.message))}>
 						<span aria-hidden="true">{KIND_ICON[/^image\//.test(c.file.mime || '') ? 'image' : 'file']}</span>
-						{label ? <small>{c.it.label}:</small> : null} {c.file.name}
+						{label && hasChecklist(step) ? <small>{c.it.label}:</small> : null} {c.file.name}
 					</button>
 				) : (
 					<a key={c.key} className="hi-chip" href={c.link.url} target="_blank" rel="noopener noreferrer" title={label ? `${c.it.label}: ${c.link.url}` : c.link.url}>
 						<span aria-hidden="true">{KIND_ICON.link}</span>
-						{label ? <small>{c.it.label}:</small> : null} {c.link.name || linkName(c.link.url)}
+						{label && hasChecklist(step) ? <small>{c.it.label}:</small> : null} {c.link.name || linkName(c.link.url)}
 					</a>
 				),
 			)}
@@ -87,11 +87,20 @@ export function HandinChips({ step, handins, label }) {
 	);
 }
 
-// 📎 Hand in · 1 of 3 for whoever may hand in; otherwise how many are in.
-function HandinButton({ row, handins, status, onHandIn }) {
+// 📎 Hand in · 1 of 3 for whoever may hand in; otherwise how many are in. A step without a
+// checklist shows 📎 Hand in files or links to its own person (and a leader on the current step).
+function HandinButton({ row, handins, status, onHandIn, current }) {
 	const { me, viewOnly } = usePortal();
-	if (!handinOf(row).length) return null;
 	const c = handinCount(row, handins);
+	if (!hasChecklist(row)) {
+		const may = !viewOnly && onHandIn && canHandIn(me, row, status) && (row.member === me.id || current);
+		if (!may) return null;
+		return (
+			<button type="button" className={'hi-btn' + (c.got ? ' ok' : '')} aria-label={`Hand in for ${row.name}`} onClick={() => onHandIn(row)}>
+				📎 {c.got ? 'Handed in · change' : 'Hand in files or links'}
+			</button>
+		);
+	}
 	if (!viewOnly && onHandIn && canHandIn(me, row, status)) {
 		return (
 			<button type="button" className={'hi-btn' + (c.left ? '' : ' ok')} aria-label={`Hand in for ${row.name}`} onClick={() => onHandIn(row)}>
@@ -166,8 +175,8 @@ export function StepCard({ task, done, status, project, onStatus, onTick, handin
 				</div>
 				<StepStatus row={cur} status={status} done={done} onStatus={onStatus} />
 				<StepCount row={cur} status={status} done={done} onTick={onTick} />
-				<HandinButton row={cur} handins={handins} status={status} onHandIn={onHandIn} />
-				{cur.prev && handinOf(cur.prev).length > 0 && (
+				<HandinButton row={cur} handins={handins} status={status} onHandIn={onHandIn} current />
+				{cur.prev && handinCount(cur.prev, handins).got > 0 && (
 					<span className="hi-from">
 						<small className="muted">From {cur.prev.name}:</small>
 						<HandinChips step={cur.prev} handins={handins} />
@@ -188,8 +197,9 @@ export function StepCard({ task, done, status, project, onStatus, onTick, handin
 // Every step in Details (SPEC.md 6.16): number (✓ / 🔒), name, person, due date, its status and
 // what it finished.
 export default function StepTrack({ task, done, status, project, onStatus, onTick, title, handins, onHandIn }) {
-	const { data, today } = usePortal();
+	const { data, me, today } = usePortal();
 	const rows = stepRows(task, done);
+	const cur = currentStep(task, done);
 	const note = (r) => {
 		const at = ((done || {})[r.id] || {}).at;
 		if (r.status === 'done') return `Completed${at ? ' ' + short(localYmd(at)) : ''}`;
@@ -214,9 +224,9 @@ export default function StepTrack({ task, done, status, project, onStatus, onTic
 					</div>
 					<StepStatus row={r} status={status} done={done} onStatus={onStatus} />
 					<StepCount row={r} status={status} done={done} onTick={onTick} />
-					{handinOf(r).length > 0 && (
+					{(hasChecklist(r) || handinCount(r, handins).got > 0 || r.member === (me && me.id) || (cur && cur.id === r.id)) && (
 						<div className="hi-step">
-							<HandinButton row={r} handins={handins} status={status} onHandIn={onHandIn} />
+							<HandinButton row={r} handins={handins} status={status} onHandIn={onHandIn} current={!!cur && cur.id === r.id} />
 							<HandinChips step={r} handins={handins} label />
 						</div>
 					)}

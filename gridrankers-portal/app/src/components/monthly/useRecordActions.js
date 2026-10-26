@@ -1,6 +1,6 @@
 import { usePortal } from '../../context.js';
 import { submission } from '../meeting/useTaskActions.js';
-import { asksHandin, handinBody } from '../../lib/steps.js';
+import { anyHandedIn, asksHandin, handinBody } from '../../lib/steps.js';
 
 // Ticks and status moves on a recurring task's period record, plus delete with Undo.
 export default function useRecordActions() {
@@ -9,8 +9,11 @@ export default function useRecordActions() {
 	const handinsOf = (task, periodKey, row) => (((data.records || {})[`${task.id}__${periodKey}`] || {}).handins || {})[row.id];
 	const handinFirst = async (task, periodKey, row, change) => {
 		if (!asksHandin(row, change)) return {};
-		const value = await askHandin(row, handinsOf(task, periodKey, row), true);
-		return value ? { handins: handinBody(value) } : null;
+		const before = handinsOf(task, periodKey, row);
+		const value = await askHandin(row, before, true);
+		if (!value) return null;
+		// Nothing handed in on a step that had nothing: finish without a hand-in.
+		return anyHandedIn(value) || anyHandedIn(before) ? { handins: handinBody(value) } : {};
 	};
 
 	const store = (res) => {

@@ -1,6 +1,6 @@
 // Hand-ins per step (SPEC.md 6.16, design SH-2B).
 import { describe, expect, it } from 'vitest';
-import { asksHandin, canHandIn, cleanLink, cleanSteps, handinBody, handinCount, linkName, missingHandins, stepRows, stepsError } from '../lib/steps.js';
+import { anyHandedIn, asksHandin, canHandIn, cleanLink, cleanSteps, handinBody, handinCount, handinItems, linkName, missingHandins, stepRows, stepsError } from '../lib/steps.js';
 
 const MAX = { id: 'max', name: 'Max Member', role: 'member' };
 const NIA = { id: 'nia', name: 'Nia Member', role: 'member' };
@@ -47,7 +47,8 @@ describe('the Hand in window', () => {
 		expect(asksHandin(row, 1)).toBe(true);
 		const [first] = stepRows({ target: 2, steps: [WRITE, EDIT] }, null);
 		expect(asksHandin(first, 1)).toBe(false);
-		expect(asksHandin(stepRows({ target: 1, steps: [EDIT, WRITE] }, null)[0], 'done')).toBe(false);
+		// A step without a checklist asks too: optional Files or links.
+		expect(asksHandin(stepRows({ target: 1, steps: [EDIT, WRITE] }, null)[0], 'done')).toBe(true);
 	});
 
 	it('sends file ids and links', () => {
@@ -76,6 +77,18 @@ describe('who may hand in', () => {
 		expect(canHandIn(NIA, write, 'doing')).toBe(false);
 		expect(canHandIn(LEE, write, 'doing')).toBe(true);
 		expect(canHandIn(LEE, write, 'done')).toBe(false);
-		expect(canHandIn(NIA, stepRows({ target: 1, steps: [WRITE, EDIT] }, null)[1], 'doing')).toBe(false);
+		expect(canHandIn(NIA, stepRows({ target: 1, steps: [WRITE, EDIT] }, null)[1], 'doing')).toBe(true);
+		expect(canHandIn(MAX, stepRows({ target: 1, steps: [WRITE, EDIT] }, null)[1], 'doing')).toBe(false);
+	});
+});
+
+describe('a step without a checklist', () => {
+	it('hands in optional files or links and can finish with none', () => {
+		expect(handinItems(EDIT)).toEqual([{ id: 'work', label: 'Files or links', kind: 'file', required: false }]);
+		expect(handinItems(WRITE)).toBe(ITEMS);
+		expect(missingHandins(EDIT, null)).toEqual([]);
+		expect(handinCount(EDIT, { e: { work: { links: [{ url: 'https://figma.com/file/a' }] } } }).got).toBe(1);
+		expect(anyHandedIn({ work: { files: [], links: [] } })).toBe(false);
+		expect(anyHandedIn({ work: { files: [FILE], links: [] } })).toBe(true);
 	});
 });

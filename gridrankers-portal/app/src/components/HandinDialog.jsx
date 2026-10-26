@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { usePortal } from '../context.js';
 import { FILE_ACCEPT, MAX_FILE_BYTES } from '../lib/files.js';
-import { MAX_HANDIN, cleanLink, handinOf, linkName } from '../lib/steps.js';
+import { MAX_HANDIN, cleanLink, handinItems, hasChecklist, linkName } from '../lib/steps.js';
 import Modal from './Modal.jsx';
 import { KIND_ICON } from './StepsEditor.jsx';
 import { FileRow } from './review/Submission.jsx';
@@ -171,7 +171,8 @@ export default function HandinDialog({ ask, onCancel, onSubmit }) {
 	const step = ask && ask.step;
 	const [value, setValue] = useState(() => ({ ...((ask && ask.value) || {}) }));
 	if (!step) return null;
-	const items = handinOf(step);
+	const items = handinItems(step);
+	const general = !hasChecklist(step);
 	const got = items.filter((it) => has(value[it.id])).length;
 	const left = items.filter((it) => it.required && !has(value[it.id])).length;
 	return (
@@ -179,22 +180,25 @@ export default function HandinDialog({ ask, onCancel, onSubmit }) {
 			<div className="hi-box">
 				<div className="hi-top">
 					<h2 id="grpHandinTitle">Hand in “{step.name}”</h2>
-					<span className={'hi-count' + (left ? '' : ' ok')}>
-						{got} of {items.length}
-						{left ? ` · ${left} required left` : ''}
-					</span>
+					{!general && (
+						<span className={'hi-count' + (left ? '' : ' ok')}>
+							{got} of {items.length}
+							{left ? ` · ${left} required left` : ''}
+						</span>
+					)}
 					<button type="button" className="sf-x" aria-label="Close" onClick={onCancel}>
 						×
 					</button>
 				</div>
-				<span className="hi-bar" aria-hidden="true">
+				{general && <p className="muted hi-sub">Add the files or links of this step — docs, Figma, images — so the next person has them. Optional.</p>}
+				<span className={'hi-bar' + (general ? ' none' : '')} aria-hidden="true">
 					<i style={{ width: `${items.length ? Math.round((got / items.length) * 100) : 0}%` }} />
 				</span>
 				{items.map((it) => (
 					<Slot key={it.id} item={it} got={value[it.id]} onChange={(v) => setValue((all) => ({ ...all, [it.id]: v }))} />
 				))}
 				<div className="hi-foot">
-					<span className="muted">{ask.finish ? 'Finish turns on when every required item is in.' : 'Saved with the step; the next person sees it in Details.'}</span>
+					<span className="muted">{ask.finish ? (general ? 'Nothing to hand in? Finish without.' : 'Finish turns on when every required item is in.') : 'Saved with the step; the next person sees it in Details.'}</span>
 					<button type="button" className="btn" onClick={onCancel}>
 						Cancel
 					</button>

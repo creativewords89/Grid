@@ -1,5 +1,5 @@
 import { usePortal } from '../../context.js';
-import { asksHandin, handinBody } from '../../lib/steps.js';
+import { anyHandedIn, asksHandin, handinBody } from '../../lib/steps.js';
 
 // The fields the server takes from the submission form.
 export const submission = ({ note, links, files, comment, reviewer }) => ({ note, links, files, comment, ...(reviewer ? { reviewer } : {}) });
@@ -12,8 +12,11 @@ export default function useTaskActions() {
 	// A step with a hand-in checklist asks for it before it is completed (design SH-2B).
 	const handinFirst = async (task, row, change) => {
 		if (!asksHandin(row, change)) return {};
-		const value = await askHandin(row, (task.handins || {})[row.id], true);
-		return value ? { handins: handinBody(value) } : null;
+		const before = (task.handins || {})[row.id];
+		const value = await askHandin(row, before, true);
+		if (!value) return null;
+		// Nothing handed in on a step that had nothing: finish without a hand-in.
+		return anyHandedIn(value) || anyHandedIn(before) ? { handins: handinBody(value) } : {};
 	};
 
 	const setStatus = async (task, to) => {
