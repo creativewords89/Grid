@@ -122,7 +122,7 @@ export function UnassignedLock({ task, me }) {
 // Compact meeting-task card (SPEC.md 7.2; reference bcard).
 export default function TaskCard({ task, onDetails, onEdit }) {
 	const { data, me, today } = usePortal();
-	const { setStatus, tickStep, setStep, handIn, remove, requestUndo, decideUndo } = useTaskActions();
+	const { setStatus, tickStep, setStep, remove, requestUndo, decideUndo } = useTaskActions();
 	const steps = hasSteps(task);
 	const members = data.members;
 	const st = task.status;
@@ -184,7 +184,7 @@ export default function TaskCard({ task, onDetails, onEdit }) {
 				)}
 			</div>
 			<ReviewBadge review={task.review} me={me} members={members} />
-			{steps && <StepCard task={task} done={task.step_done} status={st} handins={task.handins} onHandIn={(row) => handIn(task, row)} onStatus={(row, to) => setStep(task, row, to)} onTick={(row, delta) => tickStep(task, row, delta)} />}
+			{steps && <StepCard task={task} done={task.step_done} status={st} handins={task.handins} onStatus={(row, to) => setStep(task, row, to)} onTick={(row, delta) => tickStep(task, row, delta)} />}
 			{!steps && target > 1 && (
 				<div className="mini-prog">
 					<span className="mp-bar">
