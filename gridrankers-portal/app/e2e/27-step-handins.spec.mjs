@@ -36,7 +36,8 @@ test('hand-ins per step', async ({ page }) => {
 	await expect(dlg.getByRole('button', { name: 'Hand-in for step 1' })).toHaveText('📎 3');
 	await dlg.getByRole('button', { name: 'Save task' }).click();
 	await page.getByText('Task added').waitFor();
-	await expect(step().locator('.hi-btn')).toHaveText('📎 Hand in · 0 of 3 · 2 required left');
+	// No hand-in button on the card: it shows on Completed and in Details.
+	await expect(step().locator('.hi-btn')).toHaveCount(0);
 	await signOut(page);
 
 	// Max: Completed on Write opens Hand in "Write"; Finish waits for the two required items.

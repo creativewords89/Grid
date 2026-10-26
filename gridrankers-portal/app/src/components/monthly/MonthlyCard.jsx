@@ -251,7 +251,7 @@ export function ProgressBox({ task, period }) {
 // Monthly / weekly task card (SPEC.md 7.3).
 export default function MonthlyCard({ task, selWeek, onSelectWeek, missed, onDetails, onEdit }) {
 	const { data, me, cycleOff, today } = usePortal();
-	const { setStatus, tickStep, setStep, handIn, remove, requestUndo, decideUndo } = useRecordActions();
+	const { setStatus, tickStep, setStep, remove, requestUndo, decideUndo } = useRecordActions();
 	const period = usePeriod(task, selWeek);
 	const steps = hasSteps(task);
 	const { project, wk, aw, sel, slots, name, unit, freqLabel, tag, range, periodKey, st, n, count } = period;
@@ -326,7 +326,7 @@ export default function MonthlyCard({ task, selWeek, onSelectWeek, missed, onDet
 			</div>
 			<ReviewBadge review={period.rec && period.rec.review} me={me} members={members} />
 			{weeks}
-			{steps && <StepCard task={task} done={period.rec && period.rec.status !== 'skipped' ? period.rec.step_done : null} handins={period.rec && period.rec.handins} onHandIn={(row) => handIn(task, periodKey, row)} status={st} project={project} onStatus={(row, to) => setStep(task, periodKey, row, to)} onTick={(row, delta) => tickStep(task, periodKey, row, delta)} />}
+			{steps && <StepCard task={task} done={period.rec && period.rec.status !== 'skipped' ? period.rec.step_done : null} handins={period.rec && period.rec.handins} status={st} project={project} onStatus={(row, to) => setStep(task, periodKey, row, to)} onTick={(row, delta) => tickStep(task, periodKey, row, delta)} />}
 			{!steps && n > 1 && (
 				<div className="mini-prog">
 					<span className="mp-bar">
