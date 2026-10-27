@@ -12,6 +12,7 @@ const NAV: NavItem[] = [
   { path: "/import", label: "Import" },
   { path: "/agents", label: "Agents" },
   { path: "/runs", label: "Runs" },
+  { path: "/benchmarks", label: "Benchmarks" },
   { path: "/connections", label: "Connections", roles: ["owner"] },
   { path: "/users", label: "Users", roles: ["owner"] },
 ];

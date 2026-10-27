@@ -5,16 +5,27 @@ import uuid
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from pydantic import BaseModel, Field, StringConstraints, ValidationError
+from sqlalchemy import func, or_, select
 
 from app.agents import service
 from app.agents.manifest import Manifest
 from app.api.schemas import Strict
 from app.auth.deps import Db
 from app.auth.tokens import now
-from app.db.models import Agent, Run, RunStatus
+from app.benchmarks.standard import version_label
+from app.db.models import (
+    Agent,
+    DoNotContact,
+    GbpBenchmark,
+    LeadList,
+    Run,
+    RunStatus,
+    WebsiteStandard,
+)
 from app.errors import ApiError
+from app.imports.reader import phone_digits
 from app.runs import service as runs
 
 router = APIRouter(prefix="/agent/v1", tags=["agent api"])
@@ -150,3 +161,106 @@ def finish(run_id: str, body: FinishIn, agent: CurrentAgent, db: Db) -> None:
     run.summary = body.summary
     run.finished_at = now()
     db.commit()
+
+
+# --- reference data the audits and outreach need (SPEC section 6.2) -------------------------
+
+
+@router.get("/lists")
+def lists(agent: CurrentAgent, db: Db) -> list[dict[str, Any]]:
+    """Every City + Niche list; agents leave the leads of inactive lists alone."""
+    db.commit()  # records last_seen_at
+    return [
+        {"city": x.city, "niche": x.niche, "active": x.active, "daily_limit": x.daily_limit}
+        for x in db.scalars(select(LeadList).order_by(LeadList.niche, LeadList.city))
+    ]
+
+
+@router.get("/benchmarks")
+def benchmarks(
+    agent: CurrentAgent,
+    db: Db,
+    niche: Annotated[str | None, Query(max_length=80)] = None,
+    city: Annotated[str | None, Query(max_length=120)] = None,
+) -> list[dict[str, Any]]:
+    db.commit()
+    query = select(GbpBenchmark).order_by(GbpBenchmark.niche, GbpBenchmark.city)
+    if niche:
+        query = query.where(func.lower(GbpBenchmark.niche) == niche.lower())
+    if city:
+        query = query.where(func.lower(GbpBenchmark.city) == city.lower())
+    out = []
+    for row in db.scalars(query):
+        out.append(
+            {
+                "city": row.city,
+                "niche": row.niche,
+                "reference_businesses": row.reference_businesses,
+                **{
+                    name: (None if getattr(row, name) is None else float(getattr(row, name)))
+                    for name in (
+                        "additional_categories",
+                        "services",
+                        "photos",
+                        "posts_90_days",
+                        "description_length",
+                        "reviews",
+                        "rating",
+                        "review_reply_pct",
+                    )
+                },
+            }
+        )
+    return out
+
+
+@router.get("/website-standards/{niche}")
+def website_standard(niche: str, agent: CurrentAgent, db: Db) -> dict[str, Any]:
+    """The niche's latest locked Website Standard; 404 means NO_STANDARD."""
+    db.commit()
+    row = db.scalar(
+        select(WebsiteStandard)
+        .where(
+            func.lower(WebsiteStandard.niche) == niche.lower(),
+            WebsiteStandard.version.is_not(None),
+        )
+        .order_by(WebsiteStandard.version.desc())
+        .limit(1)
+    )
+    if row is None or row.version is None:
+        raise ApiError(404, "no_standard", f"No locked Website Standard for {niche}.")
+    return {
+        "niche": row.niche,
+        "version": row.version,
+        "label": version_label(row.niche, row.version),
+        "standard": row.standard,
+    }
+
+
+@router.get("/do-not-contact/check")
+def do_not_contact(
+    agent: CurrentAgent,
+    db: Db,
+    email: Annotated[list[str] | None, Query()] = None,
+    phone: Annotated[str | None, Query(max_length=40)] = None,
+    gbp: Annotated[str | None, Query(max_length=500)] = None,
+    domain: Annotated[str | None, Query(max_length=255)] = None,
+) -> dict[str, Any]:
+    """Whether any of these may never be contacted, and why."""
+    db.commit()
+    wanted = [("email", e.strip().lower()) for e in (email or []) if e.strip()]
+    if phone and phone_digits(phone):
+        wanted.append(("phone", phone_digits(phone)))
+    if gbp:
+        wanted.append(("gbp", gbp.strip().rstrip("/")))
+    if domain:
+        wanted.append(("domain", domain.strip().lower().removeprefix("www.")))
+    if not wanted:
+        return {"blocked": False, "matches": []}
+    found = db.scalars(
+        select(DoNotContact).where(
+            or_(*[(DoNotContact.kind == k) & (DoNotContact.value == v) for k, v in wanted])
+        )
+    ).all()
+    matches = [{"kind": d.kind, "value": d.value, "reason": d.reason} for d in found]
+    return {"blocked": bool(matches), "matches": matches}

@@ -187,8 +187,9 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
     (agent switched off; from step 5 also Stop pressed and budgets used up). This is also the
     heartbeat.
   - `POST /runs/{id}/finish`: final counts, cost, `stop_reason`, failures summary.
-  - `GET /benchmarks`, `GET /website-standards/{niche}`, `GET /do-not-contact/check`:
-    reference data the audits need.
+  - Reference data: `GET /lists` (City + Niche, on or off, limit), `GET /benchmarks?niche=&city=`,
+    `GET /website-standards/{niche}` (latest locked, `404` when none) and
+    `GET /do-not-contact/check?email=&phone=&gbp=&domain=` (`blocked` and why).
 - An agent can only see and change its own runs (another agent's run id is a `404`). Secrets
   are never logged on either side.
 - **Run now** (Owners and Admins) queues a manual run. It is refused while the agent is off,
@@ -268,13 +269,22 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 
 ### 6.5 Benchmarks and Website Standards
 
-- **GBP Benchmark upload:** an `.xlsx` with the columns of PLAN.md 3.5; one row per City + Niche
-  replaces that pair's benchmark. Preview, then confirm. Empty cells mean "don't compare".
-- **Website Standard:** a form per Niche: must-have and nice-to-have services, each with
-  synonyms; service page targets (words, sections, FAQ, price, photos, CTA); location page
-  checklist; supporting pages; blog posts per month and topics; mobile LCP target.
-  Admins edit a **draft**; an Owner **locks** it as the next version (`cleaning-v2`). Agents
-  only use locked versions and record the version in each result.
+- **GBP Benchmark file** (Owners and Admins): an `.xlsx` (max 5 MB), any sheet whose header row
+  (within the first five rows) has City and Niche. Columns: Additional categories, Services,
+  Photos, Posts (90 days), Description length, Reviews, Rating (0–5), Review reply % ("85%" or
+  0.85), Reference businesses; other columns are listed and ignored. **Check the file** shows
+  the rows, the rows that replace an existing City + Niche (case ignored), and every problem by
+  row (not a number, out of range, City or Niche missing, a pair twice). **Save** works only on
+  a file without problems. An empty cell means "don't compare this". A benchmark can be deleted.
+- **Website Standard** (one per niche): services (name, other names, must-have or not);
+  service pages (words, sections, FAQ, price, own photos, reviews, call to action, service
+  area); location pages (words, city in title, local content, local photos, all services
+  linked, local reviews, map, city FAQ, call to action, most text shared with another location
+  page); supporting pages; blog posts a month and topics; mobile LCP target. Owners and Admins
+  edit **one draft** per niche (starting from the version in use); an **Owner locks** it as the
+  next version (`cleaning-v2`), which needs at least one must-have service. Older versions stay
+  readable. Agents only ever see the latest locked version; a niche without one is
+  `NO_STANDARD`.
 
 ### 6.6 Alerts
 

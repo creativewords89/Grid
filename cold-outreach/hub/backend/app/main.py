@@ -7,7 +7,19 @@ from fastapi import FastAPI, Request, Response
 from sqlalchemy.orm import Session
 
 from app import __version__, errors
-from app.api import agent_api, agents, auth, connections, health, imports, me, runs, setup, users
+from app.api import (
+    agent_api,
+    agents,
+    auth,
+    benchmarks,
+    connections,
+    health,
+    imports,
+    me,
+    runs,
+    setup,
+    users,
+)
 from app.config import get_settings
 from app.db.session import get_engine
 
@@ -56,6 +68,7 @@ def create_app() -> FastAPI:
         agent_api,
         runs,
         imports,
+        benchmarks,
     ):
         app.include_router(module.router, prefix="/api")
     return app

@@ -172,6 +172,80 @@ export type LeadList = {
   top: number;
 };
 
+export type Benchmark = {
+  id: string;
+  city: string;
+  niche: string;
+  additional_categories: string | null;
+  services: string | null;
+  photos: string | null;
+  posts_90_days: string | null;
+  description_length: string | null;
+  reviews: string | null;
+  rating: string | null;
+  review_reply_pct: string | null;
+  reference_businesses: string;
+  updated_at: string;
+};
+
+export type BenchmarkUpload = {
+  applied: boolean;
+  rows: Record<string, string | null>[];
+  errors: string[];
+  ignored_columns: string[];
+  replaces: number;
+};
+
+export type StandardService = { name: string; synonyms: string[]; must_have: boolean };
+
+export type Standard = {
+  services: StandardService[];
+  service_page: {
+    min_words: number;
+    min_sections: number;
+    faq: boolean;
+    price: boolean;
+    own_photos: boolean;
+    reviews: boolean;
+    cta: boolean;
+    service_area: boolean;
+  };
+  location_page: {
+    min_words: number;
+    city_in_title: boolean;
+    local_content: boolean;
+    local_photos: boolean;
+    all_services_linked: boolean;
+    local_reviews: boolean;
+    map: boolean;
+    faq: boolean;
+    cta: boolean;
+    max_shared_text_pct: number;
+  };
+  supporting_pages: string[];
+  blog: { posts_per_month: number; topics: string[] };
+  mobile_lcp_seconds: number;
+};
+
+export type StandardVersion = {
+  version: number | null;
+  label: string | null;
+  standard: Standard;
+  edited_by: string | null;
+  edited_at: string;
+  locked_by: string | null;
+  locked_at: string | null;
+};
+
+export type NicheStandard = {
+  niche: string;
+  locked: StandardVersion | null;
+  draft: StandardVersion | null;
+  versions: number[];
+  can_edit: boolean;
+  can_lock: boolean;
+};
+
 export type Health = {
   status: "ok" | "error";
   version: string;
@@ -313,6 +387,27 @@ export const api = {
   confirmImport: (id: string) => request<LeadImport>("POST", `/imports/${id}/confirm`),
   discardImport: (id: string) => request<LeadImport>("POST", `/imports/${id}/discard`),
   niches: () => request<string[]>("GET", "/niches"),
+  benchmarks: () => request<Benchmark[]>("GET", "/benchmarks"),
+  uploadBenchmarks: (file: File, apply: boolean) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("apply", apply ? "true" : "false");
+    return upload<BenchmarkUpload>("/benchmarks/upload", form);
+  },
+  deleteBenchmark: (id: string) => request<void>("DELETE", `/benchmarks/${id}`),
+  standards: () => request<NicheStandard[]>("GET", "/website-standards"),
+  standard: (niche: string) =>
+    request<NicheStandard>("GET", `/website-standards/${encodeURIComponent(niche)}`),
+  saveDraft: (niche: string, standard: Standard) =>
+    request<NicheStandard>(
+      "PUT",
+      `/website-standards/${encodeURIComponent(niche)}/draft`,
+      standard,
+    ),
+  dropDraft: (niche: string) =>
+    request<NicheStandard>("DELETE", `/website-standards/${encodeURIComponent(niche)}/draft`),
+  lockStandard: (niche: string) =>
+    request<NicheStandard>("POST", `/website-standards/${encodeURIComponent(niche)}/lock`),
   lists: () => request<LeadList[]>("GET", "/lists"),
   updateList: (id: string, patch: { active?: boolean }) =>
     request<LeadList>("PATCH", `/lists/${id}`, patch),
