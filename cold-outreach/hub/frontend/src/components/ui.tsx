@@ -73,10 +73,10 @@ export function Modal({
   );
 }
 
-export function CopyLink({ link }: { link: string }) {
+export function CopyLink({ link, label = "Link" }: { link: string; label?: string }) {
   return (
     <div className="copy-link">
-      <input readOnly value={link} aria-label="Link" onFocus={(e) => e.currentTarget.select()} />
+      <input readOnly value={link} aria-label={label} onFocus={(e) => e.currentTarget.select()} />
       <button
         type="button"
         className="button"

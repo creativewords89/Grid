@@ -41,6 +41,68 @@ export type ConnectionGroup = {
 
 export type Connections = { groups: ConnectionGroup[] };
 
+export type ManifestSetting = {
+  key: string;
+  type: "int" | "float" | "text" | "bool" | "choice";
+  label: string;
+  help: string;
+  default: number | string | boolean | null;
+  min: number | null;
+  max: number | null;
+  choices: string[];
+};
+
+export type Manifest = {
+  name: string;
+  version: string;
+  description: string;
+  settings: ManifestSetting[];
+  connections: string[];
+  sheet_columns: string[];
+  cost_per_item_usd: number;
+};
+
+export type Run = {
+  id: string;
+  trigger: "schedule" | "manual";
+  status: "queued" | "running" | "succeeded" | "failed" | "stopped" | "timed_out";
+  queued_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  done: number;
+  failed: number;
+  skipped: number;
+  cost_usd: string;
+  stop_reason: string | null;
+  requested_by: string | null;
+};
+
+export type ConfigValue = number | string | boolean | null;
+
+export type Agent = {
+  key: string;
+  name: string;
+  enabled: boolean;
+  connected: boolean;
+  last_seen_at: string | null;
+  manifest: Manifest | null;
+  config: Record<string, ConfigValue>;
+  daily_limit: number;
+  run_time: string;
+  time_zone: string;
+  daily_budget_usd: string;
+  missing_connections: string[];
+  last_run: Run | null;
+};
+
+export type AgentSettings = {
+  config?: Record<string, ConfigValue>;
+  daily_limit?: number;
+  run_time?: string;
+  time_zone?: string;
+  daily_budget_usd?: string;
+};
+
 export type Health = {
   status: "ok" | "error";
   version: string;
@@ -136,6 +198,17 @@ export const api = {
   updateConnections: (values: Record<string, string | null>) =>
     request<Connections>("PATCH", "/connections", { values }),
   testConnection: (group: string) => request<TestResult>("POST", `/connections/${group}/test`),
+
+  agents: () => request<Agent[]>("GET", "/agents"),
+  addAgent: (key: string, name: string) =>
+    request<{ agent: Agent; token: string }>("POST", "/agents", { key, name }),
+  newAgentToken: (key: string) =>
+    request<{ agent: Agent; token: string }>("POST", `/agents/${key}/token`),
+  switchAgent: (key: string, enabled: boolean) =>
+    request<Agent>("PUT", `/agents/${key}/enabled`, { enabled }),
+  updateAgent: (key: string, settings: AgentSettings) =>
+    request<Agent>("PATCH", `/agents/${key}`, settings),
+  runAgent: (key: string) => request<Run>("POST", `/agents/${key}/run`),
 
   updateProfile: (name: string) => request<User>("PATCH", "/me", { name }),
   changePassword: (current_password: string, new_password: string) =>

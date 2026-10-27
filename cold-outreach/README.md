@@ -5,7 +5,9 @@ what they find into outreach, all run from one website, the **Agent Hub**.
 
 - [PLAN.md](PLAN.md): the whole system and every decision so far. Start here.
 - [hub/SPEC.md](hub/SPEC.md): the Agent Hub (hub.gridrankers.com) and its build steps.
-- Agents (`agents/…`) arrive after the Hub.
+- [agents/demo/agent.py](agents/demo/agent.py): a demo agent for trying the Hub. Add an agent
+  on the Agents screen, then run `HUB_URL=… AGENT_TOKEN=… python agents/demo/agent.py`.
+- The real agents (`agents/…`) arrive after the Hub.
 
 ## Agent Hub: run the checks on your computer
 

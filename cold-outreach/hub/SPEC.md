@@ -163,24 +163,39 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 
 ### 6.2 Agents
 
-- **Adding an agent** (Owner): give its key and name; the Hub shows its **token once**
-  (32+ random bytes; only a hash is stored). The token goes into the agent container's `.env`
-  with `HUB_URL`. A token can be replaced, which stops the old one at once.
+- **Adding an agent** (Owner): give its key (2–40 lower-case letters, digits and dashes, e.g.
+  `gbp-audit`) and name; the Hub shows its **token once** (`hub_agent_…`, only a hash is
+  stored). The token goes into the agent container's settings as `AGENT_TOKEN`, with
+  `HUB_URL`. **New token** replaces it and stops the old one at once. A new agent starts
+  **off**, with a daily limit of 100, run time 02:00 Asia/Dhaka and a $5 daily budget.
+- The agents screen shows each agent as **connected** when it called the Hub in the last two
+  minutes, and lists any connections its manifest needs that aren't set up yet.
 - **Manifest:** when it starts, an agent sends `PUT /api/agent/v1/manifest`:
-  name, version, `settings` (fields with type, label, default, min/max, help), `connections`
-  it needs (e.g. `dataforseo`, `google`), `sheet_columns` it owns, and an estimated
-  `cost_per_item_usd`. The Hub builds the agent's settings form from it. Values the Hub
-  already holds are kept; unknown old ones are kept but hidden.
+  `name`, `version`, `description`, `settings` (each with `key`, `type` of `int`, `float`,
+  `text`, `bool` or `choice`, `label`, `help`, `default`, `min`/`max`, `choices`),
+  `connections` it needs (Connections group ids), `sheet_columns` it owns, and an estimated
+  `cost_per_item_usd`. A manifest with unknown fields or connections, or a default outside its
+  own limits, is refused. The Hub builds the agent's settings form from it; values set in the
+  Hub are checked against it (type, limits, choices) and an unset value uses the default.
+  Values for settings a newer manifest dropped are kept but not used.
 - **Agent API** (token in `Authorization: Bearer`), all under `/api/agent/v1`:
-  - `GET /next-run`: when a run is due (section 6.3) the Hub marks it `running` and returns
-    the run id, the agent's config, its limit, the budget left, and **only the connections its
-    manifest declared**. Otherwise `204`. Agents poll every 30 s.
+  - `GET /next-run`: when a run is queued and the agent is on, the Hub marks it `running` and
+    returns the run id, the trigger, the agent's settings, its daily limit and **only the
+    connections its manifest declared** (from step 5, also the budget left). Otherwise `204`;
+    `409` until the manifest was sent. Agents poll every 30 s.
   - `POST /runs/{id}/progress`: counts and cost so far; the reply says `continue` or `stop`
-    (Stop pressed, agent switched off, own or total budget used up). This is also the heartbeat.
+    (agent switched off; from step 5 also Stop pressed and budgets used up). This is also the
+    heartbeat.
   - `POST /runs/{id}/finish`: final counts, cost, `stop_reason`, failures summary.
   - `GET /benchmarks`, `GET /website-standards/{niche}`, `GET /do-not-contact/check`:
     reference data the audits need.
-- An agent can only see and change its own runs. Secrets are never logged on either side.
+- An agent can only see and change its own runs (another agent's run id is a `404`). Secrets
+  are never logged on either side.
+- **Run now** (Owners and Admins) queues a manual run. It is refused while the agent is off,
+  before it has ever connected, or while it already has a run waiting or in progress. A
+  database rule keeps it to one queued or running run per agent even if two clicks race.
+- `agents/demo/agent.py` is a demo agent (Python standard library only) that pretends to work
+  through items, for trying the switches, settings and Run now.
 
 ### 6.3 Scheduling, runs and budgets
 
@@ -251,61 +266,11 @@ for themselves (Profile). The same alert is not repeated within 6 hours.
 2. **Overview:** today's and this month's cost against budgets; each agent's last run,
    status and next run; leads by list and how many each agent has done.
 3. **Import:** upload box with the Niche picker; the preview; past imports with counts.
-4. **Agents:** one card per agent: on/off switch, last run, next run, today's cost, Run now,
-   Stop; **Settings** opens the form built from the manifest.
-5. **Runs:** filter by agent and status; each run's counts, cost, stop reason and failures.
-6. **Benchmarks:** GBP benchmarks by City + Niche, upload; **Website Standards** per Niche
-   with versions, draft editor and Lock.
-7. **Connections** (Owner), **Users** (Owner), **History** (Owner), **Profile**.
-
-## 8. REST API (`/api`, JSON)
-
-`/health`, `/setup`, `/auth/*`, `/me`, `/users`, `/connections` (+ `/{name}/test`),
-`/agents` (+ `/{key}/run`, `/{key}/stop`, `/{key}/token`), `/runs`, `/imports`
-(upload → preview, `/{id}/confirm`, `/{id}/discard`), `/lists`, `/benchmarks`,
-`/website-standards`, `/overview`, `/audit-log`, and the agent API (section 6.2).
-Every user endpoint checks `permissions.can`; every write checks CSRF.
-
-## 9. Non-functional
-
-- Parameterised SQL only (SQLAlchemy); all output escaped; no external CDNs.
-- Security headers from Caddy and the API, as in the Answer Engine.
-- Uploaded files are read in memory and not kept after the import is confirmed or discarded.
-- Logs are JSON, carry a request id, and never contain keys, tokens or passwords.
-- Nightly database backup kept 14 days (step 9).
-
-## 10. Deployment
-
-- `hub.gridrankers.com` points to the server; Caddy gets the certificate.
-- `.env` holds `APP_DOMAIN`, `APP_URL`, `SECRET_KEY` and the database password only; everything
-  else is entered in the website.
-- Agents join the Hub's Docker network and reach it at `http://api:8000`.
-
-## 11. Open decisions (defaults used until answered)
-
-See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
-
-1. **Lists** (City + Niche on/off and per-list limit) live in the Hub, not in a Sheet tab,
-   since files are now uploaded in the Hub.
-2. **The Sheet has one tab, Leads.** Benchmarks are held in the Hub and given to agents through
-   the agent API.
-
-## 12. Build plan (one step per task)
-
-1. **Skeleton:** layout, Docker Compose (caddy, api, scheduler, db), FastAPI `/api/health`,
-   Alembic baseline, scheduler process, React shell, CI. **Tests:** health, migrations up/down,
-   docs hidden in production, React health status.
-2. **Users and sign-in:** users, sessions, invites, login, lockout, CSRF, first-run Owner with
-   setup code, `permissions.py` with every row of section 3, sign-in screens, Users screen.
-   **Tests:** every permission row, lockout, token expiry, last-Owner rule.
-3. **Connections:** encrypted write-only keys, the Google key file upload, every Test button
-   (providers faked in tests), Connections screen. **Tests:** values never returned or logged,
-   Owner only, changed `SECRET_KEY`, each Test.
-4. **Agents:** registry, tokens, manifest, settings form from the manifest, on/off, agent API
-   (`next-run`, `progress`, `finish`), Agents screen, a small demo agent for trying it out.
+4. **Agents:** registry, tokens, manifest, settings form from the manifest, on/off, **Run now**
+   and the run record, agent API (`next-run`, `progress`, `finish`), Agents screen, demo agent.
    **Tests:** token checks, only declared connections are handed out, one run at a time.
-5. **Scheduler, runs and budgets:** due runs by time zone, Run now, Stop, stale runs, per-agent
-   and total budgets, Runs screen, Overview costs. **Tests:** schedule edge cases (time zones,
+5. **Scheduler, runs and budgets:** due runs by time zone, Stop, stale runs, per-agent and
+   total budgets, Runs screen, Overview costs. **Tests:** schedule edge cases (time zones,
    DST), budget stops, stale detection.
 6. **Import:** xlsx reading, synonyms, cleaning, merging, Lead IDs, preview, confirm, writing the
    Leads tab (Sheets API faked), Lists, do-not-contact for Top. **Tests:** fixtures built from

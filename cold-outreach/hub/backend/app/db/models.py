@@ -3,6 +3,7 @@
 import enum
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
@@ -11,8 +12,11 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Index,
+    Integer,
+    Numeric,
     String,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -25,6 +29,23 @@ class Role(enum.StrEnum):
     OWNER = "owner"
     ADMIN = "admin"
     VIEWER = "viewer"
+
+
+class RunTrigger(enum.StrEnum):
+    SCHEDULE = "schedule"
+    MANUAL = "manual"
+
+
+class RunStatus(enum.StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    STOPPED = "stopped"
+    TIMED_OUT = "timed_out"
+
+
+ACTIVE_RUN = (RunStatus.QUEUED, RunStatus.RUNNING)
 
 
 class TokenKind(enum.StrEnum):
@@ -140,4 +161,71 @@ class Setting(Base):
     value: Mapped[Any] = mapped_column(JSONB)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class Agent(TimestampMixin, Base):
+    """An agent the Hub runs (SPEC section 6.2). It describes itself with a manifest."""
+
+    __tablename__ = "agents"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    key: Mapped[str] = mapped_column(String(40), unique=True)
+    name: Mapped[str] = mapped_column(String(120))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    # Sent by the agent when it starts; None until it has connected once.
+    manifest: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    # The values set in the Hub for the manifest's settings.
+    config: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
+    daily_limit: Mapped[int] = mapped_column(Integer, default=100, server_default="100")
+    run_time: Mapped[str] = mapped_column(String(5), default="02:00", server_default="02:00")
+    time_zone: Mapped[str] = mapped_column(
+        String(64), default="Asia/Dhaka", server_default="Asia/Dhaka"
+    )
+    daily_budget_usd: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), default=Decimal("5"), server_default="5"
+    )
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    runs: Mapped[list["Run"]] = relationship(back_populates="agent", passive_deletes=True)
+
+
+class Run(Base):
+    """One run of an agent: queued by the schedule or Run now, then reported by the agent."""
+
+    __tablename__ = "runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"))
+    trigger: Mapped[RunTrigger] = mapped_column(_enum(RunTrigger, "run_trigger"))
+    status: Mapped[RunStatus] = mapped_column(_enum(RunStatus, "run_status"))
+    requested_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    done: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    failed: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    skipped: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    cost_usd: Mapped[Decimal] = mapped_column(
+        Numeric(12, 4), default=Decimal("0"), server_default="0"
+    )
+    stop_reason: Mapped[str | None] = mapped_column(String(255))
+    summary: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
+
+    agent: Mapped[Agent] = relationship(back_populates="runs")
+    requester: Mapped[User | None] = relationship()
+
+    __table_args__ = (
+        Index("ix_runs_agent_id_queued_at", "agent_id", "queued_at"),
+        # One queued or running run per agent at a time, even if two requests race.
+        Index(
+            "uq_runs_one_active_per_agent",
+            "agent_id",
+            unique=True,
+            postgresql_where=text("status IN ('queued', 'running')"),
+        ),
     )

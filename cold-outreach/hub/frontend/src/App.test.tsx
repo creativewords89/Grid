@@ -62,9 +62,9 @@ test("signing in opens the Hub and later writes send the CSRF token", async () =
 });
 
 test.each([
-  ["owner", ["Overview", "Connections", "Users"]],
-  ["admin", ["Overview"]],
-  ["viewer", ["Overview"]],
+  ["owner", ["Overview", "Agents", "Connections", "Users"]],
+  ["admin", ["Overview", "Agents"]],
+  ["viewer", ["Overview", "Agents"]],
 ] as const)("the %s sees their sidebar", async (role, items) => {
   mockApi({
     "GET /auth/me": [200, { user: makeUser({ role }), csrf_token: "t" }],
