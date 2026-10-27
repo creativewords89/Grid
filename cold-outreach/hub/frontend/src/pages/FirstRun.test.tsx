@@ -12,12 +12,12 @@ const signedOut = [401, { error: { code: "unauthenticated", message: "Sign in." 
   unknown,
 ];
 
-test("a new install offers to create the Owner, then opens Users", async () => {
+test("a new install offers to create the Owner, then opens Connections", async () => {
   const calls = mockApi({
     "GET /auth/me": signedOut,
     "GET /setup": [200, { needed: true }],
     "POST /setup": [201, { user: makeUser({ role: "owner", name: "Olivia" }), csrf_token: "t" }],
-    "GET /users": [200, [makeUser({ role: "owner", name: "Olivia" })]],
+    "GET /connections": [200, { groups: [] }],
   });
   render(<App />);
 
@@ -29,8 +29,8 @@ test("a new install offers to create the Owner, then opens Users", async () => {
   await userEvent.type(screen.getByLabelText("Password"), "a long passphrase");
   await userEvent.click(screen.getByRole("button", { name: "Create the Owner account" }));
 
-  expect(await screen.findByRole("heading", { name: "Users" })).toBeVisible();
-  expect(window.location.pathname).toBe("/users");
+  expect(await screen.findByRole("heading", { name: "Connections" })).toBeVisible();
+  expect(window.location.pathname).toBe("/connections");
   expect(calls.find((c) => c.method === "POST" && c.path === "/setup")?.body).toEqual({
     code: "ABCD-EFGH-JKLM",
     name: "Olivia",

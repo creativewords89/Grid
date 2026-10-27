@@ -128,3 +128,16 @@ class AuditEntry(Base):
         Index("ix_audit_log_at", "at"),
         Index("ix_audit_log_entity", "entity", "entity_id"),
     )
+
+
+class Setting(Base):
+    """Values the Owner sets in the website (SPEC section 5). Missing keys use the defaults
+    in `app/settings_store.py`."""
+
+    __tablename__ = "settings"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[Any] = mapped_column(JSONB)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

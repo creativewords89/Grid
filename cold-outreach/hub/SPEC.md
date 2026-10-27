@@ -138,22 +138,28 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 
 ### 6.1 Connections
 
-- **Owner only.** Each connection has fields, a **Test** button and a "last tested" result:
+- **Owner only.** Everything is entered here; nothing is read from `.env`. Each group has a
+  **Test** button whose last result (ok or not, message, when) is kept and shown:
 
   | Connection | Fields | Test |
   |---|---|---|
-  | DataForSEO | login, password | account call; shows the balance |
-  | Google service account | the JSON key file (uploaded) | can open the Master Sheet and the Drive folder |
-  | Master Sheet | Sheet URL | Leads tab found, headers listed |
-  | Drive folder | folder URL | can create and delete a test file |
-  | PageSpeed Insights | API key | one call on `https://example.com` |
-  | Email (SMTP) | host, port, username, password, From | sends a test message to the Owner |
-  | Telegram | bot token, alerts chat | sends a test message to the chat |
+  | DataForSEO | API login, API password | account call; shows the balance |
+  | Google (Sheets and Drive) | service account key file (uploaded), Master Sheet link, Drive folder link | gets a token, opens the Sheet (lists the Leads tab's columns, or says the first import will create it), creates and deletes a file in the folder |
+  | PageSpeed Insights | API key | scores example.com on mobile |
+  | Email (SMTP) | server, port, username and password (optional), From | sends a test message to the Owner |
+  | Telegram alerts | bot token, alerts group (optional) | checks the bot; when no group is set, finds the latest group the bot has seen and saves it; sends a test message there |
 
+- Values are checked before saving (port number, email address, Sheet and folder links, a
+  service account key file, a numeric group id) and refused with a reason under the field.
 - Stored in `settings.connections`, each value encrypted with Fernet using a key derived from
-  `SECRET_KEY`. **Write-only:** the API returns whether a value is set and its last four
-  characters, never the value. History records "changed" or "removed".
-- If `SECRET_KEY` changes, stored values can't be read and show as "needs re-entering".
+  `SECRET_KEY`. **Write-only:** secrets (and the key file) are never returned, only whether
+  they are set and their last four characters. History records "changed" or "removed".
+  Test results and errors never repeat a key, password or token.
+- If `SECRET_KEY` changes, stored values can't be read and show as "enter it again".
+- Google's service accounts have no storage of their own, so the Drive folder should be in a
+  Shared Drive with the service account as a member; the Test explains this when it happens.
+- Once Email is set up, invites and password resets are sent by email instead of being shown
+  to the Owner.
 
 ### 6.2 Agents
 

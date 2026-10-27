@@ -25,7 +25,7 @@ export function FirstRun() {
     setErrors({});
     try {
       signedIn(await api.setupOwner(form));
-      navigate("/users", true);
+      navigate("/connections", true);
     } catch (err) {
       if (err instanceof ApiError) {
         setErrors(err.fields);

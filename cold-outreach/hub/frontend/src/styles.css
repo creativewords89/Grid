@@ -1829,12 +1829,9 @@ details.original summary {
   }
 }
 
-/* Settings → Connections */
+/* Connections */
 .connection {
-  display: grid;
-  gap: 10px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
+  margin-bottom: 16px;
 }
 
 .connection-head {
@@ -1843,7 +1840,7 @@ details.original summary {
   gap: 10px;
 }
 
-.connection-head h3 {
+.connection-head h2 {
   margin: 0;
 }
 
@@ -1853,6 +1850,6 @@ details.original summary {
   gap: 0 16px;
 }
 
-.connection-fields input {
+.connection-fields input:not([type="file"]) {
   font-family: ui-monospace, monospace;
 }

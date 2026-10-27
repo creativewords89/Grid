@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
 import { AuthProvider, useAuth } from "./auth";
+import { Connections } from "./pages/Connections";
 import { FirstRun } from "./pages/FirstRun";
 import { Forgot } from "./pages/Forgot";
 import { Overview } from "./pages/Overview";
@@ -33,6 +34,7 @@ function Routes() {
 
   let page;
   if (path === "/users" && user.role === "owner") page = <Users />;
+  else if (path === "/connections" && user.role === "owner") page = <Connections />;
   else if (path === "/profile") page = <Profile />;
   else page = <Overview />;
   return <Shell path={path}>{page}</Shell>;

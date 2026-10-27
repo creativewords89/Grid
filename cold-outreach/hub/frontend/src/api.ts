@@ -17,6 +17,30 @@ export type Me = { user: User; csrf_token: string };
 
 export type LinkResult = { email_sent: boolean; link: string | null };
 
+export type ConnectionField = {
+  name: string;
+  label: string;
+  kind: "text" | "secret" | "number" | "json";
+  placeholder: string;
+  required: boolean;
+  set: boolean;
+  unreadable: boolean;
+  value: string | null;
+  hint: string | null;
+};
+
+export type TestResult = { ok: boolean; message: string; at: string };
+
+export type ConnectionGroup = {
+  id: string;
+  name: string;
+  ready: boolean;
+  last_test: TestResult | null;
+  fields: ConnectionField[];
+};
+
+export type Connections = { groups: ConnectionGroup[] };
+
 export type Health = {
   status: "ok" | "error";
   version: string;
@@ -107,6 +131,11 @@ export const api = {
     request<User>("PATCH", `/users/${id}`, patch),
   resendInvite: (id: string) => request<LinkResult>("POST", `/users/${id}/resend-invite`),
   sendReset: (id: string) => request<LinkResult>("POST", `/users/${id}/reset-password`),
+
+  connections: () => request<Connections>("GET", "/connections"),
+  updateConnections: (values: Record<string, string | null>) =>
+    request<Connections>("PATCH", "/connections", { values }),
+  testConnection: (group: string) => request<TestResult>("POST", `/connections/${group}/test`),
 
   updateProfile: (name: string) => request<User>("PATCH", "/me", { name }),
   changePassword: (current_password: string, new_password: string) =>

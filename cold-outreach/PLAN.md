@@ -9,7 +9,7 @@ This file holds the decisions that apply to the whole system. Each part has its 
 
 | Part | Spec | State |
 |---|---|---|
-| Agent Hub | [hub/SPEC.md](hub/SPEC.md) | Being built (steps 1–2 done) |
+| Agent Hub | [hub/SPEC.md](hub/SPEC.md) | Being built (steps 1–3 done) |
 | GBP audit agent | `agents/gbp-audit/SPEC.md` | Decided (section 5), spec written before its build |
 | Website audit agent | `agents/website-audit/SPEC.md` | Decided (section 6), spec written before its build |
 | Social media audit agent | `agents/social-audit/SPEC.md` | Data source not decided |

@@ -21,6 +21,7 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
+from app import connections, providers
 from app.auth.passwords import hash_password
 from app.config import get_settings
 from app.db.base import Base
@@ -35,9 +36,15 @@ PASSWORD = "correct horse battery staple"
 
 
 @pytest.fixture(autouse=True)
-def fresh_settings() -> Iterator[None]:
+def fresh_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     get_settings.cache_clear()
+    # Without a database fixture nothing was saved on the Connections screen, and no test
+    # ever reaches a real outside service.
+    monkeypatch.setattr(connections, "session_factory", lambda: None)
+    connections.invalidate()
+    monkeypatch.setattr(providers, "transport", None)
     yield
+    connections.invalidate()
     get_settings.cache_clear()
 
 
@@ -86,8 +93,12 @@ def engine() -> Iterator[Engine]:
 
 
 @pytest.fixture
-def clean_engine(engine: Engine) -> Iterator[Engine]:
+def clean_engine(engine: Engine, monkeypatch: pytest.MonkeyPatch) -> Iterator[Engine]:
+    # Connection values are read from this test's database.
+    monkeypatch.setattr(connections, "session_factory", lambda: Session(engine))
+    connections.invalidate()
     yield engine
+    connections.invalidate()
     tables = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
     with engine.begin() as conn:
         conn.execute(text(f"TRUNCATE {tables} CASCADE"))
