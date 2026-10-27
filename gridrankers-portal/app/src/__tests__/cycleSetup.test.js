@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cycleSetup, lastCycleCount, meetingOfCycle, setupReminders } from '../lib/cycleSetup.js';
+import { cycleLabel, cycleSetup, lastCycleCount, leftLastCycle, meetingOfCycle, setupReminders, unfinishedOf } from '../lib/cycleSetup.js';
 import { strips } from '../lib/day.js';
 import { bellItems } from '../lib/feed.js';
 import { emptyData } from '../lib/store.js';
@@ -138,5 +138,43 @@ describe('new cycle setup', () => {
 		// Not twice: the message band's copy stays off the bell.
 		expect(bell.filter((i) => i.text.includes('Acme'))).toHaveLength(1);
 		expect(bellItems(d, MAX, '2026-10-02').some((i) => i.sticky)).toBe(false);
+	});
+});
+
+// Unfinished work of last cycle (SPEC.md 6.11, design CO-1A).
+describe('unfinished from last cycle', () => {
+	it('lists monthly tasks with something left and open meeting tasks; nothing moves by itself', () => {
+		const d = fixture();
+		d.records['t2__2026-09'] = { count: 0, status: 'skipped' };
+		d.meeting_tasks = {
+			m1: { id: 'm1', project_id: 'p1', title: 'Fix form', status: 'doing', deadline: { type: 'date', date: '2026-09-20' }, created_at: '2026-09-01 09:00:00' },
+			m2: { id: 'm2', project_id: 'p1', title: 'Done one', status: 'done', done_at: '2026-09-10 09:00:00', deadline: { type: 'date', date: '2026-09-12' }, created_at: '2026-09-01 09:00:00' },
+		};
+		const [c] = cycleSetup(d, '2026-10-02');
+		const list = unfinishedOf(d, c, '2026-10-02');
+		// Blogs 3 of 4 (1 left); Pages was skipped, so nothing is left.
+		expect(list.map((u) => [u.task.id, u.kind, u.left, u.moved])).toEqual([
+			['t1', 'monthly', 1, null],
+			['m1', 'meeting', undefined, null],
+		]);
+		expect(leftLastCycle(d, d.monthly_tasks.t1, d.projects.p1, '2026-10-02')).toBe(1);
+		expect([cycleLabel(c.prev), cycleLabel(c.cycle)]).toEqual(['Sep', 'Oct']);
+	});
+
+	it('shows what was moved: the catch-up task, and the meeting task with its new deadline', () => {
+		const d = fixture();
+		d.meeting_tasks = {
+			m1: { id: 'm1', project_id: 'p1', title: 'Fix form', status: 'doing', deadline: { type: 'date', date: '2026-10-06' }, carried: { from: 'meeting', task_id: 'm1', cycle: '2026-09', label: 'Sep' }, created_at: '2026-09-01 09:00:00' },
+			c1: { id: 'c1', project_id: 'p1', title: 'Blogs — 1 left from Sep', status: 'todo', deadline: { type: 'date', date: '2026-10-10' }, carried: { from: 'monthly', task_id: 't1', cycle: '2026-09', label: 'Sep', left: 1 }, created_at: '2026-10-02 09:00:00' },
+		};
+		d.projects.p1.cycle_reviews = { '2026-09': { m1: { ok: true, carry: '2026-10-06' } } };
+		const [c] = cycleSetup(d, '2026-10-02');
+		const list = unfinishedOf(d, c, '2026-10-02');
+		// Pages (0 of 2) wasn't moved: it stays in September.
+		expect(list.map((u) => [u.task.id, u.moved && u.moved.id])).toEqual([
+			['t1', 'c1'],
+			['t2', null],
+			['m1', 'm1'],
+		]);
 	});
 });

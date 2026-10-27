@@ -142,6 +142,7 @@ class GRP_Export {
 				'stepDone'   => empty( $r['step_done'] ) ? null : (object) $r['step_done'],
 				'handins'    => empty( $r['handins'] ) ? null : (object) $r['handins'],
 				'files'      => $r['files'] ?? null,
+				'carried'    => $r['carried'] ?? null,
 				'createdBy'  => $r['created_by'],
 				'createdAt'  => self::iso( $r['created_at'] ),
 				'updatedAt'  => self::iso( $r['updated_at'] ),

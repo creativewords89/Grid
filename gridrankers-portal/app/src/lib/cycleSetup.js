@@ -28,6 +28,38 @@ export function lastCycleCount(data, task, project, today) {
 	return { got, need: target * slots.length };
 }
 
+// What a monthly task left undone last cycle (skipped periods count as nothing to do).
+export function leftLastCycle(data, task, project, today) {
+	const target = Math.max(1, task.target || 1);
+	const slots = isSplit(task) ? slotsOf(task, project, -1, today) : [undefined];
+	let left = 0;
+	slots.forEach((_, w) => {
+		const rec = recordOf(data.records, task, project, isSplit(task) ? w : undefined, -1, today);
+		if (!rec || rec.status !== 'skipped') left += target - Math.min(target, (rec && rec.count) || 0);
+	});
+	return left;
+}
+
+// Short name of a cycle for "1 left from Sep": the month it starts in (same as the server).
+export const cycleLabel = (range) => new Date(range.start + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
+
+// Unfinished work of last cycle (SPEC.md 6.11, design CO-1A): monthly tasks with something left and
+// open meeting tasks. Nothing moves unless a leader moves it: a monthly task becomes a catch-up
+// task in the new cycle, a meeting task keeps its card with a new deadline. `moved` is the catch-up
+// task, or the meeting task once moved.
+export function unfinishedOf(data, c, today) {
+	if (!c.prev) return [];
+	const meetings = rowsOf(data, 'meeting_tasks').filter((t) => t.project_id === c.project.id && !t.deleted_at);
+	const catchUp = (task) => meetings.find((m) => m.carried && m.carried.from === 'monthly' && m.carried.task_id === task.id && m.carried.cycle === c.prev.key) || null;
+	const monthly = c.last
+		.map((task) => ({ task, kind: 'monthly', left: leftLastCycle(data, task, c.project, today), ...lastCycleCount(data, task, c.project, today), moved: catchUp(task) }))
+		.filter((u) => u.left > 0 || u.moved);
+	const meeting = c.meeting
+		.filter((t) => t.status !== 'done' || ((c.reviews[t.id] || {}).carry && t.carried))
+		.map((task) => ({ task, kind: 'meeting', moved: (c.reviews[task.id] || {}).carry ? task : null }));
+	return [...monthly, ...meeting];
+}
+
 // Meeting tasks of a cycle: due in it, or finished in it (and those already reviewed for it, such
 // as one carried over into the next cycle).
 export function meetingOfCycle(data, project, range, reviewed = {}) {

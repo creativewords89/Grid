@@ -167,6 +167,7 @@ export default function TaskCard({ task, onDetails, onEdit }) {
 				{target > 1 && <span className="qty q-strong">Qty {target}</span>}
 				{isGeneral(task) ? <span className="qty">General</span> : task.meeting_date && <span className="qty">Meeting {short(task.meeting_date)}</span>}
 			</div>
+			{task.carried && task.carried.label && <span className="carried-tag">↪ {task.carried.from === 'monthly' ? 'Catch-up' : 'Moved'} from {task.carried.label}</span>}
 			<h3>{task.title}</h3>
 			<div className="line">
 				{st === 'done' ? <span className="due ok">Completed{task.done_at ? ' ' + short(localYmd(task.done_at)) : ''}</span> : <span className="due">Added {short(localYmd(task.created_at))}</span>}

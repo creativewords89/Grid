@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { usePortal } from '../../context.js';
-import { allReminders, cycleSetup, lastCycleCount } from '../../lib/cycleSetup.js';
+import { allReminders, cycleLabel, cycleSetup, lastCycleCount, unfinishedOf } from '../../lib/cycleSetup.js';
 import { isBiweekly, isSplit } from '../../lib/cycles.js';
 import { itemDeadline } from '../../lib/deadline.js';
 import { short } from '../../lib/format.js';
@@ -35,9 +35,7 @@ function Step({ ok, label, sub }) {
 function ReviewRow({ c, task, meeting = false }) {
 	const { api, data, dispatch, toast, today } = usePortal();
 	const [writing, setWriting] = useState(false);
-	const [carrying, setCarrying] = useState(false);
 	const [note, setNote] = useState('');
-	const [carry, setCarry] = useState(c.cycle.end);
 	const [busy, setBusy] = useState(false);
 	const done = c.reviews[task.id];
 	const people = [...new Set([...(task.assignees || []).map((a) => a.id), ...(task.parts || []).flatMap((p) => (p.people || []).map((x) => x.id))])].map((id) => data.members[id]).filter(Boolean);
@@ -51,14 +49,9 @@ function ReviewRow({ c, task, meeting = false }) {
 		try {
 			const row = await api.post(`projects/${c.project.id}/cycle-review`, { task_id: task.id, ...body });
 			dispatch({ type: 'upsert', table: 'projects', row });
-			if (body.carry) {
-				const moved = await api.get(`meeting-tasks/${task.id}`);
-				dispatch({ type: 'upsert', table: 'meeting_tasks', row: moved });
-			}
 			const sent = ((row.cycle_reviews || {})[c.prev.key] || {})[task.id];
-			toast(body.carry ? `Carried over to ${short(body.carry)}` : body.ok ? 'Marked as looks good' : sent && sent.to && sent.to.length ? 'Feedback sent' : 'Feedback saved — nobody is responsible to send it to');
+			toast(body.ok ? 'Marked as looks good' : sent && sent.to && sent.to.length ? 'Feedback sent' : 'Feedback saved — nobody is responsible to send it to');
 			setWriting(false);
-			setCarrying(false);
 		} catch (err) {
 			toast(err.message);
 		} finally {
@@ -91,41 +84,20 @@ function ReviewRow({ c, task, meeting = false }) {
 				<span className="cs-acts">
 					{done && !writing ? (
 						<span className={done.ok ? 'cs-ok' : 'cs-fb'} title={done.note || ''}>
-							{done.carry ? `↷ Carried over · ${short(done.carry)}` : done.ok ? '✓ Looks good' : '✉ Feedback sent'}
+							{done.carry ? `↪ Moved · due ${short(done.carry)}` : done.ok ? '✓ Looks good' : '✉ Feedback sent'}
 						</span>
 					) : (
 						<>
 							<button type="button" className="btn small" disabled={busy} onClick={() => send({ ok: true })}>
 								Looks good
 							</button>
-							<button type="button" className={'btn small' + (writing ? ' primary' : '')} disabled={busy} onClick={() => (setWriting(true), setCarrying(false))}>
+							<button type="button" className={'btn small' + (writing ? ' primary' : '')} disabled={busy} onClick={() => setWriting(true)}>
 								Send feedback
 							</button>
-							{open && (
-								<button type="button" className={'btn small' + (carrying ? ' primary' : '')} disabled={busy} onClick={() => (setCarrying(true), setWriting(false))}>
-									Carry over
-								</button>
-							)}
 						</>
 					)}
 				</span>
 			</div>
-			{carrying && (
-				<div className="cs-fbox cs-carry">
-					<label>
-						New deadline
-						<input type="date" value={carry} min={today} onChange={(e) => setCarry(e.target.value)} aria-label={`New deadline for ${task.title}`} />
-					</label>
-					<div className="cs-fbox-acts">
-						<button type="button" className="btn small" onClick={() => setCarrying(false)}>
-							Cancel
-						</button>
-						<button type="button" className="btn small primary" disabled={busy || !carry || carry < today} onClick={() => send({ carry })}>
-							Carry over
-						</button>
-					</div>
-				</div>
-			)}
 			{writing && (
 				<div className="cs-fbox">
 					<textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} aria-label={`Feedback on ${task.title}`} placeholder="What should change next cycle?" autoFocus />
@@ -143,7 +115,103 @@ function ReviewRow({ c, task, meeting = false }) {
 	);
 }
 
+// One unfinished task of last cycle (design CO-1A): Leave in Sep (the default, nothing to do) or
+// Move to Oct — a catch-up task for a monthly task (how many and by when), a new deadline for a
+// meeting task.
+function UnfinishedRow({ c, u, from, to }) {
+	const { api, data, dispatch, toast, today } = usePortal();
+	const [moving, setMoving] = useState(false);
+	const [due, setDue] = useState(today);
+	const [left, setLeft] = useState(u.left || 1);
+	const [busy, setBusy] = useState(false);
+	const { task } = u;
+	const people = [...new Set([...(task.assignees || []).map((a) => a.id), ...(task.parts || []).flatMap((p) => (p.people || []).map((x) => x.id))])].map((id) => data.members[id]).filter(Boolean);
+	const names = people.length ? people.map((p) => p.name.split(' ')[0]).join(', ') : 'nobody';
+	const move = async () => {
+		setBusy(true);
+		try {
+			const res = await api.post(`projects/${c.project.id}/carry-over`, { task_id: task.id, due, ...(u.kind === 'monthly' ? { left: +left } : {}) });
+			dispatch({ type: 'upsert', table: 'projects', row: res.project });
+			dispatch({ type: 'upsert', table: 'meeting_tasks', row: res.task });
+			toast(u.kind === 'monthly' ? `Moved to ${to}: “${res.task.title}”` : `Moved to ${to} · due ${short(due)}`);
+			setMoving(false);
+		} catch (err) {
+			toast(err.message);
+		} finally {
+			setBusy(false);
+		}
+	};
+	const moved = u.moved;
+	const movedDue = moved && moved.deadline && moved.deadline.date;
+	return (
+		<li className={'cs-row cs-un' + (moving ? ' on' : '')}>
+			<div className="cs-line">
+				<span className="cs-kind">{u.kind === 'monthly' ? 'Monthly' : 'Meeting'}</span>
+				<span className="cs-task">
+					<b>{task.title}</b>
+					<small>
+						{names} · {u.kind === 'monthly' ? `${u.left} not done` : moved ? 'moved' : `was due ${short((itemDeadline(task) || {}).end || '') || '—'}`}
+					</small>
+				</span>
+				{u.kind === 'monthly' ? (
+					<span className="cs-count short">
+						<b>
+							{u.got} / {u.need}
+						</b>
+					</span>
+				) : (
+					<span className="mp-flag f-amber">Open</span>
+				)}
+				<span className="cs-acts">
+					{moved ? (
+						<span className="cs-ok">↪ Moved to {to}{movedDue ? ` · due ${short(movedDue)}` : ''}</span>
+					) : (
+						<span className="seg cs-seg" role="group" aria-label={`Move ${task.title}`}>
+							<button type="button" aria-pressed={!moving} onClick={() => setMoving(false)}>
+								Leave in {from}
+							</button>
+							<button type="button" aria-pressed={moving} onClick={() => setMoving(true)}>
+								Move to {to}
+							</button>
+						</span>
+					)}
+				</span>
+			</div>
+			{moving && !moved && (
+				<div className="cs-fbox cs-move">
+					<span className="cs-move-txt">
+						{u.kind === 'monthly' ? (
+							<>
+								A catch-up task <b>“{task.title} — {left} left from {from}”</b> for {names}
+							</>
+						) : (
+							<>Moves to {to} with the new deadline</>
+						)}
+					</span>
+					{u.kind === 'monthly' && (
+						<label>
+							Left
+							<input type="number" min={1} max={999} value={left} onChange={(e) => setLeft(e.target.value)} aria-label={`How many left of ${task.title}`} />
+						</label>
+					)}
+					<label>
+						Due
+						<input type="date" value={due} min={today} onChange={(e) => setDue(e.target.value)} aria-label={`New deadline for ${task.title}`} />
+					</label>
+					<button type="button" className="btn small primary" disabled={busy || !due || due < today || (u.kind === 'monthly' && !(+left >= 1))} onClick={move}>
+						Move
+					</button>
+				</div>
+			)}
+		</li>
+	);
+}
+
 export function ReviewCycleDialog({ c, onClose }) {
+	const { data, today } = usePortal();
+	const unfinished = unfinishedOf(data, c, today);
+	const from = cycleLabel(c.prev);
+	const to = cycleLabel(c.cycle);
 	return (
 		<Modal open onClose={onClose} labelledBy="csTitle" className="list-dlg cs-dlg">
 			<div className="ld-head">
@@ -179,9 +247,21 @@ export function ReviewCycleDialog({ c, onClose }) {
 						))}
 					</ul>
 				)}
+				{unfinished.length > 0 && (
+					<>
+						<h3 className="cs-h">
+							Unfinished from {from} <span className="muted">· {unfinished.length} · they stay in {from} unless you move them</span>
+						</h3>
+						<ul className="cs-list" aria-label="Unfinished">
+							{unfinished.map((u) => (
+								<UnfinishedRow key={u.task.id} c={c} u={u} from={from} to={to} />
+							))}
+						</ul>
+					</>
+				)}
 			</div>
 			<div className="ld-foot">
-				<span className="muted">Feedback goes to the people responsible (bell and Notifications box). Carry over moves an open meeting task into this cycle.</span>
+				<span className="muted">Feedback goes to the people responsible (bell and Notifications box). Move to {to} makes a catch-up task for a monthly task, or a new deadline for a meeting task.</span>
 				<button type="button" className="btn" onClick={onClose}>
 					Close
 				</button>
