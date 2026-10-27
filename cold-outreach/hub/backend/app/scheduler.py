@@ -1,8 +1,8 @@
 """Scheduler process (`python -m app.scheduler`), SPEC section 6.3.
 
 Every 30 seconds: queue the scheduled runs that are due, give up on runs an agent stopped
-reporting on or never picked up, run the once-a-day jobs (DataForSEO balance, the daily
-summary) and send the alerts waiting (SPEC sections 6.3 and 6.6).
+reporting on or never picked up, run the once-a-day jobs (DataForSEO balance, the backup,
+the daily summary) and send the alerts waiting (SPEC sections 6.3 and 6.6).
 """
 
 import logging
@@ -13,7 +13,9 @@ from types import FrameType
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app import logs
 from app.alerts import service as alerts
+from app.config import get_settings
 from app.db.session import get_engine
 from app.runs import service
 
@@ -31,6 +33,7 @@ def tick() -> bool:
             for run in service.expire_stale_runs(db):
                 log.warning("run %s timed out: %s", run.id, run.stop_reason)
             alerts.check_balance(db)
+            alerts.check_backup(db)
             alerts.daily_summary(db)
             db.commit()
             alerts.deliver_pending(db)
@@ -49,7 +52,7 @@ def run(stop: threading.Event) -> None:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    logs.setup(json_logs=get_settings().json_logs)
     stop = threading.Event()
 
     def _stop(_signum: int, _frame: FrameType | None) -> None:

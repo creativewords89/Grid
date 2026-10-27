@@ -15,6 +15,7 @@ const NAV: NavItem[] = [
   { path: "/benchmarks", label: "Benchmarks" },
   { path: "/connections", label: "Connections", roles: ["owner"] },
   { path: "/users", label: "Users", roles: ["owner"] },
+  { path: "/history", label: "History", roles: ["owner"] },
 ];
 
 export function Shell({ path, children }: { path: string; children: ReactNode }) {

@@ -13,11 +13,8 @@ import httpx2
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
-DATAFORSEO_URL = "https://api.dataforseo.com/v3"
-SHEETS_URL = "https://sheets.googleapis.com/v4/spreadsheets"
-DRIVE_URL = "https://www.googleapis.com/drive/v3/files"
-PAGESPEED_URL = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
-TELEGRAM_URL = "https://api.telegram.org"
+from app.config import get_settings
+
 GOOGLE_SCOPES = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive"
 
 transport: httpx2.BaseTransport | None = None
@@ -46,7 +43,8 @@ def dataforseo_balance(login: str, password: str) -> float:
     try:
         with _client() as client:
             response = client.get(
-                f"{DATAFORSEO_URL}/appendix/user_data", auth=httpx2.BasicAuth(login, password)
+                f"{get_settings().dataforseo_url}/appendix/user_data",
+                auth=httpx2.BasicAuth(login, password),
             )
     except httpx2.HTTPError as error:
         raise ProviderError(f"DataForSEO can't be reached ({type(error).__name__}).") from None
@@ -76,10 +74,12 @@ def google_token(service_account_json: str) -> str:
     if not isinstance(key, rsa.RSAPrivateKey):
         raise ProviderError("The key file's private key isn't an RSA key.")
     now = int(time.time())
+    # Google's token address comes from the Hub's settings, never from the key file's
+    # token_uri, so a key file can't send the signed request somewhere else.
     claims = {
         "iss": account["client_email"],
         "scope": GOOGLE_SCOPES,
-        "aud": account["token_uri"],
+        "aud": get_settings().google_token_url,
         "iat": now,
         "exp": now + 3600,
     }
@@ -93,7 +93,7 @@ def google_token(service_account_json: str) -> str:
     try:
         with _client() as client:
             response = client.post(
-                account["token_uri"],
+                get_settings().google_token_url,
                 data={
                     "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
                     "assertion": assertion,
@@ -129,7 +129,7 @@ def google_sheet_tabs(token: str, sheet_id: str) -> tuple[str, list[str]]:
     """The spreadsheet's title and its tab names."""
     with _client() as client:
         response = client.get(
-            f"{SHEETS_URL}/{sheet_id}",
+            f"{get_settings().google_sheets_url}/{sheet_id}",
             params={"fields": "properties.title,sheets.properties.title"},
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -143,7 +143,7 @@ def google_sheet_tabs(token: str, sheet_id: str) -> tuple[str, list[str]]:
 def google_sheet_headers(token: str, sheet_id: str, tab: str) -> list[str]:
     with _client() as client:
         response = client.get(
-            f"{SHEETS_URL}/{sheet_id}/values/'{tab}'!1:1",
+            f"{get_settings().google_sheets_url}/{sheet_id}/values/'{tab}'!1:1",
             headers={"Authorization": f"Bearer {token}"},
         )
     if response.status_code != 200:
@@ -158,7 +158,7 @@ def google_drive_write_test(token: str, folder_id: str) -> None:
     params = {"supportsAllDrives": "true"}
     with _client() as client:
         created = client.post(
-            DRIVE_URL,
+            get_settings().google_drive_url,
             params=params,
             headers=headers,
             json={
@@ -170,7 +170,9 @@ def google_drive_write_test(token: str, folder_id: str) -> None:
         if created.status_code != 200:
             raise ProviderError(f"Drive folder: {google_reason(created)}")
         file_id = created.json()["id"]
-        deleted = client.delete(f"{DRIVE_URL}/{file_id}", params=params, headers=headers)
+        deleted = client.delete(
+            f"{get_settings().google_drive_url}/{file_id}", params=params, headers=headers
+        )
         if deleted.status_code not in (200, 204):
             raise ProviderError(f"Drive folder: the test file couldn't be deleted. {deleted.text}")
 
@@ -183,7 +185,7 @@ def pagespeed_score(api_key: str) -> int:
     try:
         with _client(timeout=90.0) as client:
             response = client.get(
-                PAGESPEED_URL,
+                get_settings().pagespeed_url,
                 params={
                     "url": "https://example.com",
                     "strategy": "mobile",
@@ -209,7 +211,9 @@ def pagespeed_score(api_key: str) -> int:
 def _telegram(token: str, method: str, **params: Any) -> Any:
     try:
         with _client() as client:
-            response = client.post(f"{TELEGRAM_URL}/bot{token}/{method}", json=params)
+            response = client.post(
+                f"{get_settings().telegram_url}/bot{token}/{method}", json=params
+            )
         data = response.json()
     except (httpx2.HTTPError, ValueError) as error:
         # The URL holds the token, so neither it nor the error text is repeated.

@@ -6,6 +6,7 @@ import { Benchmarks } from "./pages/Benchmarks";
 import { Connections } from "./pages/Connections";
 import { FirstRun } from "./pages/FirstRun";
 import { Forgot } from "./pages/Forgot";
+import { History } from "./pages/History";
 import { Import } from "./pages/Import";
 import { Overview } from "./pages/Overview";
 import { Profile } from "./pages/Profile";
@@ -39,6 +40,7 @@ function Routes() {
   let page;
   if (path === "/users" && user.role === "owner") page = <Users />;
   else if (path === "/connections" && user.role === "owner") page = <Connections />;
+  else if (path === "/history" && user.role === "owner") page = <History />;
   else if (path === "/agents") page = <Agents />;
   else if (path === "/runs") page = <Runs />;
   else if (path === "/import") page = <Import />;

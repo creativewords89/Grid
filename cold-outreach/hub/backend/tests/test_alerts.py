@@ -1,7 +1,9 @@
 """Alerts by email and Telegram (SPEC section 6.6)."""
 
+import json
 from datetime import datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import httpx2
@@ -13,6 +15,7 @@ from sqlalchemy.orm import Session
 from app import connections, providers
 from app.alerts import service as alerts
 from app.auth.tokens import now
+from app.config import get_settings
 from app.db.models import Agent, Alert, Role, Run, RunStatus, RunTrigger, User
 from app.runs import service as runs
 from tests.conftest import FakeMailer, UserFactory, sign_in
@@ -281,3 +284,34 @@ def test_recent_alerts_are_listed(client: TestClient, token: str, db: Session) -
     listed = client.get("/api/alerts").json()
 
     assert [a["title"] for a in listed] == ["GBP audit failed"]
+
+
+@pytest.mark.parametrize(
+    ("status", "hours_ago", "expected"),
+    [
+        ({"ok": True}, 3, []),
+        ({"ok": True}, 40, ["No backup for more than a day"]),
+        ({"ok": False, "message": "pg_dump failed"}, 3, ["The nightly backup failed"]),
+        (None, 0, []),  # no backup yet
+    ],
+)
+def test_the_backup_is_checked_once_a_day(
+    db: Session,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    status: dict[str, object] | None,
+    hours_ago: int,
+    expected: list[str],
+) -> None:
+    path = tmp_path / "last-backup.json"
+    monkeypatch.setattr(get_settings(), "backup_status_file", str(path))
+    at = datetime(2026, 10, 27, 9, 0, tzinfo=DHAKA)
+    if status is not None:
+        made = (at - timedelta(hours=hours_ago)).astimezone(ZoneInfo("UTC"))
+        path.write_text(json.dumps(status | {"at": made.isoformat()}))
+
+    alerts.check_backup(db, at)
+    alerts.check_backup(db, at + timedelta(hours=7))  # the same day: not again
+    db.commit()
+
+    assert titles(db) == expected

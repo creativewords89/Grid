@@ -336,6 +336,23 @@ def test_google_opens_the_sheet_and_writes_to_the_folder(
     assert assertion.count(".") == 2  # a signed JWT
 
 
+def test_the_key_files_token_uri_is_never_used(
+    client: TestClient, owner: User, fake_web: FakeWeb
+) -> None:
+    _google_routes(fake_web, tabs=["Leads"], drive_status=200)
+    key = json.loads(_service_account()) | {"token_uri": "https://collector.example/token"}
+    _save(
+        client,
+        google_service_account=json.dumps(key),
+        google_sheet_url=SHEET_URL,
+        google_drive_folder_url=FOLDER_URL,
+    )
+
+    assert client.post("/api/connections/google/test").json()["ok"] is True
+    hosts = {r.url.host for r in fake_web.seen}
+    assert "oauth2.googleapis.com" in hosts and "collector.example" not in hosts
+
+
 def test_google_without_a_leads_tab_yet(client: TestClient, owner: User, fake_web: FakeWeb) -> None:
     _google_routes(fake_web, tabs=["Sheet1"], drive_status=200)
     _save(

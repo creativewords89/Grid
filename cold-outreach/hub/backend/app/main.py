@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable
 from fastapi import FastAPI, Request, Response
 from sqlalchemy.orm import Session
 
-from app import __version__, errors
+from app import __version__, errors, logs
 from app.api import (
     agent_api,
     agents,
@@ -15,6 +15,7 @@ from app.api import (
     benchmarks,
     connections,
     health,
+    history,
     imports,
     me,
     runs,
@@ -58,6 +59,7 @@ def create_app() -> FastAPI:
     )
     errors.install(app)
     app.middleware("http")(security_headers)
+    app.middleware("http")(logs.request_ids)  # added last, so it wraps everything
     for module in (
         health,
         setup,
@@ -71,6 +73,7 @@ def create_app() -> FastAPI:
         imports,
         benchmarks,
         alerts,
+        history,
     ):
         app.include_router(module.router, prefix="/api")
     return app
@@ -78,7 +81,7 @@ def create_app() -> FastAPI:
 
 def serve() -> FastAPI:
     """The production entry point (`uvicorn --factory app.main:serve`)."""
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    logs.setup(json_logs=get_settings().json_logs)
     app = create_app()
     try:
         with Session(get_engine()) as db:

@@ -24,6 +24,14 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pyt
 cd ../frontend
 npm ci
 npm run lint && npm run format:check && npm run typecheck && npm test && npm run build
+
+# End-to-end (Playwright): starts its own API, scheduler, web app and a fake Google on a
+# fresh database named hub_e2e, then creates the Owner, connects Google, imports a lead
+# file and runs the demo agent in a real browser.
+cd ../e2e
+npm ci && npx playwright install chromium
+export E2E_DATABASE_URL=postgresql+psycopg://hub:hub@localhost:5432/hub_e2e
+npx playwright test
 ```
 
 ## Agent Hub: run it with Docker
@@ -35,5 +43,5 @@ docker compose up -d --build
 curl http://localhost/api/health   # {"status":"ok",...}
 ```
 
-Then open http://localhost. Installing on the server is documented in build step 9
-(`hub/ops/deploy.md`).
+Then open http://localhost. Installing on the server: [hub/ops/deploy.md](hub/ops/deploy.md).
+Restoring a backup: [hub/ops/restore.md](hub/ops/restore.md).

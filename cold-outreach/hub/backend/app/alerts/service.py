@@ -5,6 +5,7 @@ emails off; Telegram goes to the alerts group when the Owner left that on. The s
 (by its key) isn't raised again within REPEAT_AFTER.
 """
 
+import json
 import logging
 from collections.abc import Callable
 from datetime import datetime, timedelta
@@ -17,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app import connections, providers, settings_store
 from app.auth.tokens import now
+from app.config import get_settings
 from app.db.models import Agent, Alert, Role, Run, RunStatus, User
 from app.mail import Mailer, get_mailer
 from app.runs import schedule
@@ -24,6 +26,7 @@ from app.runs import schedule
 log = logging.getLogger(__name__)
 
 REPEAT_AFTER = timedelta(hours=6)
+BACKUP_LATE = timedelta(hours=36)  # backups run nightly
 FAILED_SHARE = Decimal("0.2")  # more than 20% of a run's items failed
 MIN_ITEMS = 5  # …out of at least this many
 
@@ -122,6 +125,46 @@ def check_balance(db: Session, at: datetime | None = None) -> None:
             f"DataForSEO balance is low: ${balance:,.2f}",
             f"It is under ${low:,.2f}. Top it up at app.dataforseo.com so the GBP audits "
             "don't stop.",
+            audience="owners",
+        )
+
+
+def check_backup(db: Session, at: datetime | None = None) -> None:
+    """Once a day: alert the Owners when the last nightly backup failed or is late."""
+    path = get_settings().backup_status_file
+    if not path:
+        return
+    at = at or now()
+    today = at.astimezone(ZoneInfo(str(settings_store.get(db, "time_zone")))).date().isoformat()
+    if settings_store.get(db, "last_backup_check_date") == today:
+        return
+    settings_store.put(db, "last_backup_check_date", today)
+    try:
+        with open(path, encoding="utf-8") as file:
+            last = json.load(file)
+        when = datetime.fromisoformat(str(last["at"]))
+    except FileNotFoundError:
+        return  # no backup has run yet (the first night after installing)
+    except (OSError, ValueError, KeyError, TypeError):
+        last, when = {"ok": False, "message": "its status file can't be read"}, at
+    if not last.get("ok"):
+        raise_alert(
+            db,
+            "backup",
+            "backup",
+            "The nightly backup failed",
+            f"Reason: {last.get('message') or 'unknown'}. See ops/restore.md and "
+            "`docker compose logs backup` on the server.",
+            audience="owners",
+        )
+    elif at - when > BACKUP_LATE:
+        raise_alert(
+            db,
+            "backup",
+            "backup",
+            "No backup for more than a day",
+            f"The last backup was made at {when:%Y-%m-%d %H:%M} UTC. Check that the backup "
+            "service is running: `docker compose ps backup` on the server.",
             audience="owners",
         )
 

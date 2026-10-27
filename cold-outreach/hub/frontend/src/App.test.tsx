@@ -62,7 +62,10 @@ test("signing in opens the Hub and later writes send the CSRF token", async () =
 });
 
 test.each([
-  ["owner", ["Overview", "Import", "Agents", "Runs", "Benchmarks", "Connections", "Users"]],
+  [
+    "owner",
+    ["Overview", "Import", "Agents", "Runs", "Benchmarks", "Connections", "Users", "History"],
+  ],
   ["admin", ["Overview", "Import", "Agents", "Runs", "Benchmarks"]],
   ["viewer", ["Overview", "Import", "Agents", "Runs", "Benchmarks"]],
 ] as const)("the %s sees their sidebar", async (role, items) => {

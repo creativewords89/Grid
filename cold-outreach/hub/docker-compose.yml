@@ -36,6 +36,7 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      JSON_LOGS: "true"
     security_opt: ["no-new-privileges:true"]
     depends_on:
       db:
@@ -55,9 +56,35 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      JSON_LOGS: "true"
+      BACKUP_STATUS_FILE: /data/backups/last-backup.json
+    volumes:
+      # Read-only: the scheduler raises an alert when the nightly backup failed or is late.
+      - backups:/data/backups:ro
     security_opt: ["no-new-privileges:true"]
     depends_on:
       api:
+        condition: service_healthy
+
+  # Nightly database backup at BACKUP_TIME (ops/backup.sh); restores run here too
+  # (ops/restore.md).
+  backup:
+    build:
+      context: .
+      dockerfile: ops/backup.Dockerfile
+    logging: *logging
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      BACKUP_DIR: /data/backups
+    volumes:
+      - backups:/data/backups
+    depends_on:
+      db:
         condition: service_healthy
 
   db:
@@ -82,5 +109,6 @@ networks:
 
 volumes:
   db_data:
+  backups:
   caddy_data:
   caddy_config:

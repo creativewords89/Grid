@@ -52,7 +52,9 @@ cold-outreach/
   PLAN.md, CLAUDE.md, README.md
   hub/
     SPEC.md                this file
-    docker-compose.yml     caddy, api, scheduler, db
+    docker-compose.yml     caddy, api, scheduler, db, backup
+    ops/                   deploy.md, backup and restore scripts
+    e2e/                   Playwright tests, fake Google
     .env.example
     caddy/                 Caddyfile + Dockerfile (builds the React app, serves it)
     backend/
@@ -295,6 +297,7 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 | More than 20% of a run's items failed (at least 5 items) | Owners and Admins | email + Telegram group |
 | The DataForSEO balance is under the threshold (default $10; checked once a day) | Owners | email + Telegram group |
 | A connection's Test that used to pass now fails | Owners | email + Telegram group |
+| The nightly backup failed, or none was made for 36 hours (checked once a day) | Owners | email + Telegram group |
 | Daily summary at the summary time (default 08:00, the Hub's time zone): yesterday's runs, items and spending per agent | – | Telegram group only |
 
 - Alerts are saved where the event happens and **sent by the scheduler** (every 30 seconds), so
@@ -311,8 +314,73 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 
 1. **Sign in**, **Create the Owner account**, **Accept invite**, **Reset password**.
 2. **Overview:** today's and this month's cost against budgets; each agent's last run,
-   status and next run; leads by list and how many each agent has done.
-3. **Import:** upload box with the Niche picker; the preview; past imports with counts.
+   status and next run; recent alerts and the alert settings; leads by list and how many each
+   agent has done.
+3. **Import:** upload box with the Niche picker; the preview; past imports with counts; the
+   Lists (City + Niche) with their on/off switches.
+4. **Agents:** one card per agent: on/off switch, last run, next run, today's cost, Run now,
+   Stop; **Settings** opens the form built from the manifest.
+5. **Runs:** filter by agent and status; each run's counts, cost, stop reason and failures.
+6. **Benchmarks:** GBP benchmarks by City + Niche, upload; **Website Standards** per Niche
+   with versions, draft editor and Lock.
+7. **Connections** (Owner), **Users** (Owner), **History** (Owner: who did what, newest
+   first, filtered by area; a connection change only says "(changed)"), **Profile**.
+
+## 8. REST API (`/api`, JSON)
+
+`/health`, `/setup`, `/auth/*`, `/me`, `/users`, `/connections` (+ `/{group}/test`),
+`/agents` (+ `/{key}/enabled`, `/{key}/run`, `/{key}/stop`, `/{key}/token`), `/runs`,
+`/overview`, `/budget`, `/imports` (upload → preview, `/{id}/confirm`, `/{id}/discard`),
+`/niches`, `/lists`, `/benchmarks` (+ `/upload`), `/website-standards`, `/alerts`,
+`/alert-settings`, `/history`, and the agent API (section 6.2). Every user endpoint checks
+`permissions.can`; every write checks CSRF.
+
+## 9. Non-functional
+
+- Parameterised SQL only (SQLAlchemy); all output escaped; no external CDNs.
+- Security headers from Caddy and the API, as in the Answer Engine.
+- Uploaded files are read in memory and not kept after the import is confirmed or discarded.
+- Logs are JSON lines in production (`JSON_LOGS=true`), each carrying a request id that is
+  also returned in `X-Request-ID`. The access log never writes query strings, and no log
+  holds keys, tokens, passwords or lead data.
+- Outside services are called at fixed addresses (`config.py`), so a key file can't send the
+  Google sign-in elsewhere (its `token_uri` is ignored). Only the end-to-end tests change
+  these addresses, to local fakes.
+- Nightly database backup kept 14 days, optionally copied off the server; the scheduler
+  alerts the Owners when it failed or is more than 36 hours old (section 10).
+
+## 10. Deployment
+
+- `hub.gridrankers.com` points to the server; Caddy gets the certificate.
+- `.env` holds `APP_DOMAIN`, `APP_URL`, `SECRET_KEY`, the database password and the backup
+  settings only; everything else is entered in the website.
+- Services: `caddy`, `api`, `scheduler`, `db` and `backup` (`ops/backup.sh` nightly at
+  `BACKUP_TIME`, `pg_dump` checked with `pg_restore --list`, `last-backup.json` read by the
+  scheduler). `ops/restore.sh` restores; `ops/restore-test.sh` restores the latest backup
+  into a scratch database and compares every table's row count (CI runs it too).
+- Agents join the Hub's Docker network (`agent-hub`) and reach it at `http://api:8000`.
+- Step-by-step: [ops/deploy.md](ops/deploy.md); restoring: [ops/restore.md](ops/restore.md).
+
+## 11. Open decisions (defaults used until answered)
+
+See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
+
+1. **Lists** (City + Niche on/off and per-list limit) live in the Hub, not in a Sheet tab,
+   since files are now uploaded in the Hub.
+2. **The Sheet has one tab, Leads.** Benchmarks are held in the Hub and given to agents through
+   the agent API.
+
+## 12. Build plan (one step per task)
+
+1. **Skeleton:** layout, Docker Compose (caddy, api, scheduler, db), FastAPI `/api/health`,
+   Alembic baseline, scheduler process, React shell, CI. **Tests:** health, migrations up/down,
+   docs hidden in production, React health status.
+2. **Users and sign-in:** users, sessions, invites, login, lockout, CSRF, first-run Owner with
+   setup code, `permissions.py` with every row of section 3, sign-in screens, Users screen.
+   **Tests:** every permission row, lockout, token expiry, last-Owner rule.
+3. **Connections:** encrypted write-only keys, the Google key file upload, every Test button
+   (providers faked in tests), Connections screen. **Tests:** values never returned or logged,
+   Owner only, changed `SECRET_KEY`, each Test.
 4. **Agents:** registry, tokens, manifest, settings form from the manifest, on/off, **Run now**
    and the run record, agent API (`next-run`, `progress`, `finish`), Agents screen, demo agent.
    **Tests:** token checks, only declared connections are handed out, one run at a time.
@@ -328,5 +396,8 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 8. **Alerts:** email and Telegram alerts sent by the scheduler, repeat suppression, daily
    balance check and summary, Profile switch, alert settings, recent alerts on the Overview.
    **Tests:** each event alerts the right people once.
-9. **Deployment and hardening:** production Compose, Caddyfile, backups and a restore test,
-   `ops/deploy.md`, Playwright e2e (sign in → connections → import → agent run → runs).
+9. **Deployment and hardening:** production Compose with the backup service, backups, a
+   restore test, the backup alert, JSON logs with request ids, fixed provider addresses, the
+   History screen, `ops/deploy.md`, Playwright e2e (create the Owner → Connections → Import →
+   demo agent run → Runs → History) with a fake Google, in CI. **Tests:** History is Owner-only
+   and holds no secrets, the key file's `token_uri` is ignored, request ids, backup alerts.

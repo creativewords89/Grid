@@ -24,6 +24,7 @@ DEFAULTS: dict[str, Any] = {
     # Bookkeeping for the scheduler's once-a-day jobs.
     "last_summary_date": None,
     "last_balance_check_date": None,
+    "last_backup_check_date": None,
 }
 
 

@@ -83,6 +83,19 @@ export type Run = {
 
 export type RunPage = { runs: Run[]; more: boolean };
 
+export type HistoryEntry = {
+  id: string;
+  at: string;
+  actor: string | null;
+  action: string;
+  entity: string;
+  entity_id: string | null;
+  title: string | null;
+  changes: Record<string, unknown>[];
+};
+
+export type HistoryPage = { entries: HistoryEntry[]; more: boolean };
+
 export type Budget = {
   daily_total_budget_usd: string;
   time_zone: string;
@@ -396,6 +409,12 @@ export const api = {
     for (const [name, value] of Object.entries(filters)) if (value) params.set(name, value);
     const query = params.toString();
     return request<RunPage>("GET", `/runs${query ? `?${query}` : ""}`);
+  },
+  history: (filters: { entity?: string; before?: string } = {}) => {
+    const params = new URLSearchParams();
+    for (const [name, value] of Object.entries(filters)) if (value) params.set(name, value);
+    const query = params.toString();
+    return request<HistoryPage>("GET", `/history${query ? `?${query}` : ""}`);
   },
   overview: () => request<Overview>("GET", "/overview"),
   uploadLeads: (file: File, niche: string) => {

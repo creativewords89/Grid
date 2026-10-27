@@ -14,6 +14,7 @@ from urllib.parse import quote
 import httpx2
 
 from app import providers
+from app.config import get_settings
 from app.providers import ProviderError
 
 TAB = "Leads"
@@ -52,7 +53,7 @@ def column_letter(index: int) -> str:
 
 class Sheet:
     def __init__(self, token: str, sheet_id: str) -> None:
-        self.base = f"{providers.SHEETS_URL}/{sheet_id}"
+        self.base = f"{get_settings().google_sheets_url}/{sheet_id}"
         self.headers = {"Authorization": f"Bearer {token}"}
         self.client = httpx2.Client(timeout=60.0, transport=providers.transport)
 

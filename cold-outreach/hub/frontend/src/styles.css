@@ -2075,3 +2075,8 @@ textarea {
 .alert-list li:last-child {
   border-bottom: 0;
 }
+
+.history-changes {
+  margin: 0.25rem 0 0;
+  padding-left: 1.1rem;
+}
