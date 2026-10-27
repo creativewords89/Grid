@@ -4,7 +4,6 @@ import { useAuth } from "../auth";
 import { Alert, Field } from "../components/ui";
 import { ROLE_NAMES } from "../labels";
 
-// Alert channels (email, Telegram) are added here with build step 8 (SPEC section 6.6).
 export function Profile() {
   const { user, updated } = useAuth();
   const [name, setName] = useState(user?.name ?? "");
@@ -84,6 +83,39 @@ export function Profile() {
           </div>
         </form>
       </div>
+      <AlertEmail />
     </section>
+  );
+}
+
+function AlertEmail() {
+  const { user, updated } = useAuth();
+  const [error, setError] = useState("");
+  if (!user) return null;
+  return (
+    <div className="card stack">
+      <h2>Alerts</h2>
+      <p className="muted">
+        Owners and Admins are emailed when a run fails, an agent stops answering or a budget is used
+        up. Owners also hear about low DataForSEO balance and broken connections. The Telegram group
+        gets them too, as the Owner set on the Overview.
+      </p>
+      {error && <Alert kind="error">{error}</Alert>}
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={user.alert_email}
+          onChange={async (e) => {
+            setError("");
+            try {
+              updated(await api.setAlertEmail(e.target.checked));
+            } catch (err) {
+              setError(err instanceof ApiError ? err.message : "Not saved.");
+            }
+          }}
+        />
+        Email me alerts
+      </label>
+    </div>
   );
 }

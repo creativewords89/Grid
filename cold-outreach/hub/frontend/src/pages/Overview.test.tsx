@@ -53,3 +53,51 @@ test("the Owner changes the total budget", async () => {
     time_zone: "Asia/Dhaka",
   });
 });
+
+test("recent alerts and, for Owners, where alerts go", async () => {
+  const calls = mockApi({
+    "GET /auth/me": [200, { user: makeUser({ role: "owner" }), csrf_token: "t" }],
+    "GET /overview": [200, overview(true)],
+    "GET /alerts": [
+      200,
+      [
+        {
+          id: "a1",
+          kind: "run_failed",
+          title: "GBP audit failed",
+          body: "DataForSEO down.",
+          created_at: "2026-10-27T10:00:00Z",
+          sent_at: "2026-10-27T10:00:30Z",
+          emailed_to: 2,
+          telegram_sent: true,
+          error: null,
+        },
+      ],
+    ],
+    "GET /alert-settings": [
+      200,
+      {
+        alerts_telegram: true,
+        daily_summary: true,
+        daily_summary_time: "08:00",
+        low_balance_usd: "10.00",
+        can_change: true,
+      },
+    ],
+    "PUT /alert-settings": (body) => [200, { ...(body as object), can_change: true }],
+  });
+  render(<App />);
+
+  expect(await screen.findByText("GBP audit failed")).toBeVisible();
+  expect(screen.getByText("Emailed to 2 · sent to Telegram")).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "Alert settings" }));
+  await userEvent.click(screen.getByLabelText("A daily summary in the Telegram group"));
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+  expect(calls.find((c) => c.path === "/alert-settings" && c.method === "PUT")?.body).toEqual({
+    alerts_telegram: true,
+    daily_summary: false,
+    daily_summary_time: "08:00",
+    low_balance_usd: "10.00",
+  });
+});

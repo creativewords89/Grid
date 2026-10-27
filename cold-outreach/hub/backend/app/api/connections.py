@@ -12,6 +12,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, StringConstraints
 
 from app import audit, connections, providers, settings_store
+from app.alerts import service as alerts
 from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
 from app.auth.tokens import now
@@ -142,6 +143,8 @@ def test_connection(group: Group, me: CurrentUser, db: Db, mailer: MailerDep) ->
     except providers.ProviderError as error:
         result = TestOut(ok=False, message=str(error), at=now())
     tests = dict(settings_store.get(db, "connection_tests") or {})
+    if not result.ok and (tests.get(group) or {}).get("ok"):
+        alerts.connection_broke(db, group, result.message)
     tests[group] = result.model_dump(mode="json")
     settings_store.put(db, "connection_tests", tests)
     db.commit()

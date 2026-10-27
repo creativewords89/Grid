@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { api, ApiError, type Overview as Data } from "../api";
+import { api, ApiError, type AlertSettings, type HubAlert, type Overview as Data } from "../api";
 import { Alert, Field } from "../components/ui";
 import { HealthStatus } from "../HealthStatus";
 import { ago, money, when } from "../format";
@@ -136,8 +136,135 @@ export function Overview() {
           </div>
         </>
       )}
+      <Alerts />
       <HealthStatus />
     </section>
+  );
+}
+
+function Alerts() {
+  const [alerts, setAlerts] = useState<HubAlert[]>([]);
+  const [settings, setSettings] = useState<AlertSettings | null>(null);
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    api
+      .alerts()
+      .then(setAlerts)
+      .catch(() => setAlerts([]));
+    api
+      .alertSettings()
+      .then(setSettings)
+      .catch(() => setSettings(null));
+  }, []);
+
+  return (
+    <div className="card stack" aria-labelledby="recent-alerts">
+      <div className="agent-head">
+        <h2 id="recent-alerts">Recent alerts</h2>
+        {settings?.can_change && !editing && (
+          <button className="button" onClick={() => setEditing(true)}>
+            Alert settings
+          </button>
+        )}
+      </div>
+      {editing && settings && (
+        <AlertSettingsForm
+          settings={settings}
+          onDone={(saved) => {
+            if (saved) setSettings(saved);
+            setEditing(false);
+          }}
+        />
+      )}
+      {alerts.length === 0 ? (
+        <p className="muted">No alerts.</p>
+      ) : (
+        <ul className="alert-list">
+          {alerts.map((a) => (
+            <li key={a.id}>
+              <strong>{a.title}</strong> <span className="muted small">{when(a.created_at)}</span>
+              <div className="small">{a.body}</div>
+              <div className="muted small">
+                {a.sent_at
+                  ? `Emailed to ${a.emailed_to}${a.telegram_sent ? " · sent to Telegram" : ""}`
+                  : "Waiting to be sent"}
+                {a.error && ` · ${a.error}`}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function AlertSettingsForm({
+  settings,
+  onDone,
+}: {
+  settings: AlertSettings;
+  onDone: (saved: AlertSettings | null) => void;
+}) {
+  const [form, setForm] = useState(settings);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    setErrors({});
+    try {
+      const { can_change: _ignored, ...body } = form;
+      void _ignored;
+      onDone(await api.saveAlertSettings(body));
+    } catch (err) {
+      if (err instanceof ApiError) setErrors({ form: err.message, ...err.fields });
+    }
+  }
+
+  return (
+    <form className="stack" onSubmit={save} aria-label="Alert settings">
+      {errors.form && <Alert kind="error">{errors.form}</Alert>}
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={form.alerts_telegram}
+          onChange={(e) => setForm({ ...form, alerts_telegram: e.target.checked })}
+        />
+        Send alerts to the Telegram group
+      </label>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={form.daily_summary}
+          onChange={(e) => setForm({ ...form, daily_summary: e.target.checked })}
+        />
+        A daily summary in the Telegram group
+      </label>
+      <div className="connection-fields">
+        <Field
+          label="Summary time (24-hour, the Hub's time zone)"
+          type="time"
+          value={form.daily_summary_time}
+          error={errors.daily_summary_time}
+          onChange={(e) => setForm({ ...form, daily_summary_time: e.target.value })}
+        />
+        <Field
+          label="Alert when DataForSEO balance is under (USD)"
+          type="number"
+          min={0}
+          step="0.01"
+          value={form.low_balance_usd}
+          error={errors.low_balance_usd}
+          onChange={(e) => setForm({ ...form, low_balance_usd: e.target.value })}
+        />
+      </div>
+      <div className="row">
+        <button className="button button-primary">Save</button>
+        <button type="button" className="button" onClick={() => onDone(null)}>
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }
 

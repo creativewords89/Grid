@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app import settings_store
 from app.agents import service as agents
+from app.alerts import service as alerts
 from app.auth.tokens import now
 from app.db.models import ACTIVE_RUN, Agent, Run, RunStatus, RunTrigger, User
 from app.errors import ApiError
@@ -174,6 +175,7 @@ def expire_stale_runs(db: Session, at: datetime | None = None) -> list[Run]:
     for run in expired:
         run.status = RunStatus.TIMED_OUT
         run.finished_at = at
+        alerts.run_ended(db, run)
     db.commit()
     return expired
 

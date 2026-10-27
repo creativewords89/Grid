@@ -121,7 +121,7 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 
 | Table | Holds |
 |---|---|
-| `users`, `sessions`, `auth_tokens`, `login_attempts` | as in the Answer Engine; `role` is `owner`, `admin` or `viewer`; `alert_email`, `alert_telegram` flags; `telegram_chat_id` |
+| `users`, `sessions`, `auth_tokens`, `login_attempts` | as in the Answer Engine; `role` is `owner`, `admin` or `viewer`; `alert_email` |
 | `settings` | key → JSON; `connections` values encrypted (section 6.1); `budget.daily_total_usd`; alert thresholds |
 | `agents` | `key` (e.g. `gbp-audit`), `name`, `enabled`, `token_hash`, `manifest` JSON, `manifest_version`, `config` JSON (the values set in the Hub), `daily_limit`, `run_time`, `time_zone`, `daily_budget_usd`, `last_seen_at` |
 | `runs` | `agent_id`, `trigger` (`schedule`/`manual`), `status` (`queued`, `running`, `succeeded`, `failed`, `stopped`, `timed_out`), `queued_at`, `started_at`, `finished_at`, `heartbeat_at`, counts `done`/`failed`/`skipped`, `cost_usd`, `stop_reason`, `summary` JSON, `requested_by` |
@@ -290,14 +290,22 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 
 | Event | Who | Channel |
 |---|---|---|
-| Run failed or timed out, or more than 20% of its items failed | Owners and Admins | email + Telegram |
-| Agent stopped because a budget was used up | Owners and Admins | email + Telegram |
-| DataForSEO balance under $10 (checked daily) | Owners | email + Telegram |
-| A Connection Test that used to pass now fails | Owners | email + Telegram |
-| Daily summary: runs, items done and failed, cost | Owners and Admins | Telegram (each person can switch it off) |
+| A run failed, or the agent stopped answering (timed out) | Owners and Admins | email + Telegram group |
+| A run stopped because a budget was used up | Owners and Admins | email + Telegram group |
+| More than 20% of a run's items failed (at least 5 items) | Owners and Admins | email + Telegram group |
+| The DataForSEO balance is under the threshold (default $10; checked once a day) | Owners | email + Telegram group |
+| A connection's Test that used to pass now fails | Owners | email + Telegram group |
+| Daily summary at the summary time (default 08:00, the Hub's time zone): yesterday's runs, items and spending per agent | – | Telegram group only |
 
-Telegram goes to the Hub's own bot and alerts group. Each person can turn email or Telegram off
-for themselves (Profile). The same alert is not repeated within 6 hours.
+- Alerts are saved where the event happens and **sent by the scheduler** (every 30 seconds), so
+  an agent's report never waits on email. The same alert (same event and agent or connection)
+  isn't repeated within **6 hours**.
+- Email goes to every active Owner (and Admin, for the first three rows) who hasn't switched
+  off **Email me alerts** on their Profile. Telegram goes to the alerts group found by the
+  Telegram connection's Test.
+- Owners set on the Overview: alerts to the Telegram group on or off, the daily summary on or
+  off and its time, and the DataForSEO balance threshold.
+- The Overview lists the last 20 alerts and whether each was emailed and sent to Telegram.
 
 ## 7. Screens
 
@@ -317,7 +325,8 @@ for themselves (Profile). The same alert is not repeated within 6 hours.
    one phone with a profile per city, text that looks like a formula, a failed Sheet write).
 7. **Benchmarks and Website Standards:** GBP benchmark upload, Standard drafts and locking, the
    agent reference endpoints. **Tests:** replace-by-pair, locked versions only.
-8. **Alerts and Overview:** email and Telegram alerts, repeat suppression, daily summary,
-   Profile channels. **Tests:** each event alerts the right people once.
+8. **Alerts:** email and Telegram alerts sent by the scheduler, repeat suppression, daily
+   balance check and summary, Profile switch, alert settings, recent alerts on the Overview.
+   **Tests:** each event alerts the right people once.
 9. **Deployment and hardening:** production Compose, Caddyfile, backups and a restore test,
    `ops/deploy.md`, Playwright e2e (sign in → connections → import → agent run → runs).

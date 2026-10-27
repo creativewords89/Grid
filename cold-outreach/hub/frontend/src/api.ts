@@ -9,6 +9,7 @@ export type User = {
   role: Role;
   active: boolean;
   invited: boolean;
+  alert_email: boolean;
   last_login_at: string | null;
   created_at: string;
 };
@@ -246,6 +247,26 @@ export type NicheStandard = {
   can_lock: boolean;
 };
 
+export type HubAlert = {
+  id: string;
+  kind: string;
+  title: string;
+  body: string;
+  created_at: string;
+  sent_at: string | null;
+  emailed_to: number;
+  telegram_sent: boolean;
+  error: string | null;
+};
+
+export type AlertSettings = {
+  alerts_telegram: boolean;
+  daily_summary: boolean;
+  daily_summary_time: string;
+  low_balance_usd: string;
+  can_change?: boolean;
+};
+
 export type Health = {
   status: "ok" | "error";
   version: string;
@@ -415,6 +436,11 @@ export const api = {
     request<Budget>("PUT", "/budget", { daily_total_budget_usd, time_zone }),
 
   updateProfile: (name: string) => request<User>("PATCH", "/me", { name }),
+  setAlertEmail: (alert_email: boolean) => request<User>("PATCH", "/me", { alert_email }),
+  alerts: () => request<HubAlert[]>("GET", "/alerts"),
+  alertSettings: () => request<AlertSettings>("GET", "/alert-settings"),
+  saveAlertSettings: (settings: AlertSettings) =>
+    request<AlertSettings>("PUT", "/alert-settings", settings),
   changePassword: (current_password: string, new_password: string) =>
     request<{ message: string }>("POST", "/me/password", { current_password, new_password }),
 };

@@ -47,3 +47,18 @@ test("a wrong current password is shown next to its field", async () => {
 
   expect(await screen.findByText("Your current password is incorrect.")).toBeVisible();
 });
+
+test("switch off alert emails", async () => {
+  const calls = mockApi({
+    "GET /auth/me": [200, { user: makeUser({ role: "admin" }), csrf_token: "t" }],
+    "PATCH /me": (body) => [200, makeUser({ role: "admin", ...(body as object) })],
+  });
+  render(<App />);
+
+  const box = await screen.findByLabelText("Email me alerts");
+  expect(box).toBeChecked();
+  await userEvent.click(box);
+
+  expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ alert_email: false });
+  expect(await screen.findByLabelText("Email me alerts")).not.toBeChecked();
+});

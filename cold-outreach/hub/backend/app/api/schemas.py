@@ -30,6 +30,7 @@ class UserOut(BaseModel):
     role: Role
     active: bool
     invited: bool
+    alert_email: bool
     last_login_at: datetime | None
     created_at: datetime
 
@@ -42,6 +43,7 @@ class UserOut(BaseModel):
             role=user.role,
             active=user.active,
             invited=user.invited,
+            alert_email=user.alert_email,
             last_login_at=user.last_login_at,
             created_at=user.created_at,
         )
@@ -106,6 +108,7 @@ class UserPatchIn(Strict):
 
 class ProfilePatchIn(Strict):
     name: Name | None = None
+    alert_email: bool | None = None
 
 
 class ChangePasswordIn(Strict):

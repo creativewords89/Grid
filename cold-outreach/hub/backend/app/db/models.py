@@ -75,6 +75,8 @@ class User(TimestampMixin, Base):
     password_hash: Mapped[str | None] = mapped_column(String(255))
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Alerts by email (SPEC section 6.6); each person can switch them off.
+    alert_email: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
 
     sessions: Mapped[list["AuthSession"]] = relationship(
         back_populates="user", cascade="all, delete-orphan", passive_deletes=True
@@ -381,4 +383,29 @@ class WebsiteStandard(Base):
             unique=True,
             postgresql_where=text("version IS NULL"),
         ),
+    )
+
+
+class Alert(Base):
+    """Something a person should know about (SPEC section 6.6). Saved first, then sent by
+    the scheduler, so a slow email server never holds up an agent."""
+
+    __tablename__ = "alerts"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    kind: Mapped[str] = mapped_column(String(40))
+    # The same key isn't alerted twice within REPEAT_AFTER.
+    dedupe_key: Mapped[str] = mapped_column(String(200))
+    title: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(String(4000))
+    audience: Mapped[str] = mapped_column(String(10))  # "owners" or "staff"
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    emailed_to: Mapped[list[str]] = mapped_column(JSONB, default=list, server_default="[]")
+    telegram_sent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    error: Mapped[str | None] = mapped_column(String(500))
+
+    __table_args__ = (
+        Index("ix_alerts_dedupe_key_created_at", "dedupe_key", "created_at"),
+        Index("ix_alerts_sent_at", "sent_at"),
     )

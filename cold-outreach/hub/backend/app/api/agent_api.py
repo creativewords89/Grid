@@ -11,6 +11,7 @@ from sqlalchemy import func, or_, select
 
 from app.agents import service
 from app.agents.manifest import Manifest
+from app.alerts import service as alerts
 from app.api.schemas import Strict
 from app.auth.deps import Db
 from app.auth.tokens import now
@@ -82,6 +83,7 @@ def next_run(agent: CurrentAgent, db: Db, response: Response) -> RunOut | Respon
             run.status = RunStatus.STOPPED
             run.stop_reason = reason
             run.finished_at = now()
+            alerts.run_ended(db, run)
             run = None
     db.commit()
     if run is None:
@@ -160,6 +162,7 @@ def finish(run_id: str, body: FinishIn, agent: CurrentAgent, db: Db) -> None:
     run.stop_reason = body.stop_reason
     run.summary = body.summary
     run.finished_at = now()
+    alerts.run_ended(db, run)
     db.commit()
 
 

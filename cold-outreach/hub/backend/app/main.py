@@ -10,6 +10,7 @@ from app import __version__, errors
 from app.api import (
     agent_api,
     agents,
+    alerts,
     auth,
     benchmarks,
     connections,
@@ -69,6 +70,7 @@ def create_app() -> FastAPI:
         runs,
         imports,
         benchmarks,
+        alerts,
     ):
         app.include_router(module.router, prefix="/api")
     return app

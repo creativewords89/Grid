@@ -17,6 +17,8 @@ def update_profile(body: ProfilePatchIn, session: CurrentSession, db: Db) -> Use
     ensure(user, Action.EDIT_OWN_PROFILE)
     if body.name is not None:
         user.name = body.name
+    if body.alert_email is not None:
+        user.alert_email = body.alert_email
     db.commit()
     db.refresh(user)
     return UserOut.of(user)

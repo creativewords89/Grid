@@ -1,7 +1,8 @@
 """Scheduler process (`python -m app.scheduler`), SPEC section 6.3.
 
-Every 30 seconds: queue the scheduled runs that are due, and give up on runs an agent
-stopped reporting on or never picked up. Alerts are added in build step 8.
+Every 30 seconds: queue the scheduled runs that are due, give up on runs an agent stopped
+reporting on or never picked up, run the once-a-day jobs (DataForSEO balance, the daily
+summary) and send the alerts waiting (SPEC sections 6.3 and 6.6).
 """
 
 import logging
@@ -12,6 +13,7 @@ from types import FrameType
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.alerts import service as alerts
 from app.db.session import get_engine
 from app.runs import service
 
@@ -28,6 +30,10 @@ def tick() -> bool:
                 log.info("queued the scheduled run %s", run.id)
             for run in service.expire_stale_runs(db):
                 log.warning("run %s timed out: %s", run.id, run.stop_reason)
+            alerts.check_balance(db)
+            alerts.daily_summary(db)
+            db.commit()
+            alerts.deliver_pending(db)
     except SQLAlchemyError:
         log.warning("database unreachable, retrying in %.0fs", TICK_SECONDS)
         return False

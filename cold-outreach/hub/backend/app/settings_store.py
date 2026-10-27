@@ -16,6 +16,14 @@ DEFAULTS: dict[str, Any] = {
     "daily_total_budget_usd": "20.00",
     # The Hub's own time zone: "today" for the total budget and the Overview.
     "time_zone": "Asia/Dhaka",
+    # Alerts (SPEC section 6.6).
+    "alerts_telegram": True,  # send alerts to the Telegram group
+    "daily_summary": True,  # a morning summary in the Telegram group
+    "daily_summary_time": "08:00",  # in the Hub's time zone
+    "low_balance_usd": "10.00",  # DataForSEO balance that raises an alert
+    # Bookkeeping for the scheduler's once-a-day jobs.
+    "last_summary_date": None,
+    "last_balance_check_date": None,
 }
 
 
