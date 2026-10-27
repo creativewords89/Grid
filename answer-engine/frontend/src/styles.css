@@ -1618,6 +1618,19 @@ details.original summary {
   overflow-y: auto;
 }
 
+.mk-new {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 50px;
+  justify-content: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  border-radius: 12px;
+  box-shadow: 0 3px 8px rgb(31 111 235 / 0.3);
+}
+
 .mk-find .input {
   width: 100%;
   min-height: 42px;
@@ -1679,7 +1692,7 @@ details.original summary {
 .mk-list-head h2 {
   margin: 0;
   min-width: 0;
-  font-size: 15px;
+  font-size: 14px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1890,6 +1903,7 @@ details.original summary {
 }
 
 .mk-platform {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -1922,8 +1936,163 @@ details.original summary {
   border-radius: 12px;
   font-size: 20px;
   font-weight: 700;
+}
+
+/* Reddit and Facebook keep their colours (platform-*); others are grey. */
+.mk-platform-mark:not(.platform-reddit, .platform-facebook) {
   background: var(--surface-2);
   color: var(--muted);
+}
+
+.mk-split {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.mk-center {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.mk-split > .mk-thread {
+  min-width: 0;
+}
+
+.mk-details {
+  width: 280px;
+  flex: none;
+  overflow-y: auto;
+  padding: 4px 18px;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.mk-details section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.mk-details section:last-child {
+  border-bottom: 0;
+}
+
+.mk-details h2 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.mk-details p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.mk-rules {
+  white-space: pre-wrap;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--warn-bg);
+}
+
+.mk-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mk-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.mk-steps li:not(:last-child) {
+  flex: 1;
+}
+
+.mk-steps li:not(:last-child)::after {
+  content: "";
+  flex: 1;
+  min-width: 12px;
+  height: 2px;
+  margin-left: 4px;
+  background: var(--border);
+}
+
+.mk-step-n {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mk-steps li.now {
+  color: var(--brand);
+}
+
+.mk-steps li.now .mk-step-n {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--brand-text);
+}
+
+.mk-steps li.done .mk-step-n {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.mk-steps li.done::after {
+  background: var(--ok);
+}
+
+.mk-step-back {
+  align-self: flex-start;
+}
+
+.mk-example {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+
+.mk-example mark {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: #ffe58f;
+  color: #1c2430;
+  font-weight: 700;
+}
+
+.mk-platform-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .mk-thread {
@@ -2037,6 +2206,12 @@ details.original summary {
   min-height: 38px;
 }
 
+@media (max-width: 1100px) {
+  .mk-details {
+    display: none;
+  }
+}
+
 @media (max-width: 760px) {
   .mk {
     height: auto;
@@ -2083,6 +2258,10 @@ details.original summary {
 
   .mk-code-row {
     flex-wrap: wrap;
+  }
+
+  .mk-steps li {
+    font-size: 0;
   }
 }
 
