@@ -53,6 +53,7 @@ cold-outreach/
   hub/
     SPEC.md                this file
     docker-compose.yml     caddy, api, scheduler, db, backup
+    docker-compose.shared.yml  on the same server as the Answer Engine
     ops/                   deploy.md, backup and restore scripts
     e2e/                   Playwright tests, fake Google
     .env.example
@@ -359,6 +360,12 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
   scheduler). `ops/restore.sh` restores; `ops/restore-test.sh` restores the latest backup
   into a scratch database and compares every table's row count (CI runs it too).
 - Agents join the Hub's Docker network (`agent-hub`) and reach it at `http://api:8000`.
+- **Next to the Answer Engine** (our VPS, KVM 1, US location): `docker-compose.shared.yml`
+  (switched on with `COMPOSE_FILE` in `.env`) takes away the Hub Caddy's ports; it joins the
+  Answer Engine's network as `agent-hub-web` and serves plain HTTP. The Answer Engine's
+  Caddy, which owns ports 80 and 443, serves `hub.gridrankers.com` from
+  `answer-engine/caddy/sites/hub.caddy` and is the only proxy the Hub trusts for the
+  visitor's IP address (`TRUSTED_PROXIES`). Upgrade to KVM 2 when the Website agent arrives.
 - Step-by-step: [ops/deploy.md](ops/deploy.md); restoring: [ops/restore.md](ops/restore.md).
 
 ## 11. Open decisions (defaults used until answered)

@@ -6,6 +6,10 @@ starting with `#` are explanations; you don't need to type them.
 
 You need about 45 minutes the first time. Updates later take five minutes.
 
+**The Answer Engine already runs on our server?** Then follow
+[Next to the Answer Engine](#next-to-the-answer-engine-same-server) at the end instead of
+steps 1–5; steps 6–10 are the same.
+
 **Never paste API keys or passwords into a chat, an email or a ticket.** The Hub's own
 settings file (`.env`, step 4) fills itself in; every service key (DataForSEO, Google,
 email, Telegram) is entered in the website (step 6), where it is stored encrypted.
@@ -20,10 +24,9 @@ email, Telegram) is entered in the website (step 6), where it is stored encrypte
 2. Add your **SSH key** while creating it and write down its **IP address**.
 3. Switch on the provider's **weekly snapshots** if it has them.
 
-> **One website per server.** The Hub answers on ports 80 and 443. If the Answer Engine
-> already runs on this server, those ports are taken: use a separate server for the Hub
-> (recommended, since the Hub needs a US IP anyway), or ask a developer to serve both
-> sites from one Caddy.
+> **One website owns ports 80 and 443.** If the Answer Engine already runs on this server,
+> it owns them: install the Hub next to it as described in
+> [Next to the Answer Engine](#next-to-the-answer-engine-same-server).
 
 Connect to the server from your own computer:
 
@@ -233,3 +236,85 @@ docker compose exec api python -m app.cli create-owner --email new-you@gridranke
 
 makes a new Owner account with an email that has no account yet (it asks for the password
 twice). Sign in with it, then reset the old account's password on **Users**.
+
+## Next to the Answer Engine (same server)
+
+Our Hostinger VPS (KVM 1, US location) already runs `answers.gridrankers.com`. The Hub goes
+into its own folder with its own database, backups and settings; only the website traffic
+is shared: the Answer Engine's Caddy, which owns ports 80 and 443, gets the certificate for
+`hub.gridrankers.com` and passes its visitors on to the Hub. Nothing in the Answer Engine's
+data or settings changes.
+
+These steps replace steps 1–5 above. The repository on the server must have this version
+(with `hub/docker-compose.shared.yml`) on the branch the server uses.
+
+**1. Add swap memory** (once). KVM 1 has 4 GB of memory; swap is a safety margin so a busy
+moment slows things down instead of stopping a service:
+
+```sh
+fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+free -h                                # "Swap:" shows 2.0Gi
+```
+
+(Skip it if `free -h` already shows swap.) When the Website agent arrives, which runs a
+real browser, upgrade the VPS to **KVM 2**; Hostinger keeps the data.
+
+**2. Point the web address at the server:** step 3 above (the `hub` A record, with the
+same IP address as `answers`).
+
+**3. Get the new version and make the Hub's settings file:**
+
+```sh
+cd /opt/gridrankers
+git pull
+cd cold-outreach/hub
+cp .env.example .env && \
+sed -i "s|^SECRET_KEY=.*|SECRET_KEY=$(openssl rand -hex 32)|" .env && \
+sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 24)|" .env && \
+sed -i "s|^#COMPOSE_FILE=|COMPOSE_FILE=|; s|^#ANSWERS_NETWORK=|ANSWERS_NETWORK=|" .env && \
+chmod 600 .env
+```
+
+The last `sed` switches on "next to the Answer Engine". Check the Answer Engine's network
+name, which the Hub joins:
+
+```sh
+docker network ls | grep answer       # should list answer-engine_default
+```
+
+If it shows another name, put it in `.env` as `ANSWERS_NETWORK=` (`nano .env`). Keep a copy
+of `.env` in a password manager, as in step 4 above.
+
+**4. Start the Hub:**
+
+```sh
+docker compose up -d --build
+docker compose ps                     # every line "running" or "healthy"; caddy has no ports
+```
+
+**5. Tell the Answer Engine's Caddy about the Hub** (the Answer Engine's site is down for
+a few seconds while its Caddy restarts):
+
+```sh
+cd /opt/gridrankers/answer-engine
+cp caddy/sites/hub.caddy.example caddy/sites/hub.caddy
+docker compose up -d --build caddy
+docker compose logs --tail 20 caddy   # "certificate obtained successfully" for hub.gridrankers.com
+```
+
+**6. Check both sites:**
+
+```sh
+curl -s https://hub.gridrankers.com/api/health       # {"status":"ok",...}
+curl -s https://answers.gridrankers.com/api/health   # still ok
+```
+
+Then continue with step 6 above (create the Owner account). Commands for the Hub
+(`docker compose …`) are always run in `/opt/gridrankers/cold-outreach/hub`, and for the
+Answer Engine in `/opt/gridrankers/answer-engine`. Agents (step 7) join the Hub's own
+network, `agent-hub`, as described there.
+
+**Updating:** `git pull` in `/opt/gridrankers`, then `docker compose up -d --build` in
+the folder of each app that changed. If the Hub is stopped, `hub.gridrankers.com` shows an
+error page; the Answer Engine keeps working.

@@ -1,5 +1,14 @@
 # APP_DOMAIN is the public address, hub.gridrankers.com (Caddy fetches the
 # certificate automatically). Use http://localhost to try it on your own computer.
+# Behind the Answer Engine's Caddy (docker-compose.shared.yml) it is ":80", and that
+# Caddy, on the private Docker network, is trusted to pass on the visitor's IP address
+# (sign-in lockouts count per address). Otherwise only this machine is trusted.
+{
+	servers {
+		trusted_proxies static {$TRUSTED_PROXIES:127.0.0.1/32}
+	}
+}
+
 {$APP_DOMAIN} {
 	encode zstd gzip
 

@@ -213,3 +213,11 @@ and the best weights. Set the threshold and model in **Settings → Reviews** an
 | The disk is filling up | `df -h`; old backups are removed after 14 days (`BACKUP_KEEP_DAYS`); Docker logs are rotated automatically. `docker system prune` removes old images |
 
 Logs are JSON lines, one per event. They never contain passwords, keys or question text.
+
+## 11. Other sites on this server
+
+This stack's Caddy owns ports 80 and 443. Another app on the same server, such as the
+Agent Hub (`hub.gridrankers.com`), is served through it: see
+[caddy/sites/README.md](../caddy/sites/README.md) and the Hub's own guide,
+`cold-outreach/hub/ops/deploy.md` ("Next to the Answer Engine"). With no file in
+`caddy/sites/`, nothing changes.

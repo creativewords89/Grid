@@ -37,3 +37,7 @@
 		file_server
 	}
 }
+
+# Other sites on this server, such as the Agent Hub (hub.gridrankers.com): one file per
+# site in caddy/sites/ (see the README there), mounted read-only. Having none is fine.
+import /etc/caddy/sites/*.caddy

@@ -24,6 +24,8 @@ services:
     volumes:
       - caddy_data:/data
       - caddy_config:/config
+      # Other sites on this server, e.g. the Agent Hub (caddy/sites/README.md).
+      - ./caddy/sites:/etc/caddy/sites:ro
     depends_on:
       api:
         condition: service_healthy
