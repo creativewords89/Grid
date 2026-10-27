@@ -10,29 +10,22 @@ import Avatar from '../Avatar.jsx';
 import { StepCard } from '../StepTrack.jsx';
 import useTaskActions from './useTaskActions.js';
 
+// The people on a card: faces only (their names on hover), so the buttons fit on one row.
 export function People({ list, members }) {
 	if (!list.length) {
 		return (
-			<>
-				<span className="av none" title="Unassigned">
-					?
-				</span>
-				<span className="shn na">Not assigned</span>
-			</>
+			<span className="av none" title="Not assigned">
+				?
+			</span>
 		);
 	}
 	return (
-		<>
-			<span className="av-stack" title={list.map((a) => members[a.id]?.name).filter(Boolean).join(', ')}>
-				{list.slice(0, 5).map((a) => (
-					<Avatar key={a.id} person={members[a.id]} small />
-				))}
-				{list.length > 5 && <span className="av-more">+{list.length - 5}</span>}
-			</span>
-			<span className="shn">
-				{list.length} {list.length === 1 ? 'person' : 'people'}
-			</span>
-		</>
+		<span className="av-stack" title={list.map((a) => members[a.id]?.name).filter(Boolean).join(', ')}>
+			{list.slice(0, 4).map((a) => (
+				<Avatar key={a.id} person={members[a.id]} small />
+			))}
+			{list.length > 4 && <span className="av-more">+{list.length - 4}</span>}
+		</span>
 	);
 }
 
