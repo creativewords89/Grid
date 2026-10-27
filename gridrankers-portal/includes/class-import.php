@@ -483,6 +483,7 @@ class GRP_Import {
 				'review'       => is_array( $d['review'] ?? null ) ? $d['review'] : null,
 				'completion'   => is_array( $d['completion'] ?? null ) ? $d['completion'] : null,
 				'files'        => self::files( $d['files'] ?? null ),
+				'carried'      => self::carried( $d['carried'] ?? null ),
 				'created_by'   => isset( $d['createdBy'] ) ? (string) $d['createdBy'] : null,
 				'created_at'   => self::time( $d['createdAt'] ?? null ),
 			),
@@ -990,6 +991,26 @@ class GRP_Import {
 		}
 
 		return $out ? $out : null;
+	}
+
+	/**
+	 * `carried` `{from, task_id, cycle, label, left?}` of a meeting task moved into a new cycle (SPEC.md 6.11).
+	 *
+	 * @param mixed $raw Raw value.
+	 * @return array|null
+	 */
+	private static function carried( $raw ) {
+		$raw = is_object( $raw ) ? json_decode( wp_json_encode( $raw ), true ) : $raw;
+		if ( ! is_array( $raw ) || ! in_array( $raw['from'] ?? '', array( 'monthly', 'meeting' ), true ) ) {
+			return null;
+		}
+
+		return array(
+			'from'    => (string) $raw['from'],
+			'task_id' => (string) ( $raw['task_id'] ?? '' ),
+			'cycle'   => (string) ( $raw['cycle'] ?? '' ),
+			'label'   => sanitize_text_field( (string) ( $raw['label'] ?? '' ) ),
+		) + ( isset( $raw['left'] ) ? array( 'left' => max( 1, (int) $raw['left'] ) ) : array() );
 	}
 
 	/**

@@ -167,6 +167,7 @@ export default function TaskCard({ task, onDetails, onEdit }) {
 				{target > 1 && <span className="qty q-strong">Qty {target}</span>}
 				{isGeneral(task) ? <span className="qty">General</span> : task.meeting_date && <span className="qty">Meeting {short(task.meeting_date)}</span>}
 			</div>
+			{task.carried && task.carried.label && <span className="carried-tag">↪ {task.carried.from === 'monthly' ? 'Catch-up' : 'Moved'} from {task.carried.label}</span>}
 			<h3>{task.title}</h3>
 			<div className="line">
 				{st === 'done' ? <span className="due ok">Completed{task.done_at ? ' ' + short(localYmd(task.done_at)) : ''}</span> : <span className="due">Added {short(localYmd(task.created_at))}</span>}
@@ -184,7 +185,7 @@ export default function TaskCard({ task, onDetails, onEdit }) {
 				)}
 			</div>
 			<ReviewBadge review={task.review} me={me} members={members} />
-			{steps && <StepCard task={task} done={task.step_done} status={st} handins={task.handins} onStatus={(row, to) => setStep(task, row, to)} onTick={(row, delta) => tickStep(task, row, delta)} />}
+			{steps && <StepCard task={task} done={task.step_done} status={st} onStatus={(row, to) => setStep(task, row, to)} onTick={(row, delta) => tickStep(task, row, delta)} />}
 			{!steps && target > 1 && (
 				<div className="mini-prog">
 					<span className="mp-bar">

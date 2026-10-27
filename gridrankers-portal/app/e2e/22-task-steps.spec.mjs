@@ -74,7 +74,7 @@ test('task steps', async ({ page }) => {
 	if (process.env.SHOTS) await dlg.screenshot({ path: process.env.SHOTS + '/handin-general.png' });
 	await dlg.getByRole('button', { name: 'Finish Write' }).click();
 	await page.getByText('Write: completed — Edit is next').waitFor();
-	await expect(step().locator('.hi-from a.hi-chip')).toHaveText(/Google Doc/);
+	await expect(step().locator('.hi-chip')).toHaveCount(0);
 	await expect(step().locator('.stpc-badge')).toHaveText(/Step 2 of 3/i);
 	await expect(step().locator('.stpc-who b')).toHaveText('Edit');
 	await expect(status('Edit').getByRole('button', { name: 'Completed' })).toBeDisabled();

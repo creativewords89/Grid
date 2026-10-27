@@ -28,6 +28,7 @@ class GRP_REST_Projects extends GRP_REST_Controller {
 		self::route( '/projects/(?P<id>[\w-]+)/state', 'PATCH', 'set_state' );
 		self::route( '/projects/(?P<id>[\w-]+)/cycle', WP_REST_Server::CREATABLE, 'set_cycle' );
 		self::route( '/projects/(?P<id>[\w-]+)/cycle-review', WP_REST_Server::CREATABLE, 'review_cycle' );
+		self::route( '/projects/(?P<id>[\w-]+)/carry-over', WP_REST_Server::CREATABLE, 'carry_over' );
 	}
 
 	/**
@@ -278,6 +279,76 @@ class GRP_REST_Projects extends GRP_REST_Controller {
 				static function () use ( $project, $task, $ok, $note, $carry, $today ) {
 					return GRP_Cycle_Setup::review( $project, $task, $ok, $note, self::actor(), $today, $carry );
 				}
+			)
+		);
+	}
+
+	/**
+	 * POST /projects/{id}/carry-over `{task_id, due, left?}`: move an unfinished task of last
+	 * cycle into this one (SPEC.md 6.11, design CO-1A). A monthly task gets a catch-up task
+	 * "{title} — {left} left from Sep" for its people; an open meeting task keeps its card and gets
+	 * the new deadline (as Carry over). Nothing moves unless asked. Managers only.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function carry_over( WP_REST_Request $request ) {
+		$project = GRP_Store::get( 'grp_projects', $request['id'] );
+		if ( ! $project ) {
+			return self::not_found();
+		}
+		if ( ! self::can( GRP_Permissions::REVIEW_CYCLE ) ) {
+			return self::forbidden( __( 'Only a Team Leader or the Super Admin can move unfinished work to the new cycle.', 'gridrankers-portal' ) );
+		}
+		$id      = (string) $request['task_id'];
+		$monthly = GRP_Store::get( 'grp_monthly_tasks', $id );
+		$task    = $monthly ? $monthly : GRP_Store::get( 'grp_meeting_tasks', $id );
+		if ( ! $task || (string) $task['project_id'] !== (string) $project['id'] || ! empty( $task['deleted_at'] ) ) {
+			return self::invalid( __( 'That task is not in this project.', 'gridrankers-portal' ) );
+		}
+		$today = GRP_Cycles::today();
+		$due   = (string) $request['due'];
+		if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $due ) || ! strtotime( $due ) || $due < $today ) {
+			return self::invalid( __( 'Pick a new deadline from today on.', 'gridrankers-portal' ) );
+		}
+		if ( ! $monthly ) {
+			if ( 'done' === $task['status'] ) {
+				return self::invalid( __( 'Only an open meeting task can be moved.', 'gridrankers-portal' ) );
+			}
+			GRP_Store::transaction(
+				static function () use ( $project, $task, $due, $today ) {
+					return GRP_Cycle_Setup::review( $project, $task, true, '', self::actor(), $today, $due );
+				}
+			);
+
+			return rest_ensure_response(
+				array(
+					'project' => GRP_Store::get( 'grp_projects', $project['id'] ),
+					'task'    => GRP_Store::get( 'grp_meeting_tasks', $task['id'] ),
+				)
+			);
+		}
+		$left = (int) $request['left'];
+		if ( $left < 1 || $left > 999 ) {
+			return self::invalid( __( 'Say how many are left, 1 or more.', 'gridrankers-portal' ) );
+		}
+		$cycle = GRP_Cycles::cycle_range( $project, -1, $today );
+		if ( GRP_Cycle_Setup::catch_up_of( $task, $cycle['key'] ) ) {
+			return self::conflict( __( 'This task is already moved to the new cycle.', 'gridrankers-portal' ), 'grp_already_moved' );
+		}
+		if ( ! GRP_Cycle_Setup::responsible( $task ) ) {
+			/* translators: %s: monthly task title. */
+			return self::invalid( sprintf( __( 'Nobody is responsible for “%s” — assign someone first.', 'gridrankers-portal' ), $task['title'] ) );
+		}
+
+		return rest_ensure_response(
+			array(
+				'project' => $project,
+				'task'    => GRP_Store::transaction(
+					static function () use ( $project, $task, $left, $due, $today ) {
+						return GRP_Cycle_Setup::catch_up( $project, $task, $left, $due, self::actor(), $today );
+					}
+				),
 			)
 		);
 	}

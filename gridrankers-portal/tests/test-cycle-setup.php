@@ -219,6 +219,101 @@ class Test_GRP_Cycle_Setup extends GRP_REST_TestCase {
 		$this->assertCount( 0, GRP_Store::find( 'grp_posts' ) );
 	}
 
+	public function test_an_unfinished_monthly_task_moves_as_a_catch_up_task() {
+		list( $project, $task ) = $this->project_with_task();
+		$path                   = "/projects/{$project['id']}/carry-over";
+		$today                  = GRP_Cycles::today();
+		$due                    = gmdate( 'Y-m-d', strtotime( $today . ' +5 days' ) );
+		$last                   = GRP_Cycles::cycle_range( $project, -1, $today );
+		$body                   = array(
+			'task_id' => $task['id'],
+			'due'     => $due,
+			'left'    => 2,
+		);
+
+		// Managers only; a date from today on and something left.
+		$this->assertStatus( 403, $this->api_as( 'member', 'POST', $path, $body ) );
+		$this->assertStatus( 400, $this->api_as( 'lead', 'POST', $path, array( 'due' => gmdate( 'Y-m-d', strtotime( $today . ' -1 day' ) ) ) + $body ) );
+		$this->assertStatus( 400, $this->api_as( 'lead', 'POST', $path, array( 'left' => 0 ) + $body ) );
+
+		$res = $this->api_as( 'lead', 'POST', $path, $body );
+		$this->assertStatus( 200, $res );
+		$made  = $res->get_data()['task'];
+		$label = gmdate( 'M', strtotime( $last['start'] ) );
+		$this->assertSame( "{$task['title']} — 2 left from {$label}", $made['title'] );
+		$this->assertSame( 2, (int) $made['target'] );
+		$this->assertSame( array( $this->team['member']['id'] ), wp_list_pluck( $made['assignees'], 'id' ) );
+		$this->assertEquals(
+			array(
+				'type' => 'date',
+				'date' => $due,
+			),
+			$made['deadline']
+		);
+		$this->assertSame( 'monthly', $made['carried']['from'] );
+		$this->assertSame( $last['key'], $made['carried']['cycle'] );
+		$this->assertSame( (string) $task['id'], $made['carried']['task_id'] );
+
+		// Once per task and cycle; last cycle's record is left as it was.
+		$this->assertSame( 'grp_already_moved', $this->api_as( 'lead', 'POST', $path, $body )->get_data()['code'] );
+		$this->assertNull( GRP_Store::get( 'grp_cycle_records', GRP_Cycles::record_id( $task['id'], $last['key'] ) ) );
+	}
+
+	public function test_an_open_meeting_task_moves_with_a_new_deadline() {
+		list( $project ) = $this->project_with_task();
+		$open            = $this->meeting_task( $project, 'doing' );
+		$done            = $this->meeting_task( $project, 'done' );
+		$path            = "/projects/{$project['id']}/carry-over";
+		$today           = GRP_Cycles::today();
+		$due             = gmdate( 'Y-m-d', strtotime( $today . ' +3 days' ) );
+		$this->assertStatus(
+			400,
+			$this->api_as(
+				'lead',
+				'POST',
+				$path,
+				array(
+					'task_id' => $done['id'],
+					'due'     => $due,
+				)
+			)
+		);
+		$res = $this->api_as(
+			'admin',
+			'POST',
+			$path,
+			array(
+				'task_id' => $open['id'],
+				'due'     => $due,
+			)
+		);
+		$this->assertStatus( 200, $res );
+		$moved = $res->get_data()['task'];
+		$this->assertSame( $open['id'], $moved['id'] );
+		$this->assertSame( $due, $moved['deadline']['date'] );
+		$this->assertSame( 'meeting', $moved['carried']['from'] );
+		$key = GRP_Cycles::cycle_range( $project, -1, $today )['key'];
+		$this->assertSame( $due, $res->get_data()['project']['cycle_reviews'][ $key ][ $open['id'] ]['carry'] );
+	}
+
+	public function test_a_catch_up_task_survives_export_and_import() {
+		list( $project, $task ) = $this->project_with_task();
+		$made                   = $this->api_as(
+			'lead',
+			'POST',
+			"/projects/{$project['id']}/carry-over",
+			array(
+				'task_id' => $task['id'],
+				'due'     => GRP_Cycles::today(),
+				'left'    => 1,
+			)
+		)->get_data()['task'];
+		$export                 = GRP_Export::build();
+		GRP_Store::update( 'grp_meeting_tasks', $made['id'], array( 'carried' => null ) );
+		GRP_Import::run( $export );
+		$this->assertSame( 'monthly', GRP_Store::get( 'grp_meeting_tasks', $made['id'] )['carried']['from'] );
+	}
+
 	public function test_a_task_from_another_project_is_refused() {
 		list( $project, $task ) = $this->project_with_task();
 		$other                  = $this->project( 'Bright', 1 );

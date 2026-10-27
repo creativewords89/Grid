@@ -44,7 +44,7 @@ test('assign and review a new cycle', async ({ page }) => {
 
 	// Review last cycle: feedback on the short one, "Looks good" on the other.
 	await setup.getByRole('button', { name: 'Review last cycle' }).click();
-	const blogs = dlg.locator('.cs-row', { hasText: 'Cycle blogs' });
+	const blogs = dlg.getByRole('list', { name: 'Monthly tasks' }).locator('.cs-row', { hasText: 'Cycle blogs' });
 	await expect(blogs.locator('.cs-count')).toContainText('1 / 2');
 	await blogs.getByRole('button', { name: 'Send feedback' }).click();
 	await blogs.getByLabel('Feedback on Cycle blogs').fill('Only 1 of 2 blogs went out. Plan the second one early this cycle.');
@@ -52,23 +52,45 @@ test('assign and review a new cycle', async ({ page }) => {
 	await blogs.getByRole('button', { name: 'Send to Max Member' }).click();
 	await page.getByText('Feedback sent').first().waitFor();
 	await expect(blogs).toContainText('Feedback sent');
-	await dlg.locator('.cs-row', { hasText: 'Cycle pages' }).getByRole('button', { name: 'Looks good' }).click();
-	await expect(dlg.locator('.cs-row', { hasText: 'Cycle pages' })).toContainText('Looks good');
-	// Meeting minutes: the open one is carried over into this cycle.
+	const pagesRow = dlg.getByRole('list', { name: 'Monthly tasks' }).locator('.cs-row', { hasText: 'Cycle pages' });
+	await pagesRow.getByRole('button', { name: 'Looks good' }).click();
+	await expect(pagesRow).toContainText('Looks good');
+	// Meeting minutes: the open one is reviewed like the rest.
 	const photos = dlg.getByRole('list', { name: 'Meeting minutes' }).locator('.cs-row', { hasText: 'Cycle photos' });
 	await expect(photos).toContainText('Open');
-	await photos.getByRole('button', { name: 'Carry over' }).click();
-	await photos.locator('.cs-carry').getByRole('button', { name: 'Carry over' }).click();
-	await page.getByText(/^Carried over to /).first().waitFor();
-	await expect(photos).toContainText('Carried over');
+	await photos.getByRole('button', { name: 'Looks good' }).click();
+	await expect(photos).toContainText('Looks good');
 	await expect(dlg.locator('.cs-sum')).toContainText('3 of 3 reviewed');
+
+	// Unfinished (design CO-1A): everything stays in last cycle unless moved. Cycle blogs (1 of 2)
+	// moves as a catch-up task; the open meeting task moves with a new deadline.
+	const unfinished = dlg.getByRole('list', { name: 'Unfinished' });
+	const blogsLeft = unfinished.locator('.cs-row', { hasText: 'Cycle blogs' });
+	await expect(blogsLeft).toContainText('1 not done');
+	await expect(blogsLeft.getByRole('button', { name: /^Leave in / })).toHaveAttribute('aria-pressed', 'true');
+	await blogsLeft.getByRole('button', { name: /^Move to / }).click();
+	await expect(blogsLeft.locator('.cs-move-txt')).toContainText(/A catch-up task “Cycle blogs — 1 left from \w{3}” for Max/);
+	if (process.env.SHOTS) await dlg.screenshot({ path: process.env.SHOTS + '/cycle-unfinished.png' });
+	await blogsLeft.getByRole('button', { name: 'Move', exact: true }).click();
+	await page.getByText(/^Moved to \w{3}: “Cycle blogs — 1 left from/).first().waitFor();
+	await expect(blogsLeft).toContainText(/↪ Moved to \w{3}/);
+	const photosLeft = unfinished.locator('.cs-row', { hasText: 'Cycle photos' });
+	await photosLeft.getByRole('button', { name: /^Move to / }).click();
+	await photosLeft.getByRole('button', { name: 'Move', exact: true }).click();
+	await expect(photosLeft).toContainText(/↪ Moved to \w{3} · due/);
+	await expect(blogsLeft.getByRole('button', { name: /^Move to / })).toHaveCount(0);
 	await dlg.getByRole('button', { name: 'Close' }).last().click();
 	await expect(setup).toContainText('Review monthly tasks · 2 of 2 reviewed');
 	await expect(setup).toContainText('Review meeting minutes · 1 of 1 reviewed');
 	await expect(reminder).toContainText(/New cycle for Cycle Co — \d+ unassigned · 3 days left/);
 
-	// The Monthly Tasks tab says what has nobody yet.
+	// The catch-up task is on Meeting Minutes with its tag.
 	await openProject(page, 'Cycle Co');
+	await page.getByRole('tab', { name: 'Meeting Minutes' }).click();
+	await expect(page.locator('article.mcard', { hasText: 'Cycle blogs — 1 left from' }).locator('.carried-tag')).toHaveText(/↪ Catch-up from \w{3}/);
+	await expect(page.locator('article.mcard', { hasText: 'Cycle photos' }).locator('.carried-tag')).toHaveText(/↪ Moved from \w{3}/);
+
+	// The Monthly Tasks tab says what has nobody yet.
 	await page.getByRole('tab', { name: 'Monthly Tasks' }).click();
 	await expect(page.locator('.ua-banner')).toContainText(/\d+ monthly tasks? (has|have) nobody assigned\./);
 	await page.getByRole('button', { name: 'My day' }).click();
