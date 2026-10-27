@@ -11,6 +11,7 @@ import Sidebar from './components/Sidebar.jsx';
 import TopBar from './components/TopBar.jsx';
 import CompletionDialog from './components/CompletionDialog.jsx';
 import HandinDialog from './components/HandinDialog.jsx';
+import { SHARE_PARAM, sharedId, sharedTarget } from './lib/share.js';
 import MeetingMinutes from './components/meeting/MeetingMinutes.jsx';
 import MonthlyTasks from './components/monthly/MonthlyTasks.jsx';
 import GeneralTasks from './components/general/GeneralTasks.jsx';
@@ -168,6 +169,9 @@ export default function App({ config }) {
 	const [view, setViewState] = useState(recall(VIEW_KEY, 'sessionStorage') || 'dash');
 	const [project, setProjectState] = useState(recall(PROJECT_KEY));
 	const [search, setSearch] = useState('');
+	// A shared task link (`?task={id}`, design SHR-1B): opened once the first sync is in.
+	const shared = useRef(sharedId(window.location.search));
+	const [flash, setFlash] = useState('');
 	const [cycleOff, setCycleOff] = useState(0);
 	const [teamPerson, setTeamPerson] = useState('all');
 	// Touring someone's portal, view only (SPEC.md 7.0): their id while a tour is on.
@@ -262,6 +266,36 @@ export default function App({ config }) {
 		else signOutNow();
 	};
 
+	// Open a shared task: its board, the card found by its title and highlighted; the link leaves the
+	// address bar so a reload doesn't jump there again.
+	const live = syncStatus === 'Shared with your team · live';
+	useEffect(() => {
+		if (!shared.current || auth.status !== 'signedIn' || !live) return;
+		const id = shared.current;
+		shared.current = '';
+		const url = new URL(window.location.href);
+		url.searchParams.delete(SHARE_PARAM);
+		window.history.replaceState(null, '', url.pathname + url.search + url.hash);
+		const target = sharedTarget(data, id);
+		if (!target) {
+			toast('That task no longer exists.');
+			return;
+		}
+		setProject(target.project_id);
+		setSearch(target.task.title);
+		setView(target.tab);
+		setFlash(id);
+	});
+	useEffect(() => {
+		if (!flash) return undefined;
+		const show = setTimeout(() => {
+			const card = document.getElementById('task-' + flash);
+			if (card) card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+		}, 150);
+		const off = setTimeout(() => setFlash(''), 4000);
+		return () => (clearTimeout(show), clearTimeout(off));
+	}, [flash]);
+
 	if (auth.status === 'loading') {
 		return <div className="auth-gate" aria-busy="true" />;
 	}
@@ -301,7 +335,7 @@ export default function App({ config }) {
 		setView('team');
 	};
 
-	const ctx = { api, data, dispatch, me, view, setView, project, setProject, search, setSearch, toast, confirm, config, cycleOff, setCycleOff, today, askCompletion, askHandin, teamPerson, setTeamPerson, setViewAs: startTour, reports, pay };
+	const ctx = { api, data, dispatch, me, view, setView, project, setProject, search, setSearch, toast, confirm, config, cycleOff, setCycleOff, today, askCompletion, askHandin, flash, teamPerson, setTeamPerson, setViewAs: startTour, reports, pay };
 
 	const target = viewAs && data.members[viewAs];
 	const viewing = canTour(me, target) ? target : null;

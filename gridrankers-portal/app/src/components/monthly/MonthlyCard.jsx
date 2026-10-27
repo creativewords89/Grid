@@ -1,4 +1,5 @@
 import { usePortal } from '../../context.js';
+import ShareButton from '../ShareButton.jsx';
 import { activeSlot, cycleRange, daysBetween, dueAt, isBiweekly, isSplit, parts, slotLabel, slotsOf, ymd } from '../../lib/cycles.js';
 import { localYmd, short } from '../../lib/format.js';
 import { bornAt, isShared, isWaived, periodKeyOf, recordOf, stateOf, typePeople } from '../../lib/monthly.js';
@@ -250,7 +251,7 @@ export function ProgressBox({ task, period }) {
 
 // Monthly / weekly task card (SPEC.md 7.3).
 export default function MonthlyCard({ task, selWeek, onSelectWeek, missed, onDetails, onEdit }) {
-	const { data, me, cycleOff, today } = usePortal();
+	const { data, me, cycleOff, today, flash } = usePortal();
 	const { setStatus, tickStep, setStep, remove, requestUndo, decideUndo } = useRecordActions();
 	const period = usePeriod(task, selWeek);
 	const steps = hasSteps(task);
@@ -307,7 +308,7 @@ export default function MonthlyCard({ task, selWeek, onSelectWeek, missed, onDet
 	);
 
 	return (
-		<article className={`card mcard st-${st} ${late ? 'late' : ''} ${wk && sel !== aw ? 'off-wk' : ''}`}>
+		<article id={'task-' + task.id} className={`card mcard st-${st} ${late ? 'late' : ''} ${wk && sel !== aw ? 'off-wk' : ''}${flash === task.id ? ' flash' : ''}`}>
 			<div className="co-row">
 				<span className={'freq dlt-' + tag}>{freqLabel}</span>
 				<span className="qty" title="Quantity">
@@ -355,6 +356,7 @@ export default function MonthlyCard({ task, selWeek, onSelectWeek, missed, onDet
 				<div className="assign">
 					<People list={assigneesOf(task, members)} members={members} />
 				</div>
+				<ShareButton task={task} />
 				<button className="btn small primary-soft" onClick={() => onDetails(task.id, sel)}>
 					Details
 				</button>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { usePortal } from '../../context.js';
+import ShareButton from '../ShareButton.jsx';
 import { deadlineInfo } from '../../lib/deadline.js';
 import { short, localYmd } from '../../lib/format.js';
 import { isManager } from '../../lib/roles.js';
@@ -121,7 +122,7 @@ export function UnassignedLock({ task, me }) {
 
 // Compact meeting-task card (SPEC.md 7.2; reference bcard).
 export default function TaskCard({ task, onDetails, onEdit }) {
-	const { data, me, today } = usePortal();
+	const { data, me, today, flash } = usePortal();
 	const { setStatus, tickStep, setStep, remove, requestUndo, decideUndo } = useTaskActions();
 	const steps = hasSteps(task);
 	const members = data.members;
@@ -161,7 +162,7 @@ export default function TaskCard({ task, onDetails, onEdit }) {
 	});
 
 	return (
-		<article className={`card mcard st-${st} ${open && (task.priority === 'urgent' || (dl && dl.overdue)) ? 'late' : ''}`}>
+		<article id={'task-' + task.id} className={`card mcard st-${st} ${open && (task.priority === 'urgent' || (dl && dl.overdue)) ? 'late' : ''}${flash === task.id ? ' flash' : ''}`}>
 			<div className="co-row">
 				<span className={'freq pr-' + task.priority}>{PRI_LABEL[task.priority] || 'Normal'}</span>
 				{target > 1 && <span className="qty q-strong">Qty {target}</span>}
@@ -207,6 +208,7 @@ export default function TaskCard({ task, onDetails, onEdit }) {
 				<div className="assign">
 					<People list={people} members={members} />
 				</div>
+				<ShareButton task={task} />
 				<button className="btn small primary-soft" onClick={() => onDetails(task.id)}>
 					Details
 				</button>
