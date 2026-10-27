@@ -1933,3 +1933,52 @@ details.original summary {
 .dot-off {
   background: var(--muted);
 }
+
+/* Overview and Runs */
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.stat p {
+  margin: 0;
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  margin: 4px 0 !important;
+}
+
+.meter {
+  height: 8px;
+  margin-top: 10px;
+  border-radius: 4px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.meter span {
+  display: block;
+  height: 100%;
+  background: var(--brand);
+}
+
+.filters {
+  margin-bottom: 12px;
+}
+
+.filters .field {
+  min-width: 200px;
+}
+
+.pill-run-succeeded {
+  color: var(--ok);
+}
+
+.pill-run-failed,
+.pill-run-timed_out {
+  color: var(--error);
+}

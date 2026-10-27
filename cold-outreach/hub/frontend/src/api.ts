@@ -75,7 +75,22 @@ export type Run = {
   cost_usd: string;
   stop_reason: string | null;
   requested_by: string | null;
+  stop_requested: boolean;
+  agent_key: string;
+  agent_name: string;
 };
+
+export type RunPage = { runs: Run[]; more: boolean };
+
+export type Budget = {
+  daily_total_budget_usd: string;
+  time_zone: string;
+  spent_today_usd: string;
+  spent_this_month_usd: string;
+  can_change: boolean;
+};
+
+export type Overview = Budget & { agents: Agent[] };
 
 export type ConfigValue = number | string | boolean | null;
 
@@ -93,6 +108,8 @@ export type Agent = {
   daily_budget_usd: string;
   missing_connections: string[];
   last_run: Run | null;
+  next_run_at: string | null;
+  spent_today_usd: string;
 };
 
 export type AgentSettings = {
@@ -209,6 +226,16 @@ export const api = {
   updateAgent: (key: string, settings: AgentSettings) =>
     request<Agent>("PATCH", `/agents/${key}`, settings),
   runAgent: (key: string) => request<Run>("POST", `/agents/${key}/run`),
+  stopAgent: (key: string) => request<Run>("POST", `/agents/${key}/stop`),
+  runs: (filters: { agent?: string; status?: string; before?: string } = {}) => {
+    const params = new URLSearchParams();
+    for (const [name, value] of Object.entries(filters)) if (value) params.set(name, value);
+    const query = params.toString();
+    return request<RunPage>("GET", `/runs${query ? `?${query}` : ""}`);
+  },
+  overview: () => request<Overview>("GET", "/overview"),
+  setBudget: (daily_total_budget_usd: string, time_zone: string) =>
+    request<Budget>("PUT", "/budget", { daily_total_budget_usd, time_zone }),
 
   updateProfile: (name: string) => request<User>("PATCH", "/me", { name }),
   changePassword: (current_password: string, new_password: string) =>

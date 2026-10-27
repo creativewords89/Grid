@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request, Response
 from sqlalchemy.orm import Session
 
 from app import __version__, errors
-from app.api import agent_api, agents, auth, connections, health, me, setup, users
+from app.api import agent_api, agents, auth, connections, health, me, runs, setup, users
 from app.config import get_settings
 from app.db.session import get_engine
 
@@ -45,7 +45,7 @@ def create_app() -> FastAPI:
     )
     errors.install(app)
     app.middleware("http")(security_headers)
-    for module in (health, setup, auth, users, me, connections, agents, agent_api):
+    for module in (health, setup, auth, users, me, connections, agents, agent_api, runs):
         app.include_router(module.router, prefix="/api")
     return app
 

@@ -6,7 +6,8 @@ each "item" just waits a moment. Only Python's standard library is needed.
 Every real agent follows the same steps:
 1. send its manifest when it starts (PUT /api/agent/v1/manifest);
 2. ask for work every 30 seconds (GET /api/agent/v1/next-run; 204 means nothing to do);
-3. report progress after each few items and stop when the Hub says "stop";
+3. report progress after every item and stop when the Hub says "stop" (the Hub can
+   only stop an agent, for Stop or the budget, when it reports);
 4. report how the run ended (POST /api/agent/v1/runs/{id}/finish).
 """
 
@@ -95,16 +96,15 @@ def do_run(hub: Hub, job: dict[str, Any]) -> None:
             done += 1
         cost += MANIFEST["cost_per_item_usd"]  # type: ignore[operator]
         counts = {"done": done, "failed": failed, "skipped": 0, "cost_usd": f"{cost:.4f}"}
-        if number % 5 == 0 or number == total:
-            _, reply = hub.call("POST", f"/runs/{job['run_id']}/progress", counts)
-            if reply and reply.get("action") == "stop":
-                log.info("the Hub said stop: %s", reply.get("reason"))
-                hub.call(
-                    "POST",
-                    f"/runs/{job['run_id']}/finish",
-                    counts | {"status": "stopped", "stop_reason": reply.get("reason")},
-                )
-                return
+        _, reply = hub.call("POST", f"/runs/{job['run_id']}/progress", counts)
+        if reply and reply.get("action") == "stop":
+            log.info("the Hub said stop: %s", reply.get("reason"))
+            hub.call(
+                "POST",
+                f"/runs/{job['run_id']}/finish",
+                counts | {"status": "stopped", "stop_reason": reply.get("reason")},
+            )
+            return
     hub.call(
         "POST",
         f"/runs/{job['run_id']}/finish",

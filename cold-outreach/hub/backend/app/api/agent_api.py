@@ -15,6 +15,7 @@ from app.auth.deps import Db
 from app.auth.tokens import now
 from app.db.models import Agent, Run, RunStatus
 from app.errors import ApiError
+from app.runs import service as runs
 
 router = APIRouter(prefix="/agent/v1", tags=["agent api"])
 
@@ -52,6 +53,9 @@ class RunOut(BaseModel):
     trigger: str
     config: dict[str, Any]
     daily_limit: int
+    # What is left today: items under the daily limit, and money under both budgets.
+    items_left: int
+    budget_left_usd: Decimal
     connections: dict[str, dict[str, str]]
 
 
@@ -60,6 +64,14 @@ def next_run(agent: CurrentAgent, db: Db, response: Response) -> RunOut | Respon
     if agent.manifest is None:
         raise ApiError(409, "no_manifest", "Send the manifest first (PUT /api/agent/v1/manifest).")
     run = service.start_next(db, agent)
+    if run is not None:
+        budget = runs.budget(db, agent)
+        reason = budget.stop_reason(runs.cost_per_item(agent))
+        if reason:  # nothing can be spent today: the run ends before it starts
+            run.status = RunStatus.STOPPED
+            run.stop_reason = reason
+            run.finished_at = now()
+            run = None
     db.commit()
     if run is None:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -68,6 +80,8 @@ def next_run(agent: CurrentAgent, db: Db, response: Response) -> RunOut | Respon
         trigger=run.trigger.value,
         config=service.config_of(agent),
         daily_limit=agent.daily_limit,
+        items_left=max(0, agent.daily_limit - runs.items_today(db, agent)),
+        budget_left_usd=budget.left,
         connections=service.run_connections(agent),
     )
 
@@ -117,8 +131,13 @@ def progress(run_id: str, body: ProgressIn, agent: CurrentAgent, db: Db) -> Prog
     run = _own_running_run(db, agent, run_id)
     _record(run, body)
     db.commit()
+    if run.stop_requested_at is not None:
+        return ProgressOut(action="stop", reason=runs.stop_message(run))
     if not agent.enabled:
         return ProgressOut(action="stop", reason="The agent was switched off in the Hub.")
+    reason = runs.budget(db, agent).stop_reason(runs.cost_per_item(agent))
+    if reason:
+        return ProgressOut(action="stop", reason=reason)
     return ProgressOut(action="continue")
 
 

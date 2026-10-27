@@ -24,6 +24,7 @@ from app.auth.tokens import hash_secret, now
 from app.db.models import Agent, Run, RunTrigger
 from app.errors import ApiError
 from app.permissions import Action, ensure
+from app.runs import service as runs
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -44,6 +45,9 @@ class RunOut(BaseModel):
     cost_usd: Decimal
     stop_reason: str | None
     requested_by: str | None
+    stop_requested: bool
+    agent_key: str
+    agent_name: str
 
     @classmethod
     def of(cls, run: Run) -> "RunOut":
@@ -60,6 +64,9 @@ class RunOut(BaseModel):
             cost_usd=run.cost_usd,
             stop_reason=run.stop_reason,
             requested_by=run.requester.name if run.requester else None,
+            stop_requested=run.stop_requested_at is not None,
+            agent_key=run.agent.key,
+            agent_name=run.agent.name,
         )
 
 
@@ -77,6 +84,8 @@ class AgentOut(BaseModel):
     daily_budget_usd: Decimal
     missing_connections: list[str]
     last_run: RunOut | None
+    next_run_at: datetime | None
+    spent_today_usd: Decimal
 
 
 def _out(db: Session, agent: Agent) -> AgentOut:
@@ -96,6 +105,8 @@ def _out(db: Session, agent: Agent) -> AgentOut:
         daily_budget_usd=agent.daily_budget_usd,
         missing_connections=service.missing_connections(agent, connections.current()),
         last_run=RunOut.of(last) if last else None,
+        next_run_at=runs.next_run_at(db, agent),
+        spent_today_usd=runs.spent_today(db, agent),
     )
 
 
@@ -247,6 +258,19 @@ def run_now(key: str, me: CurrentUser, db: Db) -> RunOut:
     agent = _get(db, key)
     run = service.queue_run(db, agent, RunTrigger.MANUAL, me)
     audit.record(db, me, "run", "agent", agent.key, agent.name, [])
+    db.commit()
+    db.refresh(run)
+    return RunOut.of(run)
+
+
+@router.post("/{key}/stop", response_model=RunOut)
+def stop(key: str, me: CurrentUser, db: Db) -> RunOut:
+    """Stop the agent's run: a waiting run is cancelled, a running one is told to stop at
+    its next progress report."""
+    ensure(me, Action.OPERATE_AGENTS)
+    agent = _get(db, key)
+    run = runs.request_stop(db, agent, me)
+    audit.record(db, me, "stop", "agent", agent.key, agent.name, [])
     db.commit()
     db.refresh(run)
     return RunOut.of(run)

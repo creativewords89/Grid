@@ -1,8 +1,7 @@
-"""Scheduler process (`python -m app.scheduler`).
+"""Scheduler process (`python -m app.scheduler`), SPEC section 6.3.
 
-Deciding which agent runs are due, marking stale runs and sending alerts arrive in build
-steps 5 and 8 (SPEC sections 6.3 and 6.6). For now the scheduler only proves it can reach
-the database and stops cleanly on SIGTERM.
+Every 30 seconds: queue the scheduled runs that are due, and give up on runs an agent
+stopped reporting on or never picked up. Alerts are added in build step 8.
 """
 
 import logging
@@ -10,10 +9,11 @@ import signal
 import threading
 from types import FrameType
 
-from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from app.db.session import get_engine
+from app.runs import service
 
 log = logging.getLogger("scheduler")
 
@@ -23,8 +23,11 @@ TICK_SECONDS = 30.0
 def tick() -> bool:
     """One pass of the scheduler. Returns whether the database could be reached."""
     try:
-        with get_engine().connect() as conn:
-            conn.execute(text("SELECT 1"))
+        with Session(get_engine()) as db:
+            for run in service.queue_due_runs(db):
+                log.info("queued the scheduled run %s", run.id)
+            for run in service.expire_stale_runs(db):
+                log.warning("run %s timed out: %s", run.id, run.stop_reason)
     except SQLAlchemyError:
         log.warning("database unreachable, retrying in %.0fs", TICK_SECONDS)
         return False

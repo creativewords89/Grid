@@ -7,6 +7,7 @@ import { FirstRun } from "./pages/FirstRun";
 import { Forgot } from "./pages/Forgot";
 import { Overview } from "./pages/Overview";
 import { Profile } from "./pages/Profile";
+import { Runs } from "./pages/Runs";
 import { SetPassword } from "./pages/SetPassword";
 import { SignIn } from "./pages/SignIn";
 import { Users } from "./pages/Users";
@@ -37,6 +38,7 @@ function Routes() {
   if (path === "/users" && user.role === "owner") page = <Users />;
   else if (path === "/connections" && user.role === "owner") page = <Connections />;
   else if (path === "/agents") page = <Agents />;
+  else if (path === "/runs") page = <Runs />;
   else if (path === "/profile") page = <Profile />;
   else page = <Overview />;
   return <Shell path={path}>{page}</Shell>;

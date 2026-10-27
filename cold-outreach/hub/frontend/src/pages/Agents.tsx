@@ -9,7 +9,7 @@ import {
 } from "../api";
 import { useAuth } from "../auth";
 import { Alert, CopyLink, Field, Modal } from "../components/ui";
-import { ago } from "../format";
+import { ago, money, when } from "../format";
 import { CONNECTION_NAMES, RUN_STATUS } from "../labels";
 
 // Agents (SPEC sections 6.2 and 7): one card per agent with its switch, last run, Run now
@@ -173,9 +173,13 @@ function AgentCard({
           "No runs yet."
         )}{" "}
         <span className="muted">
-          Runs daily at {agent.run_time} ({agent.time_zone}), up to {agent.daily_limit} items, $
-          {agent.daily_budget_usd} a day.
+          Runs daily at {agent.run_time} ({agent.time_zone}), up to {agent.daily_limit} items.
         </span>
+      </p>
+      <p className="small">
+        {agent.next_run_at ? `Next run: ${when(agent.next_run_at)}` : "Off: no scheduled runs"} ·
+        Spent today: {money(agent.spent_today_usd)} of {money(agent.daily_budget_usd)}
+        {last?.stop_requested && active && " · Stop requested"}
       </p>
       {notice && <Alert kind={notice.kind}>{notice.text}</Alert>}
       <div className="row">
@@ -191,6 +195,20 @@ function AgentCard({
             }
           >
             Run now
+          </button>
+        )}
+        {staff && active && (
+          <button
+            className="button button-danger"
+            disabled={busy || last?.stop_requested}
+            onClick={() =>
+              void act(async () => {
+                await api.stopAgent(agent.key);
+                onReload();
+              }, "Stop requested. A running agent stops at its next progress report.")
+            }
+          >
+            Stop
           </button>
         )}
         {staff && (

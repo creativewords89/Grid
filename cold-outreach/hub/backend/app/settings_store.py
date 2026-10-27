@@ -12,6 +12,10 @@ DEFAULTS: dict[str, Any] = {
     "connections": {},
     # The last Test result per connection: {group: {ok, message, at}}.
     "connection_tests": {},
+    # The most all agents together may spend in a day, in the Hub's time zone (SPEC 6.3).
+    "daily_total_budget_usd": "20.00",
+    # The Hub's own time zone: "today" for the total budget and the Overview.
+    "time_zone": "Asia/Dhaka",
 }
 
 

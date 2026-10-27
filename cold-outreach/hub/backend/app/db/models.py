@@ -215,9 +215,15 @@ class Run(Base):
     )
     stop_reason: Mapped[str | None] = mapped_column(String(255))
     summary: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
+    # Stop pressed in the Hub: the agent is told at its next progress report.
+    stop_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    stop_requested_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
 
     agent: Mapped[Agent] = relationship(back_populates="runs")
-    requester: Mapped[User | None] = relationship()
+    requester: Mapped[User | None] = relationship(foreign_keys=[requested_by])
+    stopper: Mapped[User | None] = relationship(foreign_keys=[stop_requested_by])
 
     __table_args__ = (
         Index("ix_runs_agent_id_queued_at", "agent_id", "queued_at"),

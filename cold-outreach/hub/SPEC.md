@@ -199,15 +199,30 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 
 ### 6.3 Scheduling, runs and budgets
 
-- A **scheduled run** is due when the agent is enabled, today's `run_time` has passed in its
-  `time_zone`, and it hasn't had a scheduled run today. **Run now** queues a manual run.
-  Only one run per agent at a time.
-- **Stop** asks the agent to stop at its next progress report.
-- A running run with no heartbeat for 10 minutes becomes `timed_out` and raises an alert.
-- **Budgets:** each agent has a daily budget; the Owner sets a total daily budget for all
-  agents. `next-run` refuses to start when either is used up, and progress replies `stop`
-  when the next item would exceed one. Costs are what the agent reports (it reads them from
-  the provider's responses).
+- The **scheduler** checks every 30 seconds. An agent's scheduled run is **due** on a local
+  day (in the agent's time zone) once its run time has passed, for **6 hours**, if it is on,
+  has connected, and hasn't had a scheduled run in that window. So switching an agent on in
+  the afternoon waits for the next run time, and if the Hub was down for the whole window that
+  day is skipped. If a manual run is going at the run time, the scheduled one waits for it
+  (within the window). Daylight saving: a run time in the spring gap (02:30 when clocks jump to
+  03:00) runs an hour later; in the repeated autumn hour it runs once, the first time.
+- **Run now** queues a manual run (section 6.2). Only one run per agent at a time.
+- **Stop** (Owners and Admins) cancels a run that hasn't started, or tells a running agent to
+  stop at its next progress report ("Stopped by … in the Hub").
+- A running run with no progress report for **10 minutes**, or a queued run no agent picked up
+  in **6 hours**, becomes `timed_out` with the reason.
+- **Budgets:** each agent has a daily budget (whole cents) for its own local day; the Owner
+  sets a **total daily budget** for all agents (default $20) and the Hub's time zone, which
+  decides when "today" starts for it and the Overview. Spending is the cost agents report on
+  their runs, counted by the day a run was queued. `next-run` gives the agent what is left
+  today (money under both budgets, items under its daily limit) and ends a run before it
+  starts when nothing can be spent. Progress replies `stop` when the next item (the
+  manifest's `cost_per_item_usd`) would go over either budget.
+- **Agents must report progress after every item:** the Hub can only stop an agent (Stop,
+  switched off, budget) when it reports.
+- **Runs** screen: every run, newest first, 50 at a time, filtered by agent and status.
+  **Overview:** today's and this month's spending against the total budget, and each agent's
+  on/off, connection, last run, next run and spending today.
 
 ### 6.4 Import
 

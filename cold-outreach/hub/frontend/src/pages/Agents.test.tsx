@@ -59,6 +59,8 @@ function agent(overrides: Partial<Agent> = {}): Agent {
     daily_budget_usd: "5.00",
     missing_connections: [],
     last_run: null,
+    next_run_at: "2026-10-28T20:00:00Z",
+    spent_today_usd: "0.4000",
     ...overrides,
   };
 }
@@ -90,6 +92,9 @@ test("a card shows the agent, its connection and its last run", async () => {
             cost_usd: "0.9800",
             stop_reason: null,
             requested_by: "Sara",
+            stop_requested: false,
+            agent_key: "gbp-audit",
+            agent_name: "GBP audit",
           },
         }),
       ],
@@ -101,6 +106,7 @@ test("a card shows the agent, its connection and its last run", async () => {
   expect(within(card).getByText("Connected")).toBeVisible();
   expect(within(card).getByText(/Needs these connections first: DataForSEO/)).toBeVisible();
   expect(within(card).getByText(/98 done, 2 failed/)).toHaveTextContent("$0.98");
+  expect(within(card).getByText(/Spent today: \$0.40 of \$5.00/)).toBeVisible();
   // A Viewer looks but can't change anything.
   expect(within(card).getByRole("switch")).toBeDisabled();
   expect(within(card).queryByRole("button", { name: "Run now" })).not.toBeInTheDocument();
@@ -224,4 +230,37 @@ test("an agent that never connected can't be run yet", async () => {
   const card = await screen.findByRole("article", { name: "GBP audit" });
   expect(within(card).getByText(/Never connected/)).toBeVisible();
   expect(within(card).getByRole("button", { name: "Run now" })).toBeDisabled();
+});
+
+test("Stop appears while a run is going and asks the server to stop it", async () => {
+  const running = {
+    id: "r2",
+    trigger: "manual" as const,
+    status: "running" as const,
+    queued_at: new Date().toISOString(),
+    started_at: new Date().toISOString(),
+    finished_at: null,
+    done: 3,
+    failed: 0,
+    skipped: 0,
+    cost_usd: "0.0300",
+    stop_reason: null,
+    requested_by: "Sara",
+    stop_requested: false,
+    agent_key: "gbp-audit",
+    agent_name: "GBP audit",
+  };
+  const calls = mockApi({
+    "GET /auth/me": as("admin"),
+    "GET /agents": [200, [agent({ last_run: running })]],
+    "POST /agents/gbp-audit/stop": [200, { ...running, stop_requested: true }],
+  });
+  render(<App />);
+
+  const card = await screen.findByRole("article", { name: "GBP audit" });
+  expect(within(card).getByRole("button", { name: "Run now" })).toBeDisabled();
+  await userEvent.click(within(card).getByRole("button", { name: "Stop" }));
+
+  expect(await within(card).findByText(/Stop requested\. A running agent stops/)).toBeVisible();
+  expect(calls.some((c) => c.method === "POST" && c.path === "/agents/gbp-audit/stop")).toBe(true);
 });
