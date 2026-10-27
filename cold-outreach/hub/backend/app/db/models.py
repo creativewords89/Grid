@@ -189,6 +189,8 @@ class Agent(TimestampMixin, Base):
         Numeric(10, 2), default=Decimal("5"), server_default="5"
     )
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The batches it works through, in order (ids as text).
+    batch_ids: Mapped[list[str]] = mapped_column(JSONB, default=list, server_default="[]")
 
     runs: Mapped[list["Run"]] = relationship(back_populates="agent", passive_deletes=True)
 
@@ -255,6 +257,9 @@ class Import(TimestampMixin, Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
     file_name: Mapped[str] = mapped_column(String(255))
     niche: Mapped[str] = mapped_column(String(80))
+    batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("batches.id", ondelete="RESTRICT")
+    )
     uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL")
     )
@@ -266,6 +271,7 @@ class Import(TimestampMixin, Base):
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     uploader: Mapped[User | None] = relationship()
+    batch: Mapped["Batch | None"] = relationship()
 
 
 class Lead(TimestampMixin, Base):
@@ -275,6 +281,10 @@ class Lead(TimestampMixin, Base):
     __tablename__ = "leads"
 
     lead_id: Mapped[str] = mapped_column(String(12), primary_key=True)
+    # A business is in one batch only: the one it was first imported into.
+    batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("batches.id", ondelete="RESTRICT")
+    )
     niche: Mapped[str] = mapped_column(String(80))
     city: Mapped[str] = mapped_column(String(120))
     business_name: Mapped[str] = mapped_column(String(255))
@@ -296,6 +306,7 @@ class Lead(TimestampMixin, Base):
         Index("ix_leads_phone_digits", "phone_digits"),
         Index("ix_leads_name_address", "name_address"),
         Index("ix_leads_niche_city", "niche", "city"),
+        Index("ix_leads_batch_id", "batch_id"),
     )
 
 
@@ -331,59 +342,49 @@ class DoNotContact(Base):
     )
 
 
-class GbpBenchmark(TimestampMixin, Base):
-    """What the top businesses of a City + Niche look like (PLAN.md section 3.5). Every
-    value is optional: empty means "don't compare this"."""
+class Benchmark(TimestampMixin, Base):
+    """What a good business of a niche looks like (SPEC section 6.5): GBP numbers and the
+    Website Standard, in one named set such as "Cleaning Benchmark 1". It doesn't depend on
+    city or competition. Every change of the numbers or the standard raises `version`, so
+    agents know to check their leads again."""
 
-    __tablename__ = "gbp_benchmarks"
+    __tablename__ = "benchmarks"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
-    city: Mapped[str] = mapped_column(String(120))
+    name: Mapped[str] = mapped_column(String(120))
     niche: Mapped[str] = mapped_column(String(80))
-    additional_categories: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
-    services: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
-    photos: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
-    posts_90_days: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
-    description_length: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
-    reviews: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
-    rating: Mapped[Decimal | None] = mapped_column(Numeric(4, 2))
-    review_reply_pct: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
-    reference_businesses: Mapped[str] = mapped_column(String(1000), default="", server_default="")
+    gbp: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
+    website: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     updated_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL")
     )
 
-    __table_args__ = (Index("uq_gbp_benchmarks_city_niche", "city", "niche", unique=True),)
+    editor: Mapped[User | None] = relationship()
+
+    __table_args__ = (Index("uq_benchmarks_name", func.lower(name), unique=True),)
 
 
-class WebsiteStandard(Base):
-    """A niche's Website Standard (SPEC section 6.5): drafts are edited, locked versions are
-    what the Website agent uses."""
+class Batch(TimestampMixin, Base):
+    """A named group of leads of one niche, checked against one Benchmark (SPEC section
+    6.4). Files are added to a batch; agents work through the batches chosen for them."""
 
-    __tablename__ = "website_standards"
+    __tablename__ = "batches"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    name: Mapped[str] = mapped_column(String(120))
     niche: Mapped[str] = mapped_column(String(80))
-    version: Mapped[int | None] = mapped_column(Integer)  # None while a draft
-    standard: Mapped[dict[str, Any]] = mapped_column(JSONB)
-    edited_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
-    edited_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    locked_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
-    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-    editor: Mapped[User | None] = relationship(foreign_keys=[edited_by])
-    locker: Mapped[User | None] = relationship(foreign_keys=[locked_by])
-
-    __table_args__ = (
-        Index("uq_website_standards_niche_version", "niche", "version", unique=True),
-        # One draft per niche.
-        Index(
-            "uq_website_standards_one_draft",
-            "niche",
-            unique=True,
-            postgresql_where=text("version IS NULL"),
-        ),
+    # Required when a batch is made; None only for leads moved in from before batches.
+    benchmark_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("benchmarks.id", ondelete="RESTRICT")
     )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+    benchmark: Mapped[Benchmark | None] = relationship()
+
+    __table_args__ = (Index("uq_batches_name", func.lower(name), unique=True),)
 
 
 class Alert(Base):

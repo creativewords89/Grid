@@ -1,19 +1,21 @@
-"""`/api/imports`, `/api/lists` and `/api/niches`: the Import screen (SPEC sections 6.4
-and 7). Owners and Admins upload and confirm; everyone sees the history and the lists."""
+"""`/api/imports`, `/api/lists` and `/api/niches`: files added to a batch, and the lists, on
+the Batches screen (SPEC sections 6.4 and 7). Owners and Admins upload and confirm; everyone
+sees the history and the lists."""
 
 import uuid
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, File, Form, UploadFile
+from fastapi import APIRouter, File, Form, Query, UploadFile
 from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import audit
+from app.api.batches import get_batch
 from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
-from app.db.models import Import, Lead, LeadList
+from app.db.models import Batch, Benchmark, Import, Lead, LeadList
 from app.errors import ApiError
 from app.imports import service
 from app.permissions import Action, ensure
@@ -27,6 +29,8 @@ class ImportOut(BaseModel):
     id: uuid.UUID
     file_name: str
     niche: str
+    batch_id: uuid.UUID | None
+    batch_name: str | None
     status: str
     uploaded_by: str | None
     created_at: datetime
@@ -40,6 +44,8 @@ class ImportOut(BaseModel):
             id=imp.id,
             file_name=imp.file_name,
             niche=imp.niche,
+            batch_id=imp.batch_id,
+            batch_name=imp.batch.name if imp.batch else None,
             status=imp.status.value,
             uploaded_by=imp.uploader.name if imp.uploader else None,
             created_at=imp.created_at,
@@ -49,29 +55,19 @@ class ImportOut(BaseModel):
         )
 
 
-def _niche(db: Session, typed: str) -> str:
-    """A typed niche, spelt like an existing one when only the case differs."""
-    name = " ".join(typed.split())
-    if not name or len(name) > 80:
-        raise ApiError(422, "invalid", "Enter the niche, like Cleaning.", {"niche": "Required."})
-    for existing in db.scalars(select(LeadList.niche).distinct()):
-        if existing.lower() == name.lower():
-            return existing
-    return name
-
-
 @router.post("/imports", response_model=ImportOut, status_code=201)
 def upload(
     me: CurrentUser,
     db: Db,
     file: Annotated[UploadFile, File()],
-    niche: Annotated[str, Form()],
+    batch_id: Annotated[uuid.UUID, Form()],
 ) -> ImportOut:
     ensure(me, Action.IMPORT_LEADS)
+    batch = get_batch(db, batch_id)
     content = file.file.read(MAX_BYTES + 1)
     if len(content) > MAX_BYTES:
         raise ApiError(413, "too_large", "The file is over 20 MB.", {"file": "Over 20 MB."})
-    imp = service.preview(db, me, file.filename or "leads.xlsx", content, _niche(db, niche))
+    imp = service.preview(db, me, file.filename or "leads.xlsx", content, batch)
     audit.record(db, me, "upload", "import", imp.id, imp.file_name, [])
     db.commit()
     db.refresh(imp)
@@ -79,10 +75,14 @@ def upload(
 
 
 @router.get("/imports", response_model=list[ImportOut])
-def list_imports(me: CurrentUser, db: Db) -> list[ImportOut]:
+def list_imports(
+    me: CurrentUser, db: Db, batch_id: Annotated[uuid.UUID | None, Query()] = None
+) -> list[ImportOut]:
     ensure(me, Action.VIEW_HUB)
-    found = db.scalars(select(Import).order_by(Import.created_at.desc()).limit(30))
-    return [ImportOut.of(imp) for imp in found]
+    query = select(Import).order_by(Import.created_at.desc()).limit(30)
+    if batch_id is not None:
+        query = query.where(Import.batch_id == batch_id)
+    return [ImportOut.of(imp) for imp in db.scalars(query)]
 
 
 def _get(db: Session, import_id: uuid.UUID) -> Import:
@@ -190,4 +190,8 @@ NicheName = Annotated[str, StringConstraints(max_length=80)]
 @router.get("/niches", response_model=list[str])
 def niches(me: CurrentUser, db: Db) -> list[NicheName]:
     ensure(me, Action.VIEW_HUB)
-    return list(db.scalars(select(LeadList.niche).distinct().order_by(LeadList.niche)))
+    known = db.scalars(select(Benchmark.niche).union(select(Batch.niche)))
+    spellings: dict[str, str] = {}
+    for niche in known:
+        spellings.setdefault(niche.lower(), niche)
+    return sorted(spellings.values(), key=str.lower)

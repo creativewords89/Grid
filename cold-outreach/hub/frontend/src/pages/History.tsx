@@ -9,14 +9,13 @@ import { when } from "../format";
 const ENTITIES: Record<string, string> = {
   agent: "Agents",
   alert_settings: "Alert settings",
-  benchmark: "Benchmarks (deleted)",
-  benchmarks: "Benchmarks (uploads)",
+  batch: "Batches",
+  benchmark: "Benchmarks",
   budget: "Budget",
   connections: "Connections",
   import: "Imports",
   list: "Lists",
   user: "Users",
-  website_standard: "Website Standards",
 };
 
 function show(value: unknown): string {

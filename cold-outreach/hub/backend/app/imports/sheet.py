@@ -23,6 +23,7 @@ COLUMNS: dict[str, str] = {
     "Lead ID": "lead_id",
     "City": "city",
     "Niche": "niche",
+    "Batch": "batch",
     "Level": "level",
     "Business Name": "business_name",
     "GBP Link": "gbp_link",

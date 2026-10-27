@@ -12,18 +12,16 @@ Y, N = True, False
 
 # (Owner, Admin, Viewer) for each row of the SPEC section 3 table.
 SPEC_TABLE: dict[Action, tuple[bool, bool, bool]] = {
-    # See Overview, Runs, Agents, Imports, Benchmarks, Website Standards
+    # See Overview, Runs, Agents, Batches, Benchmarks
     Action.VIEW_HUB: (Y, Y, Y),
-    # Upload and confirm an import
+    # Make, rename or delete a batch; upload and confirm its files
     Action.IMPORT_LEADS: (Y, Y, N),
     # Switch an agent on/off, press Run now or Stop
     Action.OPERATE_AGENTS: (Y, Y, N),
-    # Change an agent's limit, run time, budget and settings
+    # Change an agent's batches, limit, run time, budget and settings
     Action.CONFIGURE_AGENTS: (Y, Y, N),
-    # Upload benchmarks, create or edit a Website Standard draft
+    # Make, change or delete a benchmark
     Action.EDIT_BENCHMARKS: (Y, Y, N),
-    # Lock (publish) a Website Standard version
-    Action.LOCK_STANDARD: (Y, N, N),
     # See or change Connections (keys, accounts)
     Action.MANAGE_CONNECTIONS: (Y, N, N),
     # Change the total daily budget

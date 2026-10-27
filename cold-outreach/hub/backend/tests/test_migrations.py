@@ -53,3 +53,45 @@ def test_migrations_match_models(fresh_database_url: str) -> None:
         engine.dispose()
 
     assert diff == []
+
+
+def test_benchmarks_and_leads_move_into_named_benchmarks_and_batches(
+    fresh_database_url: str,
+) -> None:
+    """Step 10: city benchmarks are averaged per niche, the latest locked standard wins over
+    a draft, and leads from before batches go into "Batch 1 · <Niche>"."""
+    cfg = alembic_config(fresh_database_url)
+    command.upgrade(cfg, "0008")
+    engine = create_engine(fresh_database_url)
+    try:
+        with engine.begin() as conn:
+            for sql in (
+                "INSERT INTO gbp_benchmarks (id, city, niche, photos, rating) VALUES "
+                "(gen_random_uuid(), 'Dallas', 'Cleaning', 100, 4.8), "
+                "(gen_random_uuid(), 'Tulsa', 'cleaning', 50, NULL)",
+                "INSERT INTO website_standards (id, niche, version, standard) VALUES "
+                "(gen_random_uuid(), 'Cleaning', 1, '{\"v\": 1}'), "
+                "(gen_random_uuid(), 'Cleaning', 2, '{\"v\": 2}'), "
+                "(gen_random_uuid(), 'Cleaning', NULL, '{\"v\": \"draft\"}')",
+                "INSERT INTO leads (lead_id, niche, city, business_name) VALUES "
+                "('L-000001', 'CLEANING', 'Tulsa', 'A'), ('L-000002', 'Plumbing', 'Tulsa', 'B')",
+            ):
+                conn.execute(text(sql))
+        command.upgrade(cfg, "head")
+        with engine.connect() as conn:
+            benchmarks = conn.execute(text("SELECT name, gbp, website FROM benchmarks")).all()
+            batches = conn.execute(
+                text(
+                    "SELECT l.lead_id, b.name, m.name FROM leads l JOIN batches b "
+                    "ON b.id = l.batch_id LEFT JOIN benchmarks m ON m.id = b.benchmark_id "
+                    "ORDER BY l.lead_id"
+                )
+            ).all()
+    finally:
+        engine.dispose()
+
+    assert benchmarks == [("Cleaning Benchmark 1", {"photos": 75.0, "rating": 4.8}, {"v": 2})]
+    assert batches == [
+        ("L-000001", "Batch 1 · Cleaning", "Cleaning Benchmark 1"),
+        ("L-000002", "Batch 1 · Plumbing", None),
+    ]

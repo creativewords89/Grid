@@ -1,4 +1,5 @@
-"""The shape of a Website Standard (PLAN.md section 3.5 and SPEC section 6.5)."""
+"""The shape of a Benchmark (PLAN.md section 3.5 and SPEC section 6.5): the GBP numbers and
+the Website Standard."""
 
 from typing import Annotated
 
@@ -64,14 +65,24 @@ class Standard(Strict):
             raise ValueError("each service may be listed once")
         return self
 
-    def ready_problem(self) -> str | None:
-        """Why this standard can't be locked yet, or None."""
+    @model_validator(mode="after")
+    def _a_must_have_service(self) -> "Standard":
         if not any(service.must_have for service in self.services):
-            return "Add at least one must-have service."
-        return None
+            raise ValueError("add at least one must-have service")
+        return self
 
 
-def version_label(niche: str, version: int) -> str:
-    """ "Cleaning", 2 -> "cleaning-v2"."""
-    slug = "-".join(niche.lower().split())
-    return f"{slug}-v{version}"
+Count = Annotated[float, Field(ge=0, le=1_000_000)]
+
+
+class Gbp(Strict):
+    """What a good profile of the niche has. Empty (None) means "don't compare this"."""
+
+    additional_categories: Annotated[float, Field(ge=0, le=100)] | None = None
+    services: Annotated[float, Field(ge=0, le=1000)] | None = None
+    photos: Count | None = None
+    posts_90_days: Annotated[float, Field(ge=0, le=1000)] | None = None
+    description_length: Annotated[float, Field(ge=0, le=750)] | None = None
+    reviews: Count | None = None
+    rating: Annotated[float, Field(ge=0, le=5)] | None = None
+    review_reply_pct: Annotated[float, Field(ge=0, le=100)] | None = None

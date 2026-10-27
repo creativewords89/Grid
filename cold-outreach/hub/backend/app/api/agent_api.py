@@ -7,7 +7,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from pydantic import BaseModel, Field, StringConstraints, ValidationError
-from sqlalchemy import func, or_, select
+from sqlalchemy import or_, select
 
 from app.agents import service
 from app.agents.manifest import Manifest
@@ -15,15 +15,15 @@ from app.alerts import service as alerts
 from app.api.schemas import Strict
 from app.auth.deps import Db
 from app.auth.tokens import now
-from app.benchmarks.standard import version_label
 from app.db.models import (
     Agent,
+    Batch,
+    Benchmark,
     DoNotContact,
-    GbpBenchmark,
+    Lead,
     LeadList,
     Run,
     RunStatus,
-    WebsiteStandard,
 )
 from app.errors import ApiError
 from app.imports.reader import phone_digits
@@ -60,6 +60,29 @@ def put_manifest(body: dict[str, Any], agent: CurrentAgent, db: Db) -> dict[str,
     return {"ok": True, "config": service.config_of(agent)}
 
 
+class BatchOut(BaseModel):
+    id: str
+    name: str
+    niche: str
+    benchmark_id: str
+    benchmark_version: int
+
+
+def _batches(db: Db, agent: Agent) -> list[BatchOut]:
+    """The agent's batches in its order, without those that have no benchmark yet."""
+    return [
+        BatchOut(
+            id=str(batch.id),
+            name=batch.name,
+            niche=batch.niche,
+            benchmark_id=str(batch.benchmark.id),
+            benchmark_version=batch.benchmark.version,
+        )
+        for batch in service.batches_of(db, agent)
+        if batch.benchmark is not None
+    ]
+
+
 class RunOut(BaseModel):
     run_id: str
     trigger: str
@@ -69,6 +92,8 @@ class RunOut(BaseModel):
     items_left: int
     budget_left_usd: Decimal
     connections: dict[str, dict[str, str]]
+    # Work through these in order; an agent with nothing left to do finishes at once.
+    batches: list[BatchOut]
 
 
 @router.get("/next-run", response_model=RunOut, responses={204: {"description": "Nothing to do"}})
@@ -96,6 +121,7 @@ def next_run(agent: CurrentAgent, db: Db, response: Response) -> RunOut | Respon
         items_left=max(0, agent.daily_limit - runs.items_today(db, agent)),
         budget_left_usd=budget.left,
         connections=service.run_connections(agent),
+        batches=_batches(db, agent),
     )
 
 
@@ -179,64 +205,39 @@ def lists(agent: CurrentAgent, db: Db) -> list[dict[str, Any]]:
     ]
 
 
-@router.get("/benchmarks")
-def benchmarks(
-    agent: CurrentAgent,
-    db: Db,
-    niche: Annotated[str | None, Query(max_length=80)] = None,
-    city: Annotated[str | None, Query(max_length=120)] = None,
-) -> list[dict[str, Any]]:
+@router.get("/batches", response_model=list[BatchOut])
+def batches(agent: CurrentAgent, db: Db) -> list[BatchOut]:
+    """The batches chosen for this agent, in order (those without a benchmark left out)."""
     db.commit()
-    query = select(GbpBenchmark).order_by(GbpBenchmark.niche, GbpBenchmark.city)
-    if niche:
-        query = query.where(func.lower(GbpBenchmark.niche) == niche.lower())
-    if city:
-        query = query.where(func.lower(GbpBenchmark.city) == city.lower())
-    out = []
-    for row in db.scalars(query):
-        out.append(
-            {
-                "city": row.city,
-                "niche": row.niche,
-                "reference_businesses": row.reference_businesses,
-                **{
-                    name: (None if getattr(row, name) is None else float(getattr(row, name)))
-                    for name in (
-                        "additional_categories",
-                        "services",
-                        "photos",
-                        "posts_90_days",
-                        "description_length",
-                        "reviews",
-                        "rating",
-                        "review_reply_pct",
-                    )
-                },
-            }
-        )
-    return out
+    return _batches(db, agent)
 
 
-@router.get("/website-standards/{niche}")
-def website_standard(niche: str, agent: CurrentAgent, db: Db) -> dict[str, Any]:
-    """The niche's latest locked Website Standard; 404 means NO_STANDARD."""
+@router.get("/batches/{batch_id}/leads")
+def batch_leads(batch_id: uuid.UUID, agent: CurrentAgent, db: Db) -> list[dict[str, str]]:
+    """The batch's leads by Lead ID; the full rows are in the Master Sheet's Leads tab.
+    Top leads are listed too, so an agent can tell them apart, but never audited."""
     db.commit()
-    row = db.scalar(
-        select(WebsiteStandard)
-        .where(
-            func.lower(WebsiteStandard.niche) == niche.lower(),
-            WebsiteStandard.version.is_not(None),
-        )
-        .order_by(WebsiteStandard.version.desc())
-        .limit(1)
-    )
-    if row is None or row.version is None:
-        raise ApiError(404, "no_standard", f"No locked Website Standard for {niche}.")
+    if db.get(Batch, batch_id) is None:
+        raise ApiError(404, "not_found", "That batch doesn't exist.")
+    leads = db.scalars(select(Lead).where(Lead.batch_id == batch_id).order_by(Lead.lead_id))
+    return [{"lead_id": x.lead_id, "city": x.city, "level": x.level} for x in leads]
+
+
+@router.get("/benchmarks/{benchmark_id}")
+def benchmark(benchmark_id: uuid.UUID, agent: CurrentAgent, db: Db) -> dict[str, Any]:
+    """A benchmark: the GBP numbers (a missing one means "don't compare") and the Website
+    Standard. When `version` is higher than the one a lead was checked with, check it again."""
+    db.commit()
+    row = db.get(Benchmark, benchmark_id)
+    if row is None:
+        raise ApiError(404, "not_found", "That benchmark doesn't exist.")
     return {
+        "id": str(row.id),
+        "name": row.name,
         "niche": row.niche,
         "version": row.version,
-        "label": version_label(row.niche, row.version),
-        "standard": row.standard,
+        "gbp": row.gbp,
+        "website": row.website,
     }
 
 

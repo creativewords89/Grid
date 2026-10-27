@@ -1,7 +1,9 @@
 """Preview and confirm a lead file (SPEC section 6.4).
 
 Preview reads the file, cleans and merges its rows, and matches them against the leads the
-Hub already knows. Nothing is written anywhere but the import itself. Confirm gives Lead IDs,
+Hub already knows. A business stays in the batch it was first imported into: matched in
+another batch, it is listed as such and updated there. Nothing is written anywhere but the
+import itself. Confirm gives Lead IDs,
 updates the registry, lists and do-not-contact list, and writes the Master Sheet; if the
 Sheet can't be written, nothing is saved, so the same IDs are used on the next try.
 """
@@ -14,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app import connections, providers
 from app.auth.tokens import now
-from app.db.models import DoNotContact, Import, ImportStatus, Lead, LeadList, User
+from app.db.models import Batch, DoNotContact, Import, ImportStatus, Lead, LeadList, User
 from app.errors import ApiError
 from app.imports import reader, sheet
 
@@ -71,19 +73,28 @@ def _lead_row(lead: reader.Lead) -> dict[str, Any]:
     return dict(lead.values, emails=lead.emails, rows=lead.rows)
 
 
-def preview(db: Session, user: User, file_name: str, content: bytes, niche: str) -> Import:
+def preview(db: Session, user: User, file_name: str, content: bytes, batch: Batch) -> Import:
+    niche = batch.niche
     try:
         report = reader.read(content, niche)
     except reader.ReadError as error:
         raise ApiError(422, "unreadable", str(error), {"file": str(error)}) from None
     registry = Registry.load(db)
+    batch_names = {b.id: b.name for b in db.scalars(select(Batch))}
     rows = [_lead_row(lead) for lead in report.leads]
     updates = []
+    elsewhere = []
     for row in rows:
         match = registry.match(row)
         row["lead_id"] = match.lead_id if match else ""
-        if match:
-            updates.append(f"{row['business_name'] or row['gbp_link']} ({match.lead_id})")
+        if match is None:
+            continue
+        label = f"{row['business_name'] or row['gbp_link']} ({match.lead_id}"
+        if match.batch_id == batch.id:
+            updates.append(f"{label})")
+        else:
+            other = batch_names.get(match.batch_id) if match.batch_id else None
+            elsewhere.append(f"{label}, in {other or 'no batch'})")
     known_lists = {(x.city.lower(), x.niche.lower()) for x in db.scalars(select(LeadList))}
     cities = sorted({row["city"] for row in rows})
     new_lists = [c for c in cities if (c.lower(), niche.lower()) not in known_lists]
@@ -99,8 +110,9 @@ def preview(db: Session, user: User, file_name: str, content: bytes, niche: str)
     counts = {
         "tabs": report.tabs,
         "leads": len(rows),
-        "new": len(rows) - len(updates),
+        "new": len(rows) - len(updates) - len(elsewhere),
         "updated": len(updates),
+        "other_batch": len(elsewhere),
         "merged": len(report.merged_rows),
         "top": len(tops),
         "no_gbp_link": len(no_gbp),
@@ -113,6 +125,7 @@ def preview(db: Session, user: User, file_name: str, content: bytes, niche: str)
     imp = Import(
         file_name=file_name[:255],
         niche=niche,
+        batch_id=batch.id,
         uploaded_by=user.id,
         status=ImportStatus.PREVIEW,
         counts=counts,
@@ -124,6 +137,7 @@ def preview(db: Session, user: User, file_name: str, content: bytes, niche: str)
             "invalid_emails": report.invalid_emails[:SAMPLE],
             "merged_rows": report.merged_rows[:SAMPLE],
             "updated": updates[:SAMPLE],
+            "other_batch": elsewhere[:SAMPLE],
             "no_gbp_link": names(no_gbp),
             "top": names(tops),
             "new_lists": new_lists,
@@ -157,6 +171,7 @@ def _apply(db: Session, imp: Import, row: dict[str, Any], lead: Lead | None, num
     if lead is None:
         lead = Lead(
             lead_id=f"L-{number:06d}",
+            batch_id=imp.batch_id,
             niche=imp.niche,
             city=values["city"][:120],
             business_name=values.get("business_name", "")[:255],
@@ -209,6 +224,7 @@ def confirm(db: Session, imp: Import, user: User) -> Import:
     # One import at a time: Lead IDs are numbered from the highest one saved.
     db.execute(text("SELECT pg_advisory_xact_lock(4242001)"))
     registry = Registry.load(db)
+    batch_names = {b.id: b.name for b in db.scalars(select(Batch))}
     number = _next_number(db)
     written: list[dict[str, str]] = []
     for row in imp.rows:
@@ -221,6 +237,8 @@ def confirm(db: Session, imp: Import, user: User) -> Import:
             _do_not_contact(db, lead)
         values = {k: v for k, v in row.items() if isinstance(v, str)}
         values["lead_id"] = lead.lead_id
+        values["niche"] = lead.niche  # a business found in another batch stays there
+        values["batch"] = batch_names.get(lead.batch_id, "") if lead.batch_id else ""
         values["email"] = ", ".join(lead.emails)
         written.append(values)
     for city in sorted({row["city"] for row in imp.rows}):
