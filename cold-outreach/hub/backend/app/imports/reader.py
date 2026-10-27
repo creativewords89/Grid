@@ -1,0 +1,309 @@
+"""Reading a lead file (SPEC section 6.4): one tab per city, the header spellings the team
+already uses, cleaning, and merging duplicate rows into one lead. Pure functions over the
+workbook, so every rule is easy to test."""
+
+import io
+import re
+import zipfile
+from dataclasses import dataclass, field
+from typing import Any
+from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
+
+from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
+
+# Lead fields, in the order the Leads tab shows them (PLAN.md section 3.2).
+FIELDS = (
+    "city",
+    "niche",
+    "level",
+    "business_name",
+    "gbp_link",
+    "address",
+    "website",
+    "phone",
+    "whatsapp",
+    "facebook",
+    "instagram",
+    "email",
+    "reviews",
+    "rating",
+    "notes",
+)
+
+# Header spellings seen in the team's files, compared without case, spaces or punctuation.
+SYNONYMS: dict[str, tuple[str, ...]] = {
+    "business_name": ("business name", "business", "name", "company", "company name"),
+    "gbp_link": ("map", "map url", "map link", "maps", "google map", "gbp", "gbp link"),
+    "address": ("address", "full address"),
+    "city": ("city", "town"),
+    "website": ("website", "web site", "site", "url"),
+    "phone": ("phone", "phone number", "telephone", "tel"),
+    "whatsapp": ("wa", "wp", "whatsapp", "whats app"),
+    "facebook": ("facebook", "fb"),
+    "instagram": ("instagram", "ig", "insta"),
+    "email": ("email", "e-mail", "emails", "gmail", "mail"),
+    "reviews": ("reviews", "review", "number of reviews", "reviews count", "review count"),
+    "rating": ("rating", "ratings", "average", "average rating", "average ratings"),
+    "notes": ("notes", "note", "comment", "comments", "issue 1", "issue 2", "issue 3"),
+    "level": ("level",),
+}
+
+
+def _squash(text: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", text.lower())
+
+
+HEADER_TO_FIELD = {_squash(name): f for f, names in SYNONYMS.items() for name in names}
+
+EMAIL = re.compile(r"^[^@\s,;]+@[^@\s,;]+\.[a-z]{2,}$", re.IGNORECASE)
+NOT_OWN_SITE = re.compile(r"(facebook|instagram|linktr\.ee|yelp)\.", re.IGNORECASE)
+
+
+class ReadError(Exception):
+    """The file can't be read at all (not an Excel file, or no tabs with a header)."""
+
+
+@dataclass
+class Row:
+    tab: str
+    line: int  # the row number in Excel, for messages
+    values: dict[str, str]
+    emails: list[str]
+
+
+@dataclass
+class Lead:
+    """One business after merging. `rows` says where it came from."""
+
+    values: dict[str, str]
+    emails: list[str]
+    rows: list[str] = field(default_factory=list)  # "Tulsa row 14"
+
+
+@dataclass
+class Report:
+    leads: list[Lead]
+    tabs: int = 0
+    empty_tabs: list[str] = field(default_factory=list)
+    unknown_columns: dict[str, list[str]] = field(default_factory=dict)  # column -> tabs
+    skipped_rows: list[str] = field(default_factory=list)  # no name and no GBP link
+    invalid_emails: list[str] = field(default_factory=list)  # "Tulsa row 3: kevin@"
+    merged_rows: list[list[str]] = field(default_factory=list)  # each group of merged rows
+    has_level_column: bool = False
+
+
+# --- cleaning -------------------------------------------------------------------------------
+
+
+def clean(value: Any) -> str:
+    """Cell text without surrounding spaces or line breaks; numbers without a trailing .0."""
+    if value is None:
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    return re.sub(r"\s+", " ", str(value)).strip()
+
+
+def phone_digits(phone: str) -> str:
+    """The last 10 digits, so "(918) 523-8300" and "+1 918 523 8300" match."""
+    digits = re.sub(r"\D", "", phone)
+    return digits[-10:] if len(digits) >= 10 else ""
+
+
+def clean_website(url: str) -> str:
+    """Remove utm_* tracking parameters; keep everything else as given."""
+    if not url or "utm_" not in url:
+        return url
+    parts = urlsplit(url)
+    query = [
+        (k, v)
+        for k, v in parse_qsl(parts.query, keep_blank_values=True)
+        if not k.startswith("utm_")
+    ]
+    return urlunsplit(parts._replace(query=urlencode(query)))
+
+
+def clean_gbp(url: str) -> str:
+    return url.strip().rstrip("/")
+
+
+def website_domain(url: str) -> str:
+    host = urlsplit(url if "//" in url else f"//{url}").netloc.lower()
+    return host.removeprefix("www.")
+
+
+def split_emails(text: str) -> tuple[list[str], list[str]]:
+    """(valid, invalid) emails from a cell that may hold several."""
+    valid: list[str] = []
+    invalid: list[str] = []
+    for part in re.split(r"[\s,;/]+", unquote(text)):
+        email = part.strip().strip(".").lower()
+        if not email:
+            continue
+        (valid if EMAIL.match(email) else invalid).append(email)
+    return valid, invalid
+
+
+def normal_text(text: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", text.lower())
+
+
+def name_place(values: dict[str, str]) -> str:
+    """Name + address; for a row with only a name, name + city (the weakest match)."""
+    name = normal_text(values.get("business_name", ""))
+    if not name:
+        return ""
+    address = normal_text(values.get("address", ""))
+    if address:
+        return f"{name}|{address}"
+    if values.get("gbp_link") or phone_digits(values.get("phone", "")):
+        return ""
+    city = normal_text(values.get("city", ""))
+    return f"{name}|city:{city}" if city else ""
+
+
+def keys(values: dict[str, str]) -> set[str]:
+    """What makes two rows the same business: the GBP link, the phone, or name + address."""
+    found = set()
+    if values.get("gbp_link"):
+        found.add("gbp:" + values["gbp_link"])
+    digits = phone_digits(values.get("phone", ""))
+    if digits:
+        found.add("phone:" + digits)
+    place = name_place(values)
+    if place:
+        found.add("name:" + place)
+    return found
+
+
+def is_top(level: str) -> bool:
+    return level.strip().lower() == "top"
+
+
+# --- reading --------------------------------------------------------------------------------
+
+
+def _header_row(rows: list[tuple[Any, ...]]) -> int | None:
+    """The first row (of the first five) that has at least two known headers."""
+    for index, row in enumerate(rows[:5]):
+        known = {HEADER_TO_FIELD.get(_squash(clean(cell))) for cell in row if clean(cell)}
+        known.discard(None)
+        if len(known) >= 2:
+            return index
+    return None
+
+
+def read_rows(content: bytes, report: Report) -> list[Row]:
+    try:
+        book = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    except (InvalidFileException, zipfile.BadZipFile, KeyError, OSError, ValueError) as error:
+        message = "This isn't an Excel file (.xlsx). Save it as .xlsx and try again."
+        raise ReadError(message) from error
+    rows: list[Row] = []
+    for sheet in book.worksheets:
+        report.tabs += 1
+        tab = clean(sheet.title)
+        cells = [tuple(r) for r in sheet.iter_rows(values_only=True)]
+        header_at = _header_row(cells)
+        if header_at is None:
+            report.empty_tabs.append(tab)
+            continue
+        columns: dict[int, str] = {}
+        for index, cell in enumerate(cells[header_at]):
+            name = clean(cell)
+            if not name:
+                continue
+            target = HEADER_TO_FIELD.get(_squash(name))
+            if target is None:
+                report.unknown_columns.setdefault(name, []).append(tab)
+            elif target not in columns.values() or target in ("notes", "email"):
+                columns[index] = target
+        if "level" in columns.values():
+            report.has_level_column = True
+        found = 0
+        for offset, raw in enumerate(cells[header_at + 1 :], start=header_at + 2):
+            values: dict[str, str] = {}
+            emails: list[str] = []
+            for index, target in columns.items():
+                text = clean(raw[index]) if index < len(raw) else ""
+                if not text:
+                    continue
+                if target == "email":
+                    valid, invalid = split_emails(text)
+                    emails.extend(e for e in valid if e not in emails)
+                    report.invalid_emails.extend(f"{tab} row {offset}: {bad}" for bad in invalid)
+                elif target == "notes" and values.get("notes"):
+                    values["notes"] += " · " + text
+                else:
+                    values[target] = text
+            # A city filled down an otherwise empty sheet isn't a business.
+            if not emails and not set(values) - {"city", "level"}:
+                continue
+            found += 1
+            if not values.get("business_name") and not values.get("gbp_link"):
+                report.skipped_rows.append(f"{tab} row {offset}")
+                continue
+            values["city"] = values.get("city") or tab
+            values["website"] = clean_website(values.get("website", ""))
+            values["gbp_link"] = clean_gbp(values.get("gbp_link", ""))
+            rows.append(Row(tab=tab, line=offset, values=values, emails=emails))
+        if not found:
+            report.empty_tabs.append(tab)
+    return rows
+
+
+def same_business(a: dict[str, str], b: dict[str, str]) -> bool:
+    """Two rows are one business when their GBP links match, or when their phone or name
+    and address match and they don't have two different GBP links. A brand with one phone
+    number but a profile in each city stays one lead per profile."""
+    if a.get("gbp_link") and b.get("gbp_link"):
+        return a["gbp_link"] == b["gbp_link"]
+    return bool(keys(a) & keys(b))
+
+
+def merge(rows: list[Row], niche: str, report: Report) -> list[Lead]:
+    """Rows of the same business become one lead: emails are pooled, gaps filled from the
+    later rows, and the first row's value kept when both have one. Top wins."""
+    leads: list[Lead] = []
+    by_key: dict[str, list[Lead]] = {}
+    for row in rows:
+        values = dict(row.values, niche=niche)
+        where = f"{row.tab} row {row.line}"
+        candidates = [lead for k in keys(values) for lead in by_key.get(k, [])]
+        match = next((lead for lead in candidates if same_business(lead.values, values)), None)
+        if match is None:
+            lead = Lead(values=values, emails=list(row.emails), rows=[where])
+            leads.append(lead)
+        else:
+            lead = match
+            for name, value in values.items():
+                if value and not lead.values.get(name):
+                    lead.values[name] = value
+            if is_top(values.get("level", "")):
+                lead.values["level"] = "Top"
+            lead.emails.extend(e for e in row.emails if e not in lead.emails)
+            lead.rows.append(where)
+        for key in keys(lead.values):
+            bucket = by_key.setdefault(key, [])
+            if lead not in bucket:
+                bucket.append(lead)
+    for lead in leads:
+        lead.values["level"] = "Top" if is_top(lead.values.get("level", "")) else ""
+        lead.values["email"] = ", ".join(lead.emails)
+        if len(lead.rows) > 1:
+            report.merged_rows.append(lead.rows)
+    return leads
+
+
+def read(content: bytes, niche: str) -> Report:
+    report = Report(leads=[])
+    rows = read_rows(content, report)
+    if report.tabs == len(report.empty_tabs):
+        raise ReadError("No tab has a header row with columns such as Business name and MAP.")
+    report.leads = merge(rows, niche, report)
+    return report
+
+
+def not_own_site(url: str) -> bool:
+    return bool(NOT_OWN_SITE.search(url))

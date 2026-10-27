@@ -1,0 +1,21 @@
+# The Hub on a server where the Answer Engine already runs (ops/deploy.md, "Next to the
+# Answer Engine"). That stack's Caddy owns ports 80 and 443, gets the certificate for
+# hub.gridrankers.com and passes its visitors to this Caddy, which joins the Answer
+# Engine's network as agent-hub-web and serves plain HTTP there.
+#
+# Turned on in .env: COMPOSE_FILE=docker-compose.yml:docker-compose.shared.yml
+services:
+  caddy:
+    ports: !reset []
+    environment:
+      APP_DOMAIN: ":80"
+      TRUSTED_PROXIES: private_ranges
+    networks:
+      default:
+      answers:
+        aliases: [agent-hub-web]
+
+networks:
+  answers:
+    external: true
+    name: ${ANSWERS_NETWORK:-answer-engine_default}

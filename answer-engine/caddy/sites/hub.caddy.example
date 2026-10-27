@@ -1,0 +1,12 @@
+# The Agent Hub (cold-outreach/hub), started with its docker-compose.shared.yml: its own
+# Caddy joins this stack's network as agent-hub-web and serves plain HTTP inside it.
+hub.gridrankers.com {
+	encode zstd gzip
+	# The Hub takes lead files up to 20 MB.
+	request_body {
+		max_size 25MB
+	}
+	reverse_proxy agent-hub-web:80 {
+		header_up X-Request-ID {http.request.uuid}
+	}
+}
