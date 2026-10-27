@@ -16,9 +16,8 @@ import { THREAD_STATUSES } from "../labels";
 import { navigate, useSearch } from "../router";
 
 // Marketing (SPEC sections 6.10 and 7.3), laid out like Chat: conversations on the left;
-// in the middle, a new conversation (pick the platform, paste the post's code) or one
-// conversation with a reply box at the bottom; on the right, its details or help on finding
-// a post's code. The engine drafts; a person always posts.
+// on the right, a new conversation (pick the platform, paste the post's code) or one
+// conversation with a reply box at the bottom. The engine drafts; a person always posts.
 
 const STATUS_NAME = Object.fromEntries(THREAD_STATUSES) as Record<ThreadStatus, string>;
 
@@ -65,20 +64,17 @@ export function Marketing() {
     );
   } else {
     body = (
-      <div className="mk-split">
-        <div className="mk-center">
-          {platform ? (
-            <NewConversation
-              key={`${platform}:${query.get("code") ?? ""}`}
-              platform={platform}
-              code={query.get("code") ?? ""}
-              onCreated={changed}
-            />
-          ) : (
-            <PickPlatform />
-          )}
-        </div>
-        <CodeHelp />
+      <div className="mk-center">
+        {platform ? (
+          <NewConversation
+            key={`${platform}:${query.get("code") ?? ""}`}
+            platform={platform}
+            code={query.get("code") ?? ""}
+            onCreated={changed}
+          />
+        ) : (
+          <PickPlatform />
+        )}
       </div>
     );
   }
@@ -476,28 +472,6 @@ function PickPlatform() {
   );
 }
 
-/** The right-hand panel while starting a conversation: where each platform's code is. */
-function CodeHelp() {
-  const platforms = usePlatforms();
-  return (
-    <aside className="mk-details" aria-label="Help">
-      {platforms?.map((p) => (
-        <section key={p.id}>
-          <h2>{p.name}: where's the code?</h2>
-          <p className="small">{EXAMPLE_NOTE[p.parser]}</p>
-          <Example parser={p.parser} />
-        </section>
-      ))}
-      <section>
-        <h2>Already answered?</h2>
-        <p className="small">
-          If we already have the post, its conversation opens instead, so nobody answers it twice.
-        </p>
-      </section>
-    </aside>
-  );
-}
-
 /** Create a thread and draft straight away: that's what the person came for. */
 async function createAndDraft(body: Parameters<typeof api.createThread>[0]): Promise<string> {
   const thread = await api.createThread(body);
@@ -740,215 +714,108 @@ function ThreadView({
   const byId = new Map(thread.messages.map((m) => [m.id, m]));
 
   return (
-    <div className="mk-split">
-      <section className="mk-thread" aria-labelledby="mk-thread-title">
-        <header className="mk-thread-head">
-          <div className="mk-thread-info">
-            <h1 id="mk-thread-title" className="mk-title">
-              <span className={`platform-badge platform-${thread.platform}`}>
-                {thread.platform_name}
-              </span>{" "}
-              {thread.title}
-            </h1>
-            <p className="muted small">
-              {[
-                thread.community,
-                code && `post ${code}`,
-                thread.created_by &&
-                  `started by ${thread.created_by.name} ${ago(thread.created_at)}`,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-              {thread.original_url && (
-                <>
-                  {" · "}
-                  <a href={thread.original_url} target="_blank" rel="noopener noreferrer">
-                    Open on {thread.platform_name}
-                  </a>
-                </>
-              )}
-            </p>
-          </div>
-          <div className="row mk-thread-actions">
-            <span className={`pill pill-thread-${thread.status}`}>
-              {STATUS_NAME[thread.status]}
-            </span>
-            {thread.can_close &&
-              (closed ? (
-                <button
-                  className="button button-small"
-                  onClick={() => void run("reopen", () => api.reopenThread(id))}
-                >
-                  Reopen
-                </button>
-              ) : (
-                <button
-                  className="button button-small"
-                  onClick={() => void run("close", () => api.closeThread(id))}
-                >
-                  Close
-                </button>
-              ))}
-            {thread.can_delete && (
-              <button
-                className="button button-small button-danger"
-                onClick={() => setDeleting(true)}
-              >
-                Delete
-              </button>
+    <section className="mk-thread" aria-labelledby="mk-thread-title">
+      <header className="mk-thread-head">
+        <div className="mk-thread-info">
+          <h1 id="mk-thread-title" className="mk-title">
+            <span className={`platform-badge platform-${thread.platform}`}>
+              {thread.platform_name}
+            </span>{" "}
+            {thread.title}
+          </h1>
+          <p className="muted small">
+            {[
+              thread.community,
+              code && `post ${code}`,
+              thread.created_by && `started by ${thread.created_by.name} ${ago(thread.created_at)}`,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+            {thread.original_url && (
+              <>
+                {" · "}
+                <a href={thread.original_url} target="_blank" rel="noopener noreferrer">
+                  Open on {thread.platform_name}
+                </a>
+              </>
             )}
-          </div>
-        </header>
-        <div className="mk-messages">
-          {note && <Alert kind="info">{note}</Alert>}
-          {error && <Alert kind="error">{error}</Alert>}
-          {ordered.map((m, i) => {
-            const parent = m.parent_id ? byId.get(m.parent_id) : undefined;
-            // Say what they answered when it isn't simply the message above.
-            const answered =
-              m.author === "them" && parent && ordered[i - 1]?.id !== parent.id
-                ? parent
-                : undefined;
-            return (
-              <Message
-                key={m.id}
-                message={m}
-                answered={answered}
-                thread={thread}
-                busy={busy}
-                closed={closed}
-                onRun={run}
-                onChanged={load}
-              />
-            );
-          })}
-          <div ref={end} />
+          </p>
         </div>
-        {closed ? (
-          <p className="mk-closed muted">This conversation is closed. Reopen it to continue.</p>
-        ) : (
-          <Composer
-            thread={thread}
-            replyTo={replyTo}
-            onAdded={setThread}
-            onError={(text) => setError(text)}
-          />
-        )}
-        {deleting && (
-          <Confirm
-            title="Delete this conversation?"
-            message="It goes to the trash for 30 days. Drafts waiting for review are withdrawn."
-            confirmLabel="Delete"
-            danger
-            onClose={() => setDeleting(false)}
-            onConfirm={() => {
-              setDeleting(false);
-              void api.deleteThread(id).then(() => {
-                onChanged();
-                navigate("/marketing");
-              });
-            }}
-          />
-        )}
-      </section>
-      <Details thread={thread} code={code} />
-    </div>
-  );
-}
-
-/** The right-hand panel of a conversation: the post, the person, the group's rules, and
- * who did what. */
-function Details({ thread, code }: { thread: ThreadDetail; code: string | null }) {
-  const platforms = usePlatforms();
-  const [others, setOthers] = useState<number | null>(null);
-  const person = thread.person?.trim().toLowerCase() ?? "";
-
-  useEffect(() => {
-    if (!person) return;
-    let live = true;
-    api
-      .listThreads({ platform: thread.platform })
-      .then(
-        (list) =>
-          live &&
-          setOthers(list.items.filter((t) => t.person?.trim().toLowerCase() === person).length),
-      )
-      .catch(() => live && setOthers(null));
-    return () => {
-      live = false;
-    };
-  }, [thread.platform, person]);
-
-  const community = thread.community?.toLowerCase();
-  const rules = platforms
-    ?.find((p) => p.slug === thread.platform)
-    ?.communities.find((c) => c.name.toLowerCase() === community)?.notes;
-  const posted = thread.messages.filter((m) => m.state === "posted");
-
-  return (
-    <aside className="mk-details" aria-label="Details">
-      <section>
-        <h2>The post</h2>
-        <p className="small">
-          {thread.platform_name}
-          {thread.community && (
-            <>
-              {" · "}
-              <strong>{thread.community}</strong>
-            </>
+        <div className="row mk-thread-actions">
+          <span className={`pill pill-thread-${thread.status}`}>{STATUS_NAME[thread.status]}</span>
+          {thread.can_close &&
+            (closed ? (
+              <button
+                className="button button-small"
+                onClick={() => void run("reopen", () => api.reopenThread(id))}
+              >
+                Reopen
+              </button>
+            ) : (
+              <button
+                className="button button-small"
+                onClick={() => void run("close", () => api.closeThread(id))}
+              >
+                Close
+              </button>
+            ))}
+          {thread.can_delete && (
+            <button className="button button-small button-danger" onClick={() => setDeleting(true)}>
+              Delete
+            </button>
           )}
-        </p>
-        {code && (
-          <p className="small muted">
-            Code <span className="mono">{code}</span>
-          </p>
-        )}
-        {thread.original_url && (
-          <a className="small" href={thread.original_url} target="_blank" rel="noopener noreferrer">
-            Open on {thread.platform_name} ↗
-          </a>
-        )}
-      </section>
-      {thread.person && (
-        <section>
-          <h2>The person</h2>
-          <p className="small">
-            <strong>{thread.person}</strong>
-          </p>
-          {others !== null && (
-            <p className="small muted">
-              {others > 1 ? `${others} conversations with us` : "First conversation with us"}
-            </p>
-          )}
-        </section>
+        </div>
+      </header>
+      <div className="mk-messages">
+        {note && <Alert kind="info">{note}</Alert>}
+        {error && <Alert kind="error">{error}</Alert>}
+        {ordered.map((m, i) => {
+          const parent = m.parent_id ? byId.get(m.parent_id) : undefined;
+          // Say what they answered when it isn't simply the message above.
+          const answered =
+            m.author === "them" && parent && ordered[i - 1]?.id !== parent.id ? parent : undefined;
+          return (
+            <Message
+              key={m.id}
+              message={m}
+              answered={answered}
+              thread={thread}
+              busy={busy}
+              closed={closed}
+              onRun={run}
+              onChanged={load}
+            />
+          );
+        })}
+        <div ref={end} />
+      </div>
+      {closed ? (
+        <p className="mk-closed muted">This conversation is closed. Reopen it to continue.</p>
+      ) : (
+        <Composer
+          thread={thread}
+          replyTo={replyTo}
+          onAdded={setThread}
+          onError={(text) => setError(text)}
+        />
       )}
-      {thread.community && (
-        <section>
-          <h2>Group rules</h2>
-          {rules ? (
-            <p className="mk-rules small">{rules}</p>
-          ) : (
-            <p className="small muted">
-              No notes for this group yet. The Owner can add them in Settings → Platforms.
-            </p>
-          )}
-        </section>
+      {deleting && (
+        <Confirm
+          title="Delete this conversation?"
+          message="It goes to the trash for 30 days. Drafts waiting for review are withdrawn."
+          confirmLabel="Delete"
+          danger
+          onClose={() => setDeleting(false)}
+          onConfirm={() => {
+            setDeleting(false);
+            void api.deleteThread(id).then(() => {
+              onChanged();
+              navigate("/marketing");
+            });
+          }}
+        />
       )}
-      <section>
-        <h2>Activity</h2>
-        {thread.created_by && (
-          <p className="small muted">
-            Started by {thread.created_by.name} · {ago(thread.created_at)}
-          </p>
-        )}
-        {posted.map((m) => (
-          <p key={m.id} className="small muted">
-            Posted by {m.posted_by?.name ?? "us"} · {ago(m.posted_at ?? m.created_at)}
-          </p>
-        ))}
-        <p className="small muted">Last activity {ago(thread.last_activity_at)}</p>
-      </section>
-    </aside>
+    </section>
   );
 }
 
