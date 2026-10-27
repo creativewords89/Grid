@@ -13,15 +13,18 @@ SQLAlchemy, React, Caddy, encrypted write-only keys) by copying, not importing.
 ## 1. Goals
 
 - One sign-in for the team; roles decide what each person can do (section 3).
-- **Import** lead files (`.xlsx`) from the browser: clean, merge duplicates, give Lead IDs,
-  preview, then write them to the Master Sheet.
-- **Agents** screen: switch each agent on or off, set its daily limit, run time, budget and
-  its own settings, press **Run now** or **Stop**.
+- **Batches:** make a batch (a name, one niche, one benchmark), then add lead files (`.xlsx`)
+  to it from the browser: clean, merge duplicates, give Lead IDs, preview, then write them to
+  the Master Sheet.
+- **Agents** screen: switch each agent on or off, choose the batches it works through (in
+  order), set its daily limit, run time, budget and its own settings, press **Run now** or
+  **Stop**.
 - **Connections** screen: enter API keys and accounts (DataForSEO, Google service account,
   Master Sheet, Drive folder, PageSpeed, SMTP, Telegram) with a **Test** button each. Keys are
   encrypted and never shown again.
 - **Runs** and **Overview**: what ran, what failed, what it cost, today and this month.
-- **Benchmarks** (GBP, uploaded as Excel) and **Website Standards** (per niche, a form).
+- **Benchmarks:** named sets per niche ("Cleaning Benchmark 1") with the GBP numbers and the
+  Website Standard, in a form; not tied to a city.
 - **Alerts** by email and Telegram when something needs a person.
 - Every permission is enforced on the server.
 
@@ -69,7 +72,7 @@ cold-outreach/
         agents/            registry, manifests, agent API, tokens
         runs/              scheduling, budgets, stale runs
         imports/           xlsx reading, header synonyms, cleaning, merging, Sheet writing
-        benchmarks/        GBP benchmark upload, Website Standards
+        benchmarks/        the benchmark's shape (GBP numbers, Website Standard)
         alerts/            email, Telegram, daily summary
         google/            Sheets and Drive clients
         audit.py
@@ -82,12 +85,11 @@ cold-outreach/
 
 | Action | Owner | Admin | Viewer |
 |---|---|---|---|
-| See Overview, Runs, Agents, Imports, Benchmarks, Website Standards | ✔ | ✔ | ✔ |
-| Upload and confirm an import | ✔ | ✔ | ✘ |
+| See Overview, Runs, Agents, Batches, Benchmarks | ✔ | ✔ | ✔ |
+| Make, rename or delete a batch; add and confirm its files | ✔ | ✔ | ✘ |
 | Switch an agent on/off, press Run now or Stop | ✔ | ✔ | ✘ |
-| Change an agent's limit, run time, budget and settings | ✔ | ✔ | ✘ |
-| Upload benchmarks, create or edit a Website Standard draft | ✔ | ✔ | ✘ |
-| Lock (publish) a Website Standard version | ✔ | ✘ | ✘ |
+| Change an agent's batches, limit, run time, budget and settings | ✔ | ✔ | ✘ |
+| Make, change or delete a benchmark | ✔ | ✔ | ✘ |
 | See or change Connections (keys, accounts) | ✔ | ✘ | ✘ |
 | Change the total daily budget | ✔ | ✘ | ✘ |
 | Add an agent, show or replace an agent's token | ✔ | ✘ | ✘ |
@@ -126,13 +128,13 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 |---|---|
 | `users`, `sessions`, `auth_tokens`, `login_attempts` | as in the Answer Engine; `role` is `owner`, `admin` or `viewer`; `alert_email` |
 | `settings` | key → JSON; `connections` values encrypted (section 6.1); `budget.daily_total_usd`; alert thresholds |
-| `agents` | `key` (e.g. `gbp-audit`), `name`, `enabled`, `token_hash`, `manifest` JSON, `manifest_version`, `config` JSON (the values set in the Hub), `daily_limit`, `run_time`, `time_zone`, `daily_budget_usd`, `last_seen_at` |
+| `agents` | `key` (e.g. `gbp-audit`), `name`, `enabled`, `token_hash`, `manifest` JSON, `config` JSON (the values set in the Hub), `batch_ids` (its batches, in order), `daily_limit`, `run_time`, `time_zone`, `daily_budget_usd`, `last_seen_at` |
 | `runs` | `agent_id`, `trigger` (`schedule`/`manual`), `status` (`queued`, `running`, `succeeded`, `failed`, `stopped`, `timed_out`), `queued_at`, `started_at`, `finished_at`, `heartbeat_at`, counts `done`/`failed`/`skipped`, `cost_usd`, `stop_reason`, `summary` JSON, `requested_by` |
-| `imports` | `file_name`, `niche`, `uploaded_by`, `status` (`preview`, `confirmed`, `failed`, `discarded`), counts, `preview` JSON, `errors` JSON |
-| `leads` | the Lead ID registry: `lead_id` (`L-000123`), `niche`, `city`, `business_name`, `level`, `gbp_link`, `phone_digits`, `website_domain`, `emails`, `first_import_id`, `last_import_id`. The full row lives in the Sheet. |
+| `benchmarks` | `name` (unique, e.g. "Cleaning Benchmark 1"), `niche`, `gbp` JSON (the numbers of PLAN.md 3.5; a missing one isn't compared), `website` JSON (the Website Standard), `version` (raised by every change of either), `updated_by` |
+| `batches` | `name` (unique, typed by the team), `niche`, `benchmark_id` (required; empty only for leads moved in from before batches), `created_by` |
+| `imports` | `batch_id`, `file_name`, `niche`, `uploaded_by`, `status` (`preview`, `confirmed`, `failed`, `discarded`), counts, `preview` JSON, `errors` JSON |
+| `leads` | the Lead ID registry: `lead_id` (`L-000123`), `batch_id` (the batch it was first imported into), `niche`, `city`, `business_name`, `level`, `gbp_link`, `phone_digits`, `website_domain`, `emails`, `first_import_id`, `last_import_id`. The full row lives in the Sheet. |
 | `lists` | one per City + Niche: `active`, optional `daily_limit` |
-| `gbp_benchmarks` | one per City + Niche: the columns of PLAN.md 3.5, `reference_businesses`, `import_id` |
-| `website_standards` | `niche`, `version`, `status` (`draft`/`locked`), `standard` JSON, `locked_by`, `locked_at` |
 | `do_not_contact` | `kind` (`email`, `phone`, `gbp`, `domain`), `value`, `reason` (`top`, `opt_out`, `manual`), `lead_id` |
 | `alerts` | what was sent, to whom, on which channel, when |
 | `audit_log` | who did what (sign-ins, settings changes, connection changed/removed, imports, runs started/stopped). Never secret values. |
@@ -184,22 +186,32 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 - **Agent API** (token in `Authorization: Bearer`), all under `/api/agent/v1`:
   - `GET /next-run`: when a run is queued and the agent is on, the Hub marks it `running` and
     returns the run id, the trigger, the agent's settings, its daily limit and **only the
-    connections its manifest declared** (from step 5, also the budget left). Otherwise `204`;
-    `409` until the manifest was sent. Agents poll every 30 s.
+    connections its manifest declared** (from step 5, also the budget left), and its
+    **batches** in its order (`id`, `name`, `niche`, `benchmark_id`, `benchmark_version`;
+    batches without a benchmark left out). Otherwise `204`; `409` until the manifest was
+    sent. Agents poll every 30 s.
   - `POST /runs/{id}/progress`: counts and cost so far; the reply says `continue` or `stop`
     (agent switched off; from step 5 also Stop pressed and budgets used up). This is also the
     heartbeat.
   - `POST /runs/{id}/finish`: final counts, cost, `stop_reason`, failures summary.
-  - Reference data: `GET /lists` (City + Niche, on or off, limit), `GET /benchmarks?niche=&city=`,
-    `GET /website-standards/{niche}` (latest locked, `404` when none) and
-    `GET /do-not-contact/check?email=&phone=&gbp=&domain=` (`blocked` and why).
+  - Reference data: `GET /batches` (as in `next-run`), `GET /batches/{id}/leads` (each lead's
+    Lead ID, city and Level; the full rows are in the Leads tab), `GET /benchmarks/{id}` (the
+    GBP numbers, the Website Standard and the `version`), `GET /lists` (City + Niche, on or
+    off, limit) and `GET /do-not-contact/check?email=&phone=&gbp=&domain=` (`blocked` and
+    why).
+- **Batches and benchmark changes:** an agent works through its batches in order, the first
+  until nothing is left to do, then the next; with nothing left it finishes the run at once
+  and waits for new files. It notes each lead's benchmark id and version with its result;
+  when the batch's benchmark or its version has changed, it checks the lead again against
+  the new one (from the data it already saved where it can, so no new provider cost).
 - An agent can only see and change its own runs (another agent's run id is a `404`). Secrets
   are never logged on either side.
 - **Run now** (Owners and Admins) queues a manual run. It is refused while the agent is off,
   before it has ever connected, or while it already has a run waiting or in progress. A
   database rule keeps it to one queued or running run per agent even if two clicks race.
-- `agents/demo/agent.py` is a demo agent (Python standard library only) that pretends to work
-  through items, for trying the switches, settings and Run now.
+- `agents/demo/agent.py` is a demo agent (Python standard library only) that pretends to audit
+  the leads of its batches (Top leads skipped), for trying batches, switches, settings and Run
+  now.
 
 ### 6.3 Scheduling, runs and budgets
 
@@ -228,11 +240,18 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
   **Overview:** today's and this month's spending against the total budget, and each agent's
   on/off, connection, last run, next run and spending today.
 
-### 6.4 Import
+### 6.4 Batches and import
 
-1. **Upload** (Owner, Admin): an `.xlsx` (max 20 MB) and its **Niche** (typed, or picked from the
-   niches already used; a different case uses the existing spelling). Reading a large file
-   (4,000 rows, 248 tabs) takes about 15 seconds.
+0. **Batches** (Owners and Admins make them): a **name** typed by the team (unique, case
+   ignored), **one niche** (typed or picked; a different case uses the existing spelling) and
+   **one benchmark of that niche** (required). The order of work is: make a benchmark, make a
+   batch with it, add files. Files can be added to a batch at any time, also to old batches.
+   A batch can change to another benchmark of its niche at any time; it can be renamed only
+   while it has no leads (the Leads tab shows its name) and deleted only while it has no leads
+   and no files. Agents work through the batches chosen for them (section 6.2). Batches have
+   no on/off switch: an agent with nothing left to do waits.
+1. **Upload** (Owner, Admin): an `.xlsx` (max 20 MB) **into a batch**; its niche is the
+   batch's. Reading a large file (4,000 rows, 248 tabs) takes about 15 seconds.
 2. **Reading each tab:** the header row is the first of the first five rows with two known
    headers. Header synonyms (case, spaces and punctuation ignored): GBP Link ← `MAP`, `Map URL`,
    `MAP URl`, `Maps`, `GBP`; WhatsApp ← `WA`, `WP`, `Whatsapp`; Email ← `E-mail`, `Gmail`,
@@ -249,17 +268,20 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    (name + city when a row has no GBP link, phone or address). So a brand with one phone number
    and a profile in each city stays one lead per profile. Merged rows pool their emails; an
    empty field is filled from the other row; when both have a value the first row's is kept;
-   Top wins.
+   Top wins. **A business is in one batch only**, the one it was first imported into: found in
+   a file added to another batch, it is listed as "already in another batch", stays where it
+   is, and its new details (an email, a phone) are still added.
 5. **Level:** `Top` (any case) from the optional `Level` column. A file without a Level column
    never changes anyone's Level. Top leads put their email(s), phone and GBP link on the
    do-not-contact list (reason `top`); losing Top removes those entries.
-6. **Preview** (nothing written but the import): businesses, new, already known (updated),
+6. **Preview** (nothing written but the import): businesses, new, already known in this
+   batch (updated), already in another batch,
    duplicates merged, Top, cities, without a GBP link, without a website, rows skipped, emails
    that look wrong, with up to 25 examples of each, plus new lists, ignored columns and empty
    tabs. A waiting preview reopens when the screen is opened again.
 7. **Confirm** (needs the Google connection): Lead IDs continue from the highest one saved
    (`L-000001` …), one import at a time; the registry, lists and do-not-contact list are updated;
-   the Leads tab is written. A new Sheet gets a Leads tab with the header row; missing headers
+   the Leads tab is written, with each lead's **Batch** name. A new Sheet gets a Leads tab with the header row; missing headers
    are added at the end. Rows are found by Lead ID and columns by header name; new leads are
    appended, known ones updated in place, **only the import's columns**, and an empty value
    never blanks a filled cell. Every value is written as plain text (`RAW`), so a cell starting
@@ -267,27 +289,31 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    retried after Google's "too many requests". If the Sheet can't be written, nothing is saved
    and the same Lead IDs are used on the next try. Once confirmed, the import keeps only its
    counts.
-8. **Lists** (one per City + Niche) are created by confirmed imports and shown on the Import
+8. **Lists** (one per City + Niche) are created by confirmed imports and shown on the Batches
    screen with their businesses and Top counts; Owners and Admins switch a list on or off.
 
-### 6.5 Benchmarks and Website Standards
+### 6.5 Benchmarks
 
-- **GBP Benchmark file** (Owners and Admins): an `.xlsx` (max 5 MB), any sheet whose header row
-  (within the first five rows) has City and Niche. Columns: Additional categories, Services,
-  Photos, Posts (90 days), Description length, Reviews, Rating (0–5), Review reply % ("85%" or
-  0.85), Reference businesses; other columns are listed and ignored. **Check the file** shows
-  the rows, the rows that replace an existing City + Niche (case ignored), and every problem by
-  row (not a number, out of range, City or Niche missing, a pair twice). **Save** works only on
-  a file without problems. An empty cell means "don't compare this". A benchmark can be deleted.
-- **Website Standard** (one per niche): services (name, other names, must-have or not);
-  service pages (words, sections, FAQ, price, own photos, reviews, call to action, service
-  area); location pages (words, city in title, local content, local photos, all services
-  linked, local reviews, map, city FAQ, call to action, most text shared with another location
-  page); supporting pages; blog posts a month and topics; mobile LCP target. Owners and Admins
-  edit **one draft** per niche (starting from the version in use); an **Owner locks** it as the
-  next version (`cleaning-v2`), which needs at least one must-have service. Older versions stay
-  readable. Agents only ever see the latest locked version; a niche without one is
-  `NO_STANDARD`.
+- A **benchmark** is a named set such as "Cleaning Benchmark 1" (unique name, case ignored),
+  of one niche, made, changed and deleted by Owners and Admins in a form (no file upload). A
+  niche can have several. It **doesn't depend on city or competition**.
+- **GBP part:** additional categories, services, photos, posts in 90 days, description length
+  (characters), reviews, rating (0–5), review replies (%). An empty box means "don't compare
+  this". (Reviews are shown in reports, not scored: PLAN.md section 5.)
+- **Website part (the Website Standard):** services (name, other names, must-have or not; at
+  least one must-have); service pages (words, sections, FAQ, price, own photos, reviews, call
+  to action, service area); location pages (words, city in title, local content, local
+  photos, all services linked, local reviews, map, city FAQ, call to action, most text shared
+  with another location page); supporting pages; blog posts a month and topics; mobile LCP
+  target.
+- **Copy** starts a new benchmark from an existing one. Every change of the numbers or the
+  standard raises the **version** (renaming doesn't); the agents then check the leads of
+  every batch that uses it again (section 6.2). A benchmark used by a batch can't be deleted.
+  The editor says which batches use it.
+- Moving in from before batches (migration `0009`): each niche's City + Niche benchmarks were
+  averaged and joined with its latest locked (else draft) Website Standard as
+  "<Niche> Benchmark 1"; leads and files went into "Batch 1 · <Niche>", with that benchmark
+  when there was one (a batch without one is skipped by agents until one is chosen).
 
 ### 6.6 Alerts
 
@@ -317,13 +343,19 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 2. **Overview:** today's and this month's cost against budgets; each agent's last run,
    status and next run; recent alerts and the alert settings; leads by list and how many each
    agent has done.
-3. **Import:** upload box with the Niche picker; the preview; past imports with counts; the
-   Lists (City + Niche) with their on/off switches.
-4. **Agents:** one card per agent: on/off switch, last run, next run, today's cost, Run now,
-   Stop; **Settings** opens the form built from the manifest.
-5. **Runs:** filter by agent and status; each run's counts, cost, stop reason and failures.
-6. **Benchmarks:** GBP benchmarks by City + Niche, upload; **Website Standards** per Niche
-   with versions, draft editor and Lock.
+3. **Benchmarks** (in the menu before Batches): the benchmarks with niche, version, the
+   batches that use them and when they changed; **+ New benchmark**, Edit, Copy, Delete (when
+   unused); the editor has the GBP numbers and the Website Standard.
+4. **Batches:** the batches with niche, benchmark, businesses (and Top), files and agents;
+   **+ New batch** (name, niche, a benchmark of that niche; a link to Benchmarks when the
+   niche has none). A batch opens to its benchmark choice, rename and delete (when allowed),
+   **Add a lead file**, the preview and its past files. The Lists (City + Niche) with their
+   on/off switches follow the batches. `/import` opens Batches.
+5. **Agents:** one card per agent: on/off switch, the batches it works on ("Works on: A →
+   B", or a warning when none), last run, next run, today's cost, Run now, Stop; **Settings**
+   opens the form: batches (add, move up or down, remove), limits, and the manifest's
+   settings.
+6. **Runs:** filter by agent and status; each run's counts, cost, stop reason and failures.
 7. **Connections** (Owner), **Users** (Owner), **History** (Owner: who did what, newest
    first, filtered by area; a connection change only says "(changed)"), **Profile**.
 
@@ -331,8 +363,9 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 
 `/health`, `/setup`, `/auth/*`, `/me`, `/users`, `/connections` (+ `/{group}/test`),
 `/agents` (+ `/{key}/enabled`, `/{key}/run`, `/{key}/stop`, `/{key}/token`), `/runs`,
-`/overview`, `/budget`, `/imports` (upload → preview, `/{id}/confirm`, `/{id}/discard`),
-`/niches`, `/lists`, `/benchmarks` (+ `/upload`), `/website-standards`, `/alerts`,
+`/overview`, `/budget`, `/benchmarks` (+ `/{id}`), `/batches` (+ `/{id}`), `/imports`
+(upload into a batch → preview, `?batch_id=`, `/{id}/confirm`, `/{id}/discard`), `/niches`,
+`/lists`, `/alerts`,
 `/alert-settings`, `/history`, and the agent API (section 6.2). Every user endpoint checks
 `permissions.can`; every write checks CSRF.
 
@@ -408,3 +441,12 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
    History screen, `ops/deploy.md`, Playwright e2e (create the Owner → Connections → Import →
    demo agent run → Runs → History) with a fake Google, in CI. **Tests:** History is Owner-only
    and holds no secrets, the key file's `token_uri` is ignored, request ids, backup alerts.
+10. **Batches and named benchmarks** (asked for after step 9): benchmarks as named sets per
+    niche with GBP numbers and the Website Standard, not by city, versioned on change;
+    batches (name, one niche, one benchmark) that files are added to; one business in one
+    batch; the Batch column in the Leads tab; agents' ordered batches and the agent API for
+    them; migration of the old benchmarks, standards and leads; Benchmarks and Batches
+    screens, the batch chooser in agent settings; the demo agent works on its batches.
+    **Tests:** benchmark rules and versions, batch rules (benchmark of the niche, rename and
+    delete only when empty), a business stays in its first batch, agents' batch order and
+    skipping batches without a benchmark, the data migration, e2e through a batch.

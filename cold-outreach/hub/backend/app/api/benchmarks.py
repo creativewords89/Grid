@@ -1,277 +1,189 @@
-"""`/api/benchmarks` and `/api/website-standards`: the Benchmarks screen (SPEC section 6.5).
+"""`/api/benchmarks`: the Benchmarks screen (SPEC sections 6.5 and 7).
 
-GBP benchmarks come from an Excel file: upload with `apply=false` to see what it holds, then
-again with `apply=true` to save it; each City + Niche row replaces that pair's benchmark.
-Website Standards are edited as drafts by Owners and Admins and locked into numbered versions
-by Owners; agents only ever see locked versions.
+A benchmark is a named set, such as "Cleaning Benchmark 1", of one niche: the GBP numbers a
+good profile has and the Website Standard. It doesn't depend on city or competition. Each
+batch uses one benchmark. Changing the numbers or the standard raises the version, and the
+agents check the leads of the batches that use it again.
 """
 
 import uuid
 from datetime import datetime
-from decimal import Decimal
 from typing import Annotated, Any
 
-from fastapi import APIRouter, File, Form, UploadFile
-from pydantic import BaseModel, ValidationError
+from fastapi import APIRouter
+from pydantic import BaseModel, Field, StringConstraints, ValidationError
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app import audit
+from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
-from app.auth.tokens import now
-from app.benchmarks import gbp
-from app.benchmarks.standard import Standard, version_label
-from app.db.models import GbpBenchmark, WebsiteStandard
+from app.benchmarks.standard import Gbp, Standard
+from app.db.models import Batch, Benchmark
 from app.errors import ApiError
-from app.imports.reader import ReadError
 from app.permissions import Action, can, ensure
 
 router = APIRouter(tags=["benchmarks"])
 
-MAX_BYTES = 5 * 1024 * 1024
+Text = Annotated[str, StringConstraints(strip_whitespace=True, max_length=120)]
 
 
 class BenchmarkOut(BaseModel):
     id: uuid.UUID
-    city: str
+    name: str
     niche: str
-    additional_categories: Decimal | None
-    services: Decimal | None
-    photos: Decimal | None
-    posts_90_days: Decimal | None
-    description_length: Decimal | None
-    reviews: Decimal | None
-    rating: Decimal | None
-    review_reply_pct: Decimal | None
-    reference_businesses: str
+    version: int
+    gbp: dict[str, Any]
+    website: dict[str, Any]
+    batches: list[str]  # the batches that use it
+    updated_by: str | None
     updated_at: datetime
-
-    @classmethod
-    def of(cls, row: GbpBenchmark) -> "BenchmarkOut":
-        return cls.model_validate(row, from_attributes=True)
+    can_edit: bool
 
 
-class UploadOut(BaseModel):
-    applied: bool
-    rows: list[dict[str, Any]]
-    errors: list[str]
-    ignored_columns: list[str]
-    replaces: int  # pairs that already had a benchmark
-
-
-def _find(db: Session, city: str, niche: str) -> GbpBenchmark | None:
-    return db.scalar(
-        select(GbpBenchmark).where(
-            func.lower(GbpBenchmark.city) == city.lower(),
-            func.lower(GbpBenchmark.niche) == niche.lower(),
-        )
+def out(db: Session, me: CurrentUser, row: Benchmark) -> BenchmarkOut:
+    batches = db.scalars(
+        select(Batch.name).where(Batch.benchmark_id == row.id).order_by(Batch.created_at)
     )
+    return BenchmarkOut(
+        id=row.id,
+        name=row.name,
+        niche=row.niche,
+        version=row.version,
+        gbp=row.gbp,
+        website=row.website,
+        batches=list(batches),
+        updated_by=row.editor.name if row.editor else None,
+        updated_at=row.updated_at,
+        can_edit=can(me, Action.EDIT_BENCHMARKS),
+    )
+
+
+def get_benchmark(db: Session, benchmark_id: uuid.UUID) -> Benchmark:
+    row = db.get(Benchmark, benchmark_id)
+    if row is None:
+        raise ApiError(404, "not_found", "That benchmark doesn't exist.")
+    return row
+
+
+def niche_spelling(db: Session, typed: str) -> str:
+    """A typed niche, spelt like an existing one when only the case differs."""
+    name = " ".join(typed.split())
+    if not name or len(name) > 80:
+        raise ApiError(422, "invalid", "Enter the niche, like Cleaning.", {"niche": "Required."})
+    known = db.scalars(select(Benchmark.niche).union(select(Batch.niche)))
+    return next((n for n in known if n.lower() == name.lower()), name)
+
+
+class BenchmarkIn(Strict):
+    name: Text
+    niche: Text | None = None  # only when creating: a benchmark's niche never changes
+    gbp: dict[str, Any] = Field(default_factory=dict)
+    website: dict[str, Any] = Field(default_factory=dict)
+
+
+def _check(body: BenchmarkIn) -> tuple[Gbp, Standard]:
+    fields: dict[str, str] = {}
+    if not body.name:
+        fields["name"] = "Name the benchmark, like Cleaning Benchmark 1."
+    checked: list[Any] = []
+    for prefix, model, value in (("gbp", Gbp, body.gbp), ("website", Standard, body.website)):
+        try:
+            checked.append(model.model_validate(value))
+        except ValidationError as error:
+            for item in error.errors():
+                where = ".".join([prefix, *(str(p) for p in item["loc"])])
+                message = str(item["msg"]).removeprefix("Value error, ")
+                fields.setdefault(where, message[:1].upper() + message[1:] + ".")
+    if fields:
+        raise ApiError(422, "invalid", next(iter(fields.values())), fields)
+    return checked[0], checked[1]
+
+
+def _name_taken(db: Session, name: str, other_than: uuid.UUID | None = None) -> None:
+    found = db.scalar(select(Benchmark.id).where(func.lower(Benchmark.name) == name.lower()))
+    if found is not None and found != other_than:
+        raise ApiError(409, "name_taken", "Another benchmark has this name.", {"name": "Taken."})
 
 
 @router.get("/benchmarks", response_model=list[BenchmarkOut])
 def list_benchmarks(me: CurrentUser, db: Db) -> list[BenchmarkOut]:
     ensure(me, Action.VIEW_HUB)
-    rows = db.scalars(select(GbpBenchmark).order_by(GbpBenchmark.niche, GbpBenchmark.city))
-    return [BenchmarkOut.of(row) for row in rows]
-
-
-@router.post("/benchmarks/upload", response_model=UploadOut)
-def upload_benchmarks(
-    me: CurrentUser,
-    db: Db,
-    file: Annotated[UploadFile, File()],
-    apply: Annotated[bool, Form()] = False,
-) -> UploadOut:
-    ensure(me, Action.EDIT_BENCHMARKS)
-    content = file.file.read(MAX_BYTES + 1)
-    if len(content) > MAX_BYTES:
-        raise ApiError(413, "too_large", "The file is over 5 MB.", {"file": "Over 5 MB."})
-    try:
-        report = gbp.read(content)
-    except ReadError as error:
-        raise ApiError(422, "unreadable", str(error), {"file": str(error)}) from None
-    existing = [_find(db, row["city"], row["niche"]) for row in report.rows]
-    out_rows = [
-        {k: (str(v) if isinstance(v, Decimal) else v) for k, v in r.items()} for r in report.rows
-    ]
-    result = UploadOut(
-        applied=False,
-        rows=out_rows,
-        errors=report.errors,
-        ignored_columns=report.ignored_columns,
-        replaces=sum(1 for found in existing if found is not None),
+    rows = db.scalars(
+        select(Benchmark)
+        .options(selectinload(Benchmark.editor))
+        .order_by(Benchmark.niche, Benchmark.created_at)
     )
-    if not apply:
-        return result
-    if report.errors:
-        raise ApiError(422, "has_errors", "Fix the rows listed first; nothing was saved.")
-    for row, found in zip(report.rows, existing, strict=True):
-        target = found or GbpBenchmark(city=row["city"], niche=row["niche"])
-        for name, value in row.items():
-            setattr(target, name, value)
-        target.updated_by = me.id
-        if found is None:
-            db.add(target)
-    audit.record(db, me, "upload", "benchmarks", None, file.filename, [{"rows": len(report.rows)}])
+    return [out(db, me, row) for row in rows]
+
+
+@router.get("/benchmarks/{benchmark_id}", response_model=BenchmarkOut)
+def read_benchmark(benchmark_id: uuid.UUID, me: CurrentUser, db: Db) -> BenchmarkOut:
+    ensure(me, Action.VIEW_HUB)
+    return out(db, me, get_benchmark(db, benchmark_id))
+
+
+@router.post("/benchmarks", response_model=BenchmarkOut, status_code=201)
+def create_benchmark(body: BenchmarkIn, me: CurrentUser, db: Db) -> BenchmarkOut:
+    ensure(me, Action.EDIT_BENCHMARKS)
+    niche = niche_spelling(db, body.niche or "")
+    gbp, website = _check(body)
+    _name_taken(db, body.name)
+    row = Benchmark(
+        name=body.name,
+        niche=niche,
+        gbp=gbp.model_dump(mode="json", exclude_none=True),
+        website=website.model_dump(mode="json"),
+        version=1,
+        updated_by=me.id,
+    )
+    db.add(row)
+    db.flush()
+    audit.record(db, me, "create", "benchmark", row.id, row.name, [])
     db.commit()
-    return result.model_copy(update={"applied": True})
+    return out(db, me, row)
+
+
+@router.put("/benchmarks/{benchmark_id}", response_model=BenchmarkOut)
+def update_benchmark(
+    benchmark_id: uuid.UUID, body: BenchmarkIn, me: CurrentUser, db: Db
+) -> BenchmarkOut:
+    """Save the name, numbers and standard. A change of the numbers or the standard is a new
+    version: agents check the leads of every batch that uses it again."""
+    ensure(me, Action.EDIT_BENCHMARKS)
+    row = get_benchmark(db, benchmark_id)
+    gbp, website = _check(body)
+    _name_taken(db, body.name, other_than=row.id)
+    before = {"name": row.name, "gbp": row.gbp, "website": row.website}
+    row.name = body.name
+    row.gbp = gbp.model_dump(mode="json", exclude_none=True)
+    row.website = website.model_dump(mode="json")
+    changes = audit.diff(before, {"name": row.name, "gbp": row.gbp, "website": row.website})
+    if any(change["field"] != "name" for change in changes):
+        row.version += 1
+    if changes:
+        row.updated_by = me.id
+        summary = [
+            {"field": c["field"], "from": c["from"], "to": c["to"]}
+            if c["field"] != "website"
+            else {"field": "website", "from": "…", "to": f"(version {row.version})"}
+            for c in changes
+        ]
+        audit.record(db, me, "edit", "benchmark", row.id, row.name, summary)
+    db.commit()
+    db.refresh(row)
+    return out(db, me, row)
 
 
 @router.delete("/benchmarks/{benchmark_id}", status_code=204)
 def delete_benchmark(benchmark_id: uuid.UUID, me: CurrentUser, db: Db) -> None:
     ensure(me, Action.EDIT_BENCHMARKS)
-    row = db.get(GbpBenchmark, benchmark_id)
-    if row is None:
-        raise ApiError(404, "not_found", "That benchmark doesn't exist.")
-    audit.record(db, me, "delete", "benchmark", row.id, f"{row.city} · {row.niche}", [])
+    row = get_benchmark(db, benchmark_id)
+    used = db.scalar(select(func.count()).select_from(Batch).where(Batch.benchmark_id == row.id))
+    if used:
+        raise ApiError(
+            409, "in_use", "Batches use this benchmark. Choose another one for them first."
+        )
+    audit.record(db, me, "delete", "benchmark", row.id, row.name, [])
     db.delete(row)
     db.commit()
-
-
-# --- Website Standards ----------------------------------------------------------------------
-
-
-class StandardVersionOut(BaseModel):
-    version: int | None
-    label: str | None
-    standard: dict[str, Any]
-    edited_by: str | None
-    edited_at: datetime
-    locked_by: str | None
-    locked_at: datetime | None
-
-    @classmethod
-    def of(cls, row: WebsiteStandard) -> "StandardVersionOut":
-        return cls(
-            version=row.version,
-            label=version_label(row.niche, row.version) if row.version else None,
-            standard=row.standard,
-            edited_by=row.editor.name if row.editor else None,
-            edited_at=row.edited_at,
-            locked_by=row.locker.name if row.locker else None,
-            locked_at=row.locked_at,
-        )
-
-
-class NicheStandardOut(BaseModel):
-    niche: str
-    locked: StandardVersionOut | None
-    draft: StandardVersionOut | None
-    versions: list[int]
-    can_edit: bool
-    can_lock: bool
-
-
-def _rows(db: Session, niche: str) -> list[WebsiteStandard]:
-    return list(
-        db.scalars(
-            select(WebsiteStandard)
-            .where(func.lower(WebsiteStandard.niche) == niche.lower())
-            .order_by(WebsiteStandard.version.desc().nulls_first())
-        )
-    )
-
-
-def _niche_out(db: Session, me: CurrentUser, niche: str) -> NicheStandardOut:
-    rows = _rows(db, niche)
-    draft = next((r for r in rows if r.version is None), None)
-    locked = [r for r in rows if r.version is not None]
-    return NicheStandardOut(
-        niche=rows[0].niche if rows else niche,
-        locked=StandardVersionOut.of(locked[0]) if locked else None,
-        draft=StandardVersionOut.of(draft) if draft else None,
-        versions=[r.version for r in locked if r.version is not None],
-        can_edit=can(me, Action.EDIT_BENCHMARKS),
-        can_lock=can(me, Action.LOCK_STANDARD),
-    )
-
-
-@router.get("/website-standards", response_model=list[NicheStandardOut])
-def list_standards(me: CurrentUser, db: Db) -> list[NicheStandardOut]:
-    ensure(me, Action.VIEW_HUB)
-    niches = db.scalars(select(WebsiteStandard.niche).distinct().order_by(WebsiteStandard.niche))
-    return [_niche_out(db, me, niche) for niche in niches]
-
-
-@router.get("/website-standards/{niche}", response_model=NicheStandardOut)
-def get_standard(niche: str, me: CurrentUser, db: Db) -> NicheStandardOut:
-    ensure(me, Action.VIEW_HUB)
-    return _niche_out(db, me, niche)
-
-
-@router.get("/website-standards/{niche}/versions/{version}", response_model=StandardVersionOut)
-def get_version(niche: str, version: int, me: CurrentUser, db: Db) -> StandardVersionOut:
-    ensure(me, Action.VIEW_HUB)
-    row = next((r for r in _rows(db, niche) if r.version == version), None)
-    if row is None:
-        raise ApiError(404, "not_found", "That version doesn't exist.")
-    return StandardVersionOut.of(row)
-
-
-def _check(body: dict[str, Any]) -> Standard:
-    try:
-        return Standard.model_validate(body)
-    except ValidationError as error:
-        fields = {
-            ".".join(str(p) for p in item["loc"]) or "standard": str(item["msg"])
-            for item in error.errors()
-        }
-        raise ApiError(422, "invalid", next(iter(fields.values())), fields) from None
-
-
-@router.put("/website-standards/{niche}/draft", response_model=NicheStandardOut)
-def save_draft(niche: str, body: dict[str, Any], me: CurrentUser, db: Db) -> NicheStandardOut:
-    ensure(me, Action.EDIT_BENCHMARKS)
-    name = " ".join(niche.split())
-    if not name or len(name) > 80:
-        raise ApiError(422, "invalid", "Name the niche.", {"niche": "Required."})
-    standard = _check(body)
-    rows = _rows(db, name)
-    draft = next((r for r in rows if r.version is None), None)
-    if draft is None:
-        draft = WebsiteStandard(niche=rows[0].niche if rows else name, version=None, standard={})
-        db.add(draft)
-    draft.standard = standard.model_dump(mode="json")
-    draft.edited_by = me.id
-    draft.edited_at = now()
-    audit.record(db, me, "edit", "website_standard", draft.niche, f"{draft.niche} draft", [])
-    db.commit()
-    return _niche_out(db, me, name)
-
-
-@router.delete("/website-standards/{niche}/draft", response_model=NicheStandardOut)
-def drop_draft(niche: str, me: CurrentUser, db: Db) -> NicheStandardOut:
-    ensure(me, Action.EDIT_BENCHMARKS)
-    draft = next((r for r in _rows(db, niche) if r.version is None), None)
-    if draft is None:
-        raise ApiError(404, "not_found", "There is no draft.")
-    db.delete(draft)
-    db.commit()
-    return _niche_out(db, me, niche)
-
-
-@router.post("/website-standards/{niche}/lock", response_model=NicheStandardOut)
-def lock(niche: str, me: CurrentUser, db: Db) -> NicheStandardOut:
-    """The draft becomes the next version; the Website agent uses it from its next run."""
-    ensure(me, Action.LOCK_STANDARD)
-    rows = _rows(db, niche)
-    draft = next((r for r in rows if r.version is None), None)
-    if draft is None:
-        raise ApiError(409, "no_draft", "There is no draft to lock.")
-    problem = Standard.model_validate(draft.standard).ready_problem()
-    if problem:
-        raise ApiError(422, "not_ready", problem)
-    draft.version = max((r.version or 0 for r in rows), default=0) + 1
-    draft.locked_by = me.id
-    draft.locked_at = now()
-    audit.record(
-        db,
-        me,
-        "lock",
-        "website_standard",
-        draft.niche,
-        version_label(draft.niche, draft.version),
-        [],
-    )
-    db.commit()
-    return _niche_out(db, me, niche)

@@ -140,8 +140,10 @@ first start, and the DNS record (step 3) must already work.
    stop using it, press **Remove**.
 4. **Overview** → set the total daily budget, the time zone, and the alert settings.
 5. **Users** → invite the team (Admins can run things; Viewers can only look).
-6. **Import** → upload the first lead file, check the preview and send it to the Master
-   Sheet.
+6. **Benchmarks** → **+ New benchmark** for each niche (for example "Cleaning Benchmark 1"):
+   the GBP numbers and the website part.
+7. **Batches** → **+ New batch**: a name, the niche and its benchmark. Open the batch, add
+   the first lead file, check the preview and send it to the Master Sheet.
 
 ## 7. Start an agent
 
@@ -168,8 +170,9 @@ to the internet.
      -v "$PWD/agents/demo:/agent:ro" python:3.12-slim python /agent/agent.py
    ```
 
-3. Back on **Agents**, the card says **Connected** within a minute. Check its **Settings**,
-   switch it **on**, and press **Run now** to try it. **Runs** shows how it went. Remove the
+3. Back on **Agents**, the card says **Connected** within a minute. In its **Settings**,
+   **Add a batch** (the agent works through its batches in order), switch it **on**, and
+   press **Run now** to try it. **Runs** shows how it went. Remove the
    demo agent afterwards with `docker rm -f demo-agent` (and switch it off in the Hub).
 
 ## 8. Backups

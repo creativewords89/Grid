@@ -9,7 +9,7 @@ This file holds the decisions that apply to the whole system. Each part has its 
 
 | Part | Spec | State |
 |---|---|---|
-| Agent Hub | [hub/SPEC.md](hub/SPEC.md) | Built (steps 1–9 done); ready to install |
+| Agent Hub | [hub/SPEC.md](hub/SPEC.md) | Built and installed (steps 1–9); step 10, batches and named benchmarks, done |
 | GBP audit agent | `agents/gbp-audit/SPEC.md` | Decided (section 5), spec written before its build |
 | Website audit agent | `agents/website-audit/SPEC.md` | Decided (section 6), spec written before its build |
 | Social media audit agent | `agents/social-audit/SPEC.md` | Data source not decided |
@@ -43,8 +43,8 @@ This file is the record; where it and an older message disagree, this file wins.
 
 ```
                  ┌──────────────── AGENT HUB (hub.gridrankers.com) ────────────────┐
-                 │ Sign-in · Import · Agents (on/off, limits) · Runs · Connections  │
-                 │ Benchmarks · Website Standards · Users · Alerts (email/Telegram)│
+                 │ Sign-in · Benchmarks · Batches · Agents (on/off, batches) · Runs │
+                 │ Connections · Users · History · Alerts (email/Telegram)         │
                  └───────┬───────────────┬───────────────┬───────────────┬─────────┘
                          ▼               ▼               ▼               ▼
                    ① GBP audit     ② Website audit  ③ Social audit  ④ Outreach agents
@@ -72,7 +72,7 @@ This file is the record; where it and an older message disagree, this file wins.
 |---|---|---|
 | Leads and each agent's result columns | **Master Google Sheet**, Leads tab | The team reads and filters it every day |
 | Full audit results | **Google Drive**: `leads/{Lead ID}/gbp.json`, `website.json`, `social.json`, older ones in `history/`; reports as PDF next to them | Too big for a cell; the next agents read them |
-| Users, secrets, settings, agents, runs, costs, imports, Lead ID registry, benchmarks, Website Standards | **Hub database** (PostgreSQL) | Needs exact state and access control |
+| Users, secrets, settings, agents, runs, costs, batches, imports, Lead ID registry, benchmarks | **Hub database** (PostgreSQL) | Needs exact state and access control |
 | Outreach later (emails sent, replies, opt-outs, follow-up dates, do-not-contact list) | **Hub database** | A sent email must never be sent twice; an opt-out must never be emailed again |
 
 The Sheet may show an `Outreach Status` column for reading only.
@@ -90,10 +90,15 @@ The Sheet may show an `Outreach Status` column for reading only.
 
 ### 3.3 Lead files the team uploads
 
-- The team uploads `.xlsx` files in the Hub (**Import** screen). The template is the current
-  one: one tab per city, columns `Business name, MAP, Address, City, Website, Phone, WA,
-  Facebook, Instagram, Email, Reviews, Average`, plus an optional `Level` column.
-- **One Niche per file**, chosen when uploading (for example Cleaning, Construction).
+- Work is organised in **batches**: the team makes a batch (a name they choose, **one
+  niche**, **one benchmark** of that niche), then adds `.xlsx` files to it in the Hub
+  (**Batches** screen), at any time and also to old batches. Agents work through the batches
+  chosen for them, in order, and wait when nothing is left.
+- **A business is in one batch only**, the one it was first imported into; found again in
+  another batch's file, it stays where it is (its new details are added).
+- The file template is the current one: one tab per city, columns `Business name, MAP,
+  Address, City, Website, Phone, WA, Facebook, Instagram, Email, Reviews, Average`, plus an
+  optional `Level` column. The niche is the batch's.
 - The Hub accepts the header spellings already in use (`Map URL`, `MAP URl`, `Whatsapp`,
   `WP`, `E-mail`, `Gmail`, `Number of Reviews`, `Ratings`, `Average Ratings` …), takes the
   city from the tab name when there is no City column, trims spaces and line breaks, and
@@ -123,17 +128,18 @@ The Sheet may show an `Outreach Status` column for reading only.
 
 ### 3.5 Benchmarks
 
-Benchmarks are **uploaded by the team**, not computed from Top businesses.
+Benchmarks are **set by the team**, not computed from Top businesses, and **don't depend on
+city or competition**.
 
-- **GBP Benchmark**: an Excel file, one row per City + Niche (Hub screen **Benchmarks**).
-  Columns: `City, Niche, Additional categories, Services, Photos, Posts (90 days),
-  Description length, Reviews, Rating, Review reply %, Reference businesses`.
-  Every value column is optional; an empty cell means "don't compare this".
-- **Website Standard**: one per Niche, entered in a Hub form and versioned
-  (`cleaning-v1`): must-have services with synonyms, service and location page depth,
-  supporting pages, blog posts per month, blog topics (topical map), mobile LCP.
-- No benchmark for a City + Niche → comparison checks are skipped and the rest is scored out
-  of 100. No Website Standard for a Niche → status `NO_STANDARD`, no website audit.
+- A **benchmark** is a named set per niche ("Cleaning Benchmark 1", "Cleaning Benchmark 2"
+  …), made in a Hub form (screen **Benchmarks**), with two parts:
+  - **GBP:** additional categories, services, photos, posts in 90 days, description length,
+    reviews, rating, review reply %. An empty box means "don't compare this".
+  - **Website Standard:** must-have services with synonyms, service and location page depth,
+    supporting pages, blog posts per month, blog topics (topical map), mobile LCP.
+- **Every batch has exactly one benchmark** (required). When a benchmark's numbers change
+  (a new version), the agents check the leads of the batches using it again and find the new
+  issues; what happens to leads already emailed is decided with the outreach agents.
 
 ### 3.6 JSON envelope (every agent)
 
@@ -200,14 +206,14 @@ used up.
 - **Reviews** (count, rating, recent reviews, reply rate, unanswered 1–2★): collected and shown
   in a Reviews section of the report, **not scored and not used in outreach**. A Hub switch
   "Use reviews in outreach" (off) can allow it later. Q&A is not checked.
-- **Benchmark comparison:** lead ÷ benchmark under 25% → 🔴, 25–60% → 🟠, 60%+ → ✅.
-  Reference business names from the benchmark file may appear in findings, not in the Summary.
+- **Benchmark comparison** (the batch's benchmark, GBP part): lead ÷ benchmark under 25% →
+  🔴, 25–60% → 🟠, 60%+ → ✅.
 - **Output:** `GBP Status, Score, Summary, JSON, Audited At`; `gbp.json` in Drive;
   `discovered.website` for the Website agent.
 
 ## 6. Website audit agent (decided)
 
-- **Compares only against the Niche Standard.** (Top/benchmark businesses are a GBP matter.)
+- **Compares only against the Website Standard** of its batch's benchmark.
 - **Website to audit:** the Sheet's Website; if empty, the GBP website.
 
   | Sheet Website | GBP website | Result |
@@ -277,9 +283,9 @@ One build step per task; each step ends green on CI before the next starts.
 
 ## 9. Open decisions (defaults used until answered)
 
-1. **Reference business names** in reports: shown when the benchmark file's
-   `Reference businesses` column is filled; otherwise numbers only.
-2. **Website Standard** is entered in a Hub form (not Excel).
+1. ~~Reference business names~~: dropped; benchmarks don't depend on competition (step 10).
+2. **Benchmarks** (GBP numbers and the Website Standard) are entered in a Hub form (not
+   Excel).
 3. **`WEB Report` column** (link to the PDF) is added next to the Website agent's 5 columns.
 4. **Report format:** PDF in Drive. A tracked web link (who opened it) can come later.
 5. **Lead capture** section (booking/quote form, tap-to-call, Google reviews on the site): not

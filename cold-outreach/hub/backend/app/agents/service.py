@@ -2,6 +2,7 @@
 the agent with only the connections its manifest declared, and recording what it reports."""
 
 import secrets
+import uuid
 from typing import Any
 
 from sqlalchemy import select
@@ -11,7 +12,7 @@ from sqlalchemy.orm import Session
 from app import connections
 from app.agents.manifest import Manifest, effective_config
 from app.auth.tokens import hash_secret, now
-from app.db.models import ACTIVE_RUN, Agent, Run, RunStatus, RunTrigger, User
+from app.db.models import ACTIVE_RUN, Agent, Batch, Run, RunStatus, RunTrigger, User
 from app.errors import ApiError
 
 TOKEN_PREFIX = "hub_agent_"  # noqa: S105  (a marker, not a secret)
@@ -33,6 +34,13 @@ def manifest_of(agent: Agent) -> Manifest | None:
 
 def config_of(agent: Agent) -> dict[str, Any]:
     return effective_config(manifest_of(agent), agent.config or {})
+
+
+def batches_of(db: Session, agent: Agent) -> list[Batch]:
+    """The batches chosen for the agent, in its order (deleted ones left out)."""
+    wanted = [uuid.UUID(batch_id) for batch_id in agent.batch_ids or []]
+    found = {b.id: b for b in db.scalars(select(Batch).where(Batch.id.in_(wanted)))}
+    return [found[batch_id] for batch_id in wanted if batch_id in found]
 
 
 def missing_connections(agent: Agent, values: dict[str, str]) -> list[str]:

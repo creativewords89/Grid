@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, vi } from "vitest";
-import type { Agent } from "../api";
+import type { Agent, Batch } from "../api";
 import { App } from "../App";
 import { makeUser, mockApi } from "../test/mockApi";
 
@@ -57,11 +57,29 @@ function agent(overrides: Partial<Agent> = {}): Agent {
     run_time: "02:00",
     time_zone: "Asia/Dhaka",
     daily_budget_usd: "5.00",
+    batches: [],
     missing_connections: [],
     last_run: null,
     next_run_at: "2026-10-28T20:00:00Z",
     spent_today_usd: "0.4000",
     ...overrides,
+  };
+}
+
+function makeBatch(id: string, name: string): Batch {
+  return {
+    id,
+    name,
+    niche: "Cleaning",
+    benchmark: { id: "m1", name: "Cleaning Benchmark 1", version: 1 },
+    leads: 10,
+    top: 0,
+    files: 1,
+    agents: [],
+    created_at: "2026-10-27T10:00:00Z",
+    can_edit: true,
+    can_rename: false,
+    can_delete: false,
   };
 }
 
@@ -107,6 +125,7 @@ test("a card shows the agent, its connection and its last run", async () => {
   expect(within(card).getByText(/Needs these connections first: DataForSEO/)).toBeVisible();
   expect(within(card).getByText(/98 done, 2 failed/)).toHaveTextContent("$0.98");
   expect(within(card).getByText(/Spent today: \$0.40 of \$5.00/)).toBeVisible();
+  expect(within(card).getByText(/No batches chosen/)).toBeVisible();
   // A Viewer looks but can't change anything.
   expect(within(card).getByRole("switch")).toBeDisabled();
   expect(within(card).queryByRole("button", { name: "Run now" })).not.toBeInTheDocument();
@@ -139,8 +158,18 @@ test("an Admin switches an agent off and runs it", async () => {
 test("the settings form is built from the manifest and sends typed values", async () => {
   const calls = mockApi({
     "GET /auth/me": as("admin"),
-    "GET /agents": [200, [agent()]],
-    "PATCH /agents/gbp-audit": [200, agent({ config: { batch_size: 50 } })],
+    "GET /agents": [200, [agent({ batches: [{ id: "b1", name: "Batch 1", ready: true }] })]],
+    "GET /batches": [200, [makeBatch("b1", "Batch 1"), makeBatch("b2", "Batch 2")]],
+    "PATCH /agents/gbp-audit": [
+      200,
+      agent({
+        config: { batch_size: 50 },
+        batches: [
+          { id: "b2", name: "Batch 2", ready: true },
+          { id: "b1", name: "Batch 1", ready: true },
+        ],
+      }),
+    ],
   });
   render(<App />);
 
@@ -152,6 +181,10 @@ test("the settings form is built from the manifest and sends typed values", asyn
   await userEvent.type(batch, "50");
   await userEvent.selectOptions(within(dialog).getByLabelText("Queue"), "priority");
   await userEvent.click(within(dialog).getByLabelText("Dry run"));
+  // Batches: add Batch 2 and put it first.
+  expect(within(dialog).getByText("Batch 1")).toBeVisible();
+  await userEvent.selectOptions(await within(dialog).findByLabelText("Add a batch"), "b2");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Move Batch 2 up" }));
   await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
   expect(await within(card).findByText("Settings saved.")).toBeVisible();
@@ -161,7 +194,9 @@ test("the settings form is built from the manifest and sends typed values", asyn
     run_time: "02:00",
     time_zone: "Asia/Dhaka",
     daily_budget_usd: "5.00",
+    batch_ids: ["b2", "b1"],
   });
+  expect(within(card).getByText("Works on: Batch 2 → Batch 1")).toBeVisible();
 });
 
 test("a settings error from the server shows under its field", async () => {

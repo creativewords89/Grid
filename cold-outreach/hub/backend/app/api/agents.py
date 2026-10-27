@@ -21,7 +21,7 @@ from app.agents.manifest import AGENT_KEY, RUN_TIME, check_value
 from app.api.schemas import Name, Strict
 from app.auth.deps import CurrentUser, Db
 from app.auth.tokens import hash_secret, now
-from app.db.models import Agent, Run, RunTrigger
+from app.db.models import Agent, Batch, Run, RunTrigger
 from app.errors import ApiError
 from app.permissions import Action, ensure
 from app.runs import service as runs
@@ -70,6 +70,12 @@ class RunOut(BaseModel):
         )
 
 
+class BatchRef(BaseModel):
+    id: uuid.UUID
+    name: str
+    ready: bool  # has a benchmark: agents skip a batch without one
+
+
 class AgentOut(BaseModel):
     key: str
     name: str
@@ -82,6 +88,7 @@ class AgentOut(BaseModel):
     run_time: str
     time_zone: str
     daily_budget_usd: Decimal
+    batches: list[BatchRef]  # in the order it works through them
     missing_connections: list[str]
     last_run: RunOut | None
     next_run_at: datetime | None
@@ -103,6 +110,10 @@ def _out(db: Session, agent: Agent) -> AgentOut:
         run_time=agent.run_time,
         time_zone=agent.time_zone,
         daily_budget_usd=agent.daily_budget_usd,
+        batches=[
+            BatchRef(id=b.id, name=b.name, ready=b.benchmark_id is not None)
+            for b in service.batches_of(db, agent)
+        ],
         missing_connections=service.missing_connections(agent, connections.current()),
         last_run=RunOut.of(last) if last else None,
         next_run_at=runs.next_run_at(db, agent),
@@ -188,6 +199,7 @@ class SettingsIn(Strict):
     run_time: str | None = None
     time_zone: str | None = None
     daily_budget_usd: Annotated[Decimal, Field(ge=0, le=10_000, decimal_places=2)] | None = None
+    batch_ids: Annotated[list[uuid.UUID], Field(max_length=200)] | None = None
 
 
 @router.patch("/{key}", response_model=AgentOut)
@@ -216,10 +228,18 @@ def update_settings(key: str, body: SettingsIn, me: CurrentUser, db: Db) -> Agen
                 errors[f"config.{name}"] = f"{setting.label} {problem}."
             else:
                 new_config[name] = value
+    if body.batch_ids is not None:
+        known = set(db.scalars(select(Batch.id).where(Batch.id.in_(body.batch_ids))))
+        if len(set(body.batch_ids)) != len(body.batch_ids):
+            errors["batch_ids"] = "Each batch may be chosen once."
+        elif known != set(body.batch_ids):
+            errors["batch_ids"] = "One of these batches doesn't exist any more."
     if errors:
         raise ApiError(422, "invalid", next(iter(errors.values())), errors)
 
     before = _settings_view(agent)
+    if body.batch_ids is not None:
+        agent.batch_ids = [str(batch_id) for batch_id in body.batch_ids]
     agent.config = new_config
     for name in ("daily_limit", "run_time", "time_zone", "daily_budget_usd"):
         value = getattr(body, name)
@@ -239,6 +259,7 @@ def _settings_view(agent: Agent) -> dict[str, Any]:
         "run_time": agent.run_time,
         "time_zone": agent.time_zone,
         "daily_budget_usd": str(agent.daily_budget_usd),
+        "batch_ids": list(agent.batch_ids or []),
     }
 
 

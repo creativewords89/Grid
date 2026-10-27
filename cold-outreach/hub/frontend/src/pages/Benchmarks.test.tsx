@@ -1,179 +1,159 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, vi } from "vitest";
-import type { NicheStandard, Standard } from "../api";
+import type { Benchmark } from "../api";
 import { App } from "../App";
 import { makeUser, mockApi } from "../test/mockApi";
 
-const as = (role: "owner" | "admin" | "viewer") =>
-  [200, { user: makeUser({ role }), csrf_token: "t" }] as [number, unknown];
-
-const standard: Standard = {
-  services: [{ name: "Deep cleaning", synonyms: ["deep clean"], must_have: true }],
-  service_page: {
-    min_words: 600,
-    min_sections: 4,
-    faq: true,
-    price: true,
-    own_photos: true,
-    reviews: true,
-    cta: true,
-    service_area: true,
-  },
-  location_page: {
-    min_words: 400,
-    city_in_title: true,
-    local_content: true,
-    local_photos: true,
-    all_services_linked: true,
-    local_reviews: true,
-    map: true,
-    faq: true,
-    cta: true,
-    max_shared_text_pct: 60,
-  },
-  supporting_pages: ["FAQ", "Reviews"],
-  blog: { posts_per_month: 2, topics: ["Cost guide"] },
-  mobile_lcp_seconds: 2.5,
-};
-
-function niche(overrides: Partial<NicheStandard> = {}): NicheStandard {
+function benchmark(overrides: Partial<Benchmark> = {}): Benchmark {
   return {
+    id: "m1",
+    name: "Cleaning Benchmark 1",
     niche: "Cleaning",
-    locked: null,
-    draft: {
-      version: null,
-      label: null,
-      standard,
-      edited_by: "Sara",
-      edited_at: "2026-10-27T10:00:00Z",
-      locked_by: null,
-      locked_at: null,
+    version: 2,
+    gbp: { photos: 120, posts_90_days: 9 },
+    website: {
+      services: [{ name: "Deep cleaning", synonyms: ["deep clean"], must_have: true }],
+      blog: { posts_per_month: 2, topics: ["Cost guide"] },
     },
-    versions: [],
+    batches: ["Batch 1"],
+    updated_by: "Olivia",
+    updated_at: "2026-10-27T10:00:00Z",
     can_edit: true,
-    can_lock: true,
     ...overrides,
   };
 }
 
+const as = (role: "owner" | "admin" | "viewer") =>
+  [200, { user: makeUser({ role }), csrf_token: "t" }] as [number, unknown];
+
 beforeEach(() => window.history.pushState(null, "", "/benchmarks"));
 afterEach(() => vi.unstubAllGlobals());
 
-test("check a benchmark file, see its problems, then save a clean one", async () => {
-  let clean = false;
+test("make a new benchmark: GBP numbers and the website part", async () => {
+  let made = false;
   const calls = mockApi({
     "GET /auth/me": as("admin"),
-    "GET /benchmarks": [200, []],
-    "GET /website-standards": [200, []],
-    "POST /benchmarks/upload": (body) => {
-      const apply = (body as { apply: string }).apply === "true";
-      if (!clean)
-        return [
-          200,
-          {
-            applied: false,
-            rows: [{ city: "Dallas" }],
-            errors: ["B row 3: rating must be between 0 and 5."],
-            ignored_columns: [],
-            replaces: 0,
-          },
-        ];
-      return [
-        200,
-        {
-          applied: apply,
-          rows: [{ city: "Dallas" }],
-          errors: [],
-          ignored_columns: [],
-          replaces: 1,
-        },
-      ];
+    "GET /benchmarks": () => [200, made ? [benchmark({ version: 1, batches: [] })] : []],
+    "GET /niches": [200, ["Cleaning"]],
+    "POST /benchmarks": () => {
+      made = true;
+      return [201, benchmark({ version: 1, batches: [] })];
     },
   });
   render(<App />);
 
-  fireEvent.change(await screen.findByLabelText("Benchmark file"), {
-    target: { files: [new File(["x"], "benchmarks.xlsx")] },
-  });
-  await userEvent.click(screen.getByRole("button", { name: "Check the file" }));
-  expect(await screen.findByText("B row 3: rating must be between 0 and 5.")).toBeVisible();
-  expect(screen.getByRole("button", { name: "Save 1 benchmarks" })).toBeDisabled();
+  expect(await screen.findByText(/No benchmarks yet/)).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "+ New benchmark" }));
+  const form = screen.getByRole("form", { name: "Benchmark" });
+  await userEvent.type(within(form).getByLabelText("Name"), "Cleaning Benchmark 1");
+  await userEvent.type(within(form).getByLabelText("Niche"), "Cleaning");
+  await userEvent.type(within(form).getByLabelText("Photos"), "120");
+  await userEvent.type(within(form).getByLabelText("Posts in 90 days"), "9");
+  await userEvent.click(within(form).getByRole("button", { name: "+ Add a service" }));
+  await userEvent.type(within(form).getByLabelText("Service 1"), "Deep cleaning");
+  await userEvent.type(within(form).getByLabelText("Also called (comma separated)"), "deep clean");
+  await userEvent.click(within(form).getByRole("button", { name: "Save" }));
 
-  clean = true;
-  await userEvent.click(screen.getByRole("button", { name: "Check the file" }));
-  expect(await screen.findByText(/1 of them replace existing ones/)).toBeVisible();
-  await userEvent.click(screen.getByRole("button", { name: "Save 1 benchmarks" }));
-
-  expect(await screen.findByText("Saved 1 benchmarks.")).toBeVisible();
-  expect(calls.filter((c) => c.path === "/benchmarks/upload").map((c) => c.body)).toEqual([
-    expect.objectContaining({ apply: "false" }),
-    expect.objectContaining({ apply: "false" }),
-    expect.objectContaining({ apply: "true" }),
+  expect(await screen.findByText("Saved Cleaning Benchmark 1.")).toBeVisible();
+  expect(screen.getByRole("cell", { name: "Cleaning Benchmark 1" })).toBeVisible();
+  const sent = calls.find((c) => c.method === "POST")?.body as {
+    name: string;
+    niche: string;
+    gbp: Record<string, number>;
+    website: { services: unknown[]; location_page: { min_words: number } };
+  };
+  expect(sent.name).toBe("Cleaning Benchmark 1");
+  expect(sent.niche).toBe("Cleaning");
+  expect(sent.gbp).toEqual({ photos: 120, posts_90_days: 9 }); // empty boxes aren't compared
+  expect(sent.website.services).toEqual([
+    { name: "Deep cleaning", synonyms: ["deep clean"], must_have: true },
   ]);
+  expect(sent.website.location_page.min_words).toBe(400);
 });
 
-test("edit a Website Standard draft and lock it", async () => {
+test("editing one in use warns that its batches are checked again", async () => {
   const calls = mockApi({
     "GET /auth/me": as("owner"),
-    "GET /benchmarks": [200, []],
-    "GET /website-standards": [200, [niche()]],
-    "GET /website-standards/Cleaning": [200, niche()],
-    "PUT /website-standards/Cleaning/draft": (body) => [
-      200,
-      niche({
-        draft: { ...niche().draft!, standard: body as Standard, edited_at: "2026-10-27T11:00:00Z" },
-      }),
-    ],
-    "POST /website-standards/Cleaning/lock": [
-      200,
-      niche({
-        draft: null,
-        locked: { ...niche().draft!, version: 1, label: "cleaning-v1", locked_by: "Olivia" },
-        versions: [1],
-      }),
-    ],
+    "GET /benchmarks": [200, [benchmark()]],
+    "GET /niches": [200, ["Cleaning"]],
+    "PUT /benchmarks/m1": [200, benchmark({ version: 3, gbp: { photos: 200, posts_90_days: 9 } })],
   });
   render(<App />);
 
-  const form = await screen.findByRole("form", { name: "Cleaning standard" });
-  await userEvent.click(within(form).getByRole("button", { name: "+ Add a service" }));
-  await userEvent.type(within(form).getByLabelText("Service 2"), "Move-out cleaning");
-  await userEvent.type(
-    within(form).getAllByLabelText("Also called (comma separated)")[1]!,
-    "end of lease, move out",
-  );
-  await userEvent.click(within(form).getByRole("button", { name: "Save draft" }));
-  expect(await screen.findByText("Draft saved.")).toBeVisible();
+  const row = await screen.findByRole("row", { name: /Cleaning Benchmark 1/ });
+  expect(within(row).getByText("v2")).toBeVisible();
+  expect(within(row).queryByRole("button", { name: /Delete/ })).not.toBeInTheDocument();
+  await userEvent.click(within(row).getByRole("button", { name: "Edit Cleaning Benchmark 1" }));
+  const form = screen.getByRole("form", { name: "Benchmark" });
+  expect(within(form).getByText(/Used by Batch 1/)).toBeVisible();
+  expect(within(form).getByLabelText("Niche")).toBeDisabled();
+  const photos = within(form).getByLabelText("Photos");
+  expect(photos).toHaveValue(120);
+  await userEvent.clear(photos);
+  await userEvent.type(photos, "200");
+  await userEvent.click(within(form).getByRole("button", { name: "Save" }));
 
-  const saved = calls.find((c) => c.method === "PUT")?.body as Standard;
-  expect(saved.services[1]).toEqual({
-    name: "Move-out cleaning",
-    synonyms: ["end of lease", "move out"],
-    must_have: true,
-  });
-  expect(saved.blog.topics).toEqual(["Cost guide"]);
-
-  await userEvent.click(
-    within(await screen.findByRole("form", { name: "Cleaning standard" })).getByRole("button", {
-      name: "Lock as the next version",
-    }),
-  );
-  expect(await screen.findByText(/In use: cleaning-v1/)).toBeVisible();
-  expect(screen.getByText(/Locked\. The Website agent uses it/)).toBeVisible();
+  expect(await screen.findByText("Saved Cleaning Benchmark 1 (version 3).")).toBeVisible();
+  const sent = calls.find((c) => c.method === "PUT")?.body as { gbp: object; niche?: string };
+  expect(sent.gbp).toEqual({ photos: 200, posts_90_days: 9 });
+  expect(sent.niche).toBeUndefined();
 });
 
-test("a viewer reads but can't edit", async () => {
+test("copy a benchmark into a new one, and a server error shows on its field", async () => {
   mockApi({
-    "GET /auth/me": as("viewer"),
-    "GET /benchmarks": [200, []],
-    "GET /website-standards": [200, [niche({ can_edit: false, can_lock: false })]],
-    "GET /website-standards/Cleaning": [200, niche({ can_edit: false, can_lock: false })],
+    "GET /auth/me": as("admin"),
+    "GET /benchmarks": [200, [benchmark()]],
+    "GET /niches": [200, ["Cleaning"]],
+    "POST /benchmarks": [
+      422,
+      {
+        error: {
+          code: "invalid",
+          message: "Input should be less than or equal to 5.",
+          fields: { "gbp.rating": "Input should be less than or equal to 5." },
+        },
+      },
+    ],
   });
   render(<App />);
 
-  const form = await screen.findByRole("form", { name: "Cleaning standard" });
-  expect(within(form).getByLabelText("Service 1")).toBeDisabled();
-  expect(within(form).queryByRole("button", { name: "Save draft" })).not.toBeInTheDocument();
-  expect(screen.queryByLabelText("Benchmark file")).not.toBeInTheDocument();
+  await userEvent.click(await screen.findByRole("button", { name: "Copy Cleaning Benchmark 1" }));
+  const form = screen.getByRole("form", { name: "Benchmark" });
+  expect(within(form).getByLabelText("Name")).toHaveValue("Cleaning Benchmark 1 (copy)");
+  expect(within(form).getByLabelText("Service 1")).toHaveValue("Deep cleaning");
+  await userEvent.type(within(form).getByLabelText("Rating (0–5)"), "9");
+  await userEvent.click(within(form).getByRole("button", { name: "Save" }));
+
+  expect(await within(form).findAllByText("Input should be less than or equal to 5.")).toHaveLength(
+    2,
+  );
+});
+
+test("an unused benchmark can be deleted", async () => {
+  let deleted = false;
+  mockApi({
+    "GET /auth/me": as("owner"),
+    "GET /benchmarks": () => [200, deleted ? [] : [benchmark({ batches: [] })]],
+    "DELETE /benchmarks/m1": () => {
+      deleted = true;
+      return [204];
+    },
+  });
+  render(<App />);
+
+  await userEvent.click(await screen.findByRole("button", { name: "Delete Cleaning Benchmark 1" }));
+  expect(await screen.findByText("Deleted Cleaning Benchmark 1.")).toBeVisible();
+});
+
+test("a viewer sees the benchmarks but can't change them", async () => {
+  mockApi({
+    "GET /auth/me": as("viewer"),
+    "GET /benchmarks": [200, [benchmark({ can_edit: false })]],
+  });
+  render(<App />);
+
+  expect(await screen.findByRole("cell", { name: "Cleaning Benchmark 1" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: "+ New benchmark" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Edit/ })).not.toBeInTheDocument();
 });

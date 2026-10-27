@@ -120,6 +120,7 @@ export type Agent = {
   run_time: string;
   time_zone: string;
   daily_budget_usd: string;
+  batches: { id: string; name: string; ready: boolean }[];
   missing_connections: string[];
   last_run: Run | null;
   next_run_at: string | null;
@@ -132,6 +133,7 @@ export type AgentSettings = {
   run_time?: string;
   time_zone?: string;
   daily_budget_usd?: string;
+  batch_ids?: string[];
 };
 
 export type ImportCounts = {
@@ -139,6 +141,7 @@ export type ImportCounts = {
   leads: number;
   new: number;
   updated: number;
+  other_batch?: number;
   merged: number;
   top: number;
   no_gbp_link: number;
@@ -159,6 +162,7 @@ export type ImportPreview = {
   invalid_emails: string[];
   merged_rows: string[][];
   updated: string[];
+  other_batch?: string[];
   no_gbp_link: string[];
   top: string[];
   new_lists: string[];
@@ -168,6 +172,8 @@ export type LeadImport = {
   id: string;
   file_name: string;
   niche: string;
+  batch_id: string | null;
+  batch_name: string | null;
   status: "preview" | "confirmed" | "failed" | "discarded";
   uploaded_by: string | null;
   created_at: string;
@@ -186,28 +192,47 @@ export type LeadList = {
   top: number;
 };
 
-export type Benchmark = {
-  id: string;
-  city: string;
-  niche: string;
-  additional_categories: string | null;
-  services: string | null;
-  photos: string | null;
-  posts_90_days: string | null;
-  description_length: string | null;
-  reviews: string | null;
-  rating: string | null;
-  review_reply_pct: string | null;
-  reference_businesses: string;
-  updated_at: string;
+export type GbpTargets = {
+  additional_categories?: number;
+  services?: number;
+  photos?: number;
+  posts_90_days?: number;
+  description_length?: number;
+  reviews?: number;
+  rating?: number;
+  review_reply_pct?: number;
 };
 
-export type BenchmarkUpload = {
-  applied: boolean;
-  rows: Record<string, string | null>[];
-  errors: string[];
-  ignored_columns: string[];
-  replaces: number;
+export type Benchmark = {
+  id: string;
+  name: string;
+  niche: string;
+  version: number;
+  gbp: GbpTargets;
+  // Saved through the editor it is a whole Standard; one moved in from before benchmarks
+  // may lack parts (the editor fills them with defaults).
+  website: Partial<Standard>;
+  batches: string[];
+  updated_by: string | null;
+  updated_at: string;
+  can_edit: boolean;
+};
+
+export type BenchmarkIn = { name: string; niche?: string; gbp: GbpTargets; website: Standard };
+
+export type Batch = {
+  id: string;
+  name: string;
+  niche: string;
+  benchmark: { id: string; name: string; version: number } | null;
+  leads: number;
+  top: number;
+  files: number;
+  agents: string[];
+  created_at: string;
+  can_edit: boolean;
+  can_rename: boolean;
+  can_delete: boolean;
 };
 
 export type StandardService = { name: string; synonyms: string[]; must_have: boolean };
@@ -239,25 +264,6 @@ export type Standard = {
   supporting_pages: string[];
   blog: { posts_per_month: number; topics: string[] };
   mobile_lcp_seconds: number;
-};
-
-export type StandardVersion = {
-  version: number | null;
-  label: string | null;
-  standard: Standard;
-  edited_by: string | null;
-  edited_at: string;
-  locked_by: string | null;
-  locked_at: string | null;
-};
-
-export type NicheStandard = {
-  niche: string;
-  locked: StandardVersion | null;
-  draft: StandardVersion | null;
-  versions: number[];
-  can_edit: boolean;
-  can_lock: boolean;
 };
 
 export type HubAlert = {
@@ -417,37 +423,29 @@ export const api = {
     return request<HistoryPage>("GET", `/history${query ? `?${query}` : ""}`);
   },
   overview: () => request<Overview>("GET", "/overview"),
-  uploadLeads: (file: File, niche: string) => {
+  uploadLeads: (file: File, batchId: string) => {
     const form = new FormData();
     form.append("file", file);
-    form.append("niche", niche);
+    form.append("batch_id", batchId);
     return upload<LeadImport>("/imports", form);
   },
-  imports: () => request<LeadImport[]>("GET", "/imports"),
+  imports: (batchId?: string) =>
+    request<LeadImport[]>("GET", `/imports${batchId ? `?batch_id=${batchId}` : ""}`),
   confirmImport: (id: string) => request<LeadImport>("POST", `/imports/${id}/confirm`),
   discardImport: (id: string) => request<LeadImport>("POST", `/imports/${id}/discard`),
   niches: () => request<string[]>("GET", "/niches"),
   benchmarks: () => request<Benchmark[]>("GET", "/benchmarks"),
-  uploadBenchmarks: (file: File, apply: boolean) => {
-    const form = new FormData();
-    form.append("file", file);
-    form.append("apply", apply ? "true" : "false");
-    return upload<BenchmarkUpload>("/benchmarks/upload", form);
-  },
+  createBenchmark: (body: BenchmarkIn) => request<Benchmark>("POST", "/benchmarks", body),
+  saveBenchmark: (id: string, body: BenchmarkIn) =>
+    request<Benchmark>("PUT", `/benchmarks/${id}`, body),
   deleteBenchmark: (id: string) => request<void>("DELETE", `/benchmarks/${id}`),
-  standards: () => request<NicheStandard[]>("GET", "/website-standards"),
-  standard: (niche: string) =>
-    request<NicheStandard>("GET", `/website-standards/${encodeURIComponent(niche)}`),
-  saveDraft: (niche: string, standard: Standard) =>
-    request<NicheStandard>(
-      "PUT",
-      `/website-standards/${encodeURIComponent(niche)}/draft`,
-      standard,
-    ),
-  dropDraft: (niche: string) =>
-    request<NicheStandard>("DELETE", `/website-standards/${encodeURIComponent(niche)}/draft`),
-  lockStandard: (niche: string) =>
-    request<NicheStandard>("POST", `/website-standards/${encodeURIComponent(niche)}/lock`),
+  batches: () => request<Batch[]>("GET", "/batches"),
+  batch: (id: string) => request<Batch>("GET", `/batches/${id}`),
+  createBatch: (body: { name: string; niche: string; benchmark_id: string | null }) =>
+    request<Batch>("POST", "/batches", body),
+  updateBatch: (id: string, patch: { name?: string; benchmark_id?: string }) =>
+    request<Batch>("PATCH", `/batches/${id}`, patch),
+  deleteBatch: (id: string) => request<void>("DELETE", `/batches/${id}`),
   lists: () => request<LeadList[]>("GET", "/lists"),
   updateList: (id: string, patch: { active?: boolean }) =>
     request<LeadList>("PATCH", `/lists/${id}`, patch),

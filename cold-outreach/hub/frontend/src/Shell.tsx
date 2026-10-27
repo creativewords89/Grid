@@ -9,10 +9,10 @@ type NavItem = { path: string; label: string; roles?: Role[] };
 // tidiness only: the server enforces access.
 const NAV: NavItem[] = [
   { path: "/", label: "Overview" },
-  { path: "/import", label: "Import" },
+  { path: "/benchmarks", label: "Benchmarks" },
+  { path: "/batches", label: "Batches" },
   { path: "/agents", label: "Agents" },
   { path: "/runs", label: "Runs" },
-  { path: "/benchmarks", label: "Benchmarks" },
   { path: "/connections", label: "Connections", roles: ["owner"] },
   { path: "/users", label: "Users", roles: ["owner"] },
   { path: "/history", label: "History", roles: ["owner"] },

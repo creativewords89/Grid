@@ -2080,3 +2080,19 @@ textarea {
   margin: 0.25rem 0 0;
   padding-left: 1.1rem;
 }
+
+.batch-order {
+  margin: 0;
+  padding-left: 1.4rem;
+}
+
+.batch-order li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.2rem 0;
+}
+
+.batch-order li span {
+  flex: 1;
+}

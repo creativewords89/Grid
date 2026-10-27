@@ -20,6 +20,7 @@ from app.imports import reader
 from app.imports.sheet import column_letter
 from tests.conftest import UserFactory, sign_in
 from tests.fake_google import FakeSheets
+from tests.hub_data import batch_id
 
 STANDARD = [
     "Business name",
@@ -247,11 +248,11 @@ def google(
     yield fake
 
 
-def upload(client: TestClient, content: bytes, niche: str = "Cleaning") -> dict[str, Any]:
+def upload(client: TestClient, content: bytes, batch: str = "Batch 1") -> dict[str, Any]:
     response = client.post(
         "/api/imports",
         files={"file": ("leads.xlsx", content)},
-        data={"niche": niche},
+        data={"batch_id": batch_id(client, batch)},
     )
     assert response.status_code == 201, response.text
     body: dict[str, Any] = response.json()
@@ -296,12 +297,14 @@ def test_confirm_gives_ids_writes_the_sheet_and_protects_top_leads(
     table = google.table()
     assert [r["Lead ID"] for r in table] == ["L-000001", "L-000002", "L-000003", "L-000004"]
     first = table[0]
-    assert (first["City"], first["Niche"], first["Business Name"], first["Email"]) == (
+    assert (first["City"], first["Niche"], first["Batch"], first["Business Name"]) == (
         "Tulsa",
         "Cleaning",
+        "Batch 1",
         "Multi-Clean",
-        "kevin@mc.com",
     )
+    assert first["Email"] == "kevin@mc.com"
+    assert db.get(Lead, "L-000001").batch_id is not None  # type: ignore[union-attr]
     assert table[1]["Level"] == "Top"
     blocked = {(d.kind, d.value) for d in db.scalars(select(DoNotContact))}
     assert blocked == {
@@ -333,7 +336,7 @@ def test_a_second_import_updates_instead_of_adding(
     # Someone sorts the tab and an agent fills its column; neither may be disturbed.
     google.tabs["Leads"][0].append("GBP Score")
     for line in google.tabs["Leads"][1:]:
-        line.extend([""] * (16 - len(line)) + ["77"])
+        line.extend([""] * (17 - len(line)) + ["77"])
     google.tabs["Leads"][1:] = list(reversed(google.tabs["Leads"][1:]))
     again = workbook(
         {
@@ -372,8 +375,8 @@ def test_a_new_sheet_gets_its_leads_tab(client: TestClient, google: FakeSheets) 
     client.post(f"/api/imports/{preview['id']}/confirm")
 
     header = google.tabs["Leads"][0]
-    assert header[:5] == ["Lead ID", "City", "Niche", "Level", "Business Name"]
-    assert len(header) == 16 and column_letter(len(header) - 1) == "P"
+    assert header[:5] == ["Lead ID", "City", "Niche", "Batch", "Level"]
+    assert len(header) == 17 and column_letter(len(header) - 1) == "Q"
 
 
 def test_a_failed_sheet_write_saves_nothing_and_can_be_retried(
@@ -409,25 +412,52 @@ def test_discard_and_confirm_only_once(client: TestClient, google: FakeSheets) -
 
 
 def test_bad_uploads(client: TestClient, owner: User) -> None:
+    batch = batch_id(client)
     not_excel = client.post(
-        "/api/imports", files={"file": ("a.csv", b"a,b\n1,2")}, data={"niche": "Cleaning"}
+        "/api/imports", files={"file": ("a.csv", b"a,b\n1,2")}, data={"batch_id": batch}
     )
-    no_niche = client.post(
-        "/api/imports", files={"file": ("a.xlsx", workbook(FILE))}, data={"niche": "  "}
+    no_batch = client.post("/api/imports", files={"file": ("a.xlsx", workbook(FILE))})
+    unknown = client.post(
+        "/api/imports",
+        files={"file": ("a.xlsx", workbook(FILE))},
+        data={"batch_id": "00000000-0000-0000-0000-000000000000"},
     )
 
     assert (not_excel.status_code, not_excel.json()["error"]["code"]) == (422, "unreadable")
-    assert no_niche.status_code == 422
+    assert no_batch.status_code == 422
+    assert unknown.status_code == 404
 
 
-def test_niche_spelling_follows_the_existing_one(client: TestClient, google: FakeSheets) -> None:
-    first = upload(client, workbook(FILE), niche="Cleaning")
+def test_a_business_stays_in_the_batch_it_came_in(
+    client: TestClient, google: FakeSheets, db: Session
+) -> None:
+    first = upload(client, workbook(FILE))
     client.post(f"/api/imports/{first['id']}/confirm")
+    again = workbook(
+        {
+            "Tulsa": [
+                STANDARD,
+                row("Multi-Clean", "https://share.google/mc", "(918) 523-8300", "new@mc.com"),
+                row("Brand New", "https://share.google/bn", "(918) 555-2222"),
+            ]
+        }
+    )
 
-    second = upload(client, workbook(FILE), niche="  cleaning ")
+    preview = upload(client, again, batch="Batch 2")
+    counts = preview["counts"]
+    assert (counts["new"], counts["updated"], counts["other_batch"]) == (1, 0, 1)
+    assert preview["preview"]["other_batch"] == ["Multi-Clean (L-000001, in Batch 1)"]
+    client.post(f"/api/imports/{preview['id']}/confirm")
 
-    assert second["niche"] == "Cleaning"
-    assert client.get("/api/niches").json() == ["Cleaning"]
+    table = {r["Lead ID"]: r for r in google.table()}
+    assert table["L-000001"]["Batch"] == "Batch 1"
+    assert table["L-000001"]["Email"] == "kevin@mc.com, new@mc.com"  # still updated
+    assert table["L-000005"]["Batch"] == "Batch 2"
+    batches = {b["name"]: b for b in client.get("/api/batches").json()}
+    assert (batches["Batch 1"]["leads"], batches["Batch 2"]["leads"]) == (4, 1)
+    assert batches["Batch 2"]["files"] == 1
+    mine = client.get("/api/imports", params={"batch_id": batches["Batch 2"]["id"]}).json()
+    assert [(i["file_name"], i["batch_name"]) for i in mine] == [("leads.xlsx", "Batch 2")]
 
 
 @pytest.mark.parametrize("role", [Role.VIEWER])
@@ -442,7 +472,9 @@ def test_viewers_see_but_cannot_import(
     assert client.get(f"/api/imports/{preview['id']}").status_code == 200
     assert client.post(f"/api/imports/{preview['id']}/confirm").status_code == 403
     denied = client.post(
-        "/api/imports", files={"file": ("a.xlsx", workbook(FILE))}, data={"niche": "X"}
+        "/api/imports",
+        files={"file": ("a.xlsx", workbook(FILE))},
+        data={"batch_id": preview["batch_id"]},
     )
     assert denied.status_code == 403
 

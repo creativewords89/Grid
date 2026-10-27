@@ -1,88 +1,40 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import {
-  api,
-  ApiError,
-  type Benchmark,
-  type BenchmarkUpload,
-  type NicheStandard,
-  type Standard,
-} from "../api";
+import { api, ApiError, type Benchmark, type GbpTargets, type Standard } from "../api";
 import { useAuth } from "../auth";
 import { Alert, Field } from "../components/ui";
 import { when } from "../format";
 
-// Benchmarks (SPEC sections 6.5 and 7): the GBP benchmark per City + Niche, uploaded as
-// Excel, and each niche's Website Standard, edited as a draft and locked into versions.
+// Benchmarks (SPEC sections 6.5 and 7): named sets such as "Cleaning Benchmark 1", each of
+// one niche: the GBP numbers a good profile has and the Website Standard. Not tied to a city.
+// Each batch uses one; changing the numbers makes the agents check its leads again.
+
+type Editing = { source: Benchmark | null; copy: boolean } | null;
+type Notice = { kind: "error" | "success"; text: string } | null;
 
 export function Benchmarks() {
   const { user } = useAuth();
-  if (!user) return null;
-  const staff = user.role === "owner" || user.role === "admin";
-  return (
-    <section className="page">
-      <h1>Benchmarks</h1>
-      <GbpBenchmarks staff={staff} />
-      <WebsiteStandards />
-    </section>
-  );
-}
-
-// --- GBP benchmarks -------------------------------------------------------------------------
-
-const COLUMNS: [keyof Benchmark, string][] = [
-  ["additional_categories", "Extra categories"],
-  ["services", "Services"],
-  ["photos", "Photos"],
-  ["posts_90_days", "Posts (90 days)"],
-  ["description_length", "Description length"],
-  ["reviews", "Reviews"],
-  ["rating", "Rating"],
-  ["review_reply_pct", "Reply %"],
-];
-
-function shown(value: string | null): string {
-  return value === null ? "—" : String(Number(value));
-}
-
-function GbpBenchmarks({ staff }: { staff: boolean }) {
-  const [rows, setRows] = useState<Benchmark[]>([]);
-  const [file, setFile] = useState<File | null>(null);
-  const [check, setCheck] = useState<BenchmarkUpload | null>(null);
-  const [notice, setNotice] = useState<{ kind: "error" | "success"; text: string } | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [rows, setRows] = useState<Benchmark[] | null>(null);
+  const [editing, setEditing] = useState<Editing>(null);
+  const [notice, setNotice] = useState<Notice>(null);
 
   const load = useCallback(() => {
     api
       .benchmarks()
       .then(setRows)
-      .catch(() => setRows([]));
+      .catch((err: unknown) =>
+        setNotice({ kind: "error", text: err instanceof ApiError ? err.message : "Not loaded." }),
+      );
   }, []);
   useEffect(load, [load]);
 
-  async function send(apply: boolean) {
-    if (!file) {
-      setNotice({ kind: "error", text: "Choose the benchmark file first." });
-      return;
-    }
-    setBusy(true);
-    setNotice(null);
-    try {
-      const result = await api.uploadBenchmarks(file, apply);
-      if (apply) {
-        setCheck(null);
-        setNotice({ kind: "success", text: `Saved ${result.rows.length} benchmarks.` });
-        load();
-      } else setCheck(result);
-    } catch (err) {
-      setNotice({ kind: "error", text: err instanceof ApiError ? err.message : "Didn't work." });
-    } finally {
-      setBusy(false);
-    }
-  }
+  if (!user) return null;
+  const staff = user.role === "owner" || user.role === "admin";
 
   async function remove(row: Benchmark) {
+    setNotice(null);
     try {
       await api.deleteBenchmark(row.id);
+      setNotice({ kind: "success", text: `Deleted ${row.name}.` });
       load();
     } catch (err) {
       setNotice({ kind: "error", text: err instanceof ApiError ? err.message : "Not deleted." });
@@ -90,68 +42,58 @@ function GbpBenchmarks({ staff }: { staff: boolean }) {
   }
 
   return (
-    <div className="card stack" aria-labelledby="gbp-benchmarks">
-      <h2 id="gbp-benchmarks">GBP benchmarks</h2>
+    <section className="page">
+      <div className="page-head">
+        <h1>Benchmarks</h1>
+        {staff && !editing && (
+          <button
+            className="button button-primary"
+            onClick={() => {
+              setNotice(null);
+              setEditing({ source: null, copy: false });
+            }}
+          >
+            + New benchmark
+          </button>
+        )}
+      </div>
       <p className="muted">
-        One row per City + Niche: City, Niche, Additional categories, Services, Photos, Posts (90
-        days), Description length, Reviews, Rating, Review reply %, Reference businesses. Leave a
-        cell empty to skip that comparison. Each row replaces the benchmark of its City + Niche.
+        What a good business of a niche looks like: its Google Business Profile numbers and its
+        website. A benchmark doesn't depend on city or competition. Each batch uses one; when you
+        change its numbers, the agents check that batch's leads again.
       </p>
       {notice && <Alert kind={notice.kind}>{notice.text}</Alert>}
-      {staff && (
-        <div className="row">
-          <input
-            type="file"
-            aria-label="Benchmark file"
-            accept=".xlsx"
-            onChange={(e) => {
-              setFile(e.target.files?.[0] ?? null);
-              setCheck(null);
-            }}
-          />
-          <button className="button" disabled={busy} onClick={() => void send(false)}>
-            Check the file
-          </button>
-        </div>
+      {editing && (
+        <BenchmarkEditor
+          key={`${editing.source?.id ?? "new"}:${editing.copy}`}
+          source={editing.source}
+          copy={editing.copy}
+          onCancel={() => setEditing(null)}
+          onSaved={(saved, created) => {
+            setEditing(null);
+            setNotice({
+              kind: "success",
+              text: created
+                ? `Saved ${saved.name}.`
+                : `Saved ${saved.name} (version ${saved.version}).`,
+            });
+            load();
+          }}
+        />
       )}
-      {check && (
-        <div className="stack" aria-label="Benchmark check">
-          <p>
-            {check.rows.length} benchmarks found
-            {check.replaces > 0 && `, ${check.replaces} of them replace existing ones`}.
-            {check.ignored_columns.length > 0 && ` Ignored: ${check.ignored_columns.join(", ")}.`}
-          </p>
-          {check.errors.length > 0 && (
-            <Alert kind="error">
-              Fix these rows first, then check again:
-              <ul>
-                {check.errors.map((e) => (
-                  <li key={e}>{e}</li>
-                ))}
-              </ul>
-            </Alert>
-          )}
-          <div>
-            <button
-              className="button button-primary"
-              disabled={busy || check.errors.length > 0 || check.rows.length === 0}
-              onClick={() => void send(true)}
-            >
-              Save {check.rows.length} benchmarks
-            </button>
-          </div>
-        </div>
+      {rows?.length === 0 && !editing && (
+        <p className="muted">No benchmarks yet. Make one before the first batch.</p>
       )}
-      {rows.length > 0 ? (
-        <div className="table-scroll">
+      {rows && rows.length > 0 && (
+        <div className="card table-card">
           <table className="table">
             <thead>
               <tr>
-                <th>City · Niche</th>
-                {COLUMNS.map(([key, label]) => (
-                  <th key={key}>{label}</th>
-                ))}
-                <th>Reference businesses</th>
+                <th>Benchmark</th>
+                <th>Niche</th>
+                <th>Version</th>
+                <th>Used by</th>
+                <th className="hide-narrow">Changed</th>
                 {staff && (
                   <th>
                     <span className="sr-only">Actions</span>
@@ -162,18 +104,41 @@ function GbpBenchmarks({ staff }: { staff: boolean }) {
             <tbody>
               {rows.map((row) => (
                 <tr key={row.id}>
-                  <td className="cell-strong">
-                    {row.city} · {row.niche}
+                  <td className="cell-strong">{row.name}</td>
+                  <td>{row.niche}</td>
+                  <td>v{row.version}</td>
+                  <td className="small">{row.batches.join(", ") || "—"}</td>
+                  <td className="hide-narrow small">
+                    {when(row.updated_at)}
+                    {row.updated_by && ` · ${row.updated_by}`}
                   </td>
-                  {COLUMNS.map(([key]) => (
-                    <td key={key}>{shown(row[key] as string | null)}</td>
-                  ))}
-                  <td className="small">{row.reference_businesses || "—"}</td>
                   {staff && (
                     <td>
-                      <button className="link-button" onClick={() => void remove(row)}>
-                        Delete
-                      </button>
+                      <div className="row">
+                        <button
+                          className="link-button"
+                          aria-label={`Edit ${row.name}`}
+                          onClick={() => setEditing({ source: row, copy: false })}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="link-button"
+                          aria-label={`Copy ${row.name}`}
+                          onClick={() => setEditing({ source: row, copy: true })}
+                        >
+                          Copy
+                        </button>
+                        {row.batches.length === 0 && (
+                          <button
+                            className="link-button"
+                            aria-label={`Delete ${row.name}`}
+                            onClick={() => void remove(row)}
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -181,14 +146,23 @@ function GbpBenchmarks({ staff }: { staff: boolean }) {
             </tbody>
           </table>
         </div>
-      ) : (
-        <p className="muted">No GBP benchmarks yet.</p>
       )}
-    </div>
+    </section>
   );
 }
 
-// --- Website Standards ------------------------------------------------------------------------
+// --- the editor -------------------------------------------------------------------------------
+
+const GBP_FIELDS: [keyof GbpTargets, string, string][] = [
+  ["additional_categories", "Additional categories", "4"],
+  ["services", "Services", "12"],
+  ["photos", "Photos", "100"],
+  ["posts_90_days", "Posts in 90 days", "12"],
+  ["description_length", "Description length (characters)", "600"],
+  ["reviews", "Reviews", "100"],
+  ["rating", "Rating (0–5)", "4.7"],
+  ["review_reply_pct", "Review replies (%)", "80"],
+];
 
 const EMPTY: Standard = {
   services: [],
@@ -246,146 +220,84 @@ function lines(text: string): string[] {
     .filter(Boolean);
 }
 
-function WebsiteStandards() {
-  const [all, setAll] = useState<NicheStandard[]>([]);
-  const [niche, setNiche] = useState("");
-  const [current, setCurrent] = useState<NicheStandard | null>(null);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    api
-      .standards()
-      .then((found) => {
-        setAll(found);
-        if (found[0]) setNiche((n) => n || found[0]!.niche);
-      })
-      .catch(() => setAll([]));
-  }, []);
-
-  useEffect(() => {
-    if (!niche) return;
-    api
-      .standard(niche)
-      .then(setCurrent)
-      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Not loaded."));
-  }, [niche]);
-
-  const [typed, setTyped] = useState("");
-  // Kept here: saving remounts the editor, and the message must outlive that.
-  const [notice, setNotice] = useState<Notice>(null);
-  return (
-    <div className="card stack" aria-labelledby="website-standards">
-      <h2 id="website-standards">Website Standards</h2>
-      <p className="muted">
-        What a good website looks like in each niche. The Website agent compares every lead's site
-        with the niche's latest locked version. Admins edit a draft; an Owner locks it.
-      </p>
-      {error && <Alert kind="error">{error}</Alert>}
-      <div className="row">
-        <div className="field">
-          <label htmlFor="standard-niche">Niche</label>
-          <select
-            id="standard-niche"
-            value={niche}
-            onChange={(e) => {
-              setCurrent(null);
-              setNiche(e.target.value);
-            }}
-          >
-            {!niche && <option value="">Choose…</option>}
-            {all.map((s) => (
-              <option key={s.niche} value={s.niche}>
-                {s.niche}
-              </option>
-            ))}
-            {niche && !all.some((s) => s.niche === niche) && <option value={niche}>{niche}</option>}
-          </select>
-        </div>
-        <Field
-          label="Or start a new niche"
-          placeholder="Construction"
-          value={typed}
-          onChange={(e) => setTyped(e.target.value)}
-        />
-        <button
-          className="button"
-          disabled={!typed.trim()}
-          onClick={() => {
-            setCurrent(null);
-            setNiche(typed.trim());
-            setTyped("");
-          }}
-        >
-          Open
-        </button>
-      </div>
-      {notice && <Alert kind={notice.kind}>{notice.text}</Alert>}
-      {current && (
-        <StandardEditor
-          onNotice={setNotice}
-          key={`${current.niche}:${current.draft?.edited_at ?? ""}:${current.locked?.version ?? 0}`}
-          data={current}
-          onSaved={(saved) => {
-            setCurrent(saved);
-            setAll((list) =>
-              list.some((s) => s.niche === saved.niche)
-                ? list.map((s) => (s.niche === saved.niche ? saved : s))
-                : [...list, saved],
-            );
-          }}
-        />
-      )}
-    </div>
-  );
+function filled(website: Partial<Standard>): Standard {
+  return {
+    ...EMPTY,
+    ...website,
+    service_page: { ...EMPTY.service_page, ...website.service_page },
+    location_page: { ...EMPTY.location_page, ...website.location_page },
+    blog: { ...EMPTY.blog, ...website.blog },
+  };
 }
 
-type Notice = { kind: "error" | "success"; text: string } | null;
-
-function StandardEditor({
-  data,
+function BenchmarkEditor({
+  source,
+  copy,
+  onCancel,
   onSaved,
-  onNotice,
 }: {
-  data: NicheStandard;
-  onSaved: (data: NicheStandard) => void;
-  onNotice: (notice: Notice) => void;
+  source: Benchmark | null;
+  copy: boolean;
+  onCancel: () => void;
+  onSaved: (saved: Benchmark, created: boolean) => void;
 }) {
-  const start = data.draft?.standard ?? data.locked?.standard ?? EMPTY;
+  const creating = source === null || copy;
+  const start = filled(source?.website ?? {});
+  const [name, setName] = useState(source ? (copy ? `${source.name} (copy)` : source.name) : "");
+  const [niche, setNiche] = useState(source?.niche ?? "");
+  const [niches, setNiches] = useState<string[]>([]);
+  const [gbp, setGbp] = useState<Record<string, string>>(
+    Object.fromEntries(
+      GBP_FIELDS.map(([key]) => [
+        key,
+        source?.gbp[key] === undefined ? "" : String(source.gbp[key]),
+      ]),
+    ),
+  );
   const [s, setS] = useState<Standard>(start);
   const [topics, setTopics] = useState(start.blog.topics.join("\n"));
   const [pages, setPages] = useState(start.supporting_pages.join(", "));
   // What was typed in each "Also called" box; split into a list when saving.
   const [synonyms, setSynonyms] = useState(start.services.map((svc) => svc.synonyms.join(", ")));
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const editable = data.can_edit;
 
-  async function run(action: () => Promise<NicheStandard>, done: string) {
-    setBusy(true);
-    onNotice(null);
-    setErrors({});
-    try {
-      const saved = await action();
-      onNotice({ kind: "success", text: done });
-      onSaved(saved);
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setErrors(err.fields);
-        onNotice({ kind: "error", text: err.message });
-      }
-      setBusy(false);
-    }
-  }
+  useEffect(() => {
+    api
+      .niches()
+      .then(setNiches)
+      .catch(() => setNiches([]));
+  }, []);
 
-  function save(event: FormEvent) {
+  async function save(event: FormEvent) {
     event.preventDefault();
-    const body: Standard = {
+    setBusy(true);
+    setError("");
+    setErrors({});
+    const targets: GbpTargets = {};
+    for (const [key] of GBP_FIELDS) {
+      const typed = (gbp[key] ?? "").trim();
+      if (typed !== "") targets[key] = Number(typed);
+    }
+    const website: Standard = {
       ...s,
       services: s.services.map((svc, i) => ({ ...svc, synonyms: lines(synonyms[i] ?? "") })),
       supporting_pages: lines(pages),
       blog: { ...s.blog, topics: lines(topics) },
     };
-    void run(() => api.saveDraft(data.niche, body), "Draft saved.");
+    try {
+      const saved = creating
+        ? await api.createBenchmark({ name, niche, gbp: targets, website })
+        : await api.saveBenchmark(source.id, { name, gbp: targets, website });
+      onSaved(saved, creating);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setErrors(err.fields);
+        setError(err.message);
+      }
+      setBusy(false);
+    }
   }
 
   const setService = (index: number, patch: Partial<Standard["services"][number]>) =>
@@ -394,26 +306,77 @@ function StandardEditor({
       services: x.services.map((svc, i) => (i === index ? { ...svc, ...patch } : svc)),
     }));
 
+  const title = creating ? (copy ? `Copy of ${source?.name}` : "New benchmark") : source.name;
   return (
-    <form className="stack" onSubmit={save} aria-label={`${data.niche} standard`}>
-      <p className="small">
-        {data.locked
-          ? `In use: ${data.locked.label}, locked ${when(data.locked.locked_at ?? data.locked.edited_at)}${data.locked.locked_by ? ` by ${data.locked.locked_by}` : ""}.`
-          : "No locked version yet: the Website agent skips this niche (NO_STANDARD)."}{" "}
-        {data.draft
-          ? `Draft edited ${when(data.draft.edited_at)}${data.draft.edited_by ? ` by ${data.draft.edited_by}` : ""}.`
-          : data.locked
-            ? "Editing starts a new draft from the version in use."
-            : ""}
-      </p>
-      <fieldset disabled={!editable || busy} className="stack plain">
-        <h3>Services</h3>
+    <form className="card stack" onSubmit={save} aria-label="Benchmark" noValidate>
+      <h2>{title}</h2>
+      {!creating && source.batches.length > 0 && (
+        <Alert kind="info">
+          Used by {source.batches.join(", ")}. Saving new numbers makes the agents check these
+          batches' leads again against them.
+        </Alert>
+      )}
+      {error && <Alert kind="error">{error}</Alert>}
+      <fieldset disabled={busy} className="stack plain">
+        <div className="connection-fields">
+          <Field
+            label="Name"
+            placeholder="Cleaning Benchmark 1"
+            value={name}
+            error={errors.name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <div className="field">
+            <label htmlFor="benchmark-niche">Niche</label>
+            <input
+              id="benchmark-niche"
+              list="benchmark-niches"
+              placeholder="Cleaning"
+              value={niche}
+              disabled={!creating}
+              aria-invalid={errors.niche ? true : undefined}
+              onChange={(e) => setNiche(e.target.value)}
+            />
+            <datalist id="benchmark-niches">
+              {niches.map((n) => (
+                <option key={n} value={n} />
+              ))}
+            </datalist>
+            {errors.niche && <p className="field-error">{errors.niche}</p>}
+          </div>
+        </div>
+
+        <h3>Google Business Profile</h3>
+        <p className="muted small">
+          What a good profile in this niche has. Leave a box empty to skip that comparison.
+        </p>
+        <div className="connection-fields">
+          {GBP_FIELDS.map(([key, label, example]) => (
+            <Field
+              key={key}
+              label={label}
+              type="number"
+              min={0}
+              step="any"
+              placeholder={example}
+              value={gbp[key] ?? ""}
+              error={errors[`gbp.${key}`]}
+              onChange={(e) => {
+                const typed = e.target.value;
+                setGbp((all) => ({ ...all, [key]: typed }));
+              }}
+            />
+          ))}
+        </div>
+
+        <h3>Website</h3>
+        <h4>Services</h4>
         {s.services.map((svc, i) => (
           <div className="service-row" key={i}>
             <Field
               label={`Service ${i + 1}`}
               value={svc.name}
-              error={errors[`services.${i}.name`]}
+              error={errors[`website.services.${i}.name`]}
               onChange={(e) => setService(i, { name: e.target.value })}
             />
             <Field
@@ -459,9 +422,9 @@ function StandardEditor({
             + Add a service
           </button>
         </div>
-        {errors.standard && <p className="field-error">{errors.standard}</p>}
+        {errors.website && <p className="field-error">{errors.website}</p>}
 
-        <h3>Service pages</h3>
+        <h4>Service pages</h4>
         <div className="connection-fields">
           <Field
             label="Words at least"
@@ -506,7 +469,7 @@ function StandardEditor({
           ))}
         </div>
 
-        <h3>Location pages</h3>
+        <h4>Location pages</h4>
         <div className="connection-fields">
           <Field
             label="Words at least"
@@ -552,7 +515,7 @@ function StandardEditor({
           ))}
         </div>
 
-        <h3>Supporting pages, blog and speed</h3>
+        <h4>Supporting pages, blog and speed</h4>
         <Field
           label="Supporting pages good sites have (comma separated)"
           value={pages}
@@ -575,7 +538,7 @@ function StandardEditor({
             min={0.5}
             step="0.1"
             value={String(s.mobile_lcp_seconds)}
-            error={errors.mobile_lcp_seconds}
+            error={errors["website.mobile_lcp_seconds"]}
             onChange={(e) => setS((x) => ({ ...x, mobile_lcp_seconds: Number(e.target.value) }))}
           />
         </div>
@@ -589,38 +552,14 @@ function StandardEditor({
           />
         </div>
       </fieldset>
-      {editable && (
-        <div className="row">
-          <button className="button button-primary" disabled={busy}>
-            Save draft
-          </button>
-          {data.draft && data.can_lock && (
-            <button
-              type="button"
-              className="button"
-              disabled={busy}
-              onClick={() =>
-                void run(
-                  () => api.lockStandard(data.niche),
-                  "Locked. The Website agent uses it from its next run.",
-                )
-              }
-            >
-              Lock as the next version
-            </button>
-          )}
-          {data.draft && (
-            <button
-              type="button"
-              className="button"
-              disabled={busy}
-              onClick={() => void run(() => api.dropDraft(data.niche), "Draft discarded.")}
-            >
-              Discard draft
-            </button>
-          )}
-        </div>
-      )}
+      <div className="row">
+        <button className="button button-primary" disabled={busy}>
+          {busy ? "Saving…" : "Save"}
+        </button>
+        <button type="button" className="button" disabled={busy} onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
     </form>
   );
 }
