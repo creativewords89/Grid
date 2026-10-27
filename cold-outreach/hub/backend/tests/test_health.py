@@ -45,7 +45,8 @@ def test_health_503_when_database_unreachable() -> None:
     assert body["checks"] == {"database": "error"}
 
 
-def test_unknown_api_route_is_404() -> None:
+def test_unknown_api_route_uses_error_shape() -> None:
     response = TestClient(create_app()).get("/api/nope")
 
     assert response.status_code == 404
+    assert response.json() == {"error": {"code": "not_found", "message": "Not found."}}

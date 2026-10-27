@@ -16,6 +16,9 @@ class Settings(BaseSettings):
 
     app_env: Literal["development", "test", "production"] = "development"
     app_url: str = "http://localhost:8080"
+    # Derives the setup code (and, from step 3, the key that encrypts Connections).
+    # 32+ random characters; required in production.
+    secret_key: str = ""
     database_url: str = Field(
         default="postgresql+psycopg://hub:hub@localhost:5432/hub",
         description="SQLAlchemy URL, always the psycopg (v3) driver.",
@@ -24,6 +27,17 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
+
+    @property
+    def signing_key(self) -> bytes:
+        if self.secret_key:
+            return self.secret_key.encode()
+        if self.is_production:
+            raise RuntimeError("Set SECRET_KEY in .env (32+ random characters).")
+        return b"development-only-signing-key"
+
+    def link(self, path: str) -> str:
+        return self.app_url.rstrip("/") + path
 
 
 @lru_cache

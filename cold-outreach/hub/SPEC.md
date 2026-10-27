@@ -102,11 +102,16 @@ cold-outreach/
 
 As in the Answer Engine (its SPEC sections 4 and 13.6):
 
-- Email and password (Argon2id), sessions in an `HttpOnly`, `Secure`, `SameSite=Lax` cookie,
-  CSRF token on every write, 14-day sessions, 10 failed sign-ins a minute per IP or email
-  locks for 15 minutes.
-- Invites by email (link valid 7 days); while SMTP isn't set, the Owner sees the link to pass on.
-- Forgot/reset password by email (link valid 1 hour).
+- Email and password (Argon2id; at least 10 characters, not a common password, not the
+  email). Sessions: a random token, stored hashed, in an `HttpOnly`, `Secure`, `SameSite=Lax`
+  cookie; 14 days, extended at most once a day while in use. CSRF token on every write.
+- Lockout: 5 failed sign-ins in a row for an email + IP lock that pair for 15 minutes; at most
+  10 sign-in attempts a minute per IP. Unknown email and wrong password get the same answer.
+- Invites by email (link valid 7 days, works once); while email isn't set up, the Owner sees
+  the link to pass on.
+- Forgot/reset password by email (link valid 1 hour, works once, signs out every device).
+- Deactivating someone signs them out at once; the last active Owner can't be removed or
+  demoted. Changing your own password signs out your other devices.
 - **First run:** while no account exists the site shows **Create the Owner account**, which
   needs the setup code (12 characters, HMAC of `SECRET_KEY`, printed by
   `python -m app.cli setup-code` and in the API log at start-up). Once any account exists the

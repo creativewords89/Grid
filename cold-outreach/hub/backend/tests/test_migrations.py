@@ -1,44 +1,55 @@
-"""Every migration must apply cleanly and reverse cleanly (build step 1 onwards)."""
-
-from pathlib import Path
+"""Every migration must apply and reverse cleanly, and match the models."""
 
 from alembic import command
-from alembic.config import Config
+from alembic.autogenerate import compare_metadata
+from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import Engine, inspect, text
+from sqlalchemy import create_engine, inspect, text
 
-BACKEND = Path(__file__).resolve().parent.parent
-
-
-def _alembic_config(database_url: str) -> Config:
-    cfg = Config(str(BACKEND / "alembic.ini"))
-    cfg.set_main_option("script_location", str(BACKEND / "app/db/alembic"))
-    cfg.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
-    cfg.attributes["configure_logger"] = False
-    return cfg
-
-
-def _current_revision(engine: Engine) -> str | None:
-    with engine.connect() as conn:
-        return conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
+from app.db import models  # noqa: F401  (registers every table)
+from app.db.base import Base
+from tests.conftest import alembic_config
 
 
 def test_single_head() -> None:
-    script = ScriptDirectory.from_config(_alembic_config("postgresql+psycopg://x@y/z"))
+    script = ScriptDirectory.from_config(alembic_config("postgresql+psycopg://x@y/z"))
 
     assert len(script.get_heads()) == 1
 
 
-def test_upgrade_then_downgrade(database_url: str, engine: Engine) -> None:
-    cfg = _alembic_config(database_url)
+def test_upgrade_then_downgrade(fresh_database_url: str) -> None:
+    cfg = alembic_config(fresh_database_url)
     head = ScriptDirectory.from_config(cfg).get_current_head()
+    engine = create_engine(fresh_database_url)
 
-    command.upgrade(cfg, "head")
-    assert _current_revision(engine) == head
+    def revision() -> str | None:
+        with engine.connect() as conn:
+            return conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
 
-    command.downgrade(cfg, "base")
-    assert _current_revision(engine) is None
-    assert set(inspect(engine).get_table_names()) <= {"alembic_version"}
+    try:
+        command.upgrade(cfg, "head")
+        assert revision() == head
 
-    command.upgrade(cfg, "head")
-    assert _current_revision(engine) == head
+        command.downgrade(cfg, "base")
+        assert revision() is None
+        assert set(inspect(engine).get_table_names()) <= {"alembic_version"}
+        with engine.connect() as conn:
+            leftover_types = conn.execute(text("SELECT typname FROM pg_type WHERE typtype = 'e'"))
+            assert leftover_types.scalars().all() == []
+
+        command.upgrade(cfg, "head")
+        assert revision() == head
+    finally:
+        engine.dispose()
+
+
+def test_migrations_match_models(fresh_database_url: str) -> None:
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    engine = create_engine(fresh_database_url)
+    try:
+        with engine.connect() as conn:
+            diff = compare_metadata(MigrationContext.configure(conn), Base.metadata)
+    finally:
+        engine.dispose()
+
+    assert diff == []

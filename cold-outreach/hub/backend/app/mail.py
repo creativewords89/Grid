@@ -1,0 +1,59 @@
+"""Outgoing email: invites and password resets now, alerts from build step 8.
+
+SMTP is entered in Connections (build step 3). Until then every email is "not sent", so the
+Owner is shown invite and reset links to pass on another way.
+"""
+
+import logging
+from typing import Annotated, Protocol
+
+from fastapi import Depends
+
+from app.config import Settings, get_settings
+
+log = logging.getLogger(__name__)
+
+
+class Mailer(Protocol):
+    def send(self, to: str, subject: str, body: str) -> bool:
+        """Send a plain-text email. Returns False when it was not sent."""
+        ...
+
+
+class UnconfiguredMailer:
+    """Used while SMTP is not set up. Never sends; logs the email outside production."""
+
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+
+    def send(self, to: str, subject: str, body: str) -> bool:
+        if self.settings.is_production:
+            log.warning("email not configured; not sending %r to %s", subject, to)
+        else:
+            log.info("email not configured; would send to %s:\n%s\n%s", to, subject, body)
+        return False
+
+
+def get_mailer() -> Mailer:
+    return UnconfiguredMailer(get_settings())
+
+
+MailerDep = Annotated[Mailer, Depends(get_mailer)]
+
+
+def invite_email(name: str, invited_by: str, link: str) -> tuple[str, str]:
+    return (
+        "You're invited to the GridRankers Agent Hub",
+        f"Hi {name},\n\n"
+        f"{invited_by} has invited you to the GridRankers Agent Hub.\n\n"
+        f"Set your password here (the link works once and expires in 7 days):\n{link}\n",
+    )
+
+
+def reset_email(name: str, link: str) -> tuple[str, str]:
+    return (
+        "Reset your Agent Hub password",
+        f"Hi {name},\n\n"
+        f"Use this link to set a new password (it works once and expires in 1 hour):\n{link}\n\n"
+        "If you didn't ask for this, you can ignore this email.\n",
+    )

@@ -6,7 +6,7 @@ set -eu
 case "${1:-api}" in
   api)
     alembic upgrade head
-    exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips '*'
+    exec uvicorn --factory app.main:serve --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips '*'
     ;;
   scheduler)
     exec python -m app.scheduler

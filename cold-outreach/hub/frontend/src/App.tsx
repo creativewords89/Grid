@@ -1,25 +1,47 @@
-import { HealthStatus } from "./HealthStatus";
+import { useEffect, useState } from "react";
+import { api } from "./api";
+import { AuthProvider, useAuth } from "./auth";
+import { FirstRun } from "./pages/FirstRun";
+import { Forgot } from "./pages/Forgot";
+import { Overview } from "./pages/Overview";
+import { Profile } from "./pages/Profile";
+import { SetPassword } from "./pages/SetPassword";
+import { SignIn } from "./pages/SignIn";
+import { Users } from "./pages/Users";
+import { usePath } from "./router";
+import { Shell } from "./Shell";
 
-// Shell only: sign-in, the sidebar and the screens arrive from build step 2 onwards (SPEC section 7).
+function Routes() {
+  const path = usePath();
+  const { user, loading } = useAuth();
+  const [notice, setNotice] = useState("");
+  // A brand-new install has no accounts: offer to create the Owner instead of signing in.
+  const [firstRun, setFirstRun] = useState(false);
+  useEffect(() => {
+    if (loading || user) return;
+    api
+      .setupState()
+      .then((state) => setFirstRun(state.needed))
+      .catch(() => setFirstRun(false));
+  }, [loading, user]);
+
+  if (path === "/invite") return <SetPassword mode="invite" onReset={setNotice} />;
+  if (path === "/reset") return <SetPassword mode="reset" onReset={setNotice} />;
+  if (loading) return <p className="loading">Loading…</p>;
+  if (!user && firstRun) return <FirstRun />;
+  if (!user) return path === "/forgot" ? <Forgot /> : <SignIn notice={notice} />;
+
+  let page;
+  if (path === "/users" && user.role === "owner") page = <Users />;
+  else if (path === "/profile") page = <Profile />;
+  else page = <Overview />;
+  return <Shell path={path}>{page}</Shell>;
+}
+
 export function App() {
   return (
-    <div className="shell">
-      <header className="topbar">
-        <span className="mark" aria-hidden="true">
-          GR
-        </span>
-        <h1>GridRankers Agent Hub</h1>
-      </header>
-      <main className="content">
-        <section className="card">
-          <h2>Setting up</h2>
-          <p>
-            The Agent Hub is being built. Sign-in, imports and the agents' on/off switches arrive in
-            the next steps.
-          </p>
-          <HealthStatus />
-        </section>
-      </main>
-    </div>
+    <AuthProvider>
+      <Routes />
+    </AuthProvider>
   );
 }
