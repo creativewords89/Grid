@@ -235,3 +235,95 @@ class Run(Base):
             postgresql_where=text("status IN ('queued', 'running')"),
         ),
     )
+
+
+class ImportStatus(enum.StrEnum):
+    PREVIEW = "preview"
+    CONFIRMED = "confirmed"
+    FAILED = "failed"
+    DISCARDED = "discarded"
+
+
+class Import(TimestampMixin, Base):
+    """An uploaded lead file (SPEC section 6.4). The file itself isn't kept: `rows` holds
+    the cleaned leads until the import is confirmed or discarded."""
+
+    __tablename__ = "imports"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    file_name: Mapped[str] = mapped_column(String(255))
+    niche: Mapped[str] = mapped_column(String(80))
+    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    status: Mapped[ImportStatus] = mapped_column(_enum(ImportStatus, "import_status"))
+    counts: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
+    preview: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
+    rows: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, server_default="[]")
+    error: Mapped[str | None] = mapped_column(String(500))
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    uploader: Mapped[User | None] = relationship()
+
+
+class Lead(TimestampMixin, Base):
+    """The Lead ID registry (SPEC section 5): enough to match a business on the next import.
+    The full row lives in the Master Sheet."""
+
+    __tablename__ = "leads"
+
+    lead_id: Mapped[str] = mapped_column(String(12), primary_key=True)
+    niche: Mapped[str] = mapped_column(String(80))
+    city: Mapped[str] = mapped_column(String(120))
+    business_name: Mapped[str] = mapped_column(String(255))
+    level: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    gbp_link: Mapped[str] = mapped_column(String(500), default="", server_default="")
+    phone_digits: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    name_address: Mapped[str] = mapped_column(String(600), default="", server_default="")
+    website_domain: Mapped[str] = mapped_column(String(255), default="", server_default="")
+    emails: Mapped[list[str]] = mapped_column(JSONB, default=list, server_default="[]")
+    first_import_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("imports.id", ondelete="SET NULL")
+    )
+    last_import_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("imports.id", ondelete="SET NULL")
+    )
+
+    __table_args__ = (
+        Index("ix_leads_gbp_link", "gbp_link"),
+        Index("ix_leads_phone_digits", "phone_digits"),
+        Index("ix_leads_name_address", "name_address"),
+        Index("ix_leads_niche_city", "niche", "city"),
+    )
+
+
+class LeadList(TimestampMixin, Base):
+    """One City + Niche (SPEC section 5): switched off, its leads are left alone."""
+
+    __tablename__ = "lists"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    city: Mapped[str] = mapped_column(String(120))
+    niche: Mapped[str] = mapped_column(String(80))
+    active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    daily_limit: Mapped[int | None] = mapped_column(Integer)
+
+    __table_args__ = (Index("uq_lists_city_niche", "city", "niche", unique=True),)
+
+
+class DoNotContact(Base):
+    """Never outreached (PLAN.md section 3.4): Top leads now, opt-outs later."""
+
+    __tablename__ = "do_not_contact"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    kind: Mapped[str] = mapped_column(String(10))  # email, phone, gbp, domain
+    value: Mapped[str] = mapped_column(String(500))
+    reason: Mapped[str] = mapped_column(String(20))  # top, opt_out, manual
+    lead_id: Mapped[str | None] = mapped_column(String(12))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("uq_do_not_contact_kind_value_reason", "kind", "value", "reason", unique=True),
+        Index("ix_do_not_contact_lead_id", "lead_id"),
+    )

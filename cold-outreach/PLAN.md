@@ -9,7 +9,7 @@ This file holds the decisions that apply to the whole system. Each part has its 
 
 | Part | Spec | State |
 |---|---|---|
-| Agent Hub | [hub/SPEC.md](hub/SPEC.md) | Being built (steps 1–5 done) |
+| Agent Hub | [hub/SPEC.md](hub/SPEC.md) | Being built (steps 1–6 done) |
 | GBP audit agent | `agents/gbp-audit/SPEC.md` | Decided (section 5), spec written before its build |
 | Website audit agent | `agents/website-audit/SPEC.md` | Decided (section 6), spec written before its build |
 | Social media audit agent | `agents/social-audit/SPEC.md` | Data source not decided |
@@ -98,8 +98,9 @@ The Sheet may show an `Outreach Status` column for reading only.
   `WP`, `E-mail`, `Gmail`, `Number of Reviews`, `Ratings`, `Average Ratings` …), takes the
   city from the tab name when there is no City column, trims spaces and line breaks, and
   removes `utm_` tracking from website links.
-- **Duplicates** (same GBP link or same phone) become **one lead**; every different email is
-  kept on it. A re-import updates the existing lead instead of adding a row.
+- **Duplicates** become **one lead** (same GBP link; or same phone, or name + address, unless
+  the two rows have different GBP links, so a profile per city stays a lead per city); every
+  different email is kept on it. A re-import updates the existing lead instead of adding a row.
 - Before anything is written the Hub shows a **preview** (new, updated, duplicates merged,
   rows without a GBP link, empty tabs), and the person confirms.
 - `Reviews` and `Average` from the file are kept for reference only; audits use fresh data.

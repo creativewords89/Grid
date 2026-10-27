@@ -110,7 +110,7 @@ def google_token(service_account_json: str) -> str:
     return str(data["access_token"])
 
 
-def _google_reason(response: httpx2.Response) -> str:
+def google_reason(response: httpx2.Response) -> str:
     error = (_json(response) or {}).get("error") or {}
     reasons = {item.get("reason") for item in error.get("errors", []) if isinstance(item, dict)}
     if "storageQuotaExceeded" in reasons:
@@ -134,7 +134,7 @@ def google_sheet_tabs(token: str, sheet_id: str) -> tuple[str, list[str]]:
             headers={"Authorization": f"Bearer {token}"},
         )
     if response.status_code != 200:
-        raise ProviderError(f"Master Sheet: {_google_reason(response)}")
+        raise ProviderError(f"Master Sheet: {google_reason(response)}")
     data = response.json()
     tabs = [sheet["properties"]["title"] for sheet in data.get("sheets", [])]
     return str(data["properties"]["title"]), tabs
@@ -147,7 +147,7 @@ def google_sheet_headers(token: str, sheet_id: str, tab: str) -> list[str]:
             headers={"Authorization": f"Bearer {token}"},
         )
     if response.status_code != 200:
-        raise ProviderError(f"Master Sheet: {_google_reason(response)}")
+        raise ProviderError(f"Master Sheet: {google_reason(response)}")
     rows = response.json().get("values") or [[]]
     return [str(cell) for cell in rows[0] if str(cell).strip()]
 
@@ -168,7 +168,7 @@ def google_drive_write_test(token: str, folder_id: str) -> None:
             },
         )
         if created.status_code != 200:
-            raise ProviderError(f"Drive folder: {_google_reason(created)}")
+            raise ProviderError(f"Drive folder: {google_reason(created)}")
         file_id = created.json()["id"]
         deleted = client.delete(f"{DRIVE_URL}/{file_id}", params=params, headers=headers)
         if deleted.status_code not in (200, 204):

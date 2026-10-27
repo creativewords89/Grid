@@ -12,7 +12,12 @@ export function mockApi(routes: Record<string, Handler | [number, unknown?] | Re
     vi.fn(async (url: string, init: RequestInit = {}) => {
       const method = init.method ?? "GET";
       const path = url.replace(/^\/api/, "");
-      const body = init.body ? JSON.parse(String(init.body)) : undefined;
+      const body =
+        init.body instanceof FormData
+          ? Object.fromEntries(init.body.entries())
+          : init.body
+            ? JSON.parse(String(init.body))
+            : undefined;
       const headers = new Headers(init.headers);
       calls.push({ method, path, body, csrf: headers.get("X-CSRF-Token") });
       const route = routes[`${method} ${path}`];

@@ -5,6 +5,7 @@ import { Agents } from "./pages/Agents";
 import { Connections } from "./pages/Connections";
 import { FirstRun } from "./pages/FirstRun";
 import { Forgot } from "./pages/Forgot";
+import { Import } from "./pages/Import";
 import { Overview } from "./pages/Overview";
 import { Profile } from "./pages/Profile";
 import { Runs } from "./pages/Runs";
@@ -39,6 +40,7 @@ function Routes() {
   else if (path === "/connections" && user.role === "owner") page = <Connections />;
   else if (path === "/agents") page = <Agents />;
   else if (path === "/runs") page = <Runs />;
+  else if (path === "/import") page = <Import />;
   else if (path === "/profile") page = <Profile />;
   else page = <Overview />;
   return <Shell path={path}>{page}</Shell>;

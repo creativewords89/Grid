@@ -1982,3 +1982,37 @@ details.original summary {
 .pill-run-timed_out {
   color: var(--error);
 }
+
+/* Import */
+.counts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.count {
+  display: grid;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.count-value {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.count-warn .count-value {
+  color: var(--error);
+}
+
+details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.table-caption {
+  text-align: left;
+  font-weight: 600;
+  padding: 12px 12px 4px;
+}

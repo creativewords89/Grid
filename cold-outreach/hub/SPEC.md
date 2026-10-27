@@ -226,31 +226,45 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 
 ### 6.4 Import
 
-1. **Upload** (Owner, Admin): an `.xlsx` (max 20 MB) and its **Niche** (pick an existing one or
-   type a new one). Tabs are read with `openpyxl` in read-only mode; formulas give their values.
-2. **Reading each tab:**
-   - Header synonyms (case and spaces ignored): GBP Link ← `MAP`, `Map`, `Map URL`, `Map Url`,
-     `MAP URl`; WhatsApp ← `WA`, `WP`, `Whatsapp`; Email ← `E-mail`, `Gmail`, `Mail`;
-     Reviews ← `Number of Reviews`, `Review`, `Reviews Count`; Rating ← `Average`, `Ratings`,
-     `Average Ratings`; Notes ← `Comment`, `Issue 1–3`. Unknown columns are listed in the
-     preview and ignored.
-   - No City column → the tab name is the city.
-   - Empty rows and tabs are skipped (and counted).
-3. **Cleaning:** trim spaces and line breaks; phone to digits for matching (shown as given);
-   website: strip `utm_*` parameters, keep the given URL; emails lower-cased, split on
-   commas, spaces or new lines, invalid ones listed in the preview.
-4. **Matching and merging** (within the file and against the `leads` registry):
-   same GBP link, or same phone digits, or same normalised name + address → **one lead**.
-   Emails are merged; other empty fields are filled from the duplicate; a field present in
-   both keeps the newest file's value.
-5. **Level:** `Top` (any case) from the optional `Level` column; anything else is empty.
-   Top leads add their email, phone and GBP link to `do_not_contact` (reason `top`).
-6. **Preview:** new leads, updated leads, duplicates merged (with the rows), rows without a GBP
-   link, rows without a website, Top leads, cities and lists created, unknown columns.
-7. **Confirm:** Lead IDs are given in order (`L-000001` …); the Leads tab gets new rows
-   appended and updated rows rewritten (by Lead ID, by header name, only the import columns).
-   The Sheet is written in batches to stay inside the Sheets API quota. Discarding a preview
-   changes nothing.
+1. **Upload** (Owner, Admin): an `.xlsx` (max 20 MB) and its **Niche** (typed, or picked from the
+   niches already used; a different case uses the existing spelling). Reading a large file
+   (4,000 rows, 248 tabs) takes about 15 seconds.
+2. **Reading each tab:** the header row is the first of the first five rows with two known
+   headers. Header synonyms (case, spaces and punctuation ignored): GBP Link ← `MAP`, `Map URL`,
+   `MAP URl`, `Maps`, `GBP`; WhatsApp ← `WA`, `WP`, `Whatsapp`; Email ← `E-mail`, `Gmail`,
+   `Mail`; Reviews ← `Number of Reviews`, `Review`, `Reviews Count`; Rating ← `Average`,
+   `Ratings`, `Average Ratings`; Notes ← `Comment`, `Issue 1–3` (joined). Unknown columns are
+   listed in the preview and ignored. No City (column or cell) → the tab name. A row with only a
+   city filled in is not a business and is ignored; a row with neither a name nor a GBP link is
+   skipped and listed; a tab with no businesses is listed as empty.
+3. **Cleaning:** spaces and line breaks squeezed; phone compared by its last 10 digits; website
+   loses its `utm_*` parameters only; emails lower-cased, split on commas, spaces, semicolons or
+   slashes, `%20` decoded; anything that isn't an email is listed and left out.
+4. **Same business** (within the file and against the registry): the **same GBP link**; or,
+   when the two don't have **different** GBP links, the same phone, or the same name + address
+   (name + city when a row has no GBP link, phone or address). So a brand with one phone number
+   and a profile in each city stays one lead per profile. Merged rows pool their emails; an
+   empty field is filled from the other row; when both have a value the first row's is kept;
+   Top wins.
+5. **Level:** `Top` (any case) from the optional `Level` column. A file without a Level column
+   never changes anyone's Level. Top leads put their email(s), phone and GBP link on the
+   do-not-contact list (reason `top`); losing Top removes those entries.
+6. **Preview** (nothing written but the import): businesses, new, already known (updated),
+   duplicates merged, Top, cities, without a GBP link, without a website, rows skipped, emails
+   that look wrong, with up to 25 examples of each, plus new lists, ignored columns and empty
+   tabs. A waiting preview reopens when the screen is opened again.
+7. **Confirm** (needs the Google connection): Lead IDs continue from the highest one saved
+   (`L-000001` …), one import at a time; the registry, lists and do-not-contact list are updated;
+   the Leads tab is written. A new Sheet gets a Leads tab with the header row; missing headers
+   are added at the end. Rows are found by Lead ID and columns by header name; new leads are
+   appended, known ones updated in place, **only the import's columns**, and an empty value
+   never blanks a filled cell. Every value is written as plain text (`RAW`), so a cell starting
+   with `=` can't become a formula. Writes are batched (500 ranges, 2,000 rows a call) and
+   retried after Google's "too many requests". If the Sheet can't be written, nothing is saved
+   and the same Lead IDs are used on the next try. Once confirmed, the import keeps only its
+   counts.
+8. **Lists** (one per City + Niche) are created by confirmed imports and shown on the Import
+   screen with their businesses and Top counts; Owners and Admins switch a list on or off.
 
 ### 6.5 Benchmarks and Website Standards
 
@@ -289,7 +303,8 @@ for themselves (Profile). The same alert is not repeated within 6 hours.
    DST), budget stops, stale detection.
 6. **Import:** xlsx reading, synonyms, cleaning, merging, Lead IDs, preview, confirm, writing the
    Leads tab (Sheets API faked), Lists, do-not-contact for Top. **Tests:** fixtures built from
-   the real files' patterns (variant headers, missing City, multi-email duplicates, empty tabs).
+   the real files' patterns (variant headers, missing City, multi-email duplicates, empty tabs,
+   one phone with a profile per city, text that looks like a formula, a failed Sheet write).
 7. **Benchmarks and Website Standards:** GBP benchmark upload, Standard drafts and locking, the
    agent reference endpoints. **Tests:** replace-by-pair, locked versions only.
 8. **Alerts and Overview:** email and Telegram alerts, repeat suppression, daily summary,

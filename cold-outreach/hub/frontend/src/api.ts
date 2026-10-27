@@ -120,6 +120,58 @@ export type AgentSettings = {
   daily_budget_usd?: string;
 };
 
+export type ImportCounts = {
+  tabs: number;
+  leads: number;
+  new: number;
+  updated: number;
+  merged: number;
+  top: number;
+  no_gbp_link: number;
+  no_website: number;
+  skipped_rows: number;
+  invalid_emails: number;
+  cities: number;
+  new_lists: number;
+  sheet_added?: number;
+  sheet_updated?: number;
+};
+
+export type ImportPreview = {
+  has_level_column: boolean;
+  empty_tabs: string[];
+  unknown_columns: Record<string, string[]>;
+  skipped_rows: string[];
+  invalid_emails: string[];
+  merged_rows: string[][];
+  updated: string[];
+  no_gbp_link: string[];
+  top: string[];
+  new_lists: string[];
+};
+
+export type LeadImport = {
+  id: string;
+  file_name: string;
+  niche: string;
+  status: "preview" | "confirmed" | "failed" | "discarded";
+  uploaded_by: string | null;
+  created_at: string;
+  confirmed_at: string | null;
+  counts: ImportCounts;
+  preview: ImportPreview;
+};
+
+export type LeadList = {
+  id: string;
+  city: string;
+  niche: string;
+  active: boolean;
+  daily_limit: number | null;
+  leads: number;
+  top: number;
+};
+
 export type Health = {
   status: "ok" | "error";
   version: string;
@@ -173,6 +225,23 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
   if (response.status === 204) return undefined as T;
 
+  const data: unknown = await response.json().catch(() => null);
+  if (!response.ok) throw toApiError(response.status, data);
+  return data as T;
+}
+
+async function upload<T>(path: string, form: FormData): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`/api${path}`, {
+      method: "POST",
+      headers: { Accept: "application/json", "X-CSRF-Token": csrfToken },
+      credentials: "same-origin",
+      body: form,
+    });
+  } catch {
+    throw new ApiError(0, "network", "The server can't be reached. Check your connection.");
+  }
   const data: unknown = await response.json().catch(() => null);
   if (!response.ok) throw toApiError(response.status, data);
   return data as T;
@@ -234,6 +303,19 @@ export const api = {
     return request<RunPage>("GET", `/runs${query ? `?${query}` : ""}`);
   },
   overview: () => request<Overview>("GET", "/overview"),
+  uploadLeads: (file: File, niche: string) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("niche", niche);
+    return upload<LeadImport>("/imports", form);
+  },
+  imports: () => request<LeadImport[]>("GET", "/imports"),
+  confirmImport: (id: string) => request<LeadImport>("POST", `/imports/${id}/confirm`),
+  discardImport: (id: string) => request<LeadImport>("POST", `/imports/${id}/discard`),
+  niches: () => request<string[]>("GET", "/niches"),
+  lists: () => request<LeadList[]>("GET", "/lists"),
+  updateList: (id: string, patch: { active?: boolean }) =>
+    request<LeadList>("PATCH", `/lists/${id}`, patch),
   setBudget: (daily_total_budget_usd: string, time_zone: string) =>
     request<Budget>("PUT", "/budget", { daily_total_budget_usd, time_zone }),
 
