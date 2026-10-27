@@ -1,4 +1,4 @@
-"""Marketing threads (SPEC section 6.10): Reddit by link or code, Facebook by name → draft →
+"""Marketing threads (SPEC section 6.10): Reddit and Facebook by link or code → draft →
 posted → their reply → next draft, with reviews, statuses and permissions. Claude, Pinecone
 and Telegram are faked."""
 
@@ -195,71 +195,37 @@ def test_creating_and_finding_a_thread_again(client: TestClient, db: Session, sa
     assert (dup.status_code, dup.json()["error"]["code"]) == (409, "exists")
 
 
-def facebook_thread(client: TestClient, name: str, question: str) -> Any:
-    response = client.post(
-        "/api/threads",
-        json={"platform": "facebook", "author_name": name, "question": question},
-    )
-    assert response.status_code == 201, response.text
-    return response.json()
-
-
-def by_name(client: TestClient, name: str, text: str | None = None) -> list[Any]:
-    params = {"name": name} | ({"text": text} if text else {})
-    response = client.get("/api/threads/by-name", params=params)
-    assert response.status_code == 200, response.text
-    found: list[Any] = response.json()
-    return found
-
-
-def test_facebook_threads_are_found_by_name(client: TestClient, db: Session) -> None:
-    po_box = facebook_thread(client, "Dan Miller", "Can I use a PO box address for my GBP?")
-    verify = facebook_thread(client, "Dan Miller", "How long does GBP verification take?")
-    anon = facebook_thread(client, "Anonymous member", "My listing got suspended, what now?")
-    facebook_thread(client, "Sarah Jones", "Do reviews help ranking?")
-    assert po_box["id"].startswith("facebook:") and po_box["id"] != verify["id"]
-    assert po_box["person"] == "Dan Miller" and po_box["original_url"] == ""
-    assert po_box["messages"][0]["author_name"] == "Dan Miller"
-    # The newest conversation comes first.
-    db.get(Thread, verify["id"]).last_activity_at = now() + timedelta(minutes=1)  # type: ignore[union-attr]
-    db.commit()
-
-    found = by_name(client, "Dan Miller")
-    assert [f["thread"]["id"] for f in found] == [verify["id"], po_box["id"]]
-    assert found[0]["first_question"] == "How long does GBP verification take?"
-    assert found[0]["our_last_reply"] is None
-    assert not any(f["closest"] for f in found)
-    # Capitals, extra spaces and a close spelling find the same person.
-    assert len(by_name(client, "  dan   MILLER ")) == 2
-    assert len(by_name(client, "Dan Millar")) == 2
-    # "Anonymous member" is a name like any other.
-    assert [f["thread"]["id"] for f in by_name(client, "anonymous member")] == [anon["id"]]
-    assert by_name(client, "Nobody Here") == []
-    assert by_name(client, "   ") == []
-
-
-def test_the_closest_conversation_is_marked(client: TestClient) -> None:
-    po_box = facebook_thread(client, "Dan Miller", "Can I use a PO box address for my GBP?")
-    facebook_thread(client, "Dan Miller", "How long does GBP verification take?")
-    found = by_name(client, "Dan Miller", "Thanks! And is a virtual office or PO box address ok?")
-    assert [f["thread"]["id"] for f in found if f["closest"]] == [po_box["id"]]
+FB_POST = "https://www.facebook.com/groups/localbiz/posts/1234567890123456/"
 
 
 def test_a_facebook_conversation_from_draft_to_follow_up(client: TestClient) -> None:
-    thread = facebook_thread(client, "Anonymous member", QUESTION)
+    thread = new_thread(client, FB_POST + "?fbclid=IwAR0", QUESTION, author_name="Dan Miller")
+    assert (thread["id"], thread["community"], thread["person"]) == (
+        "facebook:1234567890123456",
+        "localbiz",
+        "Dan Miller",
+    )
+    assert "fbclid" not in thread["original_url"]
     thread = drafted(client, thread)
     draft = ours(thread)
-    # A Facebook link is kept only as a note: Facebook threads are found by name.
-    link = "https://www.facebook.com/groups/localbiz/posts/1/?comment_id=9"
-    posted = client.post(f"/api/thread-messages/{draft['id']}/posted", json={"url": link})
+    posted = client.post(
+        f"/api/thread-messages/{draft['id']}/posted",
+        json={"url": FB_POST + "?comment_id=555"},
+    )
     assert posted.status_code == 200, posted.text
     assert posted.json()["status"] == "waiting_for_them"
 
-    [match] = by_name(client, "Anonymous member")
-    assert match["our_last_reply"] == draft["body"]
+    # Their answer under our comment: its link finds the thread and the comment it replies to.
+    link = FB_POST + "?comment_id=555&reply_comment_id=777"
+    found = client.post("/api/threads/resolve", json={"url": link}).json()
+    assert (found["found"], found["thread"]["id"], found["matched_message_id"]) == (
+        True,
+        thread["id"],
+        draft["id"],
+    )
     reply = client.post(
         f"/api/threads/{thread['id']}/replies",
-        json={"body": "Is video verification faster?", "author_name": "Anonymous member"},
+        json={"body": "Is video verification faster?", "author_name": "Dan Miller", "url": link},
     )
     assert reply.status_code == 201, reply.text
     thread = reply.json()
@@ -267,18 +233,27 @@ def test_a_facebook_conversation_from_draft_to_follow_up(client: TestClient) -> 
     assert thread["messages"][-1]["parent_id"] == draft["id"]
     follow_up = drafted(client, thread, thread["messages"][-1]["id"])
     assert len([m for m in follow_up["messages"] if m["author"] == "us"]) == 2
+    # The post's code on its own finds it too.
+    code = client.post("/api/threads/resolve", json={"url": "1234567890123456"}).json()
+    assert code["found"] is True and code["thread"]["id"] == thread["id"]
+
+
+def test_a_link_for_another_post_is_refused(client: TestClient) -> None:
+    thread = new_thread(client, FB_POST, QUESTION)
+    other = "https://www.facebook.com/groups/localbiz/posts/9999999999999999/?comment_id=1"
+    reply = client.post(f"/api/threads/{thread['id']}/replies", json={"body": "Hi", "url": other})
+    assert reply.status_code == 422
+    assert "different thread" in reply.json()["error"]["message"]
 
 
 @pytest.mark.parametrize(
     ("body", "message"),
     [
-        ({"platform": "facebook", "question": "Q?"}, "Type the person's name."),
-        ({"platform": "facebook", "author_name": "Dan", "question": " "}, "Paste the question"),
-        ({"platform": "reddit", "author_name": "Dan", "question": "Q?"}, "found by their link"),
-        ({"question": "Q?"}, "Paste the Reddit link, or choose Facebook"),
+        ({"url": FB_POST, "question": " "}, "Paste the question"),
+        ({"url": "https://www.facebook.com/share/p/1AbCdEf/", "question": "Q?"}, "share link"),
         (
-            {"url": "https://www.facebook.com/groups/x/posts/1/", "question": "Q?"},
-            "found by the person's name",
+            {"url": "https://www.facebook.com/groups/localbiz/", "question": "Q?"},
+            "doesn't look like a link",
         ),
     ],
 )
@@ -290,6 +265,10 @@ def test_new_threads_need_the_right_details(
     assert message in response.json()["error"]["message"]
 
 
+def test_a_new_thread_needs_a_link(client: TestClient) -> None:
+    assert client.post("/api/threads", json={"question": "Q?"}).status_code == 422
+
+
 def test_a_switched_off_facebook_takes_no_new_conversations(
     client: TestClient, db: Session
 ) -> None:
@@ -297,9 +276,7 @@ def test_a_switched_off_facebook_takes_no_new_conversations(
     platform = service.platform_of(db, "facebook")
     platform.enabled = False
     db.commit()
-    response = client.post(
-        "/api/threads", json={"platform": "facebook", "author_name": "Dan", "question": "Q?"}
-    )
+    response = client.post("/api/threads", json={"url": FB_POST, "question": "Q?"})
     assert response.status_code == 422
     assert "switched off" in response.json()["error"]["message"]
 
@@ -311,10 +288,6 @@ def test_a_reddit_post_code_works_like_its_link(client: TestClient) -> None:
     resolved = client.post("/api/threads/resolve", json={"url": POST}).json()
     assert resolved["found"] is True and resolved["thread"]["id"] == "reddit:1abc2de"
     assert client.post("/api/threads/resolve", json={"url": "1ABC2DE"}).json()["found"] is True
-
-
-def test_finding_by_name_needs_sign_in(ask_client: Callable[[], TestClient]) -> None:
-    assert ask_client().get("/api/threads/by-name", params={"name": "Dan"}).status_code == 401
 
 
 def test_a_well_supported_draft_is_ready_to_post(
@@ -570,7 +543,7 @@ def test_list_tabs_and_filters(client: TestClient, db: Session, answerer: FakeAn
     drafted(
         client, new_thread(client, "https://www.reddit.com/r/SEO/comments/2bcd3ef/x/", QUESTION)
     )
-    facebook = facebook_thread(client, "Dan Miller", "Q3?")
+    facebook = new_thread(client, FB_POST, "Q3?")
 
     body = client.get("/api/threads").json()
     assert body["counts"]["waiting_for_us"] == 2 and body["counts"]["ready_to_post"] == 1

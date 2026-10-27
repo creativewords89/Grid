@@ -1,31 +1,28 @@
 import { expect, test } from "@playwright/test";
 import { haveDocument, signIn } from "./helpers";
 
-// SPEC 6.10 (step 17): Facebook posts have no usable links, so conversations are found by
-// the person's name: start one, post it, then find it again by name for their reply.
-test("Facebook: new conversation by name → posted → found by name → follow-up", async ({
+// SPEC 6.10: a Facebook post is found by its permalink (or the code in it), like Reddit:
+// permalink → draft → posted → their reply's link opens the same thread → follow-up.
+test("a Facebook thread by permalink, from first draft to follow-up", async ({
   page,
 }) => {
   await signIn(page);
   await haveDocument(page, "Client handbook.csv");
-  const name = `Dan Miller ${Date.now().toString(36).slice(-4)}`;
+  const code = `${Date.now()}`;
+  const post = `https://www.facebook.com/groups/localbiz/posts/${code}/`;
 
-  // Nobody by that name yet: start a new conversation and draft.
   await page.goto("/marketing");
-  await page.getByRole("tab", { name: "Facebook" }).click();
-  await page.getByLabel("Their name on Facebook").fill(name);
-  await page.getByRole("button", { name: "Find" }).click();
-  await expect(
-    page.getByText(`No earlier conversations with ${name}.`),
-  ).toBeVisible();
   await page
-    .getByRole("button", { name: `+ New conversation with ${name}` })
-    .click();
+    .getByLabel("Paste a Reddit or Facebook link or the post's code")
+    .fill(`${post}?fbclid=IwAR0e2e`);
+  await page.getByRole("button", { name: "Go" }).click();
+  await expect(page.getByText(/Facebook · localbiz/)).toBeVisible();
   await page
     .getByLabel("Their question")
     .fill(
       "How long does Google Business Profile verification take for a new practice?",
     );
+  await page.getByLabel("Their name (optional)").fill("Dan Miller");
   await page.getByRole("button", { name: "Draft reply" }).click();
   await expect(page.locator(".bubble-us.draft")).toBeVisible();
 
@@ -41,30 +38,33 @@ test("Facebook: new conversation by name → posted → found by name → follow
     await page.getByRole("link", { name: "Open the thread" }).click();
   }
   await page.getByRole("button", { name: "Mark as posted" }).click();
+  await page
+    .getByLabel("Link to our posted comment (optional)")
+    .fill(`${post}?comment_id=555`);
   await page.getByRole("button", { name: "Save as posted" }).click();
   await expect(status).toHaveText("Waiting for them");
 
-  // Days later they reply: find the conversation by their name, closest one marked.
+  // They answer our comment: the link of their reply opens the same thread.
   await page.goto("/marketing");
-  await page.getByRole("tab", { name: "Facebook" }).click();
-  await page.getByLabel("Their name on Facebook").fill(name.toLowerCase());
   await page
-    .getByLabel(/Their new message/)
+    .getByLabel("Paste a Reddit or Facebook link or the post's code")
+    .fill(`${post}?comment_id=555&reply_comment_id=777`);
+  await page.getByRole("button", { name: "Go" }).click();
+  await page
+    .getByLabel("Their reply")
     .fill("Thanks! Is video verification faster?");
-  await page.getByRole("button", { name: "Find" }).click();
-  const match = page.locator(".name-match", {
-    hasText: "How long does Google Business Profile",
-  });
-  await expect(match.getByText("Closest match")).toBeVisible();
-  await expect(match.getByText(/Our last reply/)).toBeVisible();
-  await match.getByRole("button", { name: "This one" }).click();
-
-  // Their message is ready to add; add it and draft the follow-up.
-  await expect(page.getByLabel("Their reply")).toHaveValue(
-    "Thanks! Is video verification faster?",
-  );
   await page.getByRole("button", { name: "Add reply" }).click();
   await expect(status).toHaveText("Waiting for us");
+
+  // The post's code on its own finds it too.
+  await page.goto("/marketing");
+  await page
+    .getByLabel("Paste a Reddit or Facebook link or the post's code")
+    .fill(code);
+  await page.getByRole("button", { name: "Go" }).click();
+  await expect(
+    page.locator(".bubble-them", { hasText: "Is video verification faster?" }),
+  ).toBeVisible();
   await page
     .getByLabel("Instruction for the draft (optional)")
     .last()

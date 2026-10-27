@@ -11,7 +11,7 @@ test("a Reddit thread from first draft to follow-up", async ({ page }) => {
   // Paste the post's URL (with tracking), add their question, draft.
   await page.goto("/marketing");
   await page
-    .getByLabel("Paste a Reddit link or the post's code")
+    .getByLabel("Paste a Reddit or Facebook link or the post's code")
     .fill(`${post}?utm_source=share`);
   await page.getByRole("button", { name: "Go" }).click();
   await expect(page.getByText("New thread")).toBeVisible();
@@ -53,7 +53,7 @@ test("a Reddit thread from first draft to follow-up", async ({ page }) => {
   // They reply under our comment: its URL opens the same thread with the reply form ready.
   await page.goto("/marketing");
   await page
-    .getByLabel("Paste a Reddit link or the post's code")
+    .getByLabel("Paste a Reddit or Facebook link or the post's code")
     .fill(
       "https://old.reddit.com/r/localseo/comments/e2e1abc/x/ourcmt1/?context=3",
     );

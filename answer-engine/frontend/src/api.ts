@@ -478,13 +478,6 @@ export type ThreadDetail = ThreadRow & {
   can_delete: boolean;
 };
 
-export type NameMatch = {
-  thread: ThreadRow;
-  first_question: string;
-  our_last_reply: string | null;
-  closest: boolean;
-};
-
 export type Resolved = {
   found: boolean;
   parsed: {
@@ -834,18 +827,8 @@ export const api = {
   deleteCommunity: (id: string) => request<void>("DELETE", `/communities/${id}`),
 
   resolveThread: (url: string) => request<Resolved>("POST", "/threads/resolve", { url }),
-  createThread: (body: {
-    url?: string;
-    platform?: string;
-    question: string;
-    title?: string;
-    author_name?: string;
-  }) => request<ThreadDetail>("POST", "/threads", body),
-  threadsByName: (name: string, text?: string) => {
-    const params = new URLSearchParams({ name });
-    if (text) params.set("text", text);
-    return request<NameMatch[]>("GET", `/threads/by-name?${params.toString()}`);
-  },
+  createThread: (body: { url: string; question: string; title?: string; author_name?: string }) =>
+    request<ThreadDetail>("POST", "/threads", body),
   listThreads: (filters: ThreadFilters = {}) => {
     const params = new URLSearchParams();
     if (filters.status) params.set("status", filters.status);
