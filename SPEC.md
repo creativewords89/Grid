@@ -446,6 +446,10 @@ The team sections are tabs of **My page** for leaders and the Super Admin (7.6) 
 - Settings: photo (cropped to 160 px), name, job title, email, phone, address, Google Drive link, notes, **location** (city) and **date of birth** (day, month, year) (*new*). Required fields (6.10) are marked, missing ones outlined in red, with "Profile N of 5 complete"; Super Admin: role + Set code + Remove.
 - My leave (*new*; the Leave box's **My leave** link opens it): this year's casual and sick days left, the person's requests (type, dates, days, status, decided by, message; Cancel while pending) and this year's months (taken, "N days deducted", December "N days paid out").
 
+### 7.7 Share a task (*new*, design SHR-1B)
+- Every meeting, general and monthly task card has **↗ Share** next to Details: it copies a link to the task (`{portal}/?task={id}`) and says "Link copied — paste it in a chat". Nothing else — no picking people.
+- Opening the link (signing in first if needed) goes to the task's project and board (Meeting Minutes, General tasks or Monthly Tasks) with the search set to its title, scrolls to the card and highlights it for a few seconds; the link then leaves the address bar. A deleted or unknown task says "That task no longer exists." The task is only read through the normal sync, so the link shows nothing to someone who isn't signed in.
+
 ## 8. REST API (namespace `gr-portal/v1`)
 
 | Method & path | Purpose |
@@ -675,5 +679,7 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 88. (Released as 0.1.46.) Hand-in files only in Details (6.16): the task card no longer shows "From {step}:" with the files and links; Details lists them under each step. **Tests:** Playwright (no files on the card; Details shows them under Write).
 
 89. (Released as 0.1.46.) Move unfinished work to the new cycle (6.11, design CO-1A): **Unfinished from {Sep}** at the end of Review last cycle — every monthly task with something left and every open meeting task, **Leave in Sep** (default) or **Move to Oct**; a monthly task becomes a catch-up task "{title} — N left from Sep" for its people with a deadline, a meeting task gets the new deadline; the tags **↪ Catch-up from Sep** / **↪ Moved from Sep** on the card; Carry over leaves the Meeting minutes rows; `carried` on meeting tasks (schema 23), POST `/projects/{id}/carry-over`. **Tests:** PHPUnit (managers only, a date from today on, something left, the catch-up task's title, people, quantity, deadline and `carried`, once per task and cycle, last cycle's record untouched, a meeting task's new deadline and review, a done meeting task refused, export / import), Vitest (what's unfinished, skipped periods, what was moved, the month names), Playwright (a Team Leader moves Cycle blogs as a catch-up task and the open meeting task with a new deadline; both tags on Meeting Minutes).
+
+90. Share a task (7.7, design SHR-1B): **↗ Share** on every task card copies a link to the task; the link opens the task's board after sign-in with the card highlighted. **Tests:** Vitest (the link and reading it back, the board of a meeting, general and monthly task, a deleted one), Playwright (Lee copies the link, Max opens it before signing in and lands on the highlighted card, a monthly task's link, a missing task).
 
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).

@@ -1707,3 +1707,7 @@ button.hol-day:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .rc-total{display:flex;justify-content:space-between;margin:0;padding-top:8px;border-top:1px solid var(--line)}
 .rc-form label{display:flex;flex-direction:column;gap:4px;font-size:.8rem;color:var(--ink-2)}
 .rc-form label input{border:1px solid var(--line);border-radius:9px;padding:7px 9px;font:inherit;color:var(--ink);background:var(--panel)}
+/* Share a task (design SHR-1B): ↗ Share on the card; a shared link highlights the card. */
+.share-btn{white-space:nowrap}
+.mcard.flash{animation:task-flash 1.2s ease-in-out 3;box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 45%,transparent)}
+@keyframes task-flash{50%{box-shadow:0 0 0 6px color-mix(in srgb,var(--accent) 25%,transparent)}}
