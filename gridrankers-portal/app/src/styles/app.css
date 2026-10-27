@@ -1086,7 +1086,6 @@ dialog.bl-fees{width:min(640px,94vw)}
 .hi-chip{display:inline-flex;align-items:center;gap:4px;max-width:100%;padding:3px 9px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);font:inherit;font-size:.76rem;font-weight:600;text-decoration:none;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hi-chip small{color:var(--ink-2);font-weight:500}
 .hi-chip:hover{border-color:var(--accent)}
-.hi-from{display:flex;flex-direction:column;gap:4px}
 @media (max-width:600px){.hi-item{grid-template-columns:30px minmax(0,1fr) auto}.hi-item select,.hi-item .hi-req{grid-column:2}.hi-add-row{grid-template-columns:1fr}.hi-edit{margin-left:0}}
 @media (max-width:600px){.stp-edit li{grid-template-columns:22px minmax(0,1fr);}.stp-edit li select,.stp-edit .stp-due-in,.stp-moves{grid-column:2}}
 

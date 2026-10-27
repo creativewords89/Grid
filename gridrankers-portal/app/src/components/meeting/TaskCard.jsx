@@ -184,7 +184,7 @@ export default function TaskCard({ task, onDetails, onEdit }) {
 				)}
 			</div>
 			<ReviewBadge review={task.review} me={me} members={members} />
-			{steps && <StepCard task={task} done={task.step_done} status={st} handins={task.handins} onStatus={(row, to) => setStep(task, row, to)} onTick={(row, delta) => tickStep(task, row, delta)} />}
+			{steps && <StepCard task={task} done={task.step_done} status={st} onStatus={(row, to) => setStep(task, row, to)} onTick={(row, delta) => tickStep(task, row, delta)} />}
 			{!steps && target > 1 && (
 				<div className="mini-prog">
 					<span className="mp-bar">

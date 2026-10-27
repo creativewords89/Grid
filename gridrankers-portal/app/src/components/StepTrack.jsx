@@ -121,7 +121,7 @@ const firstName = (members, id) => (members[id] ? members[id].name.split(' ')[0]
 // The card (SPEC.md 6.16, design DEP-K4): "STEP 2 OF 3" with a bar split into steps, then only the
 // current step — person, due date, Not started · In progress · Completed (and +1 with a quantity) —
 // and who is next. Every step, with its status, is in Details.
-export function StepCard({ task, done, status, project, onStatus, onTick, handins }) {
+export function StepCard({ task, done, status, project, onStatus, onTick }) {
 	const { data, today } = usePortal();
 	const rows = stepRows(task, done);
 	const cur = currentStep(task, done);
@@ -175,12 +175,6 @@ export function StepCard({ task, done, status, project, onStatus, onTick, handin
 				</div>
 				<StepStatus row={cur} status={status} done={done} onStatus={onStatus} />
 				<StepCount row={cur} status={status} done={done} onTick={onTick} />
-				{cur.prev && handinCount(cur.prev, handins).got > 0 && (
-					<span className="hi-from">
-						<small className="muted">From {cur.prev.name}:</small>
-						<HandinChips step={cur.prev} handins={handins} />
-					</span>
-				)}
 			</div>
 			{next && (
 				<div className="stpc-next">

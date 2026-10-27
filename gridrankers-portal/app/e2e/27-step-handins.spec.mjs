@@ -64,14 +64,11 @@ test('hand-ins per step', async ({ page }) => {
 	await expect(step().locator('.stpc-badge')).toHaveText(/Step 2 of 2/i);
 	await signOut(page);
 
-	// Lee: the card shows what Write handed in; Details lists it under Write.
+	// Lee: the card doesn't show the files; Details lists them under Write.
 	await signIn(page, LEAD);
 	await openProject(page, 'Acme Plumbing');
 	await page.getByRole('tab', { name: 'Meeting Minutes' }).click();
-	await expect(step().locator('.hi-from')).toContainText('From Write:');
-	await expect(step().locator('.hi-from .hi-chip')).toHaveCount(2);
-	await expect(step().locator('.hi-from a.hi-chip')).toHaveAttribute('href', 'https://www.figma.com/file/abc/BMW-hero');
-	if (process.env.SHOTS) await card(page, title).screenshot({ path: process.env.SHOTS + '/handin-card.png' });
+	await expect(step().locator('.hi-chip')).toHaveCount(0);
 	await card(page, title).getByRole('button', { name: 'Details' }).click();
 	const details = page.locator('dialog[open]');
 	const write = details.locator('.stp-row').nth(0);
