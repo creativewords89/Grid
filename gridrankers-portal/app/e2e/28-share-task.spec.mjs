@@ -15,6 +15,11 @@ test('share a task', async ({ page, context }) => {
 	expect(made.status).toBe(201);
 	await openProject(page, 'Acme Plumbing');
 	await page.getByRole('tab', { name: 'Meeting Minutes' }).click();
+	// One row: faces, Share, Details, Edit and Delete.
+	const acts = card(page, title).locator('.acts');
+	const [first, del] = [await acts.locator('.av-stack').boundingBox(), await acts.getByRole('button', { name: `Delete ${title}` }).boundingBox()];
+	expect(Math.abs(first.y + first.height / 2 - (del.y + del.height / 2))).toBeLessThan(8);
+	if (process.env.SHOTS) await card(page, title).screenshot({ path: process.env.SHOTS + '/card-row.png' });
 	await card(page, title).getByRole('button', { name: `Share ${title}` }).click();
 	await page.getByText('Link copied — paste it in a chat').waitFor();
 	const link = await page.evaluate(() => navigator.clipboard.readText());

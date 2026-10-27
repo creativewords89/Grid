@@ -682,4 +682,6 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 
 90. (Released as 0.1.47.) Share a task (7.7, design SHR-1B): **↗ Share** on every task card copies a link to the task; the link opens the task's board after sign-in with the card highlighted. **Tests:** Vitest (the link and reading it back, the board of a meeting, general and monthly task, a deleted one), Playwright (Lee copies the link, Max opens it before signing in and lands on the highlighted card, a monthly task's link, a missing task).
 
+91. Task card buttons on one row (7.7): the card shows the people's faces only (names on hover; "?" when nobody — "Not assigned" on hover; up to 4 faces then "+N"), without the "N people" text, so ↗ Share, Details, Edit and 🗑 fit on one row. **Tests:** Playwright (faces and Delete on the same row).
+
 **Definition of done:** all tests pass, an imported export shows the same projects/tasks/progress as the current portal, and a Team Member account can do everything in section 3 that is ✔ for members and nothing that is ✘ (verified by API tests, not just hidden buttons).
