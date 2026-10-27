@@ -106,7 +106,13 @@ const platform = (slug: string, name: string, parser: "reddit" | "facebook") => 
 });
 const platforms: [number, unknown] = [
   200,
-  [platform("reddit", "Reddit", "reddit"), platform("facebook", "Facebook", "facebook")],
+  [
+    platform("reddit", "Reddit", "reddit"),
+    {
+      ...platform("facebook", "Facebook", "facebook"),
+      communities: [{ id: "c1", name: "localbiz", notes: "No links to our website." }],
+    },
+  ],
 ];
 const empty: [number, unknown] = [200, { items: [], counts }];
 const lists = (reddit = empty, facebook = empty) => ({
@@ -146,7 +152,7 @@ test("Facebook and Reddit tabs, each with a status filter", async () => {
   );
   expect(within(side).getByRole("heading", { name: "Reddit conversations" })).toBeVisible();
   expect(within(side).queryByText(fbRow.title)).toBeNull();
-  expect(within(side).queryByRole("button", { name: /New conversation/ })).toBeNull();
+  expect(within(side).getByRole("button", { name: "New conversation" })).toBeVisible();
   // With nothing open, the right side asks where the new post is.
   expect(screen.getByRole("heading", { name: "Where is the post?" })).toBeVisible();
 
@@ -231,7 +237,7 @@ test("Facebook: the permalink starts a conversation under the person's name", as
   });
   render(<App />);
 
-  expect(await screen.findByText(/click the post's date/)).toBeVisible();
+  expect(await screen.findAllByText(/post's date first/)).not.toHaveLength(0);
   await userEvent.type(screen.getByLabelText("Post code or link"), FB_URL);
   await userEvent.click(screen.getByRole("button", { name: "Check" }));
   expect(await screen.findByText(/localbiz · we haven't answered it/)).toBeVisible();
@@ -365,7 +371,7 @@ test("mark as posted, then send their reply: it lands under ours and is drafted"
     `${URL}kx9z0p1/`,
   );
   await userEvent.click(screen.getByRole("button", { name: "Save as posted" }));
-  expect(await screen.findByText(/Posted by Sara/)).toBeVisible();
+  expect(await screen.findByText(/Our reply ·/)).toBeVisible();
 
   expect(screen.getByLabelText("Replying to")).toHaveValue(""); // our latest posted reply
   await userEvent.type(screen.getByLabelText("Paste their new reply"), "And video?");
@@ -426,4 +432,43 @@ test("a reply corrected after posting offers the new text", async () => {
   expect(await screen.findByText(/corrected after posting/)).toBeVisible();
   expect(screen.getByText("2-3 weeks now.")).toBeVisible();
   expect(screen.getByRole("button", { name: "Copy the corrected reply" })).toBeVisible();
+});
+
+test("new conversation shows the steps and where each platform's code is", async () => {
+  mockApi({ "GET /auth/me": me, ...lists() });
+  render(<App />);
+
+  const steps = await screen.findByRole("list", { name: "Steps" });
+  expect(within(steps).getByText("Platform").closest("li")).toHaveAttribute("aria-current", "step");
+  const reddit = await screen.findByRole("button", { name: /^Reddit/ });
+  expect(within(reddit).getByText("1xd8w7u").tagName).toBe("MARK");
+  const help = screen.getByRole("complementary", { name: "Help" });
+  expect(
+    within(help).getByRole("heading", { name: "Facebook: where's the code?" }),
+  ).toBeInTheDocument();
+  expect(within(help).getByText("1234567890123456").tagName).toBe("MARK");
+});
+
+test("a conversation shows the post, the person and the group's rules", async () => {
+  window.history.pushState(null, "", "/marketing?thread=facebook%3A1234567890123456");
+  const other = { ...fbRow, id: "facebook:2", title: "Another question" };
+  mockApi({
+    "GET /auth/me": me,
+    ...lists(empty, [200, { items: [fbRow, other], counts }]),
+    "GET /threads/facebook%3A1234567890123456": [
+      200,
+      detail([question, draftMsg("posted")], fbRow),
+    ],
+  });
+  render(<App />);
+
+  const details = await screen.findByRole("complementary", { name: "Details" });
+  expect(within(details).getByText("1234567890123456")).toBeInTheDocument();
+  expect(within(details).getByRole("link", { name: /Open on Facebook/ })).toHaveAttribute(
+    "href",
+    FB_URL,
+  );
+  expect(await within(details).findByText("2 conversations with us")).toBeInTheDocument();
+  expect(await within(details).findByText("No links to our website.")).toBeInTheDocument();
+  expect(within(details).getByText(/Posted by Sara/)).toBeInTheDocument();
 });

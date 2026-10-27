@@ -16,8 +16,9 @@ import { THREAD_STATUSES } from "../labels";
 import { navigate, useSearch } from "../router";
 
 // Marketing (SPEC sections 6.10 and 7.3), laid out like Chat: conversations on the left;
-// on the right, a new conversation (pick the platform, paste the post's code) or one
-// conversation with a reply box at the bottom. The engine drafts; a person always posts.
+// in the middle, a new conversation (pick the platform, paste the post's code) or one
+// conversation with a reply box at the bottom; on the right, its details or help on finding
+// a post's code. The engine drafts; a person always posts.
 
 const STATUS_NAME = Object.fromEntries(THREAD_STATUSES) as Record<ThreadStatus, string>;
 
@@ -62,17 +63,24 @@ export function Marketing() {
         onChanged={changed}
       />
     );
-  } else if (platform) {
-    body = (
-      <NewConversation
-        key={`${platform}:${query.get("code") ?? ""}`}
-        platform={platform}
-        code={query.get("code") ?? ""}
-        onCreated={changed}
-      />
-    );
   } else {
-    body = <PickPlatform />;
+    body = (
+      <div className="mk-split">
+        <div className="mk-center">
+          {platform ? (
+            <NewConversation
+              key={`${platform}:${query.get("code") ?? ""}`}
+              platform={platform}
+              code={query.get("code") ?? ""}
+              onCreated={changed}
+            />
+          ) : (
+            <PickPlatform />
+          )}
+        </div>
+        <CodeHelp />
+      </div>
+    );
   }
 
   return (
@@ -201,6 +209,21 @@ function Conversations({ current, version }: { current: string | null; version: 
 
   return (
     <aside className="mk-side" aria-label="Conversations">
+      <button className="button button-primary mk-new" onClick={() => navigate("/marketing")}>
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          aria-hidden="true"
+        >
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+        New conversation
+      </button>
       <form className="mk-find" onSubmit={submit}>
         <label className="sr-only" htmlFor="mk-find">
           Find by post code or link
@@ -372,23 +395,61 @@ function usePlatforms(): Platform[] | null {
   return platforms;
 }
 
-const CODE_HINT: Record<Platform["parser"], string> = {
-  reddit: "The code in the post's link, like 1xd8w7u, or the whole link.",
-  facebook:
-    "On Facebook, click the post's date to open its permalink. Paste the whole address, or only the number at its end.",
-  generic: "The page's full address.",
+// Where a post's code is in its address, shown with the code highlighted.
+const EXAMPLE: Record<Platform["parser"], [string, string, string] | null> = {
+  reddit: ["…/comments/", "1xd8w7u", "/…"],
+  facebook: ["…/posts/", "1234567890123456", "/"],
+  generic: null,
 };
+
+const EXAMPLE_NOTE: Record<Platform["parser"], string> = {
+  reddit: "Paste the whole link, or just the highlighted code.",
+  facebook: "Click the post's date first, then copy the address.",
+  generic: "Paste the page's full address.",
+};
+
+function Example({ parser }: { parser: Platform["parser"] }) {
+  const example = EXAMPLE[parser];
+  if (!example) return null;
+  return (
+    <span className="mk-example">
+      {example[0]}
+      <mark>{example[1]}</mark>
+      {example[2]}
+    </span>
+  );
+}
+
+function Steps({ at }: { at: 1 | 2 | 3 }) {
+  return (
+    <ol className="mk-steps" aria-label="Steps">
+      {["Platform", "Post code", "Their question"].map((label, i) => {
+        const n = i + 1;
+        return (
+          <li
+            key={label}
+            className={n < at ? "done" : n === at ? "now" : undefined}
+            aria-current={n === at ? "step" : undefined}
+          >
+            <span className="mk-step-n" aria-hidden="true">
+              {n < at ? "✓" : n}
+            </span>
+            {label}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
 
 function PickPlatform() {
   const platforms = usePlatforms();
   return (
     <section className="card stack mk-panel" aria-labelledby="mk-pick">
+      <Steps at={1} />
       <div className="stack-tight">
-        <span className="muted small">New conversation · step 1 of 2</span>
         <h1 id="mk-pick">Where is the post?</h1>
-        <p className="muted">
-          Pick the platform. Next you paste the post's code, and the conversation starts.
-        </p>
+        <p className="muted">Pick the platform. Each card shows where its code is.</p>
       </div>
       {platforms && platforms.length === 0 && (
         <Alert kind="info">No platform is switched on. The Owner can do it in Settings.</Alert>
@@ -396,18 +457,44 @@ function PickPlatform() {
       <div className="mk-platforms">
         {platforms?.map((p) => (
           <button key={p.id} className="mk-platform" onClick={() => startNew(p.slug)}>
-            <span className={`mk-platform-mark platform-${p.slug}`} aria-hidden="true">
-              {p.name.slice(0, 1)}
+            <span className="mk-platform-name">
+              <span className={`mk-platform-mark platform-${p.slug}`} aria-hidden="true">
+                {p.name.slice(0, 1)}
+              </span>
+              <strong>{p.name}</strong>
             </span>
-            <strong>{p.name}</strong>
-            <span className="muted small">{CODE_HINT[p.parser]}</span>
+            <Example parser={p.parser} />
+            <span className="muted small">{EXAMPLE_NOTE[p.parser]}</span>
           </button>
         ))}
       </div>
       <p className="muted small">
-        Tip: you can also paste a link or code into “Find by post code or link” on the left.
+        Already have a link? Paste it into “Find by post code or link” on the left and skip this
+        step.
       </p>
     </section>
+  );
+}
+
+/** The right-hand panel while starting a conversation: where each platform's code is. */
+function CodeHelp() {
+  const platforms = usePlatforms();
+  return (
+    <aside className="mk-details" aria-label="Help">
+      {platforms?.map((p) => (
+        <section key={p.id}>
+          <h2>{p.name}: where's the code?</h2>
+          <p className="small">{EXAMPLE_NOTE[p.parser]}</p>
+          <Example parser={p.parser} />
+        </section>
+      ))}
+      <section>
+        <h2>Already answered?</h2>
+        <p className="small">
+          If we already have the post, its conversation opens instead, so nobody answers it twice.
+        </p>
+      </section>
+    </aside>
   );
 }
 
@@ -510,13 +597,11 @@ function NewConversation({
   const fresh = found?.parsed && checked === code.trim();
   return (
     <section className="card stack mk-panel" aria-labelledby="mk-code">
+      <button className="link-button mk-step-back" onClick={() => navigate("/marketing")}>
+        ← Back
+      </button>
+      <Steps at={fresh ? 3 : 2} />
       <div className="stack-tight">
-        <span className="muted small">
-          <button className="link-button" onClick={() => navigate("/marketing")}>
-            ← Back
-          </button>{" "}
-          New conversation · step 2 of 2
-        </span>
         <h1 id="mk-code" className="mk-title">
           <span className={`platform-badge platform-${slug}`}>{name}</span> Paste the post's code
         </h1>
@@ -541,7 +626,12 @@ function NewConversation({
             {busy && !fresh ? "Checking…" : "Check"}
           </button>
         </div>
-        {platform && <p className="hint">{CODE_HINT[platform.parser]}</p>}
+        {platform && (
+          <>
+            <Example parser={platform.parser} />
+            <p className="hint">{EXAMPLE_NOTE[platform.parser]}</p>
+          </>
+        )}
       </form>
       {error && <Alert kind="error">{error}</Alert>}
       {fresh && found.parsed && (
@@ -650,108 +740,215 @@ function ThreadView({
   const byId = new Map(thread.messages.map((m) => [m.id, m]));
 
   return (
-    <section className="mk-thread" aria-labelledby="mk-thread-title">
-      <header className="mk-thread-head">
-        <div className="mk-thread-info">
-          <h1 id="mk-thread-title" className="mk-title">
-            <span className={`platform-badge platform-${thread.platform}`}>
-              {thread.platform_name}
-            </span>{" "}
-            {thread.title}
-          </h1>
-          <p className="muted small">
-            {[
-              thread.community,
-              code && `post ${code}`,
-              thread.created_by && `started by ${thread.created_by.name} ${ago(thread.created_at)}`,
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-            {thread.original_url && (
-              <>
-                {" · "}
-                <a href={thread.original_url} target="_blank" rel="noopener noreferrer">
-                  Open on {thread.platform_name}
-                </a>
-              </>
+    <div className="mk-split">
+      <section className="mk-thread" aria-labelledby="mk-thread-title">
+        <header className="mk-thread-head">
+          <div className="mk-thread-info">
+            <h1 id="mk-thread-title" className="mk-title">
+              <span className={`platform-badge platform-${thread.platform}`}>
+                {thread.platform_name}
+              </span>{" "}
+              {thread.title}
+            </h1>
+            <p className="muted small">
+              {[
+                thread.community,
+                code && `post ${code}`,
+                thread.created_by &&
+                  `started by ${thread.created_by.name} ${ago(thread.created_at)}`,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+              {thread.original_url && (
+                <>
+                  {" · "}
+                  <a href={thread.original_url} target="_blank" rel="noopener noreferrer">
+                    Open on {thread.platform_name}
+                  </a>
+                </>
+              )}
+            </p>
+          </div>
+          <div className="row mk-thread-actions">
+            <span className={`pill pill-thread-${thread.status}`}>
+              {STATUS_NAME[thread.status]}
+            </span>
+            {thread.can_close &&
+              (closed ? (
+                <button
+                  className="button button-small"
+                  onClick={() => void run("reopen", () => api.reopenThread(id))}
+                >
+                  Reopen
+                </button>
+              ) : (
+                <button
+                  className="button button-small"
+                  onClick={() => void run("close", () => api.closeThread(id))}
+                >
+                  Close
+                </button>
+              ))}
+            {thread.can_delete && (
+              <button
+                className="button button-small button-danger"
+                onClick={() => setDeleting(true)}
+              >
+                Delete
+              </button>
             )}
-          </p>
+          </div>
+        </header>
+        <div className="mk-messages">
+          {note && <Alert kind="info">{note}</Alert>}
+          {error && <Alert kind="error">{error}</Alert>}
+          {ordered.map((m, i) => {
+            const parent = m.parent_id ? byId.get(m.parent_id) : undefined;
+            // Say what they answered when it isn't simply the message above.
+            const answered =
+              m.author === "them" && parent && ordered[i - 1]?.id !== parent.id
+                ? parent
+                : undefined;
+            return (
+              <Message
+                key={m.id}
+                message={m}
+                answered={answered}
+                thread={thread}
+                busy={busy}
+                closed={closed}
+                onRun={run}
+                onChanged={load}
+              />
+            );
+          })}
+          <div ref={end} />
         </div>
-        <div className="row mk-thread-actions">
-          <span className={`pill pill-thread-${thread.status}`}>{STATUS_NAME[thread.status]}</span>
-          {thread.can_close &&
-            (closed ? (
-              <button
-                className="button button-small"
-                onClick={() => void run("reopen", () => api.reopenThread(id))}
-              >
-                Reopen
-              </button>
-            ) : (
-              <button
-                className="button button-small"
-                onClick={() => void run("close", () => api.closeThread(id))}
-              >
-                Close
-              </button>
-            ))}
-          {thread.can_delete && (
-            <button className="button button-small button-danger" onClick={() => setDeleting(true)}>
-              Delete
-            </button>
+        {closed ? (
+          <p className="mk-closed muted">This conversation is closed. Reopen it to continue.</p>
+        ) : (
+          <Composer
+            thread={thread}
+            replyTo={replyTo}
+            onAdded={setThread}
+            onError={(text) => setError(text)}
+          />
+        )}
+        {deleting && (
+          <Confirm
+            title="Delete this conversation?"
+            message="It goes to the trash for 30 days. Drafts waiting for review are withdrawn."
+            confirmLabel="Delete"
+            danger
+            onClose={() => setDeleting(false)}
+            onConfirm={() => {
+              setDeleting(false);
+              void api.deleteThread(id).then(() => {
+                onChanged();
+                navigate("/marketing");
+              });
+            }}
+          />
+        )}
+      </section>
+      <Details thread={thread} code={code} />
+    </div>
+  );
+}
+
+/** The right-hand panel of a conversation: the post, the person, the group's rules, and
+ * who did what. */
+function Details({ thread, code }: { thread: ThreadDetail; code: string | null }) {
+  const platforms = usePlatforms();
+  const [others, setOthers] = useState<number | null>(null);
+  const person = thread.person?.trim().toLowerCase() ?? "";
+
+  useEffect(() => {
+    if (!person) return;
+    let live = true;
+    api
+      .listThreads({ platform: thread.platform })
+      .then(
+        (list) =>
+          live &&
+          setOthers(list.items.filter((t) => t.person?.trim().toLowerCase() === person).length),
+      )
+      .catch(() => live && setOthers(null));
+    return () => {
+      live = false;
+    };
+  }, [thread.platform, person]);
+
+  const community = thread.community?.toLowerCase();
+  const rules = platforms
+    ?.find((p) => p.slug === thread.platform)
+    ?.communities.find((c) => c.name.toLowerCase() === community)?.notes;
+  const posted = thread.messages.filter((m) => m.state === "posted");
+
+  return (
+    <aside className="mk-details" aria-label="Details">
+      <section>
+        <h2>The post</h2>
+        <p className="small">
+          {thread.platform_name}
+          {thread.community && (
+            <>
+              {" · "}
+              <strong>{thread.community}</strong>
+            </>
           )}
-        </div>
-      </header>
-      <div className="mk-messages">
-        {note && <Alert kind="info">{note}</Alert>}
-        {error && <Alert kind="error">{error}</Alert>}
-        {ordered.map((m, i) => {
-          const parent = m.parent_id ? byId.get(m.parent_id) : undefined;
-          // Say what they answered when it isn't simply the message above.
-          const answered =
-            m.author === "them" && parent && ordered[i - 1]?.id !== parent.id ? parent : undefined;
-          return (
-            <Message
-              key={m.id}
-              message={m}
-              answered={answered}
-              thread={thread}
-              busy={busy}
-              closed={closed}
-              onRun={run}
-              onChanged={load}
-            />
-          );
-        })}
-        <div ref={end} />
-      </div>
-      {closed ? (
-        <p className="mk-closed muted">This conversation is closed. Reopen it to continue.</p>
-      ) : (
-        <Composer
-          thread={thread}
-          replyTo={replyTo}
-          onAdded={setThread}
-          onError={(text) => setError(text)}
-        />
+        </p>
+        {code && (
+          <p className="small muted">
+            Code <span className="mono">{code}</span>
+          </p>
+        )}
+        {thread.original_url && (
+          <a className="small" href={thread.original_url} target="_blank" rel="noopener noreferrer">
+            Open on {thread.platform_name} ↗
+          </a>
+        )}
+      </section>
+      {thread.person && (
+        <section>
+          <h2>The person</h2>
+          <p className="small">
+            <strong>{thread.person}</strong>
+          </p>
+          {others !== null && (
+            <p className="small muted">
+              {others > 1 ? `${others} conversations with us` : "First conversation with us"}
+            </p>
+          )}
+        </section>
       )}
-      {deleting && (
-        <Confirm
-          title="Delete this conversation?"
-          message="It goes to the trash for 30 days. Drafts waiting for review are withdrawn."
-          confirmLabel="Delete"
-          danger
-          onClose={() => setDeleting(false)}
-          onConfirm={() => {
-            setDeleting(false);
-            void api.deleteThread(id).then(() => {
-              onChanged();
-              navigate("/marketing");
-            });
-          }}
-        />
+      {thread.community && (
+        <section>
+          <h2>Group rules</h2>
+          {rules ? (
+            <p className="mk-rules small">{rules}</p>
+          ) : (
+            <p className="small muted">
+              No notes for this group yet. The Owner can add them in Settings → Platforms.
+            </p>
+          )}
+        </section>
       )}
-    </section>
+      <section>
+        <h2>Activity</h2>
+        {thread.created_by && (
+          <p className="small muted">
+            Started by {thread.created_by.name} · {ago(thread.created_at)}
+          </p>
+        )}
+        {posted.map((m) => (
+          <p key={m.id} className="small muted">
+            Posted by {m.posted_by?.name ?? "us"} · {ago(m.posted_at ?? m.created_at)}
+          </p>
+        ))}
+        <p className="small muted">Last activity {ago(thread.last_activity_at)}</p>
+      </section>
+    </aside>
   );
 }
 

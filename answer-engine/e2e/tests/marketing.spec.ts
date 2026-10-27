@@ -50,7 +50,7 @@ test("a Reddit conversation from first draft to follow-up", async ({
     .getByLabel("Link to our posted comment (optional)")
     .fill(`${post}ourcmt1/`);
   await page.getByRole("button", { name: "Save as posted" }).click();
-  await expect(page.getByText(/Posted by Olivia/)).toBeVisible();
+  await expect(page.getByText(/Posted by Olivia/).first()).toBeVisible();
   await expect(status).toHaveText("Waiting for them");
 
   // They reply under our comment: its URL, pasted in the finder, opens the same conversation.
