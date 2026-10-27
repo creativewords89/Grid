@@ -43,7 +43,6 @@ from app.db.models import (
     UsageKind,
     User,
 )
-from app.ids import uuid7
 from app.kb.store import VectorStore
 from app.marketing.url_parser import Parsed, PlatformRule, UrlError, parse
 from app.notifications import service as notifications
@@ -51,8 +50,6 @@ from app.reviews import service as reviews
 
 log = logging.getLogger(__name__)
 
-SIMILAR_NAME = 0.5  # trigram similarity for a close spelling of a name ("Dan Miller")
-NAME_RESULTS = 20
 MAX_TEXT = 20000
 
 DEFAULT_PLATFORMS: list[dict[str, Any]] = [
@@ -227,14 +224,9 @@ def resolve(db: Session, url: str, by: User) -> Resolved:
     thread = live_thread(db, parsed.thread_id)
     if thread is None:
         return Resolved(parsed, None, None, False)
-    matched = None
-    if parsed.comment_id:
-        matched = db.scalar(
-            select(ThreadMessage.id).where(
-                ThreadMessage.thread_id == thread.id,
-                ThreadMessage.external_comment_id == parsed.comment_id,
-            )
-        )
+    matched = parent_for_comment(thread, parsed.comment_id) or parent_for_comment(
+        thread, parsed.reply_to_comment_id
+    )
     reopened = False
     if thread.closed_at is not None:
         reopen(db, thread, by)
@@ -242,120 +234,8 @@ def resolve(db: Session, url: str, by: User) -> Resolved:
     return Resolved(parsed, thread, matched, reopened)
 
 
-# --- finding a Facebook thread by the person's name ---------------------------------------------
-
-
 def clean_name(name: str) -> str:
     return re.sub(r"\s+", " ", name).strip()[:120]
-
-
-@dataclass
-class NameMatch:
-    thread: Thread
-    first_question: str
-    our_last_reply: str | None
-    closest: bool
-
-
-def by_name_platforms(db: Session) -> list[Platform]:
-    return [p for p in platforms(db) if p.parser == PlatformParser.FACEBOOK]
-
-
-def find_by_name(db: Session, name: str, text: str | None = None) -> list[NameMatch]:
-    """Facebook threads of the person with this name (or a close spelling), newest first.
-    With their new message, the thread whose wording is closest to it is marked. A person
-    always checks the list and chooses: two people may share a name (SPEC 6.10)."""
-    wanted = clean_name(name).lower()
-    if not wanted:
-        return []
-    platform_ids = [p.id for p in by_name_platforms(db)]
-    person = func.lower(Thread.person)
-    threads = list(
-        db.scalars(
-            select(Thread)
-            .where(
-                Thread.platform_id.in_(platform_ids),
-                Thread.deleted_at.is_(None),
-                (person == wanted) | (func.similarity(person, wanted) >= SIMILAR_NAME),
-            )
-            .order_by(Thread.last_activity_at.desc())
-            .limit(NAME_RESULTS)
-        )
-    )
-    matches = [_name_match(t) for t in threads]
-    if text and text.strip() and matches:
-        scores = _similarities(db, text, [m.thread for m in matches])
-        best = max(range(len(matches)), key=lambda i: scores[i])
-        if scores[best] > 0:
-            matches[best].closest = True
-    return matches
-
-
-def _name_match(thread: Thread) -> NameMatch:
-    them = [m for m in thread.messages if m.author == MessageAuthor.THEM]
-    ours = [
-        m
-        for m in thread.messages
-        if m.author == MessageAuthor.US and m.state != DraftState.DISCARDED
-    ]
-    posted = [m for m in ours if m.state == DraftState.POSTED]
-    last = max(posted or ours, key=lambda m: m.posted_at or m.created_at) if ours else None
-    return NameMatch(
-        thread=thread,
-        first_question=them[0].body if them else thread.title,
-        our_last_reply=last.body if last else None,
-        closest=False,
-    )
-
-
-def _similarities(db: Session, text: str, threads: list[Thread]) -> list[float]:
-    """How close the new message reads to each thread's own messages (best one counts)."""
-    scores = []
-    for thread in threads:
-        bodies = [m.body for m in thread.messages if m.state != DraftState.DISCARDED]
-        best = 0.0
-        for body in bodies:
-            value = db.scalar(select(func.word_similarity(text, body)))
-            best = max(best, float(value or 0))
-        scores.append(best)
-    return scores
-
-
-def create_by_name(db: Session, platform: Platform, person: str, by: User, question: str) -> Thread:
-    """A new Facebook conversation: there is no link, so the ID is random (SPEC 6.10)."""
-    if platform.parser != PlatformParser.FACEBOOK:
-        raise MarketingError(422, "invalid", f"{platform.name} posts are found by their link.")
-    if not platform.enabled:
-        raise MarketingError(
-            422, "invalid", f"Answering on {platform.name} is switched off in Settings."
-        )
-    person = clean_name(person)
-    if not person:
-        raise MarketingError(422, "invalid", "Type the person's name.")
-    question = _question(question)
-    thread = Thread(
-        id=f"{platform.slug}:{uuid7().hex}",
-        platform_id=platform.id,
-        title=_title(question),
-        original_url="",
-        person=person,
-        status=ThreadStatus.WAITING_FOR_US,
-        created_by=by.id,
-        last_activity_at=now(),
-    )
-    db.add(thread)
-    db.add(
-        ThreadMessage(
-            thread_id=thread.id,
-            author=MessageAuthor.THEM,
-            author_name=person,
-            body=question,
-            created_by=by.id,
-        )
-    )
-    audit.record(db, by, "create", "thread", thread.id, thread.title)
-    db.flush()
-    return thread
 
 
 def _question(question: str) -> str:
@@ -434,10 +314,12 @@ def add_reply(
     body = body.strip()
     if not body:
         raise MarketingError(422, "invalid", "Paste their reply.")
-    comment_id = _comment_in(db, thread, url)
+    parsed = _parsed_for(db, thread, url)
     ids = {m.id for m in thread.messages}
     if parent_id is not None and parent_id not in ids:
         raise MarketingError(422, "invalid", "Choose a message from this thread.")
+    if parent_id is None and parsed is not None:
+        parent_id = parent_for_comment(thread, parsed.reply_to_comment_id)
     if parent_id is None:
         parent_id = _default_parent(thread)
     if thread.closed_at is not None:
@@ -449,7 +331,7 @@ def add_reply(
         author_name=(author_name or "").strip()[:120] or None,
         body=body,
         external_url=url.strip() if url else None,
-        external_comment_id=comment_id,
+        external_comment_id=parsed.comment_id if parsed else None,
         created_by=by.id,
     )
     db.add(reply)
@@ -458,10 +340,9 @@ def add_reply(
     return reply
 
 
-def _comment_in(db: Session, thread: Thread, url: str | None) -> str | None:
-    """The comment a link points to, for threads found by link. A Facebook thread keeps a
-    link only as a note (its posts are found by name)."""
-    if not url or thread.platform.parser == PlatformParser.FACEBOOK:
+def _parsed_for(db: Session, thread: Thread, url: str | None) -> Parsed | None:
+    """The link of a comment in this thread, read (it must be for this thread)."""
+    if not url:
         return None
     try:
         parsed = parse(url, rules(db))
@@ -469,7 +350,7 @@ def _comment_in(db: Session, thread: Thread, url: str | None) -> str | None:
         raise MarketingError(422, "bad_url", str(error)) from None
     if parsed.thread_id != thread.id:
         raise MarketingError(422, "other_thread", "That link is for a different thread.")
-    return parsed.comment_id
+    return parsed
 
 
 def _default_parent(thread: Thread) -> uuid.UUID | None:
@@ -674,12 +555,12 @@ def mark_posted(
             raise MarketingError(409, "in_review", "Waiting for review – don't post yet.")
         raise MarketingError(409, "not_a_draft", "Only a draft that is ready can be posted.")
     thread = message.thread
-    comment_id = _comment_in(db, thread, url)
+    parsed = _parsed_for(db, thread, url)
     message.state = DraftState.POSTED
     message.posted_by = by.id
     message.posted_at = now()
     message.external_url = url.strip() if url else None
-    message.external_comment_id = comment_id
+    message.external_comment_id = parsed.comment_id if parsed else None
     touch(thread)
     refresh_status(db, thread)
     audit.record(db, by, "posted", "thread", thread.id, thread.title)

@@ -1788,47 +1788,6 @@ details.original summary {
   overflow-wrap: anywhere;
 }
 
-/* Facebook: conversations found by name (SPEC 6.10, step 17) */
-.name-matches {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 8px;
-}
-
-.name-match {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.name-match p {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.name-match.closest {
-  border-color: var(--ok);
-}
-
-.name-match .tag {
-  margin-left: 6px;
-}
-
-.name-match > .button {
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-@media (max-width: 600px) {
-  .name-match {
-    flex-direction: column;
-    align-items: stretch;
-  }
-}
-
 /* Settings → Connections */
 .connection {
   display: grid;
