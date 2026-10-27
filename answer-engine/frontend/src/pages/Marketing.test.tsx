@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, vi } from "vitest";
 import type { ThreadDetail, ThreadMessage, ThreadRow } from "../api";
@@ -74,7 +74,10 @@ const counts = {
   closed: 0,
 };
 
-beforeEach(() => window.history.pushState(null, "", "/marketing"));
+beforeEach(() => {
+  window.history.pushState(null, "", "/marketing");
+  window.localStorage.clear();
+});
 afterEach(() => vi.unstubAllGlobals());
 
 const FB_URL = "https://www.facebook.com/groups/localbiz/posts/1234567890123456/";
@@ -106,6 +109,12 @@ const platforms: [number, unknown] = [
   [platform("reddit", "Reddit", "reddit"), platform("facebook", "Facebook", "facebook")],
 ];
 const empty: [number, unknown] = [200, { items: [], counts }];
+const lists = (reddit = empty, facebook = empty) => ({
+  "GET /platforms": platforms,
+  "GET /threads?platform=reddit": reddit,
+  "GET /threads?platform=facebook": facebook,
+});
+const none = { waiting_for_us: 0, in_review: 0, ready_to_post: 0, waiting_for_them: 0, closed: 0 };
 const newPost = (p: string, name: string, threadId: string, community: string) => ({
   found: false,
   parsed: { platform: p, platform_name: name, thread_id: threadId, community, comment_id: null },
@@ -115,27 +124,63 @@ const newPost = (p: string, name: string, threadId: string, community: string) =
   error: null,
 });
 
-test("the conversations are listed on the left, filtered by status", async () => {
+test("Facebook and Reddit tabs, each with a status filter", async () => {
   const calls = mockApi({
     "GET /auth/me": me,
-    "GET /platforms": platforms,
-    "GET /threads": [200, { items: [row, fbRow], counts }],
-    "GET /threads?status=ready_to_post": [200, { items: [row], counts }],
+    ...lists(
+      [200, { items: [row], counts: { ...none, ready_to_post: 1 } }],
+      [200, { items: [fbRow], counts: { ...none, waiting_for_them: 1, closed: 1 } }],
+    ),
+    "GET /threads?status=closed&platform=facebook": [
+      200,
+      { items: [], counts: { ...none, waiting_for_them: 1, closed: 1 } },
+    ],
   });
   render(<App />);
 
-  const list = await screen.findByRole("complementary", { name: "Conversations" });
-  expect(await within(list).findByText(row.title)).toBeVisible();
-  expect(within(list).getByText(fbRow.title)).toBeVisible();
-  expect(within(list).getByText("Dan Miller · localbiz")).toBeVisible();
+  const side = await screen.findByRole("complementary", { name: "Conversations" });
+  expect(await within(side).findByText(row.title)).toBeVisible();
+  expect(within(side).getByRole("tab", { name: "Reddit 1" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  expect(within(side).getByRole("heading", { name: "Reddit conversations" })).toBeVisible();
+  expect(within(side).queryByText(fbRow.title)).toBeNull();
+  expect(within(side).queryByRole("button", { name: /New conversation/ })).toBeNull();
   // With nothing open, the right side asks where the new post is.
-  expect(await screen.findByRole("heading", { name: "Where is the post?" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Where is the post?" })).toBeVisible();
 
-  await userEvent.click(within(list).getByRole("button", { name: "Ready to post · 1" }));
-  await waitFor(() => expect(within(list).queryByText(fbRow.title)).toBeNull());
-  expect(calls.some((c) => c.path === "/threads?status=ready_to_post")).toBe(true);
-  expect(within(list).getByRole("button", { name: "Ready to post · 1" })).toHaveAttribute(
-    "aria-pressed",
+  await userEvent.click(within(side).getByRole("tab", { name: "Facebook 2" }));
+  expect(await within(side).findByText(fbRow.title)).toBeVisible();
+  expect(within(side).getByText("Dan Miller · localbiz")).toBeVisible();
+  expect(within(side).queryByText(row.title)).toBeNull();
+  expect(window.localStorage.getItem("marketing-platform")).toBe("facebook");
+
+  const filter = within(side).getByRole("button", { name: /Filter: All/ });
+  await userEvent.click(filter);
+  const menu = within(side).getByRole("menu", { name: "Filter by status" });
+  expect(within(menu).getByRole("menuitemradio", { name: "All 2" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  await userEvent.click(within(menu).getByRole("menuitemradio", { name: "Closed 1" }));
+
+  expect(await within(side).findByText("No conversations are “Closed”.")).toBeVisible();
+  expect(calls.some((c) => c.path === "/threads?status=closed&platform=facebook")).toBe(true);
+  const active = within(side).getByRole("button", { name: /Filter: Closed/ });
+  expect(active).toHaveClass("active");
+  expect(within(side).queryByRole("menu")).toBeNull();
+});
+
+test("the last tab used is remembered", async () => {
+  window.localStorage.setItem("marketing-platform", "facebook");
+  mockApi({ "GET /auth/me": me, ...lists(empty, [200, { items: [fbRow], counts }]) });
+  render(<App />);
+
+  const side = await screen.findByRole("complementary", { name: "Conversations" });
+  expect(await within(side).findByText(fbRow.title)).toBeVisible();
+  expect(within(side).getByRole("tab", { name: /Facebook/ })).toHaveAttribute(
+    "aria-selected",
     "true",
   );
 });
@@ -143,8 +188,7 @@ test("the conversations are listed on the left, filtered by status", async () =>
 test("Reddit: pick the platform, paste the code, and it drafts straight away", async () => {
   const calls = mockApi({
     "GET /auth/me": me,
-    "GET /platforms": platforms,
-    "GET /threads": empty,
+    ...lists(),
     "POST /threads/resolve": [200, newPost("reddit", "Reddit", row.id, "r/localseo")],
     "POST /threads": [201, detail([question], { status: "waiting_for_us" })],
     "POST /threads/reddit%3A1abc2de/draft": [200, detail([question, draftMsg("ready")])],
@@ -176,8 +220,7 @@ test("Facebook: the permalink starts a conversation under the person's name", as
   window.history.pushState(null, "", "/marketing?new=facebook");
   const calls = mockApi({
     "GET /auth/me": me,
-    "GET /platforms": platforms,
-    "GET /threads": empty,
+    ...lists(),
     "POST /threads/resolve": [200, newPost("facebook", "Facebook", fbRow.id, "localbiz")],
     "POST /threads": [201, detail([question], { ...fbRow, status: "waiting_for_us" })],
     "POST /threads/facebook%3A1234567890123456/draft": [
@@ -210,8 +253,7 @@ test("a code for the other platform says so", async () => {
   window.history.pushState(null, "", "/marketing?new=facebook");
   mockApi({
     "GET /auth/me": me,
-    "GET /platforms": platforms,
-    "GET /threads": empty,
+    ...lists(),
     "POST /threads/resolve": [200, newPost("reddit", "Reddit", row.id, "")],
   });
   render(<App />);
@@ -226,8 +268,7 @@ test("a share link explains what to paste instead", async () => {
   window.history.pushState(null, "", "/marketing?new=reddit");
   mockApi({
     "GET /auth/me": me,
-    "GET /platforms": platforms,
-    "GET /threads": empty,
+    ...lists(),
     "POST /threads/resolve": [
       200,
       {
@@ -250,8 +291,7 @@ test("a share link explains what to paste instead", async () => {
 test("a known post's code in the finder opens it, ready for their reply", async () => {
   mockApi({
     "GET /auth/me": me,
-    "GET /platforms": platforms,
-    "GET /threads": empty,
+    ...lists(),
     "POST /threads/resolve": [
       200,
       {
@@ -278,7 +318,7 @@ test("a draft being checked can't be copied", async () => {
   window.history.pushState(null, "", "/marketing?thread=reddit%3A1abc2de");
   mockApi({
     "GET /auth/me": me,
-    "GET /threads": empty,
+    ...lists(),
     "GET /threads/reddit%3A1abc2de": [200, detail([question, draftMsg("in_review")])],
   });
   render(<App />);
@@ -308,7 +348,7 @@ test("mark as posted, then send their reply: it lands under ours and is drafted"
   };
   const calls = mockApi({
     "GET /auth/me": me,
-    "GET /threads": empty,
+    ...lists(),
     "GET /threads/reddit%3A1abc2de": [200, detail([question, draftMsg("ready")])],
     "POST /thread-messages/m2/posted": [
       200,
@@ -347,7 +387,7 @@ test("redraft with an instruction", async () => {
   window.history.pushState(null, "", "/marketing?thread=reddit%3A1abc2de");
   const calls = mockApi({
     "GET /auth/me": me,
-    "GET /threads": empty,
+    ...lists(),
     "GET /threads/reddit%3A1abc2de": [200, detail([question, draftMsg("ready")])],
     "POST /threads/reddit%3A1abc2de/draft": [
       200,
@@ -372,7 +412,7 @@ test("a reply corrected after posting offers the new text", async () => {
   const posted = draftMsg("posted");
   mockApi({
     "GET /auth/me": me,
-    "GET /threads": empty,
+    ...lists(),
     "GET /threads/reddit%3A1abc2de": [
       200,
       detail([

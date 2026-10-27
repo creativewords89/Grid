@@ -92,27 +92,76 @@ export function Marketing() {
 
 // --- the list on the left -------------------------------------------------------------------------
 
+const TAB_KEY = "marketing-platform";
+
+function savedTab(): string {
+  try {
+    return window.localStorage.getItem(TAB_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 function Conversations({ current, version }: { current: string | null; version: number }) {
   const { user } = useAuth();
+  const platforms = usePlatforms();
+  const [chosen, setChosen] = useState(savedTab);
   const [status, setStatus] = useState<ThreadStatus | "">("");
-  const [data, setData] = useState<ThreadList | null>(null);
+  const [lists, setLists] = useState<Record<string, ThreadList>>({});
+  const [filtered, setFiltered] = useState<{ key: string; list: ThreadList } | null>(null);
   const [error, setError] = useState("");
   const [find, setFind] = useState("");
   const [findError, setFindError] = useState("");
   const [busy, setBusy] = useState(false);
 
+  // The open conversation's platform wins, then the last tab used, then the first platform.
+  const openSlug = current ? current.slice(0, current.indexOf(":")) : "";
+  const slugs = platforms?.map((p) => p.slug) ?? [];
+  const tab = slugs.includes(openSlug) ? openSlug : slugs.includes(chosen) ? chosen : slugs[0];
+  const slugKey = slugs.join(",");
+
+  function choose(slug: string) {
+    setChosen(slug);
+    setStatus("");
+    try {
+      window.localStorage.setItem(TAB_KEY, slug);
+    } catch {
+      // Not saved: the tab is only remembered for this visit.
+    }
+    if (openSlug && openSlug !== slug) navigate("/marketing");
+  }
+
+  // Every platform's conversations, for the tab counts and the unfiltered list.
   useEffect(() => {
+    if (!slugKey) return;
     let live = true;
-    api
-      .listThreads({ status: status || undefined })
-      .then((list) => live && (setData(list), setError("")))
+    Promise.all(slugKey.split(",").map((slug) => api.listThreads({ platform: slug })))
+      .then((all) => {
+        if (!live) return;
+        setLists(Object.fromEntries(slugKey.split(",").map((slug, i) => [slug, all[i]!])));
+        setError("");
+      })
       .catch(
         (err: unknown) => live && setError(err instanceof ApiError ? err.message : "Not loaded."),
       );
     return () => {
       live = false;
     };
-  }, [status, version, current]);
+  }, [slugKey, version, current]);
+
+  useEffect(() => {
+    if (!tab || !status) return;
+    let live = true;
+    api
+      .listThreads({ platform: tab, status })
+      .then((list) => live && setFiltered({ key: `${tab}:${status}`, list }))
+      .catch(
+        (err: unknown) => live && setError(err instanceof ApiError ? err.message : "Not loaded."),
+      );
+    return () => {
+      live = false;
+    };
+  }, [tab, status, version, current]);
 
   // A code or link pasted here opens its conversation, or starts a new one for it.
   async function submit(event: FormEvent) {
@@ -144,11 +193,14 @@ function Conversations({ current, version }: { current: string | null; version: 
     }
   }
 
+  const total = (list?: ThreadList) =>
+    list ? Object.values(list.counts).reduce((sum, n) => sum + n, 0) : null;
+  const all = tab ? lists[tab] : undefined;
+  const shown = status ? (filtered?.key === `${tab}:${status}` ? filtered.list : null) : all;
+  const name = platforms?.find((p) => p.slug === tab)?.name ?? "";
+
   return (
     <aside className="mk-side" aria-label="Conversations">
-      <button className="button button-primary mk-new" onClick={() => navigate("/marketing")}>
-        + New conversation
-      </button>
       <form className="mk-find" onSubmit={submit}>
         <label className="sr-only" htmlFor="mk-find">
           Find by post code or link
@@ -163,26 +215,37 @@ function Conversations({ current, version }: { current: string | null; version: 
         />
       </form>
       {findError && <Alert kind="error">{findError}</Alert>}
-      <div className="mk-chips" role="group" aria-label="Show">
-        <button className="mk-chip" aria-pressed={status === ""} onClick={() => setStatus("")}>
-          All
-        </button>
-        {THREAD_STATUSES.map(([key, label]) => (
-          <button
-            key={key}
-            className="mk-chip"
-            aria-pressed={status === key}
-            onClick={() => setStatus(key)}
-          >
-            {label}
-            {data && key !== "closed" ? ` · ${data.counts[key] ?? 0}` : ""}
-          </button>
-        ))}
-      </div>
+      {platforms && platforms.length > 0 && (
+        <div className="mk-tabs" role="tablist" aria-label="Platform">
+          {platforms.map((p) => (
+            <button
+              key={p.slug}
+              role="tab"
+              aria-selected={p.slug === tab}
+              onClick={() => choose(p.slug)}
+            >
+              {p.name}{" "}
+              {total(lists[p.slug]) !== null && (
+                <span className="mk-count">{total(lists[p.slug])}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+      {tab && (
+        <div className="mk-list-head">
+          <h2>{name} conversations</h2>
+          <StatusFilter value={status} counts={all?.counts} onChange={setStatus} />
+        </div>
+      )}
       {error && <Alert kind="error">{error}</Alert>}
-      {data && data.items.length === 0 && <p className="muted small">No conversations here.</p>}
+      {shown && shown.items.length === 0 && (
+        <p className="muted small">
+          {status ? `No conversations are “${STATUS_NAME[status]}”.` : "No conversations yet."}
+        </p>
+      )}
       <ul className="mk-list">
-        {data?.items.map((t) => (
+        {shown?.items.map((t) => (
           <li key={t.id}>
             <button
               className="mk-item"
@@ -190,10 +253,9 @@ function Conversations({ current, version }: { current: string | null; version: 
               onClick={() => openThread(t.id)}
             >
               <span className="mk-item-top">
-                <span className={`platform-badge platform-${t.platform}`}>{t.platform_name}</span>
-                <span className="muted small">{ago(t.last_activity_at)}</span>
+                <strong className="mk-item-title">{t.title}</strong>
+                <span className="muted small mk-item-when">{ago(t.last_activity_at)}</span>
               </span>
-              <strong className="mk-item-title">{t.title}</strong>
               <span className="mk-item-top">
                 <span className="muted small mk-item-who">
                   {[t.person, t.community].filter(Boolean).join(" · ")}
@@ -205,6 +267,95 @@ function Conversations({ current, version }: { current: string | null; version: 
         ))}
       </ul>
     </aside>
+  );
+}
+
+/** "Filter: All ▾", opening a menu of statuses with their counts. */
+function StatusFilter({
+  value,
+  counts,
+  onChange,
+}: {
+  value: ThreadStatus | "";
+  counts?: Record<ThreadStatus, number>;
+  onChange: (value: ThreadStatus | "") => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const outside = (event: MouseEvent) => {
+      if (!box.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => event.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", outside);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("mousedown", outside);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [open]);
+
+  const options: [ThreadStatus | "", string][] = [["", "All"], ...THREAD_STATUSES];
+  const count = (key: ThreadStatus | "") =>
+    counts ? (key ? counts[key] : Object.values(counts).reduce((a, b) => a + b, 0)) : null;
+  return (
+    <div className="mk-filter" ref={box}>
+      <button
+        className={`mk-filter-button ${value ? "active" : ""}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M3 5h18l-7 8v6l-4 2v-8z" />
+        </svg>
+        Filter: {value ? STATUS_NAME[value] : "All"}
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      {open && (
+        <div className="mk-filter-menu" role="menu" aria-label="Filter by status">
+          {options.map(([key, label]) => (
+            <button
+              key={key || "all"}
+              role="menuitemradio"
+              aria-checked={value === key}
+              onClick={() => {
+                onChange(key);
+                setOpen(false);
+              }}
+            >
+              <span className={`mk-dot mk-dot-${key || "all"}`} aria-hidden="true" />
+              <span className="grow">{label}</span>{" "}
+              {count(key) !== null && <span className="mk-count">{count(key)}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
