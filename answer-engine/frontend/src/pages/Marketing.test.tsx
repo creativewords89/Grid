@@ -237,7 +237,7 @@ test("Facebook: the permalink starts a conversation under the person's name", as
   });
   render(<App />);
 
-  expect(await screen.findAllByText(/post's date first/)).not.toHaveLength(0);
+  expect(await screen.findByText(/post's date first/)).toBeInTheDocument();
   await userEvent.type(screen.getByLabelText("Post code or link"), FB_URL);
   await userEvent.click(screen.getByRole("button", { name: "Check" }));
   expect(await screen.findByText(/localbiz · we haven't answered it/)).toBeVisible();
@@ -442,33 +442,18 @@ test("new conversation shows the steps and where each platform's code is", async
   expect(within(steps).getByText("Platform").closest("li")).toHaveAttribute("aria-current", "step");
   const reddit = await screen.findByRole("button", { name: /^Reddit/ });
   expect(within(reddit).getByText("1xd8w7u").tagName).toBe("MARK");
-  const help = screen.getByRole("complementary", { name: "Help" });
-  expect(
-    within(help).getByRole("heading", { name: "Facebook: where's the code?" }),
-  ).toBeInTheDocument();
-  expect(within(help).getByText("1234567890123456").tagName).toBe("MARK");
 });
 
-test("a conversation shows the post, the person and the group's rules", async () => {
+test("a conversation has no side panel", async () => {
   window.history.pushState(null, "", "/marketing?thread=facebook%3A1234567890123456");
-  const other = { ...fbRow, id: "facebook:2", title: "Another question" };
   mockApi({
     "GET /auth/me": me,
-    ...lists(empty, [200, { items: [fbRow, other], counts }]),
-    "GET /threads/facebook%3A1234567890123456": [
-      200,
-      detail([question, draftMsg("posted")], fbRow),
-    ],
+    ...lists(empty, [200, { items: [fbRow], counts }]),
+    "GET /threads/facebook%3A1234567890123456": [200, detail([question], fbRow)],
   });
   render(<App />);
 
-  const details = await screen.findByRole("complementary", { name: "Details" });
-  expect(within(details).getByText("1234567890123456")).toBeInTheDocument();
-  expect(within(details).getByRole("link", { name: /Open on Facebook/ })).toHaveAttribute(
-    "href",
-    FB_URL,
-  );
-  expect(await within(details).findByText("2 conversations with us")).toBeInTheDocument();
-  expect(await within(details).findByText("No links to our website.")).toBeInTheDocument();
-  expect(within(details).getByText(/Posted by Sara/)).toBeInTheDocument();
+  expect(await screen.findByRole("link", { name: "Open on Facebook" })).toBeInTheDocument();
+  expect(screen.queryByRole("complementary", { name: "Details" })).toBeNull();
+  expect(screen.queryByRole("complementary", { name: "Help" })).toBeNull();
 });
