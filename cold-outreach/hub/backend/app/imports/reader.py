@@ -70,6 +70,20 @@ class Row:
     line: int  # the row number in Excel, for messages
     values: dict[str, str]
     emails: list[str]
+    extra: dict[str, str] = field(default_factory=dict)  # other columns, by their header
+
+
+@dataclass
+class SheetRow:
+    """A row of the file as the preview shows it, tab by tab (SPEC section 6.4)."""
+
+    tab: str
+    line: int
+    values: dict[str, str]  # cleaned, by field (emails joined)
+    extra: dict[str, str]
+    raw: dict[str, str]  # the original text of cells the Hub changed, by field
+    bad_emails: list[str]
+    skipped: bool = False  # no name and no GBP link
 
 
 @dataclass
@@ -79,6 +93,7 @@ class Lead:
     values: dict[str, str]
     emails: list[str]
     rows: list[str] = field(default_factory=list)  # "Tulsa row 14"
+    extra: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -91,6 +106,9 @@ class Report:
     invalid_emails: list[str] = field(default_factory=list)  # "Tulsa row 3: kevin@"
     merged_rows: list[list[str]] = field(default_factory=list)  # each group of merged rows
     has_level_column: bool = False
+    sheet: list[SheetRow] = field(default_factory=list)  # every row with a business, by tab
+    tab_names: list[str] = field(default_factory=list)  # every tab, in the file's order
+    extra_columns: list[str] = field(default_factory=list)  # other headers, first seen first
 
 
 # --- cleaning -------------------------------------------------------------------------------
@@ -204,12 +222,14 @@ def read_rows(content: bytes, report: Report) -> list[Row]:
     for sheet in book.worksheets:
         report.tabs += 1
         tab = clean(sheet.title)
+        report.tab_names.append(tab)
         cells = [tuple(r) for r in sheet.iter_rows(values_only=True)]
         header_at = _header_row(cells)
         if header_at is None:
             report.empty_tabs.append(tab)
             continue
         columns: dict[int, str] = {}
+        others: dict[int, str] = {}
         for index, cell in enumerate(cells[header_at]):
             name = clean(cell)
             if not name:
@@ -217,6 +237,10 @@ def read_rows(content: bytes, report: Report) -> list[Row]:
             target = HEADER_TO_FIELD.get(_squash(name))
             if target is None:
                 report.unknown_columns.setdefault(name, []).append(tab)
+                if name not in others.values():
+                    others[index] = name[:80]
+                if name[:80] not in report.extra_columns:
+                    report.extra_columns.append(name[:80])
             elif target not in columns.values() or target in ("notes", "email"):
                 columns[index] = target
         if "level" in columns.values():
@@ -225,29 +249,47 @@ def read_rows(content: bytes, report: Report) -> list[Row]:
         for offset, raw in enumerate(cells[header_at + 1 :], start=header_at + 2):
             values: dict[str, str] = {}
             emails: list[str] = []
+            bad: list[str] = []
+            original: dict[str, str] = {}
             for index, target in columns.items():
-                text = clean(raw[index]) if index < len(raw) else ""
+                cell = raw[index] if index < len(raw) else None
+                text = clean(cell)
                 if not text:
                     continue
                 if target == "email":
                     valid, invalid = split_emails(text)
                     emails.extend(e for e in valid if e not in emails)
-                    report.invalid_emails.extend(f"{tab} row {offset}: {bad}" for bad in invalid)
+                    bad.extend(invalid)
+                    report.invalid_emails.extend(f"{tab} row {offset}: {x}" for x in invalid)
+                    original["email"] = (original.get("email", "") + " " + str(cell)).strip()
                 elif target == "notes" and values.get("notes"):
                     values["notes"] += " · " + text
                 else:
                     values[target] = text
+                    original[target] = str(cell).strip()
+            extra = {
+                name: text
+                for index, name in others.items()
+                if index < len(raw) and (text := clean(raw[index]))
+            }
             # A city filled down an otherwise empty sheet isn't a business.
-            if not emails and not set(values) - {"city", "level"}:
+            if not emails and not bad and not set(values) - {"city", "level"}:
                 continue
             found += 1
-            if not values.get("business_name") and not values.get("gbp_link"):
+            skipped = not values.get("business_name") and not values.get("gbp_link")
+            if not skipped:
+                values["city"] = values.get("city") or tab
+                values["website"] = clean_website(values.get("website", ""))
+                values["gbp_link"] = clean_gbp(values.get("gbp_link", ""))
+            shown = {k: v for k, v in values.items() if v}
+            if emails:
+                shown["email"] = ", ".join(emails)
+            changed = {k: v[:500] for k, v in original.items() if v and v != shown.get(k, "")}
+            report.sheet.append(SheetRow(tab, offset, shown, extra, changed, bad, skipped=skipped))
+            if skipped:
                 report.skipped_rows.append(f"{tab} row {offset}")
                 continue
-            values["city"] = values.get("city") or tab
-            values["website"] = clean_website(values.get("website", ""))
-            values["gbp_link"] = clean_gbp(values.get("gbp_link", ""))
-            rows.append(Row(tab=tab, line=offset, values=values, emails=emails))
+            rows.append(Row(tab=tab, line=offset, values=values, emails=emails, extra=extra))
         if not found:
             report.empty_tabs.append(tab)
     return rows
@@ -273,9 +315,11 @@ def merge(rows: list[Row], niche: str, report: Report) -> list[Lead]:
         candidates = [lead for k in keys(values) for lead in by_key.get(k, [])]
         match = next((lead for lead in candidates if same_business(lead.values, values)), None)
         if match is None:
-            lead = Lead(values=values, emails=list(row.emails), rows=[where])
+            lead = Lead(values=values, emails=list(row.emails), rows=[where], extra=dict(row.extra))
             leads.append(lead)
         else:
+            for name, value in row.extra.items():
+                lead.extra.setdefault(name, value)
             lead = match
             for name, value in values.items():
                 if value and not lead.values.get(name):

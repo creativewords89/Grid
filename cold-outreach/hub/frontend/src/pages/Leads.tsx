@@ -189,6 +189,9 @@ export function Leads() {
                 {COLUMNS.map(([key, label]) => (
                   <th key={key}>{label}</th>
                 ))}
+                {data.extra_columns.map((name) => (
+                  <th key={`extra:${name}`}>{name}</th>
+                ))}
                 <th>Batch</th>
                 {agents.map(([key, label]) => (
                   <th key={key}>{label}</th>
@@ -210,6 +213,11 @@ export function Leads() {
                   {COLUMNS.map(([key]) => (
                     <td key={key} className="small">
                       <Cell lead={lead} field={key} />
+                    </td>
+                  ))}
+                  {data.extra_columns.map((name) => (
+                    <td key={`extra:${name}`} className="small">
+                      {lead.extra[name] || <span className="muted">—</span>}
                     </td>
                   ))}
                   <td className="small nowrap">{lead.batch_name ?? "—"}</td>
@@ -422,6 +430,12 @@ export function LeadDialog({
               <div key={key}>
                 <dt>{label}</dt>
                 <dd>{lead.data[key]}</dd>
+              </div>
+            ))}
+            {Object.entries(lead.extra ?? {}).map(([name, text]) => (
+              <div key={`extra:${name}`}>
+                <dt>{name}</dt>
+                <dd>{text}</dd>
               </div>
             ))}
           </dl>

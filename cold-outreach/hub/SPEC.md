@@ -145,8 +145,8 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 | `batch_tasks` | a task in a batch: `batch_id`, `task_id`, `share` (`all` or `split`) |
 | `batch_task_bots` | the agents doing it: `batch_task_id`, `agent_id`, `position` |
 | `lead_bot_shares` | for a `split` task, which agent each business went to: `lead_id`, `batch_task_id`, `agent_id` |
-| `imports` | `batch_id`, `file_name`, `niche`, `uploaded_by`, `status` (`preview`, `confirmed`, `failed`, `discarded`), counts, `preview` JSON, `errors` JSON |
-| `leads` | every business: `lead_id` (`L-000123`), `batch_id` (the batch it was first imported into), `niche`, `city`, `business_name`, `level`, `gbp_link`, `emails`, the matching keys `phone_digits`, `name_address`, `website_domain`, `data` JSON (address, website, phone, WhatsApp, Facebook, Instagram, reviews, rating, notes), `results` JSON (by agent key: status, score, summary, details, benchmark id and version, when), `first_import_id`, `last_import_id` |
+| `imports` | `batch_id`, `file_name`, `niche`, `uploaded_by`, `status` (`preview`, `confirmed`, `failed`, `discarded`), counts, `preview` JSON, `errors` JSON, `sheet` JSON (every row of the file by tab: while waiting its cleaned values, original text and what happens to it; once confirmed only its tab, row number, Lead ID and what happened) |
+| `leads` | every business: `lead_id` (`L-000123`), `batch_id` (the batch it was first imported into), `niche`, `city`, `business_name`, `level`, `gbp_link`, `emails`, the matching keys `phone_digits`, `name_address`, `website_domain`, `data` JSON (address, website, phone, WhatsApp, Facebook, Instagram, reviews, rating, notes), `extra` JSON (the file's other columns, by their header, e.g. "Operation Hour"), `results` JSON (by agent key: status, score, summary, details, benchmark id and version, when), `first_import_id`, `last_import_id` |
 | `lead_files` | files agents saved for a lead (reports): `lead_id`, `agent_key`, `name`, `content_type`, `size`; the bytes are on disk at `REPORTS_DIR/<lead_id>/<id>` |
 | `lists` | one per City + Niche: `active`, optional `daily_limit` |
 | `do_not_contact` | `kind` (`email`, `phone`, `gbp`, `domain`), `value`, `reason` (`top`, `opt_out`, `manual`), `lead_id` |
@@ -279,8 +279,9 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    headers. Header synonyms (case, spaces and punctuation ignored): GBP Link ← `MAP`, `Map URL`,
    `MAP URl`, `Maps`, `GBP`; WhatsApp ← `WA`, `WP`, `Whatsapp`; Email ← `E-mail`, `Gmail`,
    `Mail`; Reviews ← `Number of Reviews`, `Review`, `Reviews Count`; Rating ← `Average`,
-   `Ratings`, `Average Ratings`; Notes ← `Comment`, `Issue 1–3` (joined). Unknown columns are
-   listed in the preview and ignored. No City (column or cell) → the tab name. A row with only a
+   `Ratings`, `Average Ratings`; Notes ← `Comment`, `Issue 1–3` (joined). Other columns (such
+   as "Operation Hour") are kept with the lead under their header (`extra`): listed in the
+   preview, shown on the Leads screen and in the Excel download. No City (column or cell) → the tab name. A row with only a
    city filled in is not a business and is ignored; a row with neither a name nor a GBP link is
    skipped and listed; a tab with no businesses is listed as empty.
 3. **Cleaning:** spaces and line breaks squeezed; phone compared by its last 10 digits; website
@@ -300,13 +301,25 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 6. **Preview** (nothing written but the import): businesses, new, already known in this
    batch (updated), already in another batch,
    duplicates merged, Top, cities, without a GBP link, without a website, rows skipped, emails
-   that look wrong, with up to 25 examples of each, plus new lists, ignored columns and empty
-   tabs. A waiting preview reopens when the screen is opened again.
+   that look wrong, with up to 25 examples of each, plus new lists, other columns and empty
+   tabs. A waiting preview reopens when the screen is opened again. Below the counts the
+   preview shows **the file itself, tab by tab** like Excel: a bar with every tab and its
+   rows (empty tabs greyed, plus "All tabs"); a tab opens a table of its rows, 100 a page,
+   with every column in the file's order (Business name, MAP, Address, City, Website, Phone,
+   WA, Facebook, Instagram, Email, Reviews, Average, Level, Notes, then the other columns).
+   Cells show the cleaned value; a cell the Hub changed shows the original text when pointed
+   at; emails that look wrong are marked. Each row says what happens to it: **new**,
+   **updated** (already in this batch), **in another batch**, **merged** (one business with
+   other rows), **Top**, or **skipped** (no name and no GBP link); the table can be narrowed
+   to one of these.
 7. **Confirm** saves everything in one transaction: Lead IDs continue from the highest one
    saved (`L-000001` …), one import at a time; each lead's row is kept with it (a value from
    the file replaces the saved one; an empty cell never blanks it); the lists and the
-   do-not-contact list are updated. Once confirmed, the import keeps only its counts (new and
-   updated).
+   do-not-contact list are updated; the file's other columns are kept with the lead the same
+   way. Once confirmed, the import keeps its counts (new and updated) and, for each row, its
+   tab, row number, Lead ID and what happened; opening a past file shows it tab by tab as
+   above with each lead's values as the Hub has them now (a deleted lead says so). Files saved
+   before this (step 14) show their counts only.
 8. **Lists** (one per City + Niche) are created by confirmed imports and shown on the Leads
    screen, below the leads, with their businesses and Top counts; Owners and Admins switch a
    list on or off.
@@ -314,8 +327,8 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    ID, city, email, phone, website, GBP link), city, Top and website; sort by Lead ID, newest,
    name, city or an agent's score (best first). The table shows **every field of the lead
    file side by side**, like the Excel file: Lead ID, Business name, GBP link, Address, City,
-   Website, Phone, WhatsApp, Email(s), Facebook, Instagram, Reviews, Rating, Level, Notes and
-   Batch, then each agent's score and status; it scrolls sideways with the business name kept
+   Website, Phone, WhatsApp, Email(s), Facebook, Instagram, Reviews, Rating, Level, Notes,
+   the file's other columns and Batch, then each agent's score and status; it scrolls sideways with the business name kept
    in view, and links (GBP, website, Facebook, Instagram) open in a new tab.
    **Download Excel** gives the leads on screen (same filters, up to 50,000), every column
    including each agent's status, score, summary and when; every text cell is stored as text,
@@ -585,3 +598,10 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     side; the Lists moved from Batches to Leads. **Tests:** the guide's steps tick as the
     setup goes on, the token window's command holds the token, every field is a column,
     Lists only on Leads, e2e through the guide.
+14. **The lead file tab by tab** (asked for after step 13): the preview shows every row of
+    the file by tab, with every column, the original text of changed cells and what happens
+    to each row; the file's other columns are kept with the lead (`extra`), on the Leads
+    screen and in the Excel download; a past file opens tab by tab from the saved leads.
+    **Tests:** tabs and rows in the file's order, statuses (new, updated, in another batch,
+    merged, Top, skipped), original text, other columns saved and not blanked, a confirmed
+    file's view from the leads (also a deleted one), filters and pages, rights, e2e.

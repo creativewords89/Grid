@@ -267,6 +267,9 @@ class Import(TimestampMixin, Base):
     counts: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
     preview: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
     rows: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, server_default="[]")
+    # Every row of the file by tab (SPEC section 6.4): while waiting, its cleaned values,
+    # original text and what happens to it; once confirmed, its tab, row and Lead ID.
+    sheet: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
     error: Mapped[str | None] = mapped_column(String(500))
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -296,6 +299,8 @@ class Lead(TimestampMixin, Base):
     emails: Mapped[list[str]] = mapped_column(JSONB, default=list, server_default="[]")
     # address, website, phone, whatsapp, facebook, instagram, reviews, rating, notes
     data: Mapped[dict[str, str]] = mapped_column(JSONB, default=dict, server_default="{}")
+    # The file's other columns, by their header (e.g. "Operation Hour").
+    extra: Mapped[dict[str, str]] = mapped_column(JSONB, default=dict, server_default="{}")
     # agent key -> {status, score, summary, details, benchmark_id, benchmark_version, at}
     results: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
     first_import_id: Mapped[uuid.UUID | None] = mapped_column(

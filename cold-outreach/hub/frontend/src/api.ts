@@ -182,6 +182,33 @@ export type LeadImport = {
   preview: ImportPreview;
 };
 
+export type SheetStatus = "new" | "updated" | "other_batch" | "merged" | "top" | "skipped";
+
+export type SheetRow = {
+  tab: string;
+  line: number;
+  status: "new" | "updated" | "other_batch" | "skipped";
+  merged: boolean;
+  top: boolean;
+  lead_id?: string | null;
+  deleted?: boolean;
+  values: Record<string, string>;
+  extra: Record<string, string>;
+  raw: Record<string, string>;
+  bad_emails: string[];
+};
+
+export type ImportSheet = {
+  kept: boolean;
+  tabs: { name: string; rows: number }[];
+  columns: { key: string; label: string }[];
+  statuses: Record<SheetStatus, number>;
+  rows: SheetRow[];
+  total: number;
+  page: number;
+  pages: number;
+};
+
 export type LeadList = {
   id: string;
   city: string;
@@ -241,6 +268,7 @@ export type Lead = {
   gbp_link: string;
   emails: string[];
   data: Record<string, string>;
+  extra: Record<string, string>;
   results: Record<string, LeadResult>;
 };
 
@@ -261,6 +289,7 @@ export type LeadPage = {
   page: number;
   pages: number;
   agents: Record<string, string>;
+  extra_columns: string[];
 };
 
 export type LeadFilters = {
@@ -577,6 +606,8 @@ export const api = {
   },
   imports: (batchId?: string) =>
     request<LeadImport[]>("GET", `/imports${batchId ? `?batch_id=${batchId}` : ""}`),
+  importSheet: (id: string, filters: { tab?: string; status?: SheetStatus | ""; page?: number }) =>
+    request<ImportSheet>("GET", `/imports/${id}/sheet${leadQuery(filters)}`),
   confirmImport: (id: string) => request<LeadImport>("POST", `/imports/${id}/confirm`),
   discardImport: (id: string) => request<LeadImport>("POST", `/imports/${id}/discard`),
   niches: () => request<string[]>("GET", "/niches"),

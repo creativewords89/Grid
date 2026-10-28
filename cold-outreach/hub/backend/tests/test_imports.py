@@ -398,3 +398,125 @@ def test_lists_count_leads_and_can_be_switched_off(client: TestClient, owner: Us
 
     assert (tulsa["leads"], tulsa["top"]) == (3, 1)
     assert changed.json() | {"active": False, "daily_limit": 20} == changed.json()
+
+
+# --- the file tab by tab (step 14) ------------------------------------------------------------
+
+SHEET_FILE = {
+    "Tulsa": [
+        [*STANDARD, "Level", "Operation Hour"],
+        [
+            *row("Multi-Clean", "https://share.google/mc", "(918) 523-8300", "Kevin@MC.com"),
+            "",
+            "9-5",
+        ],
+        [*row("Top Shine", "https://share.google/ts", "(918) 555-0000", "boss@ts.com"), "Top", ""],
+        [*row("", "", "(918) 555-2222", "x@y.com"), "", ""],  # no name, no map: skipped
+        [*row("Multi Clean 2", "https://share.google/mc", "", "info@mc.com"), "", "8-6"],
+    ],
+    "Empty": [["Notes"]],
+    "Dallas": [STANDARD, row("Sparkle", "https://share.google/sp", "214 555 0100", city="Dallas")],
+}
+
+
+def sheet(client: TestClient, import_id: str, **params: Any) -> dict[str, Any]:
+    response = client.get(f"/api/imports/{import_id}/sheet", params=params)
+    assert response.status_code == 200, response.text
+    body: dict[str, Any] = response.json()
+    return body
+
+
+def test_the_preview_shows_the_file_tab_by_tab(client: TestClient, owner: User) -> None:
+    preview = upload(client, workbook(SHEET_FILE))
+
+    shown = sheet(client, preview["id"])
+
+    assert shown["tabs"] == [
+        {"name": "Tulsa", "rows": 4},
+        {"name": "Empty", "rows": 0},
+        {"name": "Dallas", "rows": 1},
+    ]
+    labels = [c["label"] for c in shown["columns"]]
+    assert labels[:3] == ["Business name", "MAP", "Address"]
+    assert labels[-1] == "Operation Hour"
+    first = shown["rows"][0]
+    assert (first["tab"], first["line"], first["status"], first["merged"]) == (
+        "Tulsa",
+        2,
+        "new",
+        True,
+    )
+    assert first["values"]["email"] == "kevin@mc.com"
+    assert first["raw"]["email"] == "Kevin@MC.com"  # the original text of a changed cell
+    assert first["extra"] == {"Operation Hour": "9-5"}
+    assert [r["status"] for r in shown["rows"]] == ["new", "new", "skipped", "new", "new"]
+    assert shown["statuses"]["merged"] == 2 and shown["statuses"]["top"] == 1
+    tulsa_top = sheet(client, preview["id"], tab="Tulsa", status="top")
+    assert [r["line"] for r in tulsa_top["rows"]] == [3]
+    assert sheet(client, preview["id"], status="skipped")["total"] == 1
+    assert sheet(client, preview["id"], tab="Dallas")["total"] == 1
+
+
+def test_other_columns_are_saved_and_shown_and_never_blanked(
+    client: TestClient, owner: User
+) -> None:
+    first = upload(client, workbook(SHEET_FILE))
+    client.post(f"/api/imports/{first['id']}/confirm")
+    again = {
+        "Tulsa": [
+            [*STANDARD, "Operation Hour"],
+            [*row("Multi-Clean", "https://share.google/mc", "", ""), ""],
+        ]
+    }
+    second = upload(client, workbook(again))
+    assert sheet(client, second["id"])["rows"][0]["status"] == "updated"
+    client.post(f"/api/imports/{second['id']}/confirm")
+
+    page = client.get("/api/leads").json()
+    multi = next(x for x in page["leads"] if x["business_name"] == "Multi-Clean")
+    assert multi["extra"] == {"Operation Hour": "9-5"}  # the empty cell didn't blank it
+    assert page["extra_columns"] == ["Operation Hour"]
+    from openpyxl import load_workbook
+
+    book = load_workbook(io.BytesIO(client.get("/api/leads/export").content)).active
+    assert book is not None
+    assert "Operation Hour" in next(book.iter_rows(values_only=True))
+
+
+def test_a_saved_file_opens_tab_by_tab_from_its_leads(
+    client: TestClient, owner: User, db: Session
+) -> None:
+    preview = upload(client, workbook(SHEET_FILE))
+    client.post(f"/api/imports/{preview['id']}/confirm")
+    stored = db.get(Import, preview["id"])
+    assert stored is not None and "values" not in stored.sheet["rows"][0]  # only where it went
+
+    shown = sheet(client, preview["id"], tab="Tulsa")
+    first = shown["rows"][0]
+    assert first["lead_id"] == "L-000001" and first["values"]["business_name"] == "Multi-Clean"
+    assert first["extra"] == {"Operation Hour": "9-5"}
+    assert shown["rows"][3]["lead_id"] == "L-000001"  # the merged row went to the same lead
+    client.delete("/api/leads/L-000002")
+    assert sheet(client, preview["id"], tab="Tulsa")["rows"][1]["deleted"] is True
+
+
+def test_discarding_drops_the_rows_and_old_files_show_counts_only(
+    client: TestClient, owner: User, db: Session
+) -> None:
+    preview = upload(client, workbook(SHEET_FILE))
+    client.post(f"/api/imports/{preview['id']}/discard")
+
+    assert sheet(client, preview["id"])["kept"] is False
+    assert sheet(client, preview["id"])["rows"] == []
+
+
+def test_viewers_see_the_file_but_signed_out_people_do_not(
+    client: TestClient, owner: User, make_user: UserFactory
+) -> None:
+    preview = upload(client, workbook(SHEET_FILE))
+    viewer = make_user(Role.VIEWER, name="Vic")
+    sign_in(client, viewer.email)
+
+    assert client.get(f"/api/imports/{preview['id']}/sheet").status_code == 200
+    client.post("/api/auth/logout")
+    assert client.get(f"/api/imports/{preview['id']}/sheet").status_code == 401

@@ -13,6 +13,7 @@ import { Alert, Field } from "../components/ui";
 import { when } from "../format";
 import { navigate } from "../router";
 import { PipelineTab, ResultsTab } from "./BatchPipeline";
+import { SheetView } from "./ImportSheet";
 
 // Batches (SPEC sections 6.4 and 7): make a batch (a name, one niche, one benchmark of that
 // niche), then add Excel files to it at any time. A business stays in the batch it came in
@@ -735,8 +736,15 @@ function PreviewCard({
       />
       <Details title="Rows skipped (no name and no GBP link)" items={preview.skipped_rows ?? []} />
       <Details title="Emails that look wrong (left out)" items={preview.invalid_emails ?? []} />
-      <Details title="Columns that were ignored" items={unknown} />
+      <Details title="Other columns (kept with the leads)" items={unknown} />
       <Details title="Empty tabs" items={preview.empty_tabs ?? []} />
+      {(item.status === "preview" || item.status === "confirmed") && (
+        <SheetView
+          key={`${item.id}-${item.status}`}
+          importId={item.id}
+          saved={item.status === "confirmed"}
+        />
+      )}
       {waiting && staff && (
         <div className="row">
           <button
