@@ -90,8 +90,8 @@ const TASKS: Task[] = [
     key: "gbp-audit",
     name: "GBP Audit",
     bots: [
-      { key: "gbp-full", name: "GBP audit (DataForSEO)", enabled: true },
-      { key: "gbp-quick", name: "GBP quick check", enabled: true },
+      { key: "gbp-full", name: "GBP audit (DataForSEO)", enabled: true, about: "" },
+      { key: "gbp-quick", name: "GBP quick check", enabled: true, about: "" },
     ],
     batches: ["Texas November"],
   },
@@ -99,7 +99,7 @@ const TASKS: Task[] = [
     id: "t2",
     key: "opportunity",
     name: "Opportunity Finder",
-    bots: [{ key: "opp", name: "Opportunity finder", enabled: true }],
+    bots: [{ key: "opp", name: "Opportunity finder", enabled: true, about: "" }],
     batches: [],
   },
 ];
@@ -132,7 +132,7 @@ test("a batch's tasks: add another agent to a task, choose how they share, then 
   expect(within(gbp).getByText(/2,800 done · 10 ready · avg score 54/)).toBeVisible();
   const opportunity = screen.getByRole("article", { name: "Opportunity Finder" });
   expect(within(opportunity).getByText(/No agent yet/)).toBeVisible();
-  expect(within(opportunity).getByText("Needs: GBP Audit")).toBeVisible();
+  expect(within(opportunity).getByText(/Needs: GBP Audit/)).toBeVisible();
 
   await userEvent.selectOptions(
     within(gbp).getByLabelText("Add another agent to GBP Audit"),
@@ -166,7 +166,7 @@ test("an agent from the library is added to its task, and the task first when mi
   await userEvent.click(await screen.findByRole("button", { name: "Texas November" }));
   expect(await screen.findByText(/To start: Add a task first/)).toBeVisible();
   expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
-  const library = screen.getByRole("complementary", { name: "Agent library" });
+  const library = screen.getByRole("region", { name: "Agent library" });
   await userEvent.click(
     await within(library).findByRole("button", { name: "Add GBP audit (DataForSEO) to GBP Audit" }),
   );
@@ -296,6 +296,7 @@ test("the setup guide ticks each step as the agents get ready", async () => {
   render(<App />);
 
   await userEvent.click(await screen.findByRole("button", { name: "Texas November" }));
+  await userEvent.click(await screen.findByText(/4 of 6 steps done/));
   expect(await screen.findByText(/Only the/)).toHaveTextContent("Only the demo agent is set up");
   expect(guideSteps()).toEqual([
     ["Add an agent", true],
@@ -321,7 +322,10 @@ test("with no agents the guide starts at adding one", async () => {
   render(<App />);
 
   await userEvent.click(await screen.findByRole("button", { name: "Texas November" }));
-  await screen.findByRole("region", { name: "Setup guide" });
+  const guide = await screen.findByRole("region", { name: "Setup guide" });
+  // A single line until opened.
+  expect(within(guide).getByText(/0 of 6 steps done · next: Add an agent/)).toBeVisible();
+  await userEvent.click(within(guide).getByText(/0 of 6 steps done/));
   expect(guideSteps().every(([, done]) => !done)).toBe(true);
   expect(screen.getByText(/press \+ Add agent/)).toBeVisible();
 });
@@ -331,7 +335,7 @@ test("add a task: its job, its name and what it needs first in this batch", asyn
     id: "t3",
     key: "outreach",
     name: "Outreach email",
-    bots: [{ key: "mail", name: "Outreach email (friendly)", enabled: true }],
+    bots: [{ key: "mail", name: "Outreach email (friendly)", enabled: true, about: "" }],
     batches: [],
   };
   const calls = mockApi({
@@ -346,7 +350,7 @@ test("add a task: its job, its name and what it needs first in this batch", asyn
   render(<App />);
 
   await userEvent.click(await screen.findByRole("button", { name: "Texas November" }));
-  await userEvent.click(await screen.findByRole("button", { name: "+ Add a task" }));
+  await userEvent.click(await screen.findByRole("button", { name: /\+ Add a task to this batch/ }));
   const form = screen.getByRole("form", { name: "Add a task" });
   // Only jobs the batch doesn't have yet.
   expect(

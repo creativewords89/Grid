@@ -50,10 +50,13 @@ export function SetupGuide({
   agents,
   pipeline,
   isOwner,
+  compact = false,
 }: {
   agents: Agent[];
   pipeline: Pipeline;
   isOwner: boolean;
+  /** One line that opens to the steps, so the tasks keep the page. */
+  compact?: boolean;
 }) {
   const inBatch = new Set(
     pipeline.steps.flatMap((s) => s.tasks.flatMap((t) => t.bots)).map((b) => b.key),
@@ -99,9 +102,9 @@ export function SetupGuide({
   if (steps.every((s) => s.done)) return null;
   const onlyDemo =
     connected.length > 0 && connected.every((a) => a.manifest?.name === DEMO_MANIFEST);
-  return (
-    <section className="card stack setup-guide" aria-label="Setup guide">
-      <h2>Get this batch working</h2>
+  const body = (
+    <>
+      {!compact && <h2>Get this batch working</h2>}
       {onlyDemo && (
         <p className="small">
           Only the <strong>demo agent</strong> is set up. It pretends to work, so you can try the
@@ -137,6 +140,23 @@ export function SetupGuide({
           </li>
         ))}
       </ol>
+    </>
+  );
+  return (
+    <section
+      className={`card stack setup-guide ${compact ? "setup-compact" : ""}`}
+      aria-label="Setup guide"
+    >
+      {compact && (
+        <details>
+          <summary>
+            Get this batch working: {steps.filter((x) => x.done).length} of {steps.length} steps
+            done · next: {steps.find((x) => !x.done)?.title}
+          </summary>
+          {body}
+        </details>
+      )}
+      {!compact && body}
     </section>
   );
 }

@@ -350,7 +350,7 @@ export type Task = {
   id: string;
   key: string;
   name: string;
-  bots: { key: string; name: string; enabled: boolean }[];
+  bots: { key: string; name: string; enabled: boolean; about: string }[];
   batches: string[];
 };
 

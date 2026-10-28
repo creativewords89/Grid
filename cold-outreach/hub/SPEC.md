@@ -478,7 +478,12 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    niche has none), each with its status, agents and progress, and up and down buttons for the
    running order, and **Find a business** (section 6.4 item 12) above them. A batch (its own
    address, `/batches?batch=<id>&tab=<tab>`) opens to **Start**/**Pause** and tabs:
-   **Tasks** (the agent library grouped by job on the left, which can be
+   **Tasks** (laid out as the chosen A+B design: the batch's name, niche, benchmark, businesses
+   and Top with its state and Start/Pause above underlined tabs; the agent library grouped by
+   job, with **Find an agent**, each agent with its one-line description and "In use";
+   **Tasks on this batch** starting with the lead files, the steps with each task's agents
+   and progress, an empty task as a drop zone with **Choose an agent**, and **+ Add a task to
+   this batch**; the setup guide is one line that opens; the agent library grouped by job on the left, which can be
    dragged or added; the steps with each task's agents, their progress, ✕ to remove, **+ Add
    another agent**, how the agents share the work, and **+ Add a task**), **Leads** (section
    6.4 item 9, with the lead window of item 10), **Cities** (item 8), **Results** (section

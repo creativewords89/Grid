@@ -122,7 +122,7 @@ test("a batch is made and a lead file is read, checked and saved in the Hub", as
       .getByText("L-000001")
       .first(),
   ).toBeVisible();
-  await page.getByRole("button", { name: "All batches" }).click();
+  await page.getByRole("main").getByRole("link", { name: "Batches" }).click();
   await expect(page.getByRole("row", { name: /Texas November/ })).toContainText(
     "4",
   );
@@ -253,16 +253,17 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
     .getByRole("button", { name: "Texas November", exact: true })
     .click();
   const guide = page.getByRole("region", { name: "Setup guide" });
+  await guide.getByText(/steps done/).click();
   await expect(
     guide.getByText("Only the demo agent is set up", { exact: false }),
   ).toBeVisible();
   // The task is made in the batch: its job, its name, then its agent.
   await expect(
-    page
-      .getByRole("complementary", { name: "Agent library" })
-      .getByText("Demo agent"),
+    page.getByRole("region", { name: "Agent library" }).getByText("Demo agent"),
   ).toBeVisible();
-  await page.getByRole("button", { name: "+ Add a task" }).click();
+  await page
+    .getByRole("button", { name: /\+ Add a task to this batch/ })
+    .click();
   const form = page.getByRole("form", { name: "Add a task" });
   await form
     .getByLabel("Job (what your agents do)")
@@ -271,7 +272,7 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
   await form.getByRole("button", { name: "Add task" }).click();
   const slot = page.getByRole("article", { name: "Pretend audit" });
   await slot
-    .getByLabel("Add another agent to Pretend audit")
+    .getByLabel("Add an agent to Pretend audit")
     .selectOption({ label: "Demo agent" });
   await expect(slot.getByText("Demo agent")).toBeVisible();
   await page.getByRole("button", { name: "Start" }).click();

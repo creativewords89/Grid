@@ -50,6 +50,7 @@ export function PipelineTab({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [find, setFind] = useState("");
   const staff = pipeline.batch.can_run;
 
   useEffect(() => {
@@ -99,71 +100,126 @@ export function PipelineTab({
     }
   }
 
+  const wanted = find.trim().toLowerCase();
+  const groups = tasks
+    .map((task) => ({
+      task,
+      bots: task.bots.filter(
+        (b) =>
+          !wanted ||
+          b.name.toLowerCase().includes(wanted) ||
+          b.about.toLowerCase().includes(wanted) ||
+          task.name.toLowerCase().includes(wanted),
+      ),
+    }))
+    .filter((g) => g.bots.length > 0 || !wanted);
   const missing = tasks.filter((t) => !inBatch.has(t.key));
+  const batch = pipeline.batch;
   return (
     <div className="stack">
       {agents && (
-        <SetupGuide agents={agents} pipeline={pipeline} isOwner={user?.role === "owner"} />
+        <SetupGuide agents={agents} pipeline={pipeline} isOwner={user?.role === "owner"} compact />
       )}
-      <div className="pipeline">
-        <aside className="card stack bot-library" aria-label="Agent library">
-          <h2>Agents</h2>
-          <p className="muted small">
-            {staff
-              ? "Grouped by the job they do. Drag an agent onto a task of its job, or press Add."
-              : "The agents, grouped by the job they do."}
-          </p>
-          {tasks.map((task) => (
-            <div key={task.id} className="stack-tight">
-              <h3 className="small-head">{task.name}</h3>
-              {task.bots.length === 0 && <p className="muted small">No agent does this yet.</p>}
-              {task.bots.map((b) => (
-                <div
-                  key={b.key}
-                  className={`library-bot ${onBot.has(b.key) ? "library-bot-used" : ""}`}
-                  draggable={staff && !onBot.has(b.key)}
-                  onDragStart={(e) => e.dataTransfer.setData("text/plain", b.key)}
-                >
-                  <span>
-                    {b.name}
-                    {!b.enabled && <span className="muted small"> · off</span>}
-                  </span>
-                  {onBot.has(b.key) ? (
-                    <span className="pill pill-active">In use</span>
-                  ) : (
-                    staff && (
-                      <button
-                        className="link-button"
-                        disabled={busy}
-                        aria-label={`Add ${b.name} to ${task.name}`}
-                        onClick={() => addBot(task, b.key)}
-                      >
-                        Add
-                      </button>
-                    )
-                  )}
-                </div>
-              ))}
+      <div className="slots-layout">
+        <section className="library" aria-label="Agent library">
+          <h2>Agents, by the job they do</h2>
+          <div className="field">
+            <label htmlFor="library-find">Find an agent</label>
+            <input
+              id="library-find"
+              type="search"
+              placeholder="Name or job…"
+              value={find}
+              onChange={(e) => setFind(e.target.value)}
+            />
+          </div>
+          {tasks.length === 0 && (
+            <p className="muted small">
+              No agent has connected yet. Its job appears here when it does.
+            </p>
+          )}
+          {groups.map(({ task, bots }) => (
+            <div key={task.id} className="library-group">
+              <div className="library-job">{task.name}</div>
+              {bots.length === 0 && <p className="muted small">No agent does this yet.</p>}
+              {bots.map((b) => {
+                const used = onBot.has(b.key);
+                return (
+                  <div
+                    key={b.key}
+                    className={`library-agent ${used ? "library-agent-used" : ""}`}
+                    draggable={staff && !used}
+                    onDragStart={(e) => e.dataTransfer.setData("text/plain", b.key)}
+                  >
+                    <span className="drag-handle" aria-hidden="true">
+                      ⋮⋮
+                    </span>
+                    <div className="library-agent-text">
+                      <div className="cell-strong">{b.name}</div>
+                      <div className="library-agent-about">
+                        {b.about || task.name}
+                        {!b.enabled && " · off"}
+                      </div>
+                    </div>
+                    {used ? (
+                      <span className="library-tag">In use</span>
+                    ) : (
+                      staff && (
+                        <button
+                          className="link-button small"
+                          disabled={busy}
+                          aria-label={`Add ${b.name} to ${task.name}`}
+                          onClick={() => addBot(task, b.key)}
+                        >
+                          Add
+                        </button>
+                      )
+                    )}
+                  </div>
+                );
+              })}
             </div>
           ))}
-        </aside>
-        <div className="stack">
+        </section>
+
+        <section className="slots" aria-label="Tasks on this batch">
+          <div className="slots-head">
+            <h2>Tasks on this batch</h2>
+            <span className="muted small">
+              Drop one or more agents on a task, or pick them from the list. A business moves on as
+              soon as the tasks it needs are done.
+            </span>
+          </div>
           {error && <Alert kind="error">{error}</Alert>}
-          {slots.length === 0 && (
-            <p className="muted">No tasks yet. Add a task, then choose its agents.</p>
-          )}
+          <div className="lead-files-row">
+            <span className="cell-strong">Lead files</span>
+            {batch.files > 0 ? (
+              <span className="ok-text">
+                ✓ {batch.files} {batch.files === 1 ? "file" : "files"} ·{" "}
+                {batch.leads.toLocaleString()} businesses
+              </span>
+            ) : (
+              <span className="warn-text">None yet: add one on Files and settings</span>
+            )}
+          </div>
           {pipeline.steps.map((step) => (
-            <section key={step.step} className="stack-tight" aria-label={`Step ${step.step}`}>
-              <h2 className="small-head">
+            <div key={step.step} className="stack-tight" aria-label={`Step ${step.step}`}>
+              <div className="step-label">
                 Step {step.step}
                 {step.tasks.length > 1 && " · side by side"}
-              </h2>
-              <div className="step-tasks">
+              </div>
+              <div
+                className="step-slots"
+                style={{
+                  gridTemplateColumns: `repeat(${Math.min(step.tasks.length, 2)}, minmax(0, 1fr))`,
+                }}
+              >
                 {step.tasks.map((slot) => (
                   <TaskSlot
                     key={slot.task_id}
                     slot={slot}
                     task={tasks.find((t) => t.id === slot.task_id)}
+                    running={batch.status === "running"}
                     staff={staff}
                     busy={busy}
                     onDrop={(e) => drop(e, slot)}
@@ -172,20 +228,19 @@ export function PipelineTab({
                     onShare={(share) =>
                       void act(() => api.updateBatchTask(batchId, slot.task_id, { share }))
                     }
+                    onRemove={() => void act(() => api.removeBatchTask(batchId, slot.task_id))}
                     others={slots.filter((o) => o.task_id !== slot.task_id)}
                     onEdit={(patch) => act(() => api.updateBatchTask(batchId, slot.task_id, patch))}
-                    onRemove={() => void act(() => api.removeBatchTask(batchId, slot.task_id))}
                   />
                 ))}
               </div>
-            </section>
+            </div>
           ))}
           {staff && !adding && (
-            <div>
-              <button className="button button-primary" onClick={() => setAdding(true)}>
-                + Add a task
-              </button>
-            </div>
+            <button className="add-task-link" onClick={() => setAdding(true)}>
+              + Add a task to this batch
+              {missing.length > 0 && ` (${missing.map((t) => t.name).join(", ")})`}
+            </button>
           )}
           {staff && adding && (
             <AddTask
@@ -194,12 +249,11 @@ export function PipelineTab({
               busy={busy}
               onCancel={() => setAdding(false)}
               onAdd={async (body) => {
-                await act(() => api.addBatchTask(batchId, body));
-                setAdding(false);
+                if (await act(() => api.addBatchTask(batchId, body))) setAdding(false);
               }}
             />
           )}
-        </div>
+        </section>
       </div>
     </div>
   );
@@ -208,6 +262,7 @@ export function PipelineTab({
 function TaskSlot({
   slot,
   task,
+  running,
   staff,
   busy,
   onDrop,
@@ -220,6 +275,7 @@ function TaskSlot({
 }: {
   slot: PipelineTask;
   task: Task | undefined;
+  running: boolean;
   staff: boolean;
   busy: boolean;
   onDrop: (e: DragEvent) => void;
@@ -232,44 +288,33 @@ function TaskSlot({
 }) {
   const [editing, setEditing] = useState(false);
   const free = (task?.bots ?? []).filter((b) => !slot.bots.some((x) => x.key === b.key));
+  const empty = slot.bots.length === 0;
   return (
     <article
-      className={`card stack-tight task-slot ${slot.bots.length === 0 ? "task-slot-empty" : ""}`}
+      className={`task-card ${empty ? "task-card-empty" : ""}`}
       aria-label={slot.name}
       onDragOver={(e) => staff && e.preventDefault()}
       onDrop={onDrop}
     >
-      <div className="agent-head">
-        <div>
-          <h3>{slot.name}</h3>
-          <p className="muted small">
-            {slot.name !== slot.job && `Job: ${slot.job} · `}
-            Needs:{" "}
-            {slot.needs.length > 0 ? slot.needs.map((n) => n.name).join(", ") : "the lead file"}
-          </p>
-        </div>
-        {staff && (
-          <span className="row">
-            <button
-              className="link-button"
-              disabled={busy}
-              aria-label={`Edit ${slot.name}`}
-              onClick={() => setEditing(!editing)}
-            >
-              Edit
-            </button>
-            {slot.can_remove && (
+      <div className="task-card-head">
+        <strong>{slot.name}</strong>
+        <span className="muted small">
+          {slot.name !== slot.job && `${slot.job} · `}
+          Needs: {slot.needs.length > 0 ? slot.needs.map((n) => n.name).join(", ") : "lead file"}
+          {staff && (
+            <>
+              {" · "}
               <button
                 className="link-button"
                 disabled={busy}
-                aria-label={`Remove ${slot.name} from the batch`}
-                onClick={onRemove}
+                aria-label={`Edit ${slot.name}`}
+                onClick={() => setEditing(!editing)}
               >
-                Remove
+                Edit
               </button>
-            )}
-          </span>
-        )}
+            </>
+          )}
+        </span>
       </div>
       {editing && (
         <TaskForm
@@ -285,57 +330,103 @@ function TaskSlot({
           }}
         />
       )}
-      {slot.bots.length === 0 && (
-        <p className="small field-error">No agent yet: the businesses wait here.</p>
-      )}
       {slot.bots.map((bot) => (
         <BotRow
           key={bot.key}
           bot={bot}
+          running={running}
           staff={staff}
           busy={busy}
           onRemove={() => onRemoveBot(bot.key)}
           task={slot.name}
         />
       ))}
-      {staff && (
-        <div className="row">
-          {free.length > 0 && (
-            <select
-              aria-label={`Add another agent to ${slot.name}`}
-              value=""
-              disabled={busy}
-              onChange={(e) => e.target.value && onAddBot(e.target.value)}
-            >
-              <option value="">
-                {slot.bots.length === 0 ? "+ Add an agent…" : "+ Add another agent…"}
+      {!empty && staff && (
+        <div className="task-card-foot">
+          <select
+            className="add-agent-select"
+            aria-label={`Add another agent to ${slot.name}`}
+            value=""
+            disabled={busy || free.length === 0}
+            onChange={(e) => e.target.value && onAddBot(e.target.value)}
+          >
+            <option value="">+ Add another agent…</option>
+            {free.map((b) => (
+              <option key={b.key} value={b.key}>
+                {b.name}
               </option>
-              {free.map((b) => (
-                <option key={b.key} value={b.key}>
-                  {b.name}
+            ))}
+          </select>
+          <label className="share-label">
+            How the agents share
+            <select
+              value={slot.share}
+              disabled={busy}
+              onChange={(e) => onShare(e.target.value as Share)}
+            >
+              {(Object.keys(SHARE) as Share[]).map((s) => (
+                <option key={s} value={s}>
+                  {SHARE[s]}
                 </option>
               ))}
             </select>
-          )}
-          {slot.bots.length > 1 && (
-            <label className="small">
-              How the agents share{" "}
+          </label>
+        </div>
+      )}
+      {!empty && !staff && slot.bots.length > 1 && (
+        <p className="muted small">{SHARE[slot.share]}</p>
+      )}
+      {empty && (
+        <>
+          <div className="drop-zone">
+            <span className="muted">No agent yet: drop one here{staff ? ", or" : "."}</span>
+            {staff && (
               <select
-                value={slot.share}
-                disabled={busy}
-                onChange={(e) => onShare(e.target.value as Share)}
+                className="choose-agent-select"
+                aria-label={`Add an agent to ${slot.name}`}
+                value=""
+                disabled={busy || free.length === 0}
+                onChange={(e) => e.target.value && onAddBot(e.target.value)}
               >
-                {(Object.keys(SHARE) as Share[]).map((s) => (
-                  <option key={s} value={s}>
-                    {SHARE[s]}
+                <option value="">Choose an agent…</option>
+                {free.map((b) => (
+                  <option key={b.key} value={b.key}>
+                    {b.name}
                   </option>
                 ))}
               </select>
-            </label>
-          )}
-        </div>
+            )}
+          </div>
+          <div className="warn-text small">
+            Businesses wait here until an agent is chosen.
+            {staff && slot.can_remove && (
+              <>
+                {" "}
+                Not needed?{" "}
+                <button
+                  className="link-button"
+                  disabled={busy}
+                  aria-label={`Remove ${slot.name} from the batch`}
+                  onClick={onRemove}
+                >
+                  Take this task off the batch
+                </button>
+                .
+              </>
+            )}
+          </div>
+        </>
       )}
-      {!staff && slot.bots.length > 1 && <p className="muted small">{SHARE[slot.share]}</p>}
+      {!empty && staff && slot.can_remove && (
+        <button
+          className="link-button small task-remove"
+          disabled={busy}
+          aria-label={`Remove ${slot.name} from the batch`}
+          onClick={onRemove}
+        >
+          Take this task off the batch
+        </button>
+      )}
     </article>
   );
 }
@@ -484,36 +575,41 @@ function AddTask({
 function BotRow({
   bot,
   task,
+  running,
   staff,
   busy,
   onRemove,
 }: {
   bot: BotProgress;
   task: string;
+  running: boolean;
   staff: boolean;
   busy: boolean;
   onRemove: () => void;
 }) {
   const total = bot.done + bot.failed + bot.ready + bot.waiting;
   const pct = total ? Math.round((100 * bot.done) / total) : 0;
+  let status = "Waiting";
+  let tone = "warn";
+  if (!bot.enabled) [status, tone] = ["Off", "muted"];
+  else if (!bot.connected) [status, tone] = ["Not connected", "muted"];
+  else if (total > 0 && bot.done === total) [status, tone] = ["Done", "brand"];
+  else if (running && bot.ready > 0) [status, tone] = ["Running", "ok"];
+  else if (running && bot.waiting > 0) [status, tone] = ["Running as leads are ready", "brand"];
   return (
-    <div className="bot-row">
-      <div className="agent-head">
+    <div className="agent-row">
+      <div className="agent-row-head">
         <span className="cell-strong">{bot.name}</span>
-        <span className="row">
-          {!bot.enabled && <span className="pill pill-deactivated">Off</span>}
-          {bot.enabled && !bot.connected && <span className="pill">Not connected</span>}
-          {staff && (
-            <button
-              className="icon-button"
-              disabled={busy}
-              aria-label={`Remove ${bot.name} from ${task}`}
-              onClick={onRemove}
-            >
-              ×
-            </button>
-          )}
-        </span>
+        {staff && (
+          <button
+            className="agent-row-remove"
+            disabled={busy}
+            aria-label={`Remove ${bot.name} from ${task}`}
+            onClick={onRemove}
+          >
+            ✕
+          </button>
+        )}
       </div>
       <div
         className="meter"
@@ -525,12 +621,15 @@ function BotRow({
       >
         <div style={{ width: `${pct}%` }} />
       </div>
-      <p className="muted small">
-        {bot.done.toLocaleString()} done · {bot.ready.toLocaleString()} ready
-        {bot.waiting > 0 && ` · ${bot.waiting.toLocaleString()} waiting for earlier tasks`}
-        {bot.failed > 0 && ` · ${bot.failed.toLocaleString()} failed (tried again)`}
-        {bot.average_score !== null && ` · avg score ${bot.average_score}`}
-      </p>
+      <div className="agent-row-foot">
+        <span>
+          {bot.done.toLocaleString()} done · {bot.ready.toLocaleString()} ready
+          {bot.waiting > 0 && ` · ${bot.waiting.toLocaleString()} waiting for earlier tasks`}
+          {bot.failed > 0 && ` · ${bot.failed.toLocaleString()} failed (tried again)`}
+          {bot.average_score !== null && ` · avg score ${bot.average_score}`}
+        </span>
+        <span className={`agent-status agent-status-${tone}`}>{status}</span>
+      </div>
     </div>
   );
 }
