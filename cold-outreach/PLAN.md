@@ -9,7 +9,7 @@ This file holds the decisions that apply to the whole system. Each part has its 
 
 | Part | Spec | State |
 |---|---|---|
-| Agent Hub | [hub/SPEC.md](hub/SPEC.md) | Built and installed (steps 1–11); step 12, tasks and the batch pipeline, done; step 13, agents made clear and the full Leads table, done; step 14, the lead file tab by tab, done; step 15, leads in their batch, cities per batch, deleting files, done; step 16, small cities muted and cities paged, done |
+| Agent Hub | [hub/SPEC.md](hub/SPEC.md) | Built and installed (steps 1–11); step 12, tasks and the batch pipeline, done; step 13, agents made clear and the full Leads table, done; step 14, the lead file tab by tab, done; step 15, leads in their batch, cities per batch, deleting files, done; step 16, small cities muted and cities paged, done; step 17, Top chosen in the Hub, in progress |
 | GBP audit agent | `agents/gbp-audit/SPEC.md` | Decided (section 5), spec written before its build |
 | Website audit agent | `agents/website-audit/SPEC.md` | Decided (section 6), spec written before its build |
 | Social media audit agent | `agents/social-audit/SPEC.md` | Data source not decided |
@@ -97,8 +97,8 @@ This file is the record; where it and an older message disagree, this file wins.
 - **A business is in one batch only**, the one it was first imported into; found again in
   another batch's file, it stays where it is (its new details are added).
 - The file template is the current one: one tab per city, columns `Business name, MAP,
-  Address, City, Website, Phone, WA, Facebook, Instagram, Email, Reviews, Average`, plus an
-  optional `Level` column. The niche is the batch's.
+  Address, City, Website, Phone, WA, Facebook, Instagram, Email, Reviews, Average`; any
+  other column is kept with the lead. The niche is the batch's.
 - The Hub accepts the header spellings already in use (`Map URL`, `MAP URl`, `Whatsapp`,
   `WP`, `E-mail`, `Gmail`, `Number of Reviews`, `Ratings`, `Average Ratings` …), takes the
   city from the tab name when there is no City column, trims spaces and line breaks, and
@@ -119,7 +119,8 @@ This file is the record; where it and an older message disagree, this file wins.
 | empty | Yes | Yes |
 
 - `Top` means the business is already at the top of its market; we will not contact it.
-  The team marks it in the `Level` column of the lead file.
+  The team chooses Top leads in the Hub (a batch's Leads tab: tick them, **Mark as Top**),
+  not in the lead file.
 - "Never" is a hard rule: Top leads never enter the outreach list, and their email, phone and
   GBP link go on the do-not-contact list so a duplicate row can't slip through.
 - **Franchises are outreached like everyone else.** Detecting them automatically could drop

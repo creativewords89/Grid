@@ -296,9 +296,11 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    Top wins. **A business is in one batch only**, the one it was first imported into: found in
    a file added to another batch, it is listed as "already in another batch", stays where it
    is, and its new details (an email, a phone) are still added.
-5. **Level:** `Top` (any case) from the optional `Level` column. A file without a Level column
-   never changes anyone's Level. Top leads put their email(s), phone and GBP link on the
-   do-not-contact list (reason `top`); losing Top removes those entries.
+5. **Top** (the best businesses of a city: never audited or contacted) is **chosen in the
+   Hub** (item 9), never from a file (step 17): a `Level` column is kept like any other
+   column and changes nobody's Top, and the preview says so. Top leads put their email(s),
+   phone and GBP link on the do-not-contact list (reason `top`); losing Top removes those
+   entries.
 6. **Preview** (nothing written but the import): businesses, new, already known in this
    batch (updated), already in another batch,
    duplicates merged, Top, cities, without a GBP link, without a website, rows skipped, emails
@@ -338,7 +340,11 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    rule.)
 9. **A batch's Leads tab** (everyone): 100 leads a page; a search (name, Lead ID, city,
    email, phone, website, GBP link), city, Top and website; sort by Lead ID, newest,
-   name, city or an agent's score (best first). The table shows **every field of the lead
+   name, city, rating or reviews (highest first) or an agent's score (best first).
+   **Choosing Top:** Owners and Admins tick leads (a box on each row, and one for the whole
+   page) and press **Mark as Top** or **Remove Top** (at most 500 at a time; one History
+   entry with the count). From then on agents don't get them (section 6.7); results agents
+   saved before stay. The table shows **every field of the lead
    file side by side**, like the Excel file: Lead ID, Business name, GBP link, Address, City,
    Website, Phone, WhatsApp, Email(s), Facebook, Instagram, Reviews, Rating, Level, Notes,
    the file's other columns and Batch, then each agent's score and status; it scrolls sideways with the business name kept
@@ -647,3 +653,8 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     and the Hub then leaves it alone; 20 cities a page. **Tests:** the rule after saving and deleting files, a
     city growing to 10, set-by-hand cities untouched, the tabs and their counts, the
     migration.
+17. **Top chosen in the Hub** (asked for after step 16): ticking leads on the batch's Leads
+    tab and marking or unmarking them Top together; sorting by rating and reviews; files
+    never change Top (a Level column is kept as another column). **Tests:** marking and
+    unmarking with do-not-contact, rights, the 500 limit, sorting with odd values, a file
+    with a Level column changing nobody's Top, agents not getting Top leads.
