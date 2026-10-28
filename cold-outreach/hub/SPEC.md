@@ -148,7 +148,7 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 | `imports` | `batch_id`, `file_name`, `niche`, `uploaded_by`, `status` (`preview`, `confirmed`, `failed`, `discarded`), counts, `preview` JSON, `errors` JSON, `sheet` JSON (every row of the file by tab: while waiting its cleaned values, original text and what happens to it; once confirmed only its tab, row number, Lead ID and what happened) |
 | `leads` | every business: `lead_id` (`L-000123`), `batch_id` (the batch it was first imported into), `niche`, `city`, `business_name`, `level`, `gbp_link`, `emails`, the matching keys `phone_digits`, `name_address`, `website_domain`, `data` JSON (address, website, phone, WhatsApp, Facebook, Instagram, reviews, rating, notes), `extra` JSON (the file's other columns, by their header, e.g. "Operation Hour"), `results` JSON (by agent key: status, score, summary, details, benchmark id and version, when), `first_import_id`, `last_import_id` |
 | `lead_files` | files agents saved for a lead (reports): `lead_id`, `agent_key`, `name`, `content_type`, `size`; the bytes are on disk at `REPORTS_DIR/<lead_id>/<id>` |
-| `lists` | the **cities of a batch**, one per batch + city: `batch_id`, `city`, `niche`, `active`, optional `daily_limit` |
+| `lists` | the **cities of a batch**, one per batch + city: `batch_id`, `city`, `niche`, `active`, `set_by_hand` (a person switched it, so the small-city rule leaves it alone), optional `daily_limit` |
 | `do_not_contact` | `kind` (`email`, `phone`, `gbp`, `domain`), `value`, `reason` (`top`, `opt_out`, `manual`), `lead_id` |
 | `alerts` | what was sent, to whom, on which channel, when |
 | `audit_log` | who did what (sign-ins, settings changes, connection changed/removed, imports, runs started/stopped). Never secret values. |
@@ -327,6 +327,13 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    is left alone in that batch only: its leads are not handed to agents (section 6.7). A city
    name opens the batch's Leads tab for that city. (Step 15 moved the old City + Niche lists
    into each batch that has leads there, keeping on or off.)
+   **Small cities:** a city with **fewer than 10 businesses** in the batch is switched off by
+   the Hub and listed apart, on the **Small cities (under 10)** tab next to **Cities (10+)**.
+   The Hub decides this again after every saved or deleted file (a small city that grows to 10
+   is switched on), but never for a city a person switched on or off by hand (`set_by_hand`):
+   an Owner or Admin can unmute a small city one by one. All on / All off works on the tab
+   shown. (Step 16: cities that were off stay off as if set by hand; the others follow the
+   rule.)
 9. **A batch's Leads tab** (everyone): 100 leads a page; a search (name, Lead ID, city,
    email, phone, website, GBP link), city, Top and website; sort by Lead ID, newest,
    name, city or an agent's score (best first). The table shows **every field of the lead
@@ -633,3 +640,8 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     **Tests:** cities per batch and the migration, readiness skips cities switched off, file
     deletion (running refused, which leads go and stay, do-not-contact kept, History), rights,
     the batch page's address and tabs, e2e.
+16. **Small cities muted** (asked for after step 15): cities with fewer than 10 businesses in
+    a batch are switched off by the Hub and shown on their own tab; a person can unmute one,
+    and the Hub then leaves it alone. **Tests:** the rule after saving and deleting files, a
+    city growing to 10, set-by-hand cities untouched, the tabs and their counts, the
+    migration.
