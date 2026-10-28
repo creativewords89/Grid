@@ -99,7 +99,6 @@ SHEET_COLUMNS = (
     ("email", "Email"),
     ("reviews", "Reviews"),
     ("rating", "Average"),
-    ("level", "Level"),
     ("notes", "Notes"),
 )
 
@@ -125,7 +124,7 @@ def _sheet(report: reader.Report, rows: list[dict[str, Any]], batch: Batch) -> d
                 "line": item.line,
                 "status": status,
                 "merged": bool(row and len(row["rows"]) > 1),
-                "top": bool(row and row.get("level") == "Top"),
+                "top": bool(row and row.get("top")),
                 "values": item.values,
                 "extra": item.extra,
                 "raw": item.raw,
@@ -154,6 +153,7 @@ def preview(db: Session, user: User, file_name: str, content: bytes, batch: Batc
         match = registry.match(row)
         row["lead_id"] = match.lead_id if match else ""
         row["batch_id"] = str(match.batch_id) if match and match.batch_id else ""
+        row["top"] = bool(match and match.level == "Top")  # Top is chosen in the Hub
         if match is None:
             continue
         label = f"{row['business_name'] or row['gbp_link']} ({match.lead_id}"
@@ -175,7 +175,7 @@ def preview(db: Session, user: User, file_name: str, content: bytes, batch: Batc
 
     no_gbp = [r for r in rows if not r["gbp_link"]]
     no_website = [r for r in rows if not r["website"]]
-    tops = [r for r in rows if r["level"] == "Top"]
+    tops = [r for r in rows if r["top"]]
     counts = {
         "tabs": report.tabs,
         "leads": len(rows),
@@ -256,8 +256,6 @@ def _apply(db: Session, imp: Import, row: dict[str, Any], lead: Lead | None, num
         lead.website_domain = reader.website_domain(values["website"])[:255]
     if values.get("business_name"):
         lead.business_name = values["business_name"][:255]
-    if imp.preview.get("has_level_column"):
-        lead.level = values.get("level", "")
     lead.emails = list(dict.fromkeys([*lead.emails, *row.get("emails", [])]))
     # A value from the file replaces the saved one; an empty cell never blanks it.
     lead.data = dict(lead.data or {}) | {f: values[f] for f in DATA_FIELDS if values.get(f)}

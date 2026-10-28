@@ -185,7 +185,7 @@ test("add a file to a batch, read the preview, save it", async () => {
   await userEvent.click(within(card).getByText(/Already in another batch/));
   expect(within(card).getByText("Sparkle (L-000004, in Spring batch)")).toBeVisible();
   expect(within(card).getByText("without a GBP link").previousSibling).toHaveTextContent("2");
-  expect(within(card).getByText(/no Level column/)).toBeVisible();
+  expect(within(card).getByText(/Top is chosen in the Hub/)).toBeVisible();
   await userEvent.click(within(card).getByText("Other columns (kept with the leads)"));
   expect(within(card).getByText("Operation Hour (in 1 tab)")).toBeVisible();
   await userEvent.click(within(card).getByRole("button", { name: "Save 3,995 businesses" }));

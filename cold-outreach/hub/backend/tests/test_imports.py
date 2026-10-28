@@ -216,6 +216,11 @@ def leads(client: TestClient, **params: Any) -> dict[str, dict[str, Any]]:
     return {lead["lead_id"]: lead for lead in page["leads"]}
 
 
+def mark_top(client: TestClient, *lead_ids: str, top: bool = True) -> None:
+    response = client.post("/api/leads/top", json={"lead_ids": list(lead_ids), "top": top})
+    assert response.status_code == 200, response.text
+
+
 def upload(client: TestClient, content: bytes, batch: str = "Batch 1") -> dict[str, Any]:
     response = client.post(
         "/api/imports",
@@ -243,10 +248,12 @@ def test_preview_saves_nothing_but_the_import(client: TestClient, owner: User, d
 
     assert body["status"] == "preview"
     counts = body["counts"]
-    assert (counts["leads"], counts["new"], counts["top"], counts["no_gbp_link"]) == (4, 4, 1, 1)
+    assert (counts["leads"], counts["new"], counts["top"], counts["no_gbp_link"]) == (4, 4, 0, 1)
     assert counts["invalid_emails"] == 1
     assert sorted(body["preview"]["new_lists"]) == ["Dallas", "Tulsa"]
-    assert body["preview"]["top"] == ["Top Shine (Tulsa row 3)"]
+    # Top is chosen in the Hub: the file's Level column is only another column.
+    assert body["preview"]["has_level_column"] is True
+    assert body["preview"]["top"] == []
     assert db.scalar(select(Lead.lead_id)) is None
 
 
@@ -271,7 +278,10 @@ def test_confirm_gives_ids_keeps_the_rows_and_protects_top_leads(
     assert first["emails"] == ["kevin@mc.com"]
     assert first["data"]["phone"] == "(918) 523-8300"
     assert first["data"]["website"] == "https://multi-clean.com/"
-    assert saved["L-000002"]["level"] == "Top"
+    assert saved["L-000002"]["level"] == ""  # the file's "Top" changes nothing
+    assert saved["L-000002"]["extra"] == {"Level": "Top"}
+    assert db.scalar(select(DoNotContact)) is None
+    mark_top(client, "L-000002")
     blocked = {(d.kind, d.value) for d in db.scalars(select(DoNotContact))}
     assert blocked == {
         ("gbp", "https://share.google/ts"),
@@ -289,6 +299,7 @@ def test_confirm_gives_ids_keeps_the_rows_and_protects_top_leads(
 def test_a_second_import_updates_instead_of_adding(client: TestClient, owner: User) -> None:
     first = upload(client, workbook(FILE))
     client.post(f"/api/imports/{first['id']}/confirm")
+    mark_top(client, "L-000002")
     again = workbook(
         {
             "Tulsa": [
@@ -314,7 +325,7 @@ def test_a_second_import_updates_instead_of_adding(client: TestClient, owner: Us
     multi = saved["L-000001"]
     assert multi["emails"] == ["kevin@mc.com", "new@mc.com"]
     assert multi["data"]["website"] == "https://multi-clean.com/"  # an empty cell never blanks it
-    assert saved["L-000002"]["level"] == "Top"  # this file had no Level column
+    assert saved["L-000002"]["level"] == "Top"  # chosen in the Hub: files don't change it
     assert saved["L-000005"]["business_name"] == "Brand New"
 
 
@@ -396,6 +407,7 @@ def test_a_batchs_cities_count_leads_and_can_be_switched_off(
 ) -> None:
     preview = upload(client, workbook(FILE))
     client.post(f"/api/imports/{preview['id']}/confirm")
+    mark_top(client, "L-000002")
     url = f"/api/batches/{preview['batch_id']}/cities"
 
     cities = {x["city"]: x for x in client.get(url).json()}
@@ -477,11 +489,16 @@ def test_the_preview_shows_the_file_tab_by_tab(client: TestClient, owner: User) 
     assert first["raw"]["email"] == "Kevin@MC.com"  # the original text of a changed cell
     assert first["extra"] == {"Operation Hour": "9-5"}
     assert [r["status"] for r in shown["rows"]] == ["new", "new", "skipped", "new", "new"]
-    assert shown["statuses"]["merged"] == 2 and shown["statuses"]["top"] == 1
-    tulsa_top = sheet(client, preview["id"], tab="Tulsa", status="top")
-    assert [r["line"] for r in tulsa_top["rows"]] == [3]
+    assert shown["statuses"]["merged"] == 2 and shown["statuses"]["top"] == 0  # not from files
+    assert shown["rows"][1]["extra"] == {"Level": "Top"}
     assert sheet(client, preview["id"], status="skipped")["total"] == 1
     assert sheet(client, preview["id"], tab="Dallas")["total"] == 1
+    # A business chosen as Top in the Hub shows as Top when a file has it again.
+    client.post(f"/api/imports/{preview['id']}/confirm")
+    mark_top(client, "L-000002")
+    again = upload(client, workbook(SHEET_FILE))
+    tulsa_top = sheet(client, again["id"], tab="Tulsa", status="top")
+    assert [r["line"] for r in tulsa_top["rows"]] == [3]
 
 
 def test_other_columns_are_saved_and_shown_and_never_blanked(
@@ -502,7 +519,7 @@ def test_other_columns_are_saved_and_shown_and_never_blanked(
     page = client.get("/api/leads").json()
     multi = next(x for x in page["leads"] if x["business_name"] == "Multi-Clean")
     assert multi["extra"] == {"Operation Hour": "9-5"}  # the empty cell didn't blank it
-    assert page["extra_columns"] == ["Operation Hour"]
+    assert page["extra_columns"] == ["Level", "Operation Hour"]
     from openpyxl import load_workbook
 
     book = load_workbook(io.BytesIO(client.get("/api/leads/export").content)).active
@@ -557,6 +574,7 @@ def test_deleting_a_file_takes_the_leads_it_brought_in_first(
 ) -> None:
     first = upload(client, workbook(FILE))
     client.post(f"/api/imports/{first['id']}/confirm")
+    mark_top(client, "L-000002")
     later = {
         "Tulsa": [
             STANDARD,

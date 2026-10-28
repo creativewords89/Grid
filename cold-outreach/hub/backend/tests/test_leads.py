@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.db.models import DoNotContact, Role, User
+from app.db.models import AuditEntry, DoNotContact, Lead, Role, User
 from tests.conftest import UserFactory, sign_in
 from tests.hub_data import batch_id, put_bot
 from tests.test_agents import MANIFEST, add_agent, agent_call
@@ -33,7 +33,8 @@ def reports(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 @pytest.fixture
 def saved(client: TestClient, owner: User) -> None:
-    """FILE in Batch 1 (L-000001 … L-000004) and one more lead in Batch 2 (L-000005)."""
+    """FILE in Batch 1 (L-000001 … L-000004, L-000002 marked Top) and one more lead in
+    Batch 2 (L-000005)."""
     for content, batch in (
         (FILE, "Batch 1"),
         (
@@ -43,6 +44,9 @@ def saved(client: TestClient, owner: User) -> None:
     ):
         preview = upload(client, workbook(content), batch=batch)
         assert client.post(f"/api/imports/{preview['id']}/confirm").status_code == 200
+    # Top is chosen in the Hub (Top Shine).
+    marked = client.post("/api/leads/top", json={"lead_ids": ["L-000002"], "top": True})
+    assert marked.json() == {"changed": 1}
 
 
 def page(client: TestClient, **params: Any) -> dict[str, Any]:
@@ -160,7 +164,8 @@ def test_staff_change_a_lead_and_top_protects_it(
     db.expire_all()
     assert db.scalars(select(DoNotContact).where(DoNotContact.lead_id == "L-000001")).all() == []
     history = client.get("/api/history", params={"entity": "lead"}).json()["entries"]
-    assert history[-1]["changes"][0]["field"] == "email"
+    edits = [e for e in history if e["action"] == "edit"]
+    assert edits[-1]["changes"][0]["field"] == "email"
 
 
 def test_a_bad_email_is_refused(client: TestClient, saved: None) -> None:
@@ -312,3 +317,58 @@ def test_another_leads_file_id_is_not_found(client: TestClient, saved: None, rep
     file_id = save_file(client, token, "r.json", b"{}", "application/json").json()["id"]
 
     assert client.get(f"/api/leads/L-000002/files/{file_id}").status_code == 404
+
+
+# --- choosing Top (step 17) -------------------------------------------------------------------
+
+
+def test_many_leads_are_marked_top_and_back(client: TestClient, saved: None, db: Session) -> None:
+    marked = client.post(
+        "/api/leads/top", json={"lead_ids": ["L-000001", "L-000003", "L-000002"], "top": True}
+    )
+
+    assert marked.json() == {"changed": 2}  # L-000002 already was
+    assert ids(page(client, level="top")) == ["L-000001", "L-000002", "L-000003"]
+    blocked = set(db.scalars(select(DoNotContact.lead_id)))
+    assert blocked >= {"L-000001", "L-000002"}
+    entry = db.scalar(
+        select(AuditEntry).where(AuditEntry.action == "mark_top").order_by(AuditEntry.at.desc())
+    )
+    assert entry is not None and entry.title == "2 leads"
+
+    client.post("/api/leads/top", json={"lead_ids": ["L-000001"], "top": False})
+    assert "L-000001" not in ids(page(client, level="top"))
+    assert "L-000001" not in set(db.scalars(select(DoNotContact.lead_id)))
+
+
+def test_top_needs_staff_and_at_most_500(
+    client: TestClient, saved: None, make_user: UserFactory
+) -> None:
+    too_many = client.post("/api/leads/top", json={"lead_ids": ["L-1"] * 501, "top": True})
+    assert too_many.status_code == 422
+    client.cookies.clear()
+    sign_in(client, make_user(Role.VIEWER).email)
+
+    refused = client.post("/api/leads/top", json={"lead_ids": ["L-000001"], "top": True})
+    assert refused.status_code == 403
+
+
+def test_sort_by_rating_and_reviews_with_odd_values(
+    client: TestClient, saved: None, db: Session
+) -> None:
+    for lead_id, rating, reviews in (
+        ("L-000001", "4.9", "1,204"),
+        ("L-000003", "n/a", "88"),
+        ("L-000004", "3.5", ""),
+    ):
+        lead = db.get(Lead, lead_id)
+        assert lead is not None
+        lead.data = dict(lead.data or {}) | {"rating": rating, "reviews": reviews}
+    db.commit()
+
+    by_rating = ids(page(client, batch_id=batch_id(client), sort="rating"))
+    by_reviews = ids(page(client, batch_id=batch_id(client), sort="reviews"))
+
+    assert by_rating[0] == "L-000001"
+    assert by_rating.index("L-000004") < by_rating.index("L-000003")  # "n/a" goes last
+    assert by_reviews[0] == "L-000001"  # 1,204 is a number

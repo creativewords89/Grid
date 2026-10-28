@@ -301,7 +301,7 @@ export type LeadFilters = {
   city?: string;
   level?: "" | "top" | "not_top";
   website?: "" | "yes" | "no";
-  sort?: "lead_id" | "name" | "city" | "newest" | "score";
+  sort?: "lead_id" | "name" | "city" | "newest" | "score" | "rating" | "reviews";
   score_of?: string;
   page?: number;
 };
@@ -653,6 +653,8 @@ export const api = {
   lead: (id: string) => request<LeadDetail>("GET", `/leads/${id}`),
   updateLead: (id: string, patch: LeadPatch) => request<LeadDetail>("PATCH", `/leads/${id}`, patch),
   deleteLead: (id: string) => request<void>("DELETE", `/leads/${id}`),
+  markTop: (leadIds: string[], top: boolean) =>
+    request<{ changed: number }>("POST", "/leads/top", { lead_ids: leadIds, top }),
   batchCities: (batchId: string) => request<LeadList[]>("GET", `/batches/${batchId}/cities`),
   switchAllCities: (batchId: string, active: boolean, small?: boolean) =>
     request<LeadList[]>("PUT", `/batches/${batchId}/cities`, { active, small }),

@@ -11,8 +11,8 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Query
 from fastapi.responses import FileResponse, Response
 from openpyxl import Workbook
-from pydantic import BaseModel, StringConstraints
-from sqlalchemy import Select, String, cast, func, or_, select
+from pydantic import BaseModel, Field, StringConstraints
+from sqlalchemy import Float, Select, String, case, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from app import audit
@@ -105,7 +105,13 @@ def _agent_labels(db: Session) -> dict[str, str]:
     return labels
 
 
-Sort = Literal["lead_id", "name", "city", "newest", "score"]
+Sort = Literal["lead_id", "name", "city", "newest", "score", "rating", "reviews"]
+
+
+def _number(field: str) -> Any:
+    """A number from the lead file's text (e.g. "4.7", "1,234"); None when it isn't one."""
+    text = func.replace(Lead.data[field].astext, ",", "")
+    return case((text.op("~")(r"^[0-9]+(\.[0-9]+)?$"), cast(text, Float)), else_=None)
 
 
 def _query(
@@ -146,6 +152,8 @@ def _query(
     if sort == "score" and score_of:
         score = Lead.results[score_of]["score"].as_float()
         query = query.order_by(score.desc().nulls_last(), Lead.lead_id)
+    elif sort in ("rating", "reviews"):
+        query = query.order_by(_number(sort).desc().nulls_last(), Lead.lead_id)
     elif sort == "name":
         query = query.order_by(func.lower(Lead.business_name), Lead.lead_id)
     elif sort == "city":
@@ -340,6 +348,38 @@ def update_lead(lead_id: str, body: LeadPatch, me: CurrentUser, db: Db) -> LeadD
         audit.record(db, me, "edit", "lead", lead.lead_id, lead.business_name, changes)
     db.commit()
     return _detail(db, me, lead)
+
+
+class TopIn(Strict):
+    lead_ids: Annotated[list[str], Field(min_length=1, max_length=500)]
+    top: bool
+
+
+@router.post("/leads/top")
+def mark_top(body: TopIn, me: CurrentUser, db: Db) -> dict[str, int]:
+    """Mark leads as Top (never audited or contacted) or take Top off, many at once (SPEC
+    section 6.4 item 9). Top keeps their email, phone and GBP link on the do-not-contact
+    list."""
+    ensure(me, Action.EDIT_LEADS)
+    level = "Top" if body.top else ""
+    changed = 0
+    for lead in db.scalars(select(Lead).where(Lead.lead_id.in_(set(body.lead_ids)))):
+        if lead.level != level:
+            lead.level = level
+            sync_do_not_contact(db, lead)
+            changed += 1
+    if changed:
+        audit.record(
+            db,
+            me,
+            "mark_top" if body.top else "remove_top",
+            "lead",
+            None,
+            f"{changed} leads",
+            [{"field": "Top", "from": not body.top, "to": body.top}],
+        )
+    db.commit()
+    return {"changed": changed}
 
 
 @router.delete("/leads/{lead_id}", status_code=204)

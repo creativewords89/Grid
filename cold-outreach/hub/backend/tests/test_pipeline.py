@@ -347,3 +347,20 @@ def test_a_city_switched_off_in_a_batch_is_left_alone_there(
     put_bot(client, batch, "gbp-1", "gbp-audit")
 
     assert ready(client, token, batch) == ["L-000001"]
+
+
+def test_leads_marked_top_in_the_hub_are_not_handed_out(
+    client: TestClient, owner: User, db: Session
+) -> None:
+    token = bot(client, "gbp-1", "gbp-audit")
+    batch = make_batch(client)["id"]
+    leads(db, batch, 3)
+    put_bot(client, batch, "gbp-1", "gbp-audit")
+    result(client, token, "L-000003", score=50)
+
+    client.post("/api/leads/top", json={"lead_ids": ["L-000002", "L-000003"], "top": True})
+
+    assert ready(client, token, batch) == ["L-000001"]
+    shown = client.get(f"/api/batches/{batch}/results", params={"bot": "gbp-1"}).json()
+    assert shown["total"] == 0  # Top leads are left out; the saved result stays on the lead
+    assert db.get(Lead, "L-000003").results["gbp-1"]["score"] == 50  # type: ignore[union-attr]
