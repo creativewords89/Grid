@@ -497,6 +497,10 @@ test("a batch's cities: Ready, Not ready and small ones; switch one, all off, op
   await userEvent.click(screen.getByRole("tab", { name: /^Not ready \(1\)/ }));
   expect(screen.getByText("Dallas")).toBeVisible();
   expect(screen.getByText(/No Top chosen yet/)).toBeVisible();
+  // No switch here: it waits for a Top (step 21).
+  expect(screen.getByRole("row", { name: /Dallas/ })).toHaveTextContent("Needs a Top");
+  expect(screen.queryByRole("switch", { name: "Dallas on or off" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "All on" })).not.toBeInTheDocument();
 
   // The small cities, muted by the Hub: unmute one by hand; it still needs a Top.
   await userEvent.click(screen.getByRole("tab", { name: /Small cities \(under 10\) \(1\)/ }));

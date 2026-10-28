@@ -337,6 +337,8 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    count; cities with 10 or more businesses are on Ready or Not ready, and the Small cities
    tab says Ready or Not ready for each. Marking a Top in a Not ready city moves it to Ready
    (the tabs load again on **← Back to Cities**). All on / All off works on the tab shown.
+   The **Not ready** tab has no switch and no All on / All off: each city says **Needs a
+   Top** (step 21); its on/off is kept and applies once it is Ready.
    **Small cities:** a city with **fewer than 10 businesses** in the batch is switched off by
    the Hub and listed apart, on the **Small cities (under 10)** tab. Unmuted by hand, it
    still needs a Top to be worked on.
@@ -690,3 +692,7 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     `ready`; All on / All off takes the tab (`small`, `ready`). **Tests:** not ready until a
     Top, ready after, not ready again, a small city unmuted without a Top, All off on one
     tab only, a ready city switched off, the tabs and their counts, e2e.
+21. **No switch on Not ready cities** (asked for after step 20): the Not ready tab shows
+    **Needs a Top** in place of the switch and hides All on / All off and the Set column;
+    the Ready and Small cities tabs keep theirs. **Tests:** the Not ready tab without a
+    switch or All on.

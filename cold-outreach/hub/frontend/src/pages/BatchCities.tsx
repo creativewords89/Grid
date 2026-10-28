@@ -119,7 +119,8 @@ export function BatchCities({
             }}
           />
         </div>
-        {staff && (
+        {/* Not ready cities have no switch: they wait for a Top (step 21). */}
+        {staff && tab !== "not_ready" && (
           <div className="field">
             <span className="label-spacer" aria-hidden="true">
               &nbsp;
@@ -144,8 +145,10 @@ export function BatchCities({
         )}
       </div>
       <p className="muted small">
-        {onTab.length.toLocaleString()} cities · {(onTab.length - off).toLocaleString()} on ·{" "}
-        {off.toLocaleString()} off. {NOTES[tab]}
+        {onTab.length.toLocaleString()} cities
+        {tab !== "not_ready" &&
+          ` · ${(onTab.length - off).toLocaleString()} on · ${off.toLocaleString()} off`}
+        . {NOTES[tab]}
       </p>
       <div className="card table-card table-scroll table-tall">
         <table className="table compact-table">
@@ -155,13 +158,16 @@ export function BatchCities({
               <th>Businesses</th>
               <th>Top</th>
               {tab === "small" && <th>Ready</th>}
-              <th>Set</th>
+              {tab !== "not_ready" && <th>Set</th>}
               <th>On</th>
             </tr>
           </thead>
           <tbody>
             {paged.map((item) => (
-              <tr key={item.id} className={item.active ? undefined : "row-muted"}>
+              <tr
+                key={item.id}
+                className={item.active && tab !== "not_ready" ? undefined : "row-muted"}
+              >
                 <td>
                   <button className="link-button" onClick={() => onOpenCity(item.city)}>
                     {item.city}
@@ -170,20 +176,26 @@ export function BatchCities({
                 <td>{item.leads.toLocaleString()}</td>
                 <td>{item.top}</td>
                 {tab === "small" && <td>{item.ready ? "Ready" : "Not ready"}</td>}
-                <td className="small muted">{item.set_by_hand ? "Set by hand" : "By the Hub"}</td>
+                {tab !== "not_ready" && (
+                  <td className="small muted">{item.set_by_hand ? "Set by hand" : "By the Hub"}</td>
+                )}
                 <td>
-                  <label className="switch">
-                    <input
-                      type="checkbox"
-                      role="switch"
-                      checked={item.active}
-                      disabled={!staff || busy}
-                      aria-label={`${item.city} on or off`}
-                      onChange={(e) =>
-                        void act(() => api.updateList(item.id, { active: e.target.checked }))
-                      }
-                    />
-                  </label>
+                  {tab === "not_ready" ? (
+                    <span className="small muted">Needs a Top</span>
+                  ) : (
+                    <label className="switch">
+                      <input
+                        type="checkbox"
+                        role="switch"
+                        checked={item.active}
+                        disabled={!staff || busy}
+                        aria-label={`${item.city} on or off`}
+                        onChange={(e) =>
+                          void act(() => api.updateList(item.id, { active: e.target.checked }))
+                        }
+                      />
+                    </label>
+                  )}
                 </td>
               </tr>
             ))}
