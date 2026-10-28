@@ -19,9 +19,12 @@ SQLAlchemy, React, Caddy, encrypted write-only keys) by copying, not importing.
 - **Leads:** every business in one place, like a spreadsheet: search, filter, sort, open one
   to see what the agents found, change a few fields, and download what is shown as Excel. No
   Google Sheet or Drive is used.
-- **Agents** screen: switch each agent on or off, choose the batches it works through (in
-  order), set its daily limit, run time, budget and its own settings, press **Run now** or
-  **Stop**.
+- **Tasks and bots:** the jobs a batch can have done (GBP Audit, Website Audit, Opportunity
+  Finder, Outreach, …), each with what it needs first. Every agent (bot) does one task. A
+  batch chooses its tasks and one or more bots for each; every business moves on to the next
+  task as soon as the tasks it needs are done for it (section 6.7).
+- **Agents** screen: switch each agent on or off, set its daily limit, run time, budget and its
+  own settings, press **Run now** or **Stop**.
 - **Connections** screen: enter API keys and accounts (DataForSEO, PageSpeed, SMTP,
   Telegram) with a **Test** button each. Keys are
   encrypted and never shown again.
@@ -90,6 +93,8 @@ cold-outreach/
 |---|---|---|---|
 | See Overview, Runs, Agents, Batches, Benchmarks, Leads; download leads as Excel | ✔ | ✔ | ✔ |
 | Make, rename or delete a batch; add and confirm its files | ✔ | ✔ | ✘ |
+| Choose a batch's tasks and bots, start or pause it, change the batches' running order | ✔ | ✔ | ✘ |
+| Make, change or delete a task | ✔ | ✔ | ✘ |
 | Change a lead's email, phone, website, Top mark or notes; delete a lead | ✔ | ✔ | ✘ |
 | Switch an agent on/off, press Run now or Stop | ✔ | ✔ | ✘ |
 | Change an agent's batches, limit, run time, budget and settings | ✔ | ✔ | ✘ |
@@ -132,10 +137,14 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 |---|---|
 | `users`, `sessions`, `auth_tokens`, `login_attempts` | as in the Answer Engine; `role` is `owner`, `admin` or `viewer`; `alert_email` |
 | `settings` | key → JSON; `connections` values encrypted (section 6.1); `budget.daily_total_usd`; alert thresholds |
-| `agents` | `key` (e.g. `gbp-audit`), `name`, `enabled`, `token_hash`, `manifest` JSON, `config` JSON (the values set in the Hub), `batch_ids` (its batches, in order), `daily_limit`, `run_time`, `time_zone`, `daily_budget_usd`, `last_seen_at` |
+| `agents` | `key` (e.g. `gbp-audit`), `name`, `enabled`, `token_hash`, `manifest` JSON, `config` JSON (the values set in the Hub), `task_id` (the task its manifest names), `daily_limit`, `run_time`, `time_zone`, `daily_budget_usd`, `last_seen_at` |
 | `runs` | `agent_id`, `trigger` (`schedule`/`manual`), `status` (`queued`, `running`, `succeeded`, `failed`, `stopped`, `timed_out`), `queued_at`, `started_at`, `finished_at`, `heartbeat_at`, counts `done`/`failed`/`skipped`, `cost_usd`, `stop_reason`, `summary` JSON, `requested_by` |
 | `benchmarks` | `name` (unique, e.g. "Cleaning Benchmark 1"), `niche`, `gbp` JSON (the numbers of PLAN.md 3.5; a missing one isn't compared), `website` JSON (the Website Standard), `version` (raised by every change of either), `updated_by` |
-| `batches` | `name` (unique, typed by the team), `niche`, `benchmark_id` (required; empty only for leads moved in from before batches), `created_by` |
+| `batches` | `name` (unique, typed by the team), `niche`, `benchmark_id` (required; empty only for leads moved in from before batches), `status` (`not_started`, `running`, `paused`), `position` (the running order), `created_by` |
+| `tasks` | `key` (e.g. `gbp-audit`), `name`, `about`, `needs` (the keys of the tasks it waits for) |
+| `batch_tasks` | a task in a batch: `batch_id`, `task_id`, `share` (`all` or `split`) |
+| `batch_task_bots` | the bots doing it: `batch_task_id`, `agent_id`, `position` |
+| `lead_bot_shares` | for a `split` task, which bot each business went to: `lead_id`, `batch_task_id`, `agent_id` |
 | `imports` | `batch_id`, `file_name`, `niche`, `uploaded_by`, `status` (`preview`, `confirmed`, `failed`, `discarded`), counts, `preview` JSON, `errors` JSON |
 | `leads` | every business: `lead_id` (`L-000123`), `batch_id` (the batch it was first imported into), `niche`, `city`, `business_name`, `level`, `gbp_link`, `emails`, the matching keys `phone_digits`, `name_address`, `website_domain`, `data` JSON (address, website, phone, WhatsApp, Facebook, Instagram, reviews, rating, notes), `results` JSON (by agent key: status, score, summary, details, benchmark id and version, when), `first_import_id`, `last_import_id` |
 | `lead_files` | files agents saved for a lead (reports): `lead_id`, `agent_key`, `name`, `content_type`, `size`; the bytes are on disk at `REPORTS_DIR/<lead_id>/<id>` |
@@ -182,7 +191,8 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 - **Manifest:** when it starts, an agent sends `PUT /api/agent/v1/manifest`:
   `name`, `version`, `description`, `settings` (each with `key`, `type` of `int`, `float`,
   `text`, `bool` or `choice`, `label`, `help`, `default`, `min`/`max`, `choices`),
-  `connections` it needs (Connections group ids), `result_label` (what the Leads screen calls
+  `connections` it needs (Connections group ids), `task` (the key of the task it does,
+  section 6.7), `result_label` (what the Leads screen calls
   its results, e.g. "GBP"; its name when empty), and an estimated
   `cost_per_item_usd`. A manifest with unknown fields or connections, or a default outside its
   own limits, is refused. The Hub builds the agent's settings form from it; values set in the
@@ -192,15 +202,19 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
   - `GET /next-run`: when a run is queued and the agent is on, the Hub marks it `running` and
     returns the run id, the trigger, the agent's settings, its daily limit and **only the
     connections its manifest declared** (from step 5, also the budget left), and its
-    **batches** in its order (`id`, `name`, `niche`, `benchmark_id`, `benchmark_version`;
-    batches without a benchmark left out). Otherwise `204`; `409` until the manifest was
+    **batches**: the running batches that chose it for their task, in the batches' running
+    order (`id`, `name`, `niche`, `benchmark_id`, `benchmark_version`, `share`; batches
+    without a benchmark left out). Otherwise `204`; `409` until the manifest was
     sent. Agents poll every 30 s.
   - `POST /runs/{id}/progress`: counts and cost so far; the reply says `continue` or `stop`
     (agent switched off; from step 5 also Stop pressed and budgets used up). This is also the
     heartbeat.
   - `POST /runs/{id}/finish`: final counts, cost, `stop_reason`, failures summary.
-  - Leads: `GET /batches/{id}/leads` (each lead's full row and this agent's own last
-    `result`, or none), `PUT /leads/{lead_id}/result` (`status`, `score` 0–100, `summary`,
+  - Leads: `GET /batches/{id}/leads` (only the leads that are **ready for this agent**,
+    section 6.7: each lead's full row, the results of the tasks it waited for, and this
+    agent's own last `result`, or none; `404` for a batch that doesn't use the agent),
+    `PUT /leads/{lead_id}/result` (`outcome` `done`, `skipped` or `failed` (default `done`),
+    `status` (the agent's own word, e.g. "OK"), `score` 0–100, `summary`,
     `details` JSON up to 200,000 characters, `benchmark_id`, `benchmark_version`; replaces
     the agent's previous result) and `POST /leads/{lead_id}/files` (a report: PDF, JSON, PNG,
     JPEG or CSV up to 20 MB, named with letters, digits, dots, dashes and underscores; the
@@ -210,8 +224,8 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
     off, limit) and `GET /do-not-contact/check?email=&phone=&gbp=&domain=` (`blocked` and
     why).
 - **Batches and benchmark changes:** an agent works through its batches in order, the first
-  until nothing is left to do, then the next; with nothing left it finishes the run at once
-  and waits for new files. It notes each lead's benchmark id and version with its result;
+  until nothing is ready for it, then the next; with nothing left it finishes the run at once
+  and waits (for new files, or for the tasks before it). It notes each lead's benchmark id and version with its result;
   when the batch's benchmark or its version has changed, it checks the lead again against
   the new one (from the data it already saved where it can, so no new provider cost).
 - An agent can only see and change its own runs (another agent's run id is a `404`). Secrets
@@ -257,8 +271,8 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    **one benchmark of that niche** (required). The order of work is: make a benchmark, make a
    batch with it, add files. Files can be added to a batch at any time, also to old batches.
    A batch can change to another benchmark of its niche, or be renamed, at any time; it can
-   be deleted only while it has no leads and no files. Agents work through the batches chosen for them (section 6.2). Batches have
-   no on/off switch: an agent with nothing left to do waits.
+   be deleted only while it has no leads and no files. A batch chooses its tasks and bots and
+   is started or paused (section 6.7).
 1. **Upload** (Owner, Admin): an `.xlsx` (max 20 MB) **into a batch**; its niche is the
    batch's. Reading a large file (4,000 rows, 248 tabs) takes about 15 seconds.
 2. **Reading each tab:** the header row is the first of the first five rows with two known
@@ -353,6 +367,55 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
   off and its time, and the DataForSEO balance threshold.
 - The Overview lists the last 20 alerts and whether each was emailed and sent to Telegram.
 
+### 6.7 Tasks, bots and the batch pipeline
+
+- A **task** is a job a batch can have done: a key (2–40 lower-case letters, digits and
+  dashes), a name, a line saying what it does, and the tasks it **needs first** (none means
+  it only needs the lead file). Owners and Admins make, change and delete tasks on the
+  **Tasks** screen. A task can't need itself or make a circle (A needs B needs A), and can't
+  be deleted while a bot does it or a batch uses it.
+- Every agent (**bot**) does **one task**, named by its manifest (`task`). When the Hub has no
+  task with that key yet, it makes one (named from the key, needing nothing) that Owners and
+  Admins can then fill in. A manifest naming another task moves the bot to it; batches that
+  had chosen it for the old task lose it there.
+- **A batch's pipeline:** Owners and Admins add tasks to a batch and **one or more bots** to
+  each task (bots of that task only). A task can be added only when the tasks it needs are
+  in the batch, and removed only when no other task in the batch needs it. Tasks are shown
+  in **steps** worked out from what they need (step 1: tasks needing only the lead file;
+  next: tasks needing those …); tasks in one step run side by side.
+- **How the bots of one task share the work** (chosen per task in the batch):
+  - **Every bot checks every business** (`all`): each bot does every lead, e.g. two GBP
+    audits whose results are compared. The task is done for a lead when every one of its
+    bots finished it.
+  - **Split the businesses** (`split`): each lead goes to one bot, in turn, the first time a
+    bot asks for it (kept in `lead_bot_shares`), e.g. two outreach emails tried on half the
+    leads each. A lead goes to another bot when its bot is removed from the task before
+    finishing it. The task is done for a lead when its bot finished it.
+- **Per business:** a lead is **ready** for a bot when the bot hasn't finished it, each task
+  it needs is done for that lead, and (for `split`) the lead is the bot's. **Finished** means
+  the bot's result has outcome `done` or `skipped` and was made against the batch's current
+  benchmark version; a `failed` result is tried again on the next run. Top leads are never
+  handed to a bot. So the Opportunity Finder starts on the first business both audits
+  finished while the audits go on with the rest.
+- **Start and Pause:** a new batch is **not started**. Owners and Admins **Start** it once it
+  has a benchmark and at least one task with a bot; a running batch can be **Paused**, which
+  bots then skip (a lead being worked on is finished). Tasks and bots can be changed at any
+  time, also while running.
+- **Running order:** on the Batches screen Owners and Admins move batches up or down; when
+  two running batches use the same bot it works on the higher one first.
+- **Progress** of each bot in a batch: leads finished, failed, ready, still waiting for the
+  tasks before it, and the average score; a bot that is off or has never connected is
+  marked so.
+- **Results:** the batch's **Results** tab shows one bot at a time: counts by outcome and
+  score band (under 40, 40–69, 70 and over), then its leads with status, score, summary and
+  when, filtered by outcome and score band, 100 a page; a lead opens the lead window
+  (section 6.4 item 10) with every bot's result and files. **All results** opens the Leads
+  screen for the batch, which has a column per bot and the Excel download.
+- Moving in (migration `0011`): each agent gets the task named after its key (made as above)
+  and every batch it worked on gets that task with it (`all`); those batches start
+  **running**, the rest **not started**; the running order follows the agents' old order,
+  then the oldest batch first. Agents' own batch lists are removed.
+
 ## 7. Screens
 
 1. **Sign in**, **Create the Owner account**, **Accept invite**, **Reset password**.
@@ -364,25 +427,33 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    unused); the editor has the GBP numbers and the Website Standard.
 4. **Batches:** the batches with niche, benchmark, businesses (and Top), files and agents;
    **+ New batch** (name, niche, a benchmark of that niche; a link to Benchmarks when the
-   niche has none). A batch opens to its benchmark choice, rename, delete (when empty), **See
-   its leads**, **Add a lead file**, the preview and its past files. The Lists (City + Niche) with their
-   on/off switches follow the batches. `/import` opens Batches.
-5. **Leads** (after Batches): the table, filters, pages and **Download Excel** of section 6.4;
+   niche has none), each with its status, bots and progress, and up and down buttons for the
+   running order. A batch opens to **Start**/**Pause**, its benchmark choice, rename, delete
+   (when empty), **See its leads**, **Add a lead file**, the preview and its past files, and
+   two tabs: **Tasks** (the bot library grouped by task on the left, which can be dragged or
+   added; the steps with each task's bots, their progress, ✕ to remove, **+ Add another
+   bot**, how the bots share the work, and **+ Add a task**) and **Results** (section 6.7).
+   The Lists (City + Niche) with their on/off switches follow the batches. `/import` opens
+   Batches.
+5. **Tasks** (after Batches): every task with what it needs first, the bots that do it and
+   the batches that use it; **+ New task**, Edit, Delete (when unused).
+6. **Leads** (after Tasks): the table, filters, pages and **Download Excel** of section 6.4;
    a lead opens in a window with its row, the agents' results and files, and (Owners and
    Admins) its editable fields and Delete. `/leads?batch=<id>` opens one batch's leads.
-6. **Agents:** one card per agent: on/off switch, the batches it works on ("Works on: A →
-   B", or a warning when none), last run, next run, today's cost, Run now, Stop; **Settings**
-   opens the form: batches (add, move up or down, remove), limits, and the manifest's
-   settings.
-7. **Runs:** filter by agent and status; each run's counts, cost, stop reason and failures.
-8. **Connections** (Owner), **Users** (Owner), **History** (Owner: who did what, newest
+7. **Agents:** one card per agent: on/off switch, its task and the running batches using it
+   (or a warning when none), last run, next run, today's cost, Run now, Stop; **Settings**
+   opens the form: limits and the manifest's settings.
+8. **Runs:** filter by agent and status; each run's counts, cost, stop reason and failures.
+9. **Connections** (Owner), **Users** (Owner), **History** (Owner: who did what, newest
    first, filtered by area; a connection change only says "(changed)"), **Profile**.
 
 ## 8. REST API (`/api`, JSON)
 
 `/health`, `/setup`, `/auth/*`, `/me`, `/users`, `/connections` (+ `/{group}/test`),
 `/agents` (+ `/{key}/enabled`, `/{key}/run`, `/{key}/stop`, `/{key}/token`), `/runs`,
-`/overview`, `/budget`, `/benchmarks` (+ `/{id}`), `/batches` (+ `/{id}`), `/imports`
+`/overview`, `/budget`, `/benchmarks` (+ `/{id}`), `/batches` (+ `/{id}`, `/order`,
+`/{id}/start`, `/{id}/pause`, `/{id}/tasks` (+ `/{task_id}`, `/{task_id}/bots`,
+`/{task_id}/bots/{key}`), `/{id}/progress`, `/{id}/results`), `/tasks` (+ `/{id}`), `/imports`
 (upload into a batch → preview, `?batch_id=`, `/{id}/confirm`, `/{id}/discard`), `/niches`,
 `/leads` (+ `/export`, `/{lead_id}`, `/{lead_id}/files/{id}`), `/lists`, `/alerts`,
 `/alert-settings`, `/history`, and the agent API (section 6.2). Every user endpoint checks
@@ -479,3 +550,13 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     delete keeps do-not-contact, Owner/Admin/Viewer rights, agents' results and files (types,
     names, replacing, another lead's file), the migration removing the Google values, e2e
     through the Leads screen.
+12. **Tasks, bots and the batch pipeline** (asked for after step 11): tasks with what they
+    need first and the Tasks screen; the manifest's `task`; a batch's tasks with one or more
+    bots each, shared `all` or `split`; per-business readiness in the agent API and the
+    result's `outcome`; Start, Pause and the running order; each bot's progress; the batch's
+    Tasks and Results tabs; the migration from the agents' batch lists; the demo agent names
+    its task. **Tests:** task rules (circles, delete when unused), adding and removing tasks
+    and bots (only bots of the task, needs present), readiness per business (all, split,
+    failed, Top, a new benchmark version, a removed bot's leads moving on), running order and
+    paused batches in `next-run`, Owner/Admin/Viewer rights, the migration, e2e through a
+    batch's Tasks and Results.
