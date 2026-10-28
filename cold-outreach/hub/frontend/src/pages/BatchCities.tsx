@@ -100,79 +100,85 @@ export function BatchCities({
   return (
     <div className="stack">
       {error && <Alert kind="error">{error}</Alert>}
-      <div className="sheet-tabs" role="tablist" aria-label="City readiness">
-        {TABS.map(([key, label]) => (
-          <button
-            key={key}
-            role="tab"
-            aria-selected={tab === key}
-            onClick={() => {
-              setTab(key);
-              setPage(1);
-            }}
-          >
-            {label} <span className="muted">({inFile.filter((c) => tabOf(c) === key).length})</span>
-          </button>
-        ))}
-      </div>
-      <div className="filters-row">
-        <div className="field">
-          <label htmlFor={`cities-search-${batchId}`}>Find a city</label>
-          <input
-            id={`cities-search-${batchId}`}
-            value={typed}
-            placeholder="Tulsa"
-            onChange={(e) => {
-              setTyped(e.target.value);
-              setPage(1);
-            }}
-          />
-        </div>
-        {files.length > 0 && (
-          <div className="field">
-            <label htmlFor={`cities-file-${batchId}`}>From file</label>
-            <select
-              id={`cities-file-${batchId}`}
-              value={fromFile}
-              onChange={(e) => {
-                setFromFile(e.target.value);
+      {/* The tabs and the filters share one row. */}
+      <div className="cities-bar">
+        <div className="sheet-tabs" role="tablist" aria-label="City readiness">
+          {TABS.map(([key, label]) => (
+            <button
+              key={key}
+              role="tab"
+              aria-selected={tab === key}
+              onClick={() => {
+                setTab(key);
                 setPage(1);
               }}
             >
-              <option value="">All files</option>
-              {files.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.file_name}
-                  {f.confirmed_at ? ` · ${day(f.confirmed_at)}` : ""}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-        {/* Not ready cities have no switch: they wait for a Top (step 21). */}
-        {staff && tab !== "not_ready" && (
+              {label}{" "}
+              <span className="muted">({inFile.filter((c) => tabOf(c) === key).length})</span>
+            </button>
+          ))}
+        </div>
+        <div className="filters-row">
           <div className="field">
-            <span className="label-spacer" aria-hidden="true">
-              &nbsp;
-            </span>
-            <div className="row">
-              <button
-                className="button"
-                disabled={busy}
-                onClick={() => void act(() => switchAll(true))}
-              >
-                All on
-              </button>
-              <button
-                className="button"
-                disabled={busy}
-                onClick={() => void act(() => switchAll(false))}
-              >
-                All off
-              </button>
-            </div>
+            <label className="sr-only" htmlFor={`cities-search-${batchId}`}>
+              Find a city
+            </label>
+            <input
+              id={`cities-search-${batchId}`}
+              type="search"
+              value={typed}
+              placeholder="Find a city…"
+              onChange={(e) => {
+                setTyped(e.target.value);
+                setPage(1);
+              }}
+            />
           </div>
-        )}
+          {files.length > 0 && (
+            <div className="field">
+              <label className="sr-only" htmlFor={`cities-file-${batchId}`}>
+                From file
+              </label>
+              <select
+                id={`cities-file-${batchId}`}
+                value={fromFile}
+                onChange={(e) => {
+                  setFromFile(e.target.value);
+                  setPage(1);
+                }}
+              >
+                <option value="">All files</option>
+                {files.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.file_name}
+                    {f.confirmed_at ? ` · ${day(f.confirmed_at)}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {/* Not ready cities have no switch: they wait for a Top (step 21). */}
+          {staff && tab !== "not_ready" && (
+            <div className="field field-buttons">
+              <div className="row">
+                <button
+                  className="button"
+                  disabled={busy}
+                  onClick={() => void act(() => switchAll(true))}
+                >
+                  All on
+                </button>
+                <button
+                  className="button"
+                  disabled={busy}
+                  onClick={() => void act(() => switchAll(false))}
+                >
+                  All off
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
       <p className="muted small">
         {onTab.length.toLocaleString()} cities
