@@ -408,15 +408,17 @@ test("the preview shows the file tab by tab with every column", async () => {
 
 // --- step 15: leads and cities in the batch, deleting files, finding a business --------------
 
-function city(id: string, name: string, active = true) {
+function city(id: string, name: string, active = true, leads = 27) {
   return {
     id,
     batch_id: "b1",
     city: name,
     niche: "Cleaning",
     active,
+    set_by_hand: false,
+    small: leads < 10,
     daily_limit: null,
-    leads: 27,
+    leads,
     top: 1,
   };
 }
@@ -451,16 +453,20 @@ test("the old leads address opens the batch's Leads tab", async () => {
   expect(screen.getByRole("link", { name: "Batches" })).toHaveAttribute("aria-current", "page");
 });
 
-test("a batch's cities: switch one, all off, and open a city's leads", async () => {
+test("a batch's cities: small ones on their own tab, switch one, all off, open a city", async () => {
   window.history.pushState(null, "", "/batches?batch=b1&tab=cities");
   const calls = mockApi({
     "GET /auth/me": as("admin"),
     "GET /batches": [200, [batch({ leads: 54 })]],
     "GET /imports?batch_id=b1": [200, []],
     "GET /batches/b1/pipeline": [200, emptyPipeline],
-    "GET /batches/b1/cities": [200, [city("c1", "Akron", false), city("c2", "Tulsa")]],
+    "GET /batches/b1/cities": [
+      200,
+      [city("c1", "Akron", false, 4), city("c2", "Tulsa"), city("c3", "Dallas")],
+    ],
+    "PATCH /lists/c1": [200, city("c1", "Akron", true, 4)],
     "PATCH /lists/c2": [200, city("c2", "Tulsa", false)],
-    "PUT /batches/b1/cities": [200, [city("c1", "Akron", false), city("c2", "Tulsa", false)]],
+    "PUT /batches/b1/cities": [200, [city("c2", "Tulsa", false), city("c3", "Dallas", false)]],
     "GET /leads?batch_id=b1&city=Tulsa": [
       200,
       { leads: [], total: 0, page: 1, pages: 1, agents: {}, extra_columns: [] },
@@ -468,14 +474,23 @@ test("a batch's cities: switch one, all off, and open a city's leads", async () 
   });
   render(<App />);
 
-  expect(await screen.findByText(/2 cities · 1 on · 1 off/)).toBeVisible();
-  await userEvent.type(screen.getByLabelText("Find a city"), "tul");
+  expect(await screen.findByRole("tab", { name: /Cities \(10\+\) \(2\)/ })).toBeVisible();
+  expect(screen.getByText(/2 cities · 2 on · 0 off/)).toBeVisible();
   expect(screen.queryByText("Akron")).not.toBeInTheDocument();
+  await userEvent.type(screen.getByLabelText("Find a city"), "tul");
+  expect(screen.queryByText("Dallas")).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole("switch", { name: "Tulsa on or off" }));
   await userEvent.click(screen.getByRole("button", { name: "All off" }));
-  expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ active: false });
-  expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ active: false });
+  expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ active: false, small: false });
 
+  // The small cities, muted by the Hub: unmute one by hand.
+  await userEvent.clear(screen.getByLabelText("Find a city"));
+  await userEvent.click(screen.getByRole("tab", { name: /Small cities \(under 10\) \(1\)/ }));
+  expect(screen.getByText(/1 cities · 0 on · 1 off/)).toBeVisible();
+  await userEvent.click(screen.getByRole("switch", { name: "Akron on or off" }));
+  expect(calls.find((c) => c.path === "/lists/c1")?.body).toEqual({ active: true });
+
+  await userEvent.click(screen.getByRole("tab", { name: /Cities \(10\+\)/ }));
   await userEvent.click(screen.getByRole("button", { name: "Tulsa" }));
   expect(await screen.findByRole("tab", { name: "Leads" })).toHaveAttribute(
     "aria-selected",
@@ -570,4 +585,30 @@ test("find a business in every batch", async () => {
 
   expect(await screen.findByRole("heading", { name: "Batch 2" })).toBeVisible();
   expect(window.location.search).toBe("?batch=b2&tab=files");
+});
+
+test("the cities show 20 a page", async () => {
+  window.history.pushState(null, "", "/batches?batch=b1&tab=cities");
+  const many = Array.from({ length: 45 }, (_, n) =>
+    city(`c${n}`, `City ${String(n + 1).padStart(2, "0")}`),
+  );
+  mockApi({
+    "GET /auth/me": as("viewer"),
+    "GET /batches": [200, [batch({ leads: 900 })]],
+    "GET /imports?batch_id=b1": [200, []],
+    "GET /batches/b1/pipeline": [200, emptyPipeline],
+    "GET /batches/b1/cities": [200, many],
+  });
+  render(<App />);
+
+  expect(await screen.findByText("Page 1 of 3 · 45 cities")).toBeVisible();
+  expect(screen.getAllByRole("switch")).toHaveLength(20);
+  expect(screen.getByText("City 01")).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "Next" }));
+  await userEvent.click(screen.getByRole("button", { name: "Next" }));
+  expect(screen.getByText("Page 3 of 3 · 45 cities")).toBeVisible();
+  expect(screen.getAllByRole("switch")).toHaveLength(5);
+  expect(screen.getByText("City 45")).toBeVisible();
+  await userEvent.type(screen.getByLabelText("Find a city"), "City 0");
+  expect(screen.queryByText(/Page \d of/)).not.toBeInTheDocument(); // 9 match: one page
 });

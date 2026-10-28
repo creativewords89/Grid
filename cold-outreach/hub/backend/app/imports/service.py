@@ -20,6 +20,7 @@ from app.errors import ApiError
 from app.imports import reader
 
 SAMPLE = 25  # how many rows each preview list shows
+SMALL_CITY = 10  # a batch's city with fewer businesses is switched off (SPEC 6.4 item 8)
 # The parts of a lead's row kept in `Lead.data` (the rest have columns of their own).
 DATA_FIELDS = (
     "address",
@@ -311,6 +312,9 @@ def confirm(db: Session, imp: Import, user: User) -> Import:
         )
         if exists is None and imp.batch_id is not None:
             db.add(LeadList(batch_id=imp.batch_id, city=city, niche=imp.niche))
+    db.flush()
+    if imp.batch_id is not None:
+        mute_small_cities(db, imp.batch_id)
     imp.status = ImportStatus.CONFIRMED
     imp.confirmed_at = now()
     imp.counts = dict(imp.counts, saved_new=added, saved_updated=updated)
@@ -324,6 +328,21 @@ def confirm(db: Session, imp: Import, user: User) -> Import:
     ]
     imp.sheet = sheet
     return imp
+
+
+def mute_small_cities(db: Session, batch_id: Any) -> None:
+    """Cities with fewer than SMALL_CITY businesses in the batch are off, the others on,
+    except those a person switched by hand."""
+    counts = {
+        city.lower(): total
+        for city, total in db.execute(
+            select(Lead.city, func.count()).where(Lead.batch_id == batch_id).group_by(Lead.city)
+        )
+    }
+    for item in db.scalars(
+        select(LeadList).where(LeadList.batch_id == batch_id, LeadList.set_by_hand.is_(False))
+    ):
+        item.active = counts.get(item.city.lower(), 0) >= SMALL_CITY
 
 
 def discard(imp: Import) -> None:

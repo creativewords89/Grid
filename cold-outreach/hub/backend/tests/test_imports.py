@@ -420,9 +420,11 @@ def test_the_same_city_in_two_batches_is_switched_separately(
     first, second = batch_id(client, "Batch 1"), batch_id(client, "Batch 2")
     tulsa = client.get(f"/api/batches/{first}/cities").json()[0]
 
-    client.patch(f"/api/lists/{tulsa['id']}", json={"active": False})
+    assert tulsa["active"] is False  # one business: a small city, muted
+    client.patch(f"/api/lists/{tulsa['id']}", json={"active": True})
 
-    assert client.get(f"/api/batches/{second}/cities").json()[0]["active"] is True
+    assert client.get(f"/api/batches/{first}/cities").json()[0]["active"] is True
+    assert client.get(f"/api/batches/{second}/cities").json()[0]["active"] is False
 
 
 # --- the file tab by tab (step 14) ------------------------------------------------------------
@@ -620,3 +622,72 @@ def test_viewers_cannot_delete_files_or_switch_cities(
         client.put(f"/api/batches/{preview['batch_id']}/cities", json={"active": False}).status_code
         == 403
     )
+
+
+# --- small cities muted (step 16) -------------------------------------------------------------
+
+
+def test_small_cities_are_muted_and_follow_new_files_unless_set_by_hand(
+    client: TestClient, owner: User
+) -> None:
+    big = [row(f"Big {n}", f"https://share.google/b{n}", str(n)) for n in range(10)]
+    first = upload(
+        client,
+        workbook(
+            {
+                "Tulsa": [STANDARD, *big],
+                "Dallas": [
+                    STANDARD,
+                    *[
+                        row(f"D {n}", f"https://share.google/d{n}", f"9{n}", city="Dallas")
+                        for n in range(3)
+                    ],
+                ],
+                "Austin": [STANDARD, row("A", "https://share.google/a", "71", city="Austin")],
+            }
+        ),
+    )
+    client.post(f"/api/imports/{first['id']}/confirm")
+    url = f"/api/batches/{first['batch_id']}/cities"
+    cities = {c["city"]: c for c in client.get(url).json()}
+    assert {k: (c["active"], c["small"]) for k, c in cities.items()} == {
+        "Austin": (False, True),
+        "Dallas": (False, True),
+        "Tulsa": (True, False),
+    }
+    # Unmuted by hand: the rule leaves Austin alone from now on.
+    client.patch(f"/api/lists/{cities['Austin']['id']}", json={"active": True})
+
+    more = [row(f"D {n}", f"https://share.google/e{n}", f"8{n}", city="Dallas") for n in range(7)]
+    second = upload(client, workbook({"Dallas": [STANDARD, *more]}))
+    client.post(f"/api/imports/{second['id']}/confirm")
+    after = {c["city"]: c for c in client.get(url).json()}
+    assert (after["Dallas"]["active"], after["Dallas"]["small"]) == (True, False)  # grew to 10
+    assert after["Austin"]["active"] is True and after["Austin"]["set_by_hand"] is True
+
+    # Deleting the second file makes Dallas small again: muted.
+    client.delete(f"/api/imports/{second['id']}")
+    assert {c["city"]: c["active"] for c in client.get(url).json()}["Dallas"] is False
+
+
+def test_all_on_works_on_the_tab_shown(client: TestClient, owner: User) -> None:
+    big = [row(f"Big {n}", f"https://share.google/b{n}", str(n)) for n in range(10)]
+    preview = upload(
+        client,
+        workbook(
+            {
+                "Tulsa": [STANDARD, *big],
+                "Austin": [STANDARD, row("A", "https://share.google/a", "71", city="Austin")],
+            }
+        ),
+    )
+    client.post(f"/api/imports/{preview['id']}/confirm")
+    url = f"/api/batches/{preview['batch_id']}/cities"
+
+    client.put(url, json={"active": False, "small": False})  # Cities (10+): all off
+    client.put(url, json={"active": True, "small": True})  # Small cities: all on
+
+    assert {c["city"]: c["active"] for c in client.get(url).json()} == {
+        "Austin": True,
+        "Tulsa": False,
+    }

@@ -141,7 +141,16 @@ test("the leads are in their batch and download as Excel", async () => {
     .getByRole("button", { name: "Texas November", exact: true })
     .first()
     .click();
-  await page.getByRole("tab", { name: "Cities" }).click();
+  // Both cities have fewer than 10 businesses: muted by the Hub, on their own tab.
+  await page.getByRole("tab", { name: "Cities", exact: true }).click();
+  await page
+    .getByRole("tab", { name: /Small cities \(under 10\) \(2\)/ })
+    .click();
+  await expect(
+    page.getByRole("switch", { name: "Tulsa on or off" }),
+  ).not.toBeChecked();
+  // Unmuted by hand, so the demo agent can work on them.
+  await page.getByRole("button", { name: "All on" }).click();
   await expect(
     page.getByRole("switch", { name: "Tulsa on or off" }),
   ).toBeChecked();

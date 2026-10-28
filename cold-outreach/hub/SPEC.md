@@ -332,7 +332,8 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    The Hub decides this again after every saved or deleted file (a small city that grows to 10
    is switched on), but never for a city a person switched on or off by hand (`set_by_hand`):
    an Owner or Admin can unmute a small city one by one. All on / All off works on the tab
-   shown. (Step 16: cities that were off stay off as if set by hand; the others follow the
+   shown. Each tab shows **20 cities a page** with Previous / Next (a search narrows them
+   first). (Step 16: cities that were off stay off as if set by hand; the others follow the
    rule.)
 9. **A batch's Leads tab** (everyone): 100 leads a page; a search (name, Lead ID, city,
    email, phone, website, GBP link), city, Top and website; sort by Lead ID, newest,
@@ -642,6 +643,6 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     the batch page's address and tabs, e2e.
 16. **Small cities muted** (asked for after step 15): cities with fewer than 10 businesses in
     a batch are switched off by the Hub and shown on their own tab; a person can unmute one,
-    and the Hub then leaves it alone. **Tests:** the rule after saving and deleting files, a
+    and the Hub then leaves it alone; 20 cities a page. **Tests:** the rule after saving and deleting files, a
     city growing to 10, set-by-hand cities untouched, the tabs and their counts, the
     migration.

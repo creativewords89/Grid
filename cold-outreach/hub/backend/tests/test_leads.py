@@ -206,6 +206,7 @@ def test_an_agent_reads_full_rows_and_saves_its_result(client: TestClient, saved
     agent_call(client, "PUT", "/manifest", token, MANIFEST)
     batch = batch_id(client)
     put_bot(client, batch, "gbp-audit")
+    client.put(f"/api/batches/{batch}/cities", json={"active": True})  # small cities
 
     rows = agent_call(client, "GET", f"/batches/{batch}/leads", token).json()
     multi = rows[0]
