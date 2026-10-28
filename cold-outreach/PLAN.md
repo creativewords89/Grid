@@ -9,7 +9,7 @@ This file holds the decisions that apply to the whole system. Each part has its 
 
 | Part | Spec | State |
 |---|---|---|
-| Agent Hub | [hub/SPEC.md](hub/SPEC.md) | Built and installed (steps 1–11); step 12, tasks and the batch pipeline, done; step 13, agents made clear and the full Leads table, done; step 14, the lead file tab by tab, done |
+| Agent Hub | [hub/SPEC.md](hub/SPEC.md) | Built and installed (steps 1–11); step 12, tasks and the batch pipeline, done; step 13, agents made clear and the full Leads table, done; step 14, the lead file tab by tab, done; step 15 in progress |
 | GBP audit agent | `agents/gbp-audit/SPEC.md` | Decided (section 5), spec written before its build |
 | Website audit agent | `agents/website-audit/SPEC.md` | Decided (section 6), spec written before its build |
 | Social media audit agent | `agents/social-audit/SPEC.md` | Data source not decided |

@@ -148,7 +148,7 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 | `imports` | `batch_id`, `file_name`, `niche`, `uploaded_by`, `status` (`preview`, `confirmed`, `failed`, `discarded`), counts, `preview` JSON, `errors` JSON, `sheet` JSON (every row of the file by tab: while waiting its cleaned values, original text and what happens to it; once confirmed only its tab, row number, Lead ID and what happened) |
 | `leads` | every business: `lead_id` (`L-000123`), `batch_id` (the batch it was first imported into), `niche`, `city`, `business_name`, `level`, `gbp_link`, `emails`, the matching keys `phone_digits`, `name_address`, `website_domain`, `data` JSON (address, website, phone, WhatsApp, Facebook, Instagram, reviews, rating, notes), `extra` JSON (the file's other columns, by their header, e.g. "Operation Hour"), `results` JSON (by agent key: status, score, summary, details, benchmark id and version, when), `first_import_id`, `last_import_id` |
 | `lead_files` | files agents saved for a lead (reports): `lead_id`, `agent_key`, `name`, `content_type`, `size`; the bytes are on disk at `REPORTS_DIR/<lead_id>/<id>` |
-| `lists` | one per City + Niche: `active`, optional `daily_limit` |
+| `lists` | the **cities of a batch**, one per batch + city: `batch_id`, `city`, `niche`, `active`, optional `daily_limit` |
 | `do_not_contact` | `kind` (`email`, `phone`, `gbp`, `domain`), `value`, `reason` (`top`, `opt_out`, `manual`), `lead_id` |
 | `alerts` | what was sent, to whom, on which channel, when |
 | `audit_log` | who did what (sign-ins, settings changes, connection changed/removed, imports, runs started/stopped). Never secret values. |
@@ -220,8 +220,9 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
     JPEG or CSV up to 20 MB, named with letters, digits, dots, dashes and underscores; the
     same name from the same agent replaces it).
   - Reference data: `GET /batches` (as in `next-run`), `GET /benchmarks/{id}` (the
-    GBP numbers, the Website Standard and the `version`), `GET /lists` (City + Niche, on or
-    off, limit) and `GET /do-not-contact/check?email=&phone=&gbp=&domain=` (`blocked` and
+    GBP numbers, the Website Standard and the `version`), `GET /lists` (each batch's cities:
+    batch id, city, niche, on or off, limit; the Hub never hands out the leads of a city
+    switched off) and `GET /do-not-contact/check?email=&phone=&gbp=&domain=` (`blocked` and
     why).
 - **Batches and benchmark changes:** an agent works through its batches in order, the first
   until nothing is ready for it, then the next; with nothing left it finishes the run at once
@@ -320,16 +321,21 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    tab, row number, Lead ID and what happened; opening a past file shows it tab by tab as
    above with each lead's values as the Hub has them now (a deleted lead says so). Files saved
    before this (step 14) show their counts only.
-8. **Lists** (one per City + Niche) are created by confirmed imports and shown on the Leads
-   screen, below the leads, with their businesses and Top counts; Owners and Admins switch a
-   list on or off.
-9. **The Leads screen** (everyone): 100 leads a page; filter by batch, a search (name, Lead
-   ID, city, email, phone, website, GBP link), city, Top and website; sort by Lead ID, newest,
+8. **Cities** (one per batch + city) are created by confirmed imports and shown on the
+   batch's **Cities** tab with their businesses and Top counts, a search and **All on** /
+   **All off**; Owners and Admins switch a city on or off. A city switched off **in a batch**
+   is left alone in that batch only: its leads are not handed to agents (section 6.7). A city
+   name opens the batch's Leads tab for that city. (Step 15 moved the old City + Niche lists
+   into each batch that has leads there, keeping on or off.)
+9. **A batch's Leads tab** (everyone): 100 leads a page; a search (name, Lead ID, city,
+   email, phone, website, GBP link), city, Top and website; sort by Lead ID, newest,
    name, city or an agent's score (best first). The table shows **every field of the lead
    file side by side**, like the Excel file: Lead ID, Business name, GBP link, Address, City,
    Website, Phone, WhatsApp, Email(s), Facebook, Instagram, Reviews, Rating, Level, Notes,
    the file's other columns and Batch, then each agent's score and status; it scrolls sideways with the business name kept
    in view, and links (GBP, website, Facebook, Instagram) open in a new tab.
+   The batch page and this table use the **whole width of the screen**: the filters sit in
+   one row, the table scrolls inside itself with its header row kept in view.
    **Download Excel** gives the leads on screen (same filters, up to 50,000), every column
    including each agent's status, score, summary and when; every text cell is stored as text,
    so a value starting with `=` never runs as a formula.
@@ -339,6 +345,16 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    GBP link on the do-not-contact list, removing Top takes them off), or delete it (its files
    go too; its do-not-contact entries stay, so a Top business imported again is still never
    contacted).
+11. **Deleting a file** (Owners and Admins), from the batch's past files, **only while the
+   batch isn't running** (not started or paused; the server refuses it otherwise, "Pause the
+   batch first"). A saved file goes with the leads it brought in first (their agents'
+   results and files too); leads that came from an earlier file and were only updated by it
+   stay. Do-not-contact entries stay. Before deleting, the Hub says how many leads go and how
+   many stay; History records who deleted which file and how many leads went. A waiting
+   preview is discarded as before (also while running: it added nothing).
+12. **Find a business** (everyone), at the top of the Batches screen: the search of item 9
+   over every batch; each result names its batch and opens the lead, or its batch's Leads
+   tab.
 
 ### 6.5 Benchmarks
 
@@ -409,7 +425,8 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
     agent asks for it (kept in `lead_bot_shares`), e.g. two outreach emails tried on half the
     leads each. A lead goes to another agent when its agent is removed from the task before
     finishing it. The task is done for a lead when its agent finished it.
-- **Per business:** a lead is **ready** for an agent when the agent hasn't finished it, each task
+- **Per business:** a lead is **ready** for an agent when its city is switched on in the
+  batch, the agent hasn't finished it, each task
   it needs is done for that lead, and (for `split`) the lead is the agent's. **Finished** means
   the agent's result has outcome `done` or `skipped` and was made against the batch's current
   benchmark version; a `failed` result is tried again on the next run. Top leads are never
@@ -446,12 +463,14 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 4. **Batches:** the batches with niche, benchmark, businesses (and Top), files and agents;
    **+ New batch** (name, niche, a benchmark of that niche; a link to Benchmarks when the
    niche has none), each with its status, agents and progress, and up and down buttons for the
-   running order. A batch opens to **Start**/**Pause**, its benchmark choice, rename, delete
-   (when empty), **See its leads**, **Add a lead file**, the preview and its past files, and
-   tabs: **Tasks and agents** (the agent library grouped by task on the left, which can be
+   running order, and **Find a business** (section 6.4 item 12) above them. A batch (its own
+   address, `/batches?batch=<id>&tab=<tab>`) opens to **Start**/**Pause** and tabs:
+   **Tasks and agents** (the agent library grouped by task on the left, which can be
    dragged or added; the steps with each task's agents, their progress, ✕ to remove, **+ Add
-   another agent**, how the agents share the work, and **+ Add a task**), **Results**
-   (section 6.7) and **Files and settings**. Until the batch is running with an agent that is
+   another agent**, how the agents share the work, and **+ Add a task**), **Leads** (section
+   6.4 item 9, with the lead window of item 10), **Cities** (item 8), **Results** (section
+   6.7) and **Files and settings** (its benchmark choice, rename, delete when empty, **Add a
+   lead file**, the preview and its past files, each with **Delete**, item 11). Until the batch is running with an agent that is
    on, the Tasks and agents tab starts with a **setup guide**, each step ticked when done:
    1. add an agent (Owner, on Agents: the Hub shows its token once);
    2. start the agent on the server with that token (the Hub shows the command);
@@ -462,10 +481,8 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    The Hub says plainly when only the demo agent exists. `/import` opens Batches.
 5. **Tasks** (after Batches): every task with what it needs first, the agents that do it and
    the batches that use it; **+ New task**, Edit, Delete (when unused).
-6. **Leads** (after Tasks): the table, filters, pages and **Download Excel** of section 6.4;
-   a lead opens in a window with its row, the agents' results and files, and (Owners and
-   Admins) its editable fields and Delete. `/leads?batch=<id>` opens one batch's leads. The
-   Lists (City + Niche) with their on/off switches follow the leads.
+6. Leads have **no menu item** of their own: they are in their batch (step 15).
+   `/leads?batch=<id>` opens that batch's Leads tab.
 7. **Agents:** one card per agent: on/off switch, its task and the running batches using it
    (or a warning when none), last run, next run, today's cost, Run now, Stop; **Settings**
    opens the form: limits and the manifest's settings. A card says where the agent is in its
@@ -486,8 +503,10 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 `/overview`, `/budget`, `/benchmarks` (+ `/{id}`), `/batches` (+ `/{id}`, `/order`,
 `/{id}/start`, `/{id}/pause`, `/{id}/tasks` (+ `/{task_id}`, `/{task_id}/bots`,
 `/{task_id}/bots/{key}`), `/{id}/progress`, `/{id}/results`), `/tasks` (+ `/{id}`), `/imports`
-(upload into a batch → preview, `?batch_id=`, `/{id}/confirm`, `/{id}/discard`), `/niches`,
-`/leads` (+ `/export`, `/{lead_id}`, `/{lead_id}/files/{id}`), `/lists`, `/alerts`,
+(upload into a batch → preview, `?batch_id=`, `/{id}/confirm`, `/{id}/discard`, `/{id}/sheet`,
+`DELETE /{id}` and `/{id}/deletion` (what would go)), `/niches`, `/leads` (+ `/export`,
+`/{lead_id}`, `/{lead_id}/files/{id}`), `/batches/{id}/cities` (+ `PUT` all on or off),
+`/lists/{id}`, `/alerts`,
 `/alert-settings`, `/history`, and the agent API (section 6.2). Every user endpoint checks
 `permissions.can`; every write checks CSRF.
 
@@ -528,7 +547,7 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 
 See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
 
-1. **Lists** (City + Niche on/off and per-list limit) live in the Hub.
+1. **Cities** (a batch's cities on or off, and a per-city limit) live in the Hub.
 2. **No Google Sheet or Drive** (step 11): leads, results and reports are kept in the Hub;
    people download Excel files from the Leads screen.
 
@@ -605,3 +624,12 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     **Tests:** tabs and rows in the file's order, statuses (new, updated, in another batch,
     merged, Top, skipped), original text, other columns saved and not blanked, a confirmed
     file's view from the leads (also a deleted one), filters and pages, rights, e2e.
+15. **Leads in their batch, cities per batch, deleting files** (asked for after step 14):
+    the Leads menu item goes and each batch gets **Leads** and **Cities** tabs; the batch
+    page uses the whole screen width with header rows kept in view; cities switched on or
+    off per batch (migration of the City + Niche lists) and the Hub hands out no leads of a
+    city switched off; deleting a saved file with the leads it brought in first, only while
+    the batch isn't running; **Find a business** over every batch on the Batches screen.
+    **Tests:** cities per batch and the migration, readiness skips cities switched off, file
+    deletion (running refused, which leads go and stay, do-not-contact kept, History), rights,
+    the batch page's address and tabs, e2e.
