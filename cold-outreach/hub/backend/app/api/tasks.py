@@ -23,6 +23,7 @@ class BotRef(BaseModel):
     key: str
     name: str
     enabled: bool
+    about: str  # its manifest's description, one line in the agent library
 
 
 class TaskOut(BaseModel):
@@ -45,7 +46,15 @@ def task_out(db: Session, task: Task) -> TaskOut:
         id=task.id,
         key=task.key,
         name=task.name,
-        bots=[BotRef(key=b.key, name=b.name, enabled=b.enabled) for b in bots],
+        bots=[
+            BotRef(
+                key=b.key,
+                name=b.name,
+                enabled=b.enabled,
+                about=str((b.manifest or {}).get("description") or ""),
+            )
+            for b in bots
+        ],
         batches=list(batches),
     )
 

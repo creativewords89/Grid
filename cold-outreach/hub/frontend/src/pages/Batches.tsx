@@ -427,15 +427,40 @@ function BatchView({
 
   return (
     <section className="page page-wide">
-      <div className="page-head">
-        <div>
+      <div className="batch-head">
+        <div className="stack-tight">
+          <div className="small muted">
+            <a
+              href="/batches"
+              onClick={(e) => {
+                e.preventDefault();
+                onBack();
+              }}
+            >
+              Batches
+            </a>{" "}
+            / {batch.name}
+          </div>
           <h1>{batch.name}</h1>
-          <p className="muted small">
-            <span className={`pill pill-batch-${status}`}>{BATCH_STATUS[status]}</span>{" "}
-            {batch.niche} · {batch.leads.toLocaleString()} businesses · {batch.files} files
-          </p>
+          <div className="batch-meta">
+            <span>{batch.niche}</span>
+            <span>·</span>
+            <span>
+              {batch.benchmark
+                ? `${batch.benchmark.name} (v${batch.benchmark.version})`
+                : "No benchmark yet"}
+            </span>
+            <span>·</span>
+            <span>{batch.leads.toLocaleString()} businesses</span>
+            <span>·</span>
+            <span>{batch.top.toLocaleString()} Top</span>
+          </div>
         </div>
         <div className="row">
+          <span className={`batch-state batch-state-${status}`}>
+            {status === "running" ? "● " : ""}
+            {BATCH_STATUS[status]}
+          </span>
           {batch.can_run && status === "running" && (
             <button className="button" disabled={busy} onClick={() => void startOrPause(false)}>
               Pause
@@ -451,16 +476,13 @@ function BatchView({
               {status === "paused" ? "Resume" : "Start"}
             </button>
           )}
-          <button className="button" onClick={onBack}>
-            All batches
-          </button>
         </div>
       </div>
       {error && <Alert kind="error">{error}</Alert>}
       {batch.can_run && status !== "running" && pipeline?.start_problem && (
         <p className="muted small">To start: {pipeline.start_problem}</p>
       )}
-      <div className="tabs" role="tablist" aria-label="Batch">
+      <nav className="batch-tabs" role="tablist" aria-label="Batch">
         {TABS.map(([key, label]) => (
           <button
             key={key}
@@ -474,7 +496,7 @@ function BatchView({
             {label}
           </button>
         ))}
-      </div>
+      </nav>
       {tab === "tasks" && pipeline && (
         <PipelineTab batchId={batch.id} pipeline={pipeline} onChange={changed} />
       )}

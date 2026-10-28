@@ -450,7 +450,9 @@ test("the old leads address opens the batch's Leads tab", async () => {
   );
   expect(await screen.findByText("No leads match.")).toBeVisible();
   expect(window.location.pathname + window.location.search).toBe("/batches?batch=b1&tab=leads");
-  expect(screen.getByRole("link", { name: "Batches" })).toHaveAttribute("aria-current", "page");
+  expect(
+    within(screen.getByRole("navigation", { name: "Main" })).getByRole("link", { name: "Batches" }),
+  ).toHaveAttribute("aria-current", "page");
 });
 
 test("a batch's cities: small ones on their own tab, switch one, all off, open a city", async () => {

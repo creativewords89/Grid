@@ -478,20 +478,18 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    niche has none), each with its status, agents and progress, and up and down buttons for the
    running order, and **Find a business** (section 6.4 item 12) above them. A batch (its own
    address, `/batches?batch=<id>&tab=<tab>`) opens to **Start**/**Pause** and tabs:
-   **Tasks** (the agent library grouped by job on the left, which can be
-   dragged or added; the steps with each task's agents, their progress, ✕ to remove, **+ Add
-   another agent**, how the agents share the work, and **+ Add a task**), **Leads** (section
+   **Tasks** (laid out as the chosen A+B design: the batch's name, niche, benchmark, businesses
+   and Top with its state and Start/Pause above underlined tabs; the agent library grouped by
+   job, with **Find an agent**, each agent with its one-line description and "In use";
+   **Tasks on this batch** starting with the lead files, the steps with each task's agents
+   and progress, an empty task as a drop zone with **Choose an agent**, and **+ Add a task to
+   this batch**; an agent can be dragged from the library or chosen), **Leads** (section
    6.4 item 9, with the lead window of item 10), **Cities** (item 8), **Results** (section
    6.7) and **Files and settings** (its benchmark choice, rename, delete when empty, **Add a
-   lead file**, the preview and its past files, each with **Delete**, item 11). Until the batch is running with an agent that is
-   on, the Tasks and agents tab starts with a **setup guide**, each step ticked when done:
-   1. add an agent (Owner, on Agents: the Hub shows its token once);
-   2. start the agent on the server with that token (the Hub shows the command);
-   3. it connects and says which task it does (it then appears in the agent library);
-   4. add it to this batch's task;
-   5. switch it on (Agents);
-   6. start the batch.
-   The Hub says plainly when only the demo agent exists. `/import` opens Batches.
+   lead file**, the preview and its past files, each with **Delete**, item 11).
+   There is no setup guide box on the Tasks tab (taken off after step 18); how to add
+   and start an agent is on Agents.
+   `/import` opens Batches.
 5. Tasks have **no menu item**: they are made in each batch's Tasks tab (step 18).
 6. Leads have **no menu item** of their own: they are in their batch (step 15).
    `/leads?batch=<id>` opens that batch's Leads tab.
