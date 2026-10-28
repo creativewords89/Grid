@@ -339,6 +339,11 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    (the tabs load again on **← Back to Cities**). All on / All off works on the tab shown.
    The **Not ready** tab has no switch and no All on / All off: each city says **Needs a
    Top** (step 21); its on/off is kept and applies once it is Ready.
+   **Added from** (step 22): each city shows the file it first came with (name and date):
+   the oldest file that brought one of its businesses into the batch, worked out from each
+   lead's first file, so deleting that file moves the city to the next one. The cities of
+   the batch's latest file have a **New** label, and a **From file** list (All files or one
+   file) narrows every tab and its count to the cities that file brought.
    **Small cities:** a city with **fewer than 10 businesses** in the batch is switched off by
    the Hub and listed apart, on the **Small cities (under 10)** tab. Unmuted by hand, it
    still needs a Top to be worked on.
@@ -696,3 +701,9 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     **Needs a Top** in place of the switch and hides All on / All off and the Set column;
     the Ready and Small cities tabs keep theirs. **Tests:** the Not ready tab without a
     switch or All on.
+22. **The file a city came with** (asked for after step 21): the Cities tab shows each
+    city's first file and date, **New** on the latest file's cities and a **From file**
+    filter. `GET /batches/{id}/cities` says `added_from` (file id, name, confirmed) and
+    `new`. No migration: worked out from `leads.first_import_id`. **Tests:** two files, the
+    latest one's cities new, deleting the first file moving its city to the second, the
+    filter and its counts, e2e.

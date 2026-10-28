@@ -18,6 +18,11 @@ export function money(value: string | number): string {
   return `$${Number(value).toFixed(2)}`;
 }
 
+/** "28 Oct 2026" in the viewer's own time zone. */
+export function day(value: string): string {
+  return new Date(value).toLocaleDateString(undefined, { dateStyle: "medium" });
+}
+
 /** "Tue 28 Oct, 02:00" in the viewer's own time zone. */
 export function when(value: string): string {
   return new Date(value).toLocaleString(undefined, {
