@@ -3,8 +3,6 @@ import type { Agent } from "./api";
 // How an agent gets ready to work (SPEC section 7): the commands that start it on the server
 // with its token, and where it is in its setup.
 
-export const DEMO_MANIFEST = "Demo agent";
-
 /** The commands that start an agent on the server with its token. */
 export function startCommands(key: string, token: string): { demo: string; real: string } {
   const common =

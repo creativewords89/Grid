@@ -9,7 +9,6 @@ import {
 import {
   api,
   ApiError,
-  type Agent,
   type Band,
   type BotProgress,
   type BotResults,
@@ -19,8 +18,6 @@ import {
   type Share,
   type Task,
 } from "../api";
-import { useAuth } from "../auth";
-import { SetupGuide } from "../components/agentSetup";
 import { Alert } from "../components/ui";
 import { when } from "../format";
 import { LeadDialog } from "./Leads";
@@ -44,9 +41,7 @@ export function PipelineTab({
   pipeline: Pipeline;
   onChange: (next: Pipeline) => void;
 }) {
-  const { user } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [agents, setAgents] = useState<Agent[] | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -58,10 +53,6 @@ export function PipelineTab({
       .tasks()
       .then(setTasks)
       .catch(() => setTasks([]));
-    api
-      .agents()
-      .then(setAgents)
-      .catch(() => setAgents(null));
   }, [pipeline]);
 
   const slots = pipeline.steps.flatMap((s) => s.tasks);
@@ -117,9 +108,6 @@ export function PipelineTab({
   const batch = pipeline.batch;
   return (
     <div className="stack">
-      {agents && (
-        <SetupGuide agents={agents} pipeline={pipeline} isOwner={user?.role === "owner"} compact />
-      )}
       <div className="slots-layout">
         <section className="library" aria-label="Agent library">
           <h2>Agents, by the job they do</h2>

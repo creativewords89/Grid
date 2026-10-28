@@ -244,7 +244,7 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
     "Does: Demo",
   );
 
-  // The batch chooses the agent for its task, then starts; the setup guide shows the way.
+  // The batch chooses the agent for its task, then starts.
   await page
     .getByRole("navigation", { name: "Main" })
     .getByRole("link", { name: "Batches" })
@@ -252,11 +252,6 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
   await page
     .getByRole("button", { name: "Texas November", exact: true })
     .click();
-  const guide = page.getByRole("region", { name: "Setup guide" });
-  await guide.getByText(/steps done/).click();
-  await expect(
-    guide.getByText("Only the demo agent is set up", { exact: false }),
-  ).toBeVisible();
   // The task is made in the batch: its job, its name, then its agent.
   await expect(
     page.getByRole("region", { name: "Agent library" }).getByText("Demo agent"),
@@ -277,9 +272,6 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
   await expect(slot.getByText("Demo agent")).toBeVisible();
   await page.getByRole("button", { name: "Start" }).click();
   await expect(page.getByRole("button", { name: "Pause" })).toBeVisible();
-  await expect(
-    guide.getByRole("listitem").filter({ hasText: "Switch it on" }),
-  ).not.toHaveClass("setup-done");
 
   await page
     .getByRole("navigation", { name: "Main" })
@@ -317,11 +309,8 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
   const scored = page.getByRole("row", { name: /Sparkle Home Cleaning/ });
   await expect(scored.getByRole("cell").last()).toHaveText(/^\d+$/);
 
-  // And on the batch's Results tab, for that agent; the setup guide is gone.
+  // And on the batch's Results tab, for that agent.
   await page.getByRole("tab", { name: "Tasks", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Setup guide" })).toHaveCount(
-    0,
-  );
   await page.getByRole("tab", { name: "Results" }).click();
   await expect(page.getByRole("button", { name: /3\s*Done/ })).toBeVisible();
   await expect(

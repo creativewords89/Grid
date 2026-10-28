@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, vi } from "vitest";
-import type { Agent, Batch, BotProgress, BotResults, Pipeline, Task } from "../api";
+import type { Batch, BotProgress, BotResults, Pipeline, Task } from "../api";
 import { App } from "../App";
 import { makeUser, mockApi } from "../test/mockApi";
 
@@ -243,91 +243,6 @@ test("the running order: move a batch up", async () => {
   expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ ids: ["b2", "b1"] });
   const rows = await screen.findAllByRole("row");
   expect(rows[1]).toHaveTextContent("Florida December");
-});
-
-function agent(overrides: Partial<Agent> = {}): Agent {
-  return {
-    key: "demo",
-    name: "Demo agent",
-    enabled: false,
-    connected: true,
-    last_seen_at: "2026-10-28T06:00:00Z",
-    manifest: {
-      name: "Demo agent",
-      version: "1.0.0",
-      description: "",
-      settings: [],
-      connections: [],
-      result_label: "Demo",
-      cost_per_item_usd: 0.001,
-    },
-    config: {},
-    daily_limit: 100,
-    run_time: "02:00",
-    time_zone: "Asia/Dhaka",
-    daily_budget_usd: "5.00",
-    task: { key: "demo", name: "Demo" },
-    batches: [],
-    missing_connections: [],
-    last_run: null,
-    next_run_at: null,
-    spent_today_usd: "0",
-    ...overrides,
-  };
-}
-
-function guideSteps(): [string, boolean][] {
-  const guide = screen.getByRole("region", { name: "Setup guide" });
-  return within(guide)
-    .getAllByRole("listitem")
-    .map((li) => [li.querySelector(".cell-strong")!.textContent!, li.className === "setup-done"]);
-}
-
-test("the setup guide ticks each step as the agents get ready", async () => {
-  mockApi({
-    "GET /auth/me": as("admin"),
-    "GET /batches": [200, [batch()]],
-    "GET /lists": [200, []],
-    "GET /imports?batch_id=b1": [200, []],
-    "GET /batches/b1/pipeline": [200, pipeline({}, 1)],
-    "GET /tasks": [200, TASKS],
-    "GET /agents": [200, [agent({ key: "gbp-full" })]],
-  });
-  render(<App />);
-
-  await userEvent.click(await screen.findByRole("button", { name: "Texas November" }));
-  await userEvent.click(await screen.findByText(/4 of 6 steps done/));
-  expect(await screen.findByText(/Only the/)).toHaveTextContent("Only the demo agent is set up");
-  expect(guideSteps()).toEqual([
-    ["Add an agent", true],
-    ["Start it on the server with its token", true],
-    ["It connects and says which job it does", true],
-    ["Add a task for it to this batch", true],
-    ["Switch it on", false],
-    ["Start the batch", false],
-  ]);
-});
-
-test("with no agents the guide starts at adding one", async () => {
-  const empty = pipeline({ steps: [], can_start: false });
-  mockApi({
-    "GET /auth/me": as("owner"),
-    "GET /batches": [200, [batch()]],
-    "GET /lists": [200, []],
-    "GET /imports?batch_id=b1": [200, []],
-    "GET /batches/b1/pipeline": [200, empty],
-    "GET /tasks": [200, []],
-    "GET /agents": [200, []],
-  });
-  render(<App />);
-
-  await userEvent.click(await screen.findByRole("button", { name: "Texas November" }));
-  const guide = await screen.findByRole("region", { name: "Setup guide" });
-  // A single line until opened.
-  expect(within(guide).getByText(/0 of 6 steps done · next: Add an agent/)).toBeVisible();
-  await userEvent.click(within(guide).getByText(/0 of 6 steps done/));
-  expect(guideSteps().every(([, done]) => !done)).toBe(true);
-  expect(screen.getByText(/press \+ Add agent/)).toBeVisible();
 });
 
 test("add a task: its job, its name and what it needs first in this batch", async () => {
