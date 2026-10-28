@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import jobs
 from app.auth.deps import CurrentUser, Db
 from app.db.models import Agent, Batch, BatchTask, Task
 from app.errors import ApiError
@@ -68,7 +69,13 @@ def get_task(db: Session, task_id: uuid.UUID) -> Task:
 
 @router.get("/tasks", response_model=list[TaskOut])
 def list_tasks(me: CurrentUser, db: Db) -> list[TaskOut]:
-    """Every job, A to Z, with the agents that do it."""
+    """Every job, the built-in ones first in their order (step 24), then others A to Z,
+    with the agents that do it."""
     ensure(me, Action.VIEW_HUB)
-    tasks = sorted(db.scalars(select(Task)), key=lambda t: t.name.lower())
+    jobs.ensure_built_in(db)
+    db.commit()
+    order = {key: n for n, (key, _) in enumerate(jobs.BUILT_IN)}
+    tasks = sorted(
+        db.scalars(select(Task)), key=lambda t: (order.get(t.key, len(order)), t.name.lower())
+    )
     return [task_out(db, task) for task in tasks]

@@ -437,11 +437,21 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 ### 6.7 Tasks, agents and the batch pipeline
 
 - Every **agent** does **one job**, named by its manifest (`task`, its own key when left
-  out, and `task_name`, e.g. "GBP Audit"). The Hub keeps the list of jobs from the agents'
-  manifests (`tasks`); there is no screen for them. A manifest naming another job moves the
+  out, and `task_name`, e.g. "GBP Audit"). The Hub keeps the list of jobs (`tasks`): the
+  **built-in jobs** (step 24), in this order, GBP Audit (`gbp-audit`), Website Audit
+  (`website-audit`), Social Audit (`social-audit`), Opportunity Finder (`opportunity`), Email
+  Writer (`email-writer`), Sending and Follow-up (`sending`) and Reply (`reply`), are there
+  before any agent connects; a manifest naming another job adds it. There is no screen for
+  them. A manifest naming another job moves the
   agent to it; batches that had it on a task of the old job lose it there.
+- **The standard steps** (step 24): a batch with no tasks offers **Use the standard steps**,
+  which adds GBP Audit and Website Audit side by side, then Opportunity Finder (needing both),
+  then Email Writer (needing Opportunity Finder); one with some of them offers **Add the
+  missing standard steps** (tasks already there are kept). A task without an agent of its job
+  says **No agent does this job yet** with a link to Agents; the agent library lists agents
+  only, under their job, and says **No agents yet** with that link when there are none.
 - **A batch's tasks** (its **Tasks** tab, step 18): Owners and Admins press **+ Add a task**
-  and choose its **job** (only jobs some agent does), its **name** (the job's name unless
+  and choose its **job** (any job, with or without an agent yet: step 24), its **name** (the job's name unless
   changed) and what it **needs first**: other tasks of this batch, so the order can differ
   from batch to batch. A batch has a job once. A task can't need itself or make a circle, and
   can be removed only when no other task in the batch needs it; its name and needs can be
@@ -717,3 +727,9 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     Cities, Results, Lead files (views Leads and Files) and Settings; a city's leads stay
     under Cities. **Tests:** the tabs and views, old addresses, a city's leads under Cities,
     settings on their own tab, e2e.
+24. **Built-in jobs and the standard steps** (asked for after step 23): the jobs are known
+    before any agent connects; **Use the standard steps** / **Add the missing standard
+    steps** (`POST /batches/{id}/tasks/standard`); a task without an agent links to Agents;
+    the library lists agents only; the lead file form no longer says a Level column makes a
+    business Top. **Tests:** the built-in jobs in order without agents, a manifest joining one,
+    the standard steps added once and kept, rights, the Tasks tab before any agent.
