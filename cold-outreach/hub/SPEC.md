@@ -94,7 +94,6 @@ cold-outreach/
 | See Overview, Runs, Agents, Batches, Benchmarks, Leads; download leads as Excel | ✔ | ✔ | ✔ |
 | Make, rename or delete a batch; add and confirm its files | ✔ | ✔ | ✘ |
 | Choose a batch's tasks and agents, start or pause it, change the batches' running order | ✔ | ✔ | ✘ |
-| Make, change or delete a task | ✔ | ✔ | ✘ |
 | Change a lead's email, phone, website, Top mark or notes; delete a lead | ✔ | ✔ | ✘ |
 | Switch an agent on/off, press Run now or Stop | ✔ | ✔ | ✘ |
 | Change an agent's batches, limit, run time, budget and settings | ✔ | ✔ | ✘ |
@@ -141,8 +140,8 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 | `runs` | `agent_id`, `trigger` (`schedule`/`manual`), `status` (`queued`, `running`, `succeeded`, `failed`, `stopped`, `timed_out`), `queued_at`, `started_at`, `finished_at`, `heartbeat_at`, counts `done`/`failed`/`skipped`, `cost_usd`, `stop_reason`, `summary` JSON, `requested_by` |
 | `benchmarks` | `name` (unique, e.g. "Cleaning Benchmark 1"), `niche`, `gbp` JSON (the numbers of PLAN.md 3.5; a missing one isn't compared), `website` JSON (the Website Standard), `version` (raised by every change of either), `updated_by` |
 | `batches` | `name` (unique, typed by the team), `niche`, `benchmark_id` (required; empty only for leads moved in from before batches), `status` (`not_started`, `running`, `paused`), `position` (the running order), `created_by` |
-| `tasks` | `key` (e.g. `gbp-audit`), `name`, `about`, `needs` (the keys of the tasks it waits for) |
-| `batch_tasks` | a task in a batch: `batch_id`, `task_id`, `share` (`all` or `split`) |
+| `tasks` | the **jobs** agents do, made from their manifests: `key` (e.g. `gbp-audit`), `name` |
+| `batch_tasks` | a task in a batch: `batch_id`, `task_id` (its job), `name`, `needs` (the jobs of this batch's tasks it waits for), `share` (`all` or `split`) |
 | `batch_task_bots` | the agents doing it: `batch_task_id`, `agent_id`, `position` |
 | `lead_bot_shares` | for a `split` task, which agent each business went to: `lead_id`, `batch_task_id`, `agent_id` |
 | `imports` | `batch_id`, `file_name`, `niche`, `uploaded_by`, `status` (`preview`, `confirmed`, `failed`, `discarded`), counts, `preview` JSON, `errors` JSON, `sheet` JSON (every row of the file by tab: while waiting its cleaned values, original text and what happens to it; once confirmed only its tab, row number, Lead ID and what happened) |
@@ -191,8 +190,8 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 - **Manifest:** when it starts, an agent sends `PUT /api/agent/v1/manifest`:
   `name`, `version`, `description`, `settings` (each with `key`, `type` of `int`, `float`,
   `text`, `bool` or `choice`, `label`, `help`, `default`, `min`/`max`, `choices`),
-  `connections` it needs (Connections group ids), `task` (the key of the task it does,
-  section 6.7), `result_label` (what the Leads screen calls
+  `connections` it needs (Connections group ids), `task` and `task_name` (the key and name of
+  the job it does, section 6.7), `result_label` (what the Leads screen calls
   its results, e.g. "GBP"; its name when empty), and an estimated
   `cost_per_item_usd`. A manifest with unknown fields or connections, or a default outside its
   own limits, is refused. The Hub builds the agent's settings form from it; values set in the
@@ -418,20 +417,19 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 
 ### 6.7 Tasks, agents and the batch pipeline
 
-- A **task** is a job a batch can have done: a key (2–40 lower-case letters, digits and
-  dashes), a name, a line saying what it does, and the tasks it **needs first** (none means
-  it only needs the lead file). Owners and Admins make, change and delete tasks on the
-  **Tasks** screen. A task can't need itself or make a circle (A needs B needs A), and can't
-  be deleted while an agent does it or a batch uses it.
-- Every **agent** does **one task**, named by its manifest (`task`; its own key when
-  left out). When the Hub has no task with that key yet, it makes one (named from the key,
-  needing nothing) that Owners and Admins can then fill in. A manifest naming another task
-  moves the agent to it; batches that had chosen it for the old task lose it there.
-- **A batch's pipeline:** Owners and Admins add tasks to a batch and **one or more agents** to
-  each task (agents of that task only). A task can be added only when the tasks it needs are
-  in the batch, and removed only when no other task in the batch needs it. Tasks are shown
-  in **steps** worked out from what they need (step 1: tasks needing only the lead file;
-  next: tasks needing those …); tasks in one step run side by side.
+- Every **agent** does **one job**, named by its manifest (`task`, its own key when left
+  out, and `task_name`, e.g. "GBP Audit"). The Hub keeps the list of jobs from the agents'
+  manifests (`tasks`); there is no screen for them. A manifest naming another job moves the
+  agent to it; batches that had it on a task of the old job lose it there.
+- **A batch's tasks** (its **Tasks** tab, step 18): Owners and Admins press **+ Add a task**
+  and choose its **job** (only jobs some agent does), its **name** (the job's name unless
+  changed) and what it **needs first**: other tasks of this batch, so the order can differ
+  from batch to batch. A batch has a job once. A task can't need itself or make a circle, and
+  can be removed only when no other task in the batch needs it; its name and needs can be
+  changed. Each task gets **one or more agents** of its job only (from the agent library,
+  grouped by job, by dragging or **Add**, or **+ Add another agent**). Tasks are shown in
+  **steps** worked out from what they need (step 1: tasks needing only the lead file; next:
+  tasks needing those …); tasks in one step run side by side.
 - **How the agents of one task share the work** (chosen per task in the batch):
   - **Every agent checks every business** (`all`): each agent does every lead, e.g. two GBP
     audits whose results are compared. The task is done for a lead when every one of its
@@ -480,7 +478,7 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    niche has none), each with its status, agents and progress, and up and down buttons for the
    running order, and **Find a business** (section 6.4 item 12) above them. A batch (its own
    address, `/batches?batch=<id>&tab=<tab>`) opens to **Start**/**Pause** and tabs:
-   **Tasks and agents** (the agent library grouped by task on the left, which can be
+   **Tasks** (the agent library grouped by job on the left, which can be
    dragged or added; the steps with each task's agents, their progress, ✕ to remove, **+ Add
    another agent**, how the agents share the work, and **+ Add a task**), **Leads** (section
    6.4 item 9, with the lead window of item 10), **Cities** (item 8), **Results** (section
@@ -494,11 +492,11 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    5. switch it on (Agents);
    6. start the batch.
    The Hub says plainly when only the demo agent exists. `/import` opens Batches.
-5. **Tasks** (after Batches): every task with what it needs first, the agents that do it and
-   the batches that use it; **+ New task**, Edit, Delete (when unused).
+5. Tasks have **no menu item**: they are made in each batch's Tasks tab (step 18).
 6. Leads have **no menu item** of their own: they are in their batch (step 15).
    `/leads?batch=<id>` opens that batch's Leads tab.
-7. **Agents:** one card per agent: on/off switch, its task and the running batches using it
+7. **Agents:** one card per agent: on/off switch, **Does:** its job, **Used in:** the batches
+   and tasks it is on (running ones first),
    (or a warning when none), last run, next run, today's cost, Run now, Stop; **Settings**
    opens the form: limits and the manifest's settings. A card says where the agent is in its
    setup (waiting for its first connection, connected, not in a running batch, ready), and
@@ -517,7 +515,8 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 `/agents` (+ `/{key}/enabled`, `/{key}/run`, `/{key}/stop`, `/{key}/token`), `/runs`,
 `/overview`, `/budget`, `/benchmarks` (+ `/{id}`), `/batches` (+ `/{id}`, `/order`,
 `/{id}/start`, `/{id}/pause`, `/{id}/tasks` (+ `/{task_id}`, `/{task_id}/bots`,
-`/{task_id}/bots/{key}`), `/{id}/progress`, `/{id}/results`), `/tasks` (+ `/{id}`), `/imports`
+`/{task_id}/bots/{key}`), `/{id}/progress`, `/{id}/results`), `/tasks` (the jobs and their
+agents), `/imports`
 (upload into a batch → preview, `?batch_id=`, `/{id}/confirm`, `/{id}/discard`, `/{id}/sheet`,
 `DELETE /{id}` and `/{id}/deletion` (what would go)), `/niches`, `/leads` (+ `/export`,
 `/{lead_id}`, `/{lead_id}/files/{id}`), `/batches/{id}/cities` (+ `PUT` all on or off),
@@ -658,3 +657,10 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     never change Top (a Level column is kept as another column). **Tests:** marking and
     unmarking with do-not-contact, rights, the 500 limit, sorting with odd values, a file
     with a Level column changing nobody's Top, agents not getting Top leads.
+18. **Tasks made in the batch** (asked for after step 17): the Tasks menu item goes; jobs
+    come from the agents' manifests (`task_name`); a batch's Tasks tab adds a task by job,
+    name and what it needs first in that batch; agents only on tasks of their job; the
+    Agents screen says what each agent does and where it is used. Migration `0015` moves
+    each job's needs into the batches that use it. **Tests:** adding, renaming and changing
+    a task's needs in one batch without touching another, circles and missing needs refused,
+    readiness from the batch's needs, the migration, rights, e2e.
