@@ -10,7 +10,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,7 @@ from app.db.models import (
     BatchTaskBot,
     Lead,
     LeadBotShare,
+    LeadList,
     ShareMode,
     Task,
 )
@@ -172,10 +173,18 @@ class Pipeline:
                 self.keys[agent_id] = agent.key
 
     def leads(self) -> list[Lead]:
+        """The batch's leads agents may work on: not Top, and in a city switched on."""
+        off = select(func.lower(LeadList.city)).where(
+            LeadList.batch_id == self.batch.id, LeadList.active.is_(False)
+        )
         return list(
             self.db.scalars(
                 select(Lead)
-                .where(Lead.batch_id == self.batch.id, Lead.level != "Top")
+                .where(
+                    Lead.batch_id == self.batch.id,
+                    Lead.level != "Top",
+                    func.lower(Lead.city).not_in(off),
+                )
                 .order_by(Lead.lead_id)
             )
         )

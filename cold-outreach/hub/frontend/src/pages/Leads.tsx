@@ -3,15 +3,12 @@ import {
   api,
   ApiError,
   leadQuery,
-  type Batch,
   type LeadDetail,
   type LeadFilters,
-  type LeadList,
   type LeadPage,
   type LeadPatch,
 } from "../api";
 import { Alert, Field, Modal } from "../components/ui";
-import { useAuth } from "../auth";
 import { when } from "../format";
 
 // Leads (SPEC sections 6.4 and 7): every business the Hub keeps, like a spreadsheet. Search,
@@ -26,36 +23,13 @@ const SORTS: [NonNullable<LeadFilters["sort"]>, string][] = [
   ["city", "City"],
 ];
 
-function startFilters(): LeadFilters {
-  const batch = new URLSearchParams(window.location.search).get("batch");
-  return batch ? { batch_id: batch } : {};
-}
-
-export function Leads() {
-  const { user } = useAuth();
-  const [filters, setFilters] = useState<LeadFilters>(startFilters);
-  const [lists, setLists] = useState<LeadList[]>([]);
-  const [typed, setTyped] = useState({ q: "", city: "" });
-  const [batches, setBatches] = useState<Batch[]>([]);
+/** A batch's leads (SPEC section 6.4 item 9): its own tab on the batch page. */
+export function BatchLeads({ batchId, city = "" }: { batchId: string; city?: string }) {
+  const [filters, setFilters] = useState<LeadFilters>({ batch_id: batchId, city });
+  const [typed, setTyped] = useState({ q: "", city });
   const [data, setData] = useState<LeadPage | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    api
-      .batches()
-      .then(setBatches)
-      .catch(() => setBatches([]));
-  }, []);
-
-  const loadLists = useCallback(() => {
-    api
-      .lists()
-      .then(setLists)
-      .catch(() => setLists([]));
-  }, []);
-  useEffect(loadLists, [loadLists]);
-  const staff = user?.role === "owner" || user?.role === "admin";
 
   const load = useCallback(() => {
     api
@@ -80,29 +54,8 @@ export function Leads() {
   const sortValue = filters.sort === "score" ? `score:${filters.score_of}` : (filters.sort ?? "");
 
   return (
-    <section className="page">
-      <div className="page-head">
-        <h1>Leads</h1>
-        <a className="button" href={`/api/leads/export${leadQuery(shown)}`} download>
-          Download Excel
-        </a>
-      </div>
-      <form className="row filters" onSubmit={search} aria-label="Find leads">
-        <div className="field">
-          <label htmlFor="leads-batch">Batch</label>
-          <select
-            id="leads-batch"
-            value={filters.batch_id ?? ""}
-            onChange={(e) => change({ batch_id: e.target.value })}
-          >
-            <option value="">All batches</option>
-            {batches.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </div>
+    <div className="stack">
+      <form className="filters-row" onSubmit={search} aria-label="Find leads">
         <Field
           label="Search"
           placeholder="Name, email, phone, website…"
@@ -170,6 +123,14 @@ export function Leads() {
           </span>
           <button className="button">Search</button>
         </div>
+        <div className="field">
+          <span className="label-spacer" aria-hidden="true">
+            &nbsp;
+          </span>
+          <a className="button" href={`/api/leads/export${leadQuery(shown)}`} download>
+            Download Excel
+          </a>
+        </div>
       </form>
       {error && <Alert kind="error">{error}</Alert>}
       {data && (
@@ -180,7 +141,7 @@ export function Leads() {
       )}
       {data?.total === 0 && <p className="muted">No leads match.</p>}
       {data && data.leads.length > 0 && (
-        <div className="card table-card table-scroll">
+        <div className="card table-card table-scroll table-tall">
           <table className="table leads-table">
             <thead>
               <tr>
@@ -263,8 +224,7 @@ export function Leads() {
           onChanged={load}
         />
       )}
-      <Lists lists={lists} staff={staff} onChange={loadLists} />
-    </section>
+    </div>
   );
 }
 
@@ -538,70 +498,5 @@ export function LeadDialog({
         </div>
       )}
     </Modal>
-  );
-}
-
-function Lists({
-  lists,
-  staff,
-  onChange,
-}: {
-  lists: LeadList[];
-  staff: boolean;
-  onChange: () => void;
-}) {
-  const [error, setError] = useState("");
-  if (lists.length === 0) return null;
-
-  async function toggle(item: LeadList, active: boolean) {
-    setError("");
-    try {
-      await api.updateList(item.id, { active });
-      onChange();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Not saved.");
-    }
-  }
-
-  return (
-    <div className="card table-card">
-      {error && <Alert kind="error">{error}</Alert>}
-      <table className="table">
-        <caption className="table-caption">
-          Lists: switch one off and the agents leave its businesses alone
-        </caption>
-        <thead>
-          <tr>
-            <th>City</th>
-            <th>Niche</th>
-            <th>Businesses</th>
-            <th>Top</th>
-            <th>On</th>
-          </tr>
-        </thead>
-        <tbody>
-          {lists.map((item) => (
-            <tr key={item.id} className={item.active ? undefined : "row-muted"}>
-              <td>{item.city}</td>
-              <td>{item.niche}</td>
-              <td>{item.leads}</td>
-              <td>{item.top}</td>
-              <td>
-                <label className="switch">
-                  <input
-                    type="checkbox"
-                    role="switch"
-                    checked={item.active}
-                    disabled={!staff}
-                    aria-label={`${item.city} · ${item.niche} on or off`}
-                    onChange={(e) => void toggle(item, e.target.checked)}
-                  />
-                </label>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
   );
 }

@@ -9,7 +9,7 @@ from openpyxl import Workbook
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import DoNotContact, Import, Lead, LeadList, Role, User
+from app.db.models import AuditEntry, Batch, DoNotContact, Import, Lead, LeadList, Role, User
 from app.imports import reader
 from tests.conftest import UserFactory, sign_in
 from tests.hub_data import batch_id
@@ -278,8 +278,11 @@ def test_confirm_gives_ids_keeps_the_rows_and_protects_top_leads(
         ("phone", "9185550000"),
         ("email", "boss@ts.com"),
     }
-    lists = {(x.city, x.niche) for x in db.scalars(select(LeadList))}
-    assert lists == {("Tulsa", "Cleaning"), ("Dallas", "Cleaning")}
+    lists = {(x.city, x.niche, str(x.batch_id)) for x in db.scalars(select(LeadList))}
+    assert lists == {
+        ("Tulsa", "Cleaning", preview["batch_id"]),
+        ("Dallas", "Cleaning", preview["batch_id"]),
+    }
     assert db.get(Import, preview["id"]).rows == []  # type: ignore[union-attr]
 
 
@@ -388,16 +391,38 @@ def test_viewers_see_but_cannot_import(
     assert denied.status_code == 403
 
 
-def test_lists_count_leads_and_can_be_switched_off(client: TestClient, owner: User) -> None:
+def test_a_batchs_cities_count_leads_and_can_be_switched_off(
+    client: TestClient, owner: User
+) -> None:
     preview = upload(client, workbook(FILE))
     client.post(f"/api/imports/{preview['id']}/confirm")
+    url = f"/api/batches/{preview['batch_id']}/cities"
 
-    lists = {x["city"]: x for x in client.get("/api/lists").json()}
-    tulsa = lists["Tulsa"]
+    cities = {x["city"]: x for x in client.get(url).json()}
+    tulsa = cities["Tulsa"]
     changed = client.patch(f"/api/lists/{tulsa['id']}", json={"active": False, "daily_limit": 20})
 
     assert (tulsa["leads"], tulsa["top"]) == (3, 1)
     assert changed.json() | {"active": False, "daily_limit": 20} == changed.json()
+    off = client.put(url, json={"active": False}).json()
+    assert [x["active"] for x in off] == [False, False]
+    assert all(x["active"] for x in client.put(url, json={"active": True}).json())
+
+
+def test_the_same_city_in_two_batches_is_switched_separately(
+    client: TestClient, owner: User
+) -> None:
+    for batch, content in (
+        ("Batch 1", {"Tulsa": [STANDARD, row("A", "https://share.google/a", "1")]}),
+        ("Batch 2", {"Tulsa": [STANDARD, row("B", "https://share.google/b", "2")]}),
+    ):
+        client.post(f"/api/imports/{upload(client, workbook(content), batch)['id']}/confirm")
+    first, second = batch_id(client, "Batch 1"), batch_id(client, "Batch 2")
+    tulsa = client.get(f"/api/batches/{first}/cities").json()[0]
+
+    client.patch(f"/api/lists/{tulsa['id']}", json={"active": False})
+
+    assert client.get(f"/api/batches/{second}/cities").json()[0]["active"] is True
 
 
 # --- the file tab by tab (step 14) ------------------------------------------------------------
@@ -520,3 +545,78 @@ def test_viewers_see_the_file_but_signed_out_people_do_not(
     assert client.get(f"/api/imports/{preview['id']}/sheet").status_code == 200
     client.post("/api/auth/logout")
     assert client.get(f"/api/imports/{preview['id']}/sheet").status_code == 401
+
+
+# --- deleting a file (step 15) ----------------------------------------------------------------
+
+
+def test_deleting_a_file_takes_the_leads_it_brought_in_first(
+    client: TestClient, owner: User, db: Session
+) -> None:
+    first = upload(client, workbook(FILE))
+    client.post(f"/api/imports/{first['id']}/confirm")
+    later = {
+        "Tulsa": [
+            STANDARD,
+            row("Multi-Clean", "https://share.google/mc", "", "new@mc.com"),  # known: stays
+            row("Fresh Co", "https://share.google/fc", "(918) 555-7777"),  # new: goes
+        ],
+        "Austin": [STANDARD, row("Austin Co", "https://share.google/ac", "1", city="Austin")],
+    }
+    second = upload(client, workbook(later))
+    client.post(f"/api/imports/{second['id']}/confirm")
+
+    what = client.get(f"/api/imports/{second['id']}/deletion").json()
+    assert what == {"leads_going": 2, "leads_staying": 1, "batch_running": False}
+    assert client.delete(f"/api/imports/{second['id']}").status_code == 204
+
+    assert sorted(leads(client)) == ["L-000001", "L-000002", "L-000003", "L-000004"]
+    cities = [x["city"] for x in client.get(f"/api/batches/{first['batch_id']}/cities").json()]
+    assert cities == ["Dallas", "Tulsa"]  # Austin had no leads left
+    assert [i["id"] for i in client.get("/api/imports").json()] == [first["id"]]
+    entry = db.scalar(
+        select(AuditEntry).where(AuditEntry.entity == "import", AuditEntry.action == "delete")
+    )
+    assert entry is not None and entry.title == "leads.xlsx"
+    # The Top lead's do-not-contact entries stay when its file goes.
+    assert client.delete(f"/api/imports/{first['id']}").status_code == 204
+    assert leads(client) == {}
+    assert db.scalar(select(DoNotContact).where(DoNotContact.value == "boss@ts.com"))
+
+
+def test_a_file_cant_be_deleted_while_its_batch_runs(
+    client: TestClient, owner: User, db: Session
+) -> None:
+    preview = upload(client, workbook(FILE))
+    assert client.delete(f"/api/imports/{preview['id']}").json()["error"]["code"] == "waiting"
+    client.post(f"/api/imports/{preview['id']}/confirm")
+    batch = db.get(Batch, preview["batch_id"])
+    assert batch is not None
+    batch.status = "running"
+    db.commit()
+
+    refused = client.delete(f"/api/imports/{preview['id']}")
+
+    assert (refused.status_code, refused.json()["error"]["code"]) == (409, "batch_running")
+    assert client.get(f"/api/imports/{preview['id']}/deletion").json()["batch_running"] is True
+    batch.status = "paused"
+    db.commit()
+    assert client.delete(f"/api/imports/{preview['id']}").status_code == 204
+
+
+def test_viewers_cannot_delete_files_or_switch_cities(
+    client: TestClient, owner: User, make_user: UserFactory
+) -> None:
+    preview = upload(client, workbook(FILE))
+    client.post(f"/api/imports/{preview['id']}/confirm")
+    city = client.get(f"/api/batches/{preview['batch_id']}/cities").json()[0]
+    viewer = make_user(Role.VIEWER, name="Vic")
+    sign_in(client, viewer.email)
+
+    assert client.get(f"/api/batches/{preview['batch_id']}/cities").status_code == 200
+    assert client.delete(f"/api/imports/{preview['id']}").status_code == 403
+    assert client.patch(f"/api/lists/{city['id']}", json={"active": False}).status_code == 403
+    assert (
+        client.put(f"/api/batches/{preview['batch_id']}/cities", json={"active": False}).status_code
+        == 403
+    )

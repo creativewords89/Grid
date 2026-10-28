@@ -5,7 +5,7 @@ import path from "node:path";
 
 // The Hub's main flow on a brand-new install (SPEC section 12, steps 9 to 11): create the
 // Owner → a benchmark → a batch and its file → the leads, in the Hub and as Excel → the demo
-// agent works on the batch and saves its results → Leads, Runs and History.
+// agent works on the batch and saves its results → the batch's Leads, Runs and History.
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
 const RUN = path.join(HERE, "..", ".run");
@@ -127,21 +127,32 @@ test("a batch is made and a lead file is read, checked and saved in the Hub", as
   );
 });
 
-test("the leads are on the Leads screen and download as Excel", async () => {
+test("the leads are in their batch and download as Excel", async () => {
   await page
     .getByRole("navigation", { name: "Main" })
-    .getByRole("link", { name: "Leads" })
+    .getByRole("link", { name: "Batches" })
     .click();
+  // Find a business in every batch.
+  const find = page.getByRole("form", { name: "Find a business" });
+  await find.getByLabel("Find a business in every batch").fill("maid pro");
+  await find.getByRole("button", { name: "Find" }).click();
+  await expect(page.getByText("1 found")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Texas November", exact: true })
+    .first()
+    .click();
+  await page.getByRole("tab", { name: "Cities" }).click();
+  await expect(
+    page.getByRole("switch", { name: "Tulsa on or off" }),
+  ).toBeChecked();
+  await page.getByRole("tab", { name: "Leads" }).click();
   await expect(page.getByText("4 leads")).toBeVisible();
-  // Every field of the file side by side, and the lists below.
+  // Every field of the file side by side.
   await expect(
     page.getByRole("row", {
       name: /^Lead ID Business name GBP link Address City Website Phone WhatsApp Email Facebook Instagram Reviews Rating Level Notes Batch/,
     }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("switch", { name: "Tulsa · Cleaning on or off" }),
-  ).toBeChecked();
   await page.getByRole("button", { name: "Sparkle Home Cleaning" }).click();
   const dialog = page.getByRole("dialog", { name: "Sparkle Home Cleaning" });
   // The duplicate rows were merged into one lead with both emails; tracking was removed.
@@ -243,11 +254,15 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
   // Three leads audited; the Top one is never handed out.
   await expect(card.getByText(/3 done/)).toBeVisible();
 
-  // Its results are on the Leads screen, and can be sorted by.
+  // Its results are on the batch's Leads tab, and can be sorted by.
   await page
     .getByRole("navigation", { name: "Main" })
-    .getByRole("link", { name: "Leads" })
+    .getByRole("link", { name: "Batches" })
     .click();
+  await page
+    .getByRole("button", { name: "Texas November", exact: true })
+    .click();
+  await page.getByRole("tab", { name: "Leads" }).click();
   await page
     .getByLabel("Sort by")
     .selectOption({ label: "Demo score (best first)" });
@@ -256,13 +271,7 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
   await expect(scored.getByRole("cell").last()).toHaveText(/^\d+$/);
 
   // And on the batch's Results tab, for that agent; the setup guide is gone.
-  await page
-    .getByRole("navigation", { name: "Main" })
-    .getByRole("link", { name: "Batches" })
-    .click();
-  await page
-    .getByRole("button", { name: "Texas November", exact: true })
-    .click();
+  await page.getByRole("tab", { name: "Tasks and agents" }).click();
   await expect(page.getByRole("region", { name: "Setup guide" })).toHaveCount(
     0,
   );

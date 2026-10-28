@@ -176,3 +176,54 @@ def test_agents_batch_lists_become_pipelines(fresh_database_url: str) -> None:
     ]
     assert bots == [("Batch 2",), ("Batch 0",)]
     assert back == [c, a]
+
+
+def test_city_niche_lists_go_into_each_batch_with_leads_there(fresh_database_url: str) -> None:
+    """Step 15: cities are switched per batch; a list keeps its on or off in each batch."""
+    cfg = alembic_config(fresh_database_url)
+    command.upgrade(cfg, "0012")
+    engine = create_engine(fresh_database_url)
+    one, two = "00000000-0000-0000-0000-00000000000a", "00000000-0000-0000-0000-00000000000b"
+    try:
+        with engine.begin() as conn:
+            for batch, name in ((one, "One"), (two, "Two")):
+                conn.execute(
+                    text("INSERT INTO batches (id, name, niche) VALUES (:id, :n, 'Cleaning')"),
+                    {"id": batch, "n": name},
+                )
+            for lead_id, batch, city in (
+                ("L-000001", one, "Tulsa"),
+                ("L-000002", two, "tulsa"),
+                ("L-000003", two, "Dallas"),
+            ):
+                conn.execute(
+                    text(
+                        "INSERT INTO leads (lead_id, batch_id, niche, city, business_name) "
+                        "VALUES (:id, :batch, 'Cleaning', :city, 'X')"
+                    ),
+                    {"id": lead_id, "batch": batch, "city": city},
+                )
+            conn.execute(
+                text(
+                    "INSERT INTO lists (id, city, niche, active) VALUES "
+                    "('00000000-0000-0000-0000-000000000001', 'Tulsa', 'Cleaning', false), "
+                    "('00000000-0000-0000-0000-000000000002', 'Dallas', 'Cleaning', true), "
+                    "('00000000-0000-0000-0000-000000000003', 'Austin', 'Cleaning', true)"
+                )
+            )
+        command.upgrade(cfg, "head")
+        with engine.connect() as conn:
+            moved = conn.execute(
+                text(
+                    "SELECT b.name, l.city, l.active FROM lists l JOIN batches b "
+                    "ON b.id = l.batch_id ORDER BY b.name, l.city"
+                )
+            ).all()
+        command.downgrade(cfg, "0012")
+        with engine.connect() as conn:
+            back = conn.execute(text("SELECT city, active FROM lists ORDER BY city")).all()
+    finally:
+        engine.dispose()
+
+    assert moved == [("One", "Tulsa", False), ("Two", "Dallas", True), ("Two", "Tulsa", False)]
+    assert back == [("Dallas", True), ("Tulsa", False)]

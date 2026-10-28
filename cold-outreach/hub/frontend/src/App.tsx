@@ -8,7 +8,6 @@ import { Connections } from "./pages/Connections";
 import { FirstRun } from "./pages/FirstRun";
 import { Forgot } from "./pages/Forgot";
 import { History } from "./pages/History";
-import { Leads } from "./pages/Leads";
 import { Overview } from "./pages/Overview";
 import { Profile } from "./pages/Profile";
 import { Runs } from "./pages/Runs";
@@ -45,10 +44,10 @@ function Routes() {
   else if (path === "/history" && user.role === "owner") page = <History />;
   else if (path === "/agents") page = <Agents />;
   else if (path === "/runs") page = <Runs />;
-  else if (path === "/batches" || path === "/import") page = <Batches />;
+  // A batch's leads are in the batch: /leads?batch=<id> opens its Leads tab.
+  else if (path === "/batches" || path === "/import" || path === "/leads") page = <Batches />;
   else if (path === "/benchmarks") page = <Benchmarks />;
   else if (path === "/tasks") page = <Tasks />;
-  else if (path === "/leads") page = <Leads />;
   else if (path === "/profile") page = <Profile />;
   else page = <Overview />;
   return <Shell path={path}>{page}</Shell>;

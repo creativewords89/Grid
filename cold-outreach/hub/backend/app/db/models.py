@@ -339,17 +339,19 @@ class LeadFile(Base):
 
 
 class LeadList(TimestampMixin, Base):
-    """One City + Niche (SPEC section 5): switched off, its leads are left alone."""
+    """A city of a batch (SPEC section 6.4): switched off, its leads in that batch are
+    left alone."""
 
     __tablename__ = "lists"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    batch_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("batches.id", ondelete="CASCADE"))
     city: Mapped[str] = mapped_column(String(120))
     niche: Mapped[str] = mapped_column(String(80))
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     daily_limit: Mapped[int | None] = mapped_column(Integer)
 
-    __table_args__ = (Index("uq_lists_city_niche", "city", "niche", unique=True),)
+    __table_args__ = (Index("uq_lists_batch_city", "batch_id", func.lower(city), unique=True),)
 
 
 class DoNotContact(Base):
