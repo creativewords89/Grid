@@ -1,8 +1,9 @@
-"""Tasks, bots and a batch's pipeline (SPEC section 6.7).
+"""Jobs, agents and a batch's pipeline (SPEC section 6.7).
 
-A batch has tasks, each done by one or more bots. Every business moves on by itself: a lead
-is ready for a bot once each task it needs is done for that lead. A task's bots either all
-check every lead (`all`) or split the leads between them (`split`).
+Each agent does one job. A batch has tasks, each of one job, with what it needs first in
+that batch, done by one or more agents of that job. Every business moves on by itself: a
+lead is ready for an agent once each task it needs is done for that lead. A task's agents
+either all check every lead (`all`) or split the leads between them (`split`).
 """
 
 import uuid
@@ -30,13 +31,20 @@ from app.db.models import (
 FINISHED = ("done", "skipped")
 
 
-def task_for_key(db: Session, key: str) -> Task:
-    """The task with this key, made (named from the key, needing nothing) when it is new."""
+def job_name(key: str) -> str:
+    """A job's name from its key when the manifest gives none: "gbp-audit" → "Gbp Audit"."""
+    return " ".join(part.capitalize() for part in key.split("-"))[:80]
+
+
+def task_for_key(db: Session, key: str, name: str = "") -> Task:
+    """The job with this key, made when it is new; the manifest's name wins when given."""
     task = db.scalar(select(Task).where(Task.key == key))
     if task is None:
-        task = Task(key=key, name=key.replace("-", " ").capitalize()[:80], about="", needs=[])
+        task = Task(key=key, name=name[:80] or job_name(key))
         db.add(task)
         db.flush()
+    elif name and task.name != name[:80]:
+        task.name = name[:80]
     return task
 
 
@@ -80,9 +88,9 @@ def remove_bot(db: Session, slot: BatchTask, agent: Agent) -> None:
     db.expire(slot, ["bots"])
 
 
-def creates_circle(db: Session, key: str, needs: Iterable[str]) -> bool:
-    """Whether giving task `key` these needs would make it wait for itself."""
-    graph = {task.key: list(task.needs or []) for task in db.scalars(select(Task))}
+def creates_circle(slots: list[BatchTask], key: str, needs: Iterable[str]) -> bool:
+    """Whether giving the batch's task of job `key` these needs makes it wait for itself."""
+    graph = {slot.task.key: list(slot.needs or []) for slot in slots}
     graph[key] = list(needs)
     seen: set[str] = set()
     todo = list(needs)
@@ -97,22 +105,22 @@ def creates_circle(db: Session, key: str, needs: Iterable[str]) -> bool:
     return False
 
 
-def steps(tasks: list[Task]) -> dict[str, int]:
-    """Each task's step in a batch: 1 for tasks needing only the lead file, then one more
-    than the latest step among the tasks it needs."""
-    by_key = {task.key: task for task in tasks}
+def steps(slots: list[BatchTask]) -> dict[str, int]:
+    """Each task's step in a batch (by job key): 1 for tasks needing only the lead file,
+    then one more than the latest step among the tasks it needs."""
+    needs_of = {slot.task.key: list(slot.needs or []) for slot in slots}
     out: dict[str, int] = {}
 
     def step(key: str, path: frozenset[str]) -> int:
         if key in out:
             return out[key]
-        needs = [n for n in by_key[key].needs or [] if n in by_key and n not in path]
+        needs = [n for n in needs_of[key] if n in needs_of and n not in path]
         value = 1 + max((step(n, path | {key}) for n in needs), default=0)
         out[key] = value
         return value
 
-    for task in tasks:
-        step(task.key, frozenset())
+    for key in needs_of:
+        step(key, frozenset())
     return out
 
 
@@ -200,9 +208,7 @@ class Pipeline:
 
     def needs_done(self, lead: Lead, slot: BatchTask) -> bool:
         return all(
-            self.task_done(lead, self.by_key[key])
-            for key in slot.task.needs or []
-            if key in self.by_key
+            self.task_done(lead, self.by_key[key]) for key in slot.needs or [] if key in self.by_key
         )
 
     def slot_of(self, agent: Agent) -> BatchTask | None:
@@ -317,14 +323,14 @@ def running_batches_for(db: Session, agent: Agent) -> list[Batch]:
     )
 
 
-def batches_using(db: Session, agent: Agent) -> list[Batch]:
-    """Every batch that chose this bot, in the running order."""
-    return list(
-        db.scalars(
-            select(Batch)
-            .join(BatchTask, BatchTask.batch_id == Batch.id)
-            .join(BatchTaskBot, BatchTaskBot.batch_task_id == BatchTask.id)
-            .where(BatchTaskBot.agent_id == agent.id)
-            .order_by(Batch.position, Batch.created_at)
-        )
+def tasks_using(db: Session, agent: Agent) -> list[tuple[Batch, str]]:
+    """Every batch that chose this agent and the name of its task there, running order."""
+    rows = db.execute(
+        select(Batch, BatchTask.name, Task.name)
+        .join(BatchTask, BatchTask.batch_id == Batch.id)
+        .join(Task, Task.id == BatchTask.task_id)
+        .join(BatchTaskBot, BatchTaskBot.batch_task_id == BatchTask.id)
+        .where(BatchTaskBot.agent_id == agent.id)
+        .order_by(Batch.position, Batch.created_at)
     )
+    return [(batch, name or job) for batch, name, job in rows]

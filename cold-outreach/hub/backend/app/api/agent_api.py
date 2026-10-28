@@ -60,7 +60,8 @@ def put_manifest(body: dict[str, Any], agent: CurrentAgent, db: Db) -> dict[str,
             422, "bad_manifest", f"Manifest: {where} {first.get('msg')}".strip()
         ) from None
     agent.manifest = manifest.model_dump(mode="json")
-    pipeline.set_agent_task(db, agent, pipeline.task_for_key(db, manifest.task or agent.key))
+    job = pipeline.task_for_key(db, manifest.task or agent.key, manifest.task_name)
+    pipeline.set_agent_task(db, agent, job)
     db.commit()
     return {"ok": True, "config": service.config_of(agent)}
 
@@ -244,7 +245,7 @@ def batch_leads(batch_id: uuid.UUID, agent: CurrentAgent, db: Db) -> list[dict[s
     assert slot is not None
     before = [
         bot.agent.key
-        for key in slot.task.needs or []
+        for key in slot.needs or []
         if key in flow.by_key
         for bot in flow.by_key[key].bots
     ]

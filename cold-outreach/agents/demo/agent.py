@@ -4,8 +4,9 @@ and "audits" each by waiting a moment. Only Python's standard library is needed.
 
     HUB_URL=http://localhost:8000 AGENT_TOKEN=hub_agent_… python agent.py
 
-`AGENT_TASK` names the task it pretends to do (its own key when unset), so several demo
-agents can try a batch's pipeline: e.g. `gbp-audit`, `website-audit`, `opportunity`.
+`AGENT_TASK` names the job it pretends to do (its own key when unset) and `AGENT_TASK_NAME`
+the job's name in the Hub, so several demo agents can try a batch's tasks: e.g.
+`AGENT_TASK=gbp-audit AGENT_TASK_NAME="GBP Audit"`.
 
 Every real agent follows the same steps:
 1. send its manifest when it starts (PUT /api/agent/v1/manifest);
@@ -63,6 +64,7 @@ MANIFEST = {
     ],
     "connections": [],
     "task": os.environ.get("AGENT_TASK", ""),
+    "task_name": os.environ.get("AGENT_TASK_NAME", ""),
     "result_label": "Demo",
     "cost_per_item_usd": 0.001,
 }

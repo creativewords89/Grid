@@ -32,7 +32,7 @@ export function StartCommands({ agentKey, token }: { agentKey: string; token: st
     <div className="stack">
       <p className="small">
         Run one of these on the server (in the Hub&apos;s folder). Within a minute the agent shows{" "}
-        <strong>Connected</strong> and says which task it does.
+        <strong>Connected</strong> and says which job it does.
       </p>
       <Command label="Demo agent (pretends to work, for trying the Hub)" text={commands.demo} />
       <Command
@@ -75,14 +75,14 @@ export function SetupGuide({
       to: "/agents",
     },
     {
-      title: "It connects and says which task it does",
+      title: "It connects and says which job it does",
       done: connected.some((a) => a.task !== null),
-      help: "It then appears in the agent library on the left, under its task.",
+      help: "It then appears in the agent library on the left, under its job.",
     },
     {
-      title: "Add it to this batch's task",
+      title: "Add a task for it to this batch",
       done: inBatch.size > 0,
-      help: "Press Add next to it on the left, or drag it onto its task.",
+      help: "Press + Add a task, choose its job, then add the agent (or press Add next to it on the left).",
     },
     {
       title: "Switch it on",

@@ -27,11 +27,29 @@ def bot(client: TestClient, key: str, task: str) -> str:
     return token
 
 
-def task(client: TestClient, key: str, name: str, needs: list[str] | None = None) -> Any:
-    existing = [t for t in client.get("/api/tasks").json() if t["key"] == key]
-    if existing:
-        return client.patch(f"/api/tasks/{existing[0]['id']}", json={"needs": needs or []})
-    return client.post("/api/tasks", json={"key": key, "name": name, "needs": needs or []})
+def add_task(
+    client: TestClient,
+    batch: str,
+    job: str,
+    needs: list[str] | None = None,
+    name: str | None = None,
+) -> Any:
+    """Add a task of this job to the batch, needing the batch's tasks of these jobs."""
+    body: dict[str, Any] = {
+        "task_id": task_id_of(client, job),
+        "needs": [task_id_of(client, key) for key in needs or []],
+    }
+    if name is not None:
+        body["name"] = name
+    return client.post(f"/api/batches/{batch}/tasks", json=body)
+
+
+def tasks_of(client: TestClient, batch: str) -> list[tuple[int, str, list[str]]]:
+    """(step, name, needs) of each task of the batch."""
+    steps = client.get(f"/api/batches/{batch}/pipeline").json()["steps"]
+    return [
+        (s["step"], t["name"], [n["name"] for n in t["needs"]]) for s in steps for t in s["tasks"]
+    ]
 
 
 def leads(db: Session, batch: str, count: int, top: int = 0) -> None:
@@ -64,45 +82,87 @@ def result(client: TestClient, token: str, lead: str, outcome: str = "done", **e
 # --- tasks ----------------------------------------------------------------------------------
 
 
-def test_a_bot_names_its_task_and_the_hub_makes_it(client: TestClient, owner: User) -> None:
+def test_an_agent_names_its_job_and_the_hub_keeps_it(client: TestClient, owner: User) -> None:
     bot(client, "gbp-1", "gbp-audit")
-    bot(client, "plain", "")  # no task named: its own key
+    bot(client, "plain", "")  # no job named: its own key
+    token = add_agent(client, "web-1")
+    agent_call(
+        client,
+        "PUT",
+        "/manifest",
+        token,
+        dict(MANIFEST, task="website-audit", task_name="Website Audit"),
+    )
 
-    tasks = {t["key"]: t for t in client.get("/api/tasks").json()}
+    jobs = {t["key"]: t for t in client.get("/api/tasks").json()}
 
-    assert tasks["gbp-audit"]["name"] == "Gbp audit"
-    assert [b["key"] for b in tasks["gbp-audit"]["bots"]] == ["gbp-1"]
-    assert [b["key"] for b in tasks["plain"]["bots"]] == ["plain"]
-    agent = next(a for a in client.get("/api/agents").json() if a["key"] == "gbp-1")
-    assert agent["task"] == {"key": "gbp-audit", "name": "Gbp audit"}
-
-
-def test_tasks_need_known_tasks_without_circles(client: TestClient, owner: User) -> None:
-    assert task(client, "gbp-audit", "GBP Audit").status_code == 201
-    assert task(client, "opportunity", "Opportunity Finder", ["gbp-audit"]).status_code == 201
-
-    assert task(client, "x", "X", ["nothing"]).status_code == 422
-    circle = task(client, "gbp-audit", "GBP Audit", ["opportunity"])
-    assert (circle.status_code, circle.json()["error"]["code"]) == (422, "circle")
-    itself = task(client, "gbp-audit", "GBP Audit", ["gbp-audit"])
-    assert itself.status_code == 422
-    taken = client.post("/api/tasks", json={"key": "gbp-audit", "name": "Other"})
-    assert taken.status_code == 409
-    listed = client.get("/api/tasks").json()
-    assert [t["key"] for t in listed] == ["gbp-audit", "opportunity"]  # by step
-    assert listed[1]["needs"] == [{"key": "gbp-audit", "name": "GBP Audit"}]
+    assert jobs["gbp-audit"]["name"] == "Gbp Audit"  # from the key
+    assert jobs["website-audit"]["name"] == "Website Audit"  # from the manifest
+    assert [b["key"] for b in jobs["gbp-audit"]["bots"]] == ["gbp-1"]
+    assert [b["key"] for b in jobs["plain"]["bots"]] == ["plain"]
+    assert client.post("/api/tasks", json={"key": "x-y", "name": "X"}).status_code == 405
+    agent = next(a for a in client.get("/api/agents").json() if a["key"] == "web-1")
+    assert agent["task"] == {"key": "website-audit", "name": "Website Audit"}
 
 
-def test_a_task_is_deleted_only_when_unused(client: TestClient, owner: User) -> None:
-    task(client, "gbp-audit", "GBP Audit")
-    task(client, "opportunity", "Opportunity Finder", ["gbp-audit"])
-    bot(client, "opp-1", "opportunity")
+def test_a_batchs_tasks_need_its_own_tasks_without_circles(client: TestClient, owner: User) -> None:
+    for key, job in (("gbp-1", "gbp-audit"), ("web-1", "website-audit"), ("opp-1", "opportunity")):
+        bot(client, key, job)
+    batch = make_batch(client)["id"]
+    assert add_task(client, batch, "gbp-audit").status_code == 201
+
+    early = add_task(client, batch, "opportunity", needs=["website-audit"])
+    assert (early.status_code, early.json()["error"]["fields"]) == (
+        422,
+        {"needs": "Not a task of this batch."},
+    )
+    add_task(client, batch, "website-audit")
+    made = add_task(client, batch, "opportunity", ["gbp-audit", "website-audit"], "Find angles")
+    assert made.status_code == 201
+    assert tasks_of(client, batch) == [
+        (1, "Gbp Audit", []),
+        (1, "Website Audit", []),
+        (2, "Find angles", ["Gbp Audit", "Website Audit"]),
+    ]
+    assert add_task(client, batch, "gbp-audit").status_code == 409  # a job once per batch
+
     gbp, opp = task_id_of(client, "gbp-audit"), task_id_of(client, "opportunity")
+    circle = client.patch(f"/api/batches/{batch}/tasks/{gbp}", json={"needs": [opp]})
+    assert (circle.status_code, circle.json()["error"]["code"]) == (422, "circle")
+    itself = client.patch(f"/api/batches/{batch}/tasks/{gbp}", json={"needs": [gbp]})
+    assert itself.status_code == 422
+    assert client.delete(f"/api/batches/{batch}/tasks/{gbp}").status_code == 409  # needed
+    renamed = client.patch(
+        f"/api/batches/{batch}/tasks/{opp}", json={"name": "  Angles  ", "needs": [gbp]}
+    )
+    assert renamed.status_code == 200
+    assert tasks_of(client, batch)[-1] == (2, "Angles", ["Gbp Audit"])
+    assert client.delete(f"/api/batches/{batch}/tasks/{opp}").status_code == 200
 
-    assert client.delete(f"/api/tasks/{gbp}").status_code == 409  # needed by another
-    assert client.delete(f"/api/tasks/{opp}").status_code == 409  # a bot does it
-    task(client, "spare", "Spare")
-    assert client.delete(f"/api/tasks/{task_id_of(client, 'spare')}").status_code == 204
+
+def test_needs_differ_from_batch_to_batch(client: TestClient, owner: User, db: Session) -> None:
+    gbp = bot(client, "gbp-1", "gbp-audit")
+    bot(client, "web-1", "website-audit")
+    opp = bot(client, "opp-1", "opportunity")
+    first, second = make_batch(client, "Batch 1")["id"], make_batch(client, "Batch 2")["id"]
+    for batch in (first, second):
+        add_task(client, batch, "gbp-audit")
+        add_task(client, batch, "website-audit")
+    add_task(client, first, "opportunity", ["gbp-audit", "website-audit"])
+    add_task(client, second, "opportunity", ["gbp-audit"])
+    leads(db, first, 1)
+    db.add(
+        Lead(lead_id="L-000009", batch_id=second, niche="Cleaning", city="Tulsa", business_name="B")
+    )
+    db.commit()
+    for batch in (first, second):
+        put_bot(client, batch, "gbp-1", "gbp-audit")
+        put_bot(client, batch, "opp-1", "opportunity")
+    result(client, gbp, "L-000001")
+    result(client, gbp, "L-000009")
+
+    assert ready(client, opp, first) == []  # still waits for its Website Audit
+    assert ready(client, opp, second) == ["L-000009"]  # needs only the GBP Audit here
 
 
 def test_a_new_manifest_task_moves_the_bot(client: TestClient, owner: User) -> None:
@@ -118,30 +178,6 @@ def test_a_new_manifest_task_moves_the_bot(client: TestClient, owner: User) -> N
 
 
 # --- a batch's tasks and bots -----------------------------------------------------------------
-
-
-def test_tasks_are_added_after_what_they_need(client: TestClient, owner: User) -> None:
-    task(client, "gbp-audit", "GBP Audit")
-    task(client, "opportunity", "Opportunity Finder", ["gbp-audit"])
-    batch = make_batch(client)["id"]
-    gbp, opp = task_id_of(client, "gbp-audit"), task_id_of(client, "opportunity")
-
-    early = client.post(f"/api/batches/{batch}/tasks", json={"task_id": opp})
-    assert (early.status_code, early.json()["error"]["code"]) == (409, "needs_missing")
-    client.post(f"/api/batches/{batch}/tasks", json={"task_id": gbp})
-    shown = client.post(f"/api/batches/{batch}/tasks", json={"task_id": opp}).json()
-
-    assert [(s["step"], [t["key"] for t in s["tasks"]]) for s in shown["steps"]] == [
-        (1, ["gbp-audit"]),
-        (2, ["opportunity"]),
-    ]
-    assert shown["steps"][0]["tasks"][0]["can_remove"] is False
-    assert client.delete(f"/api/batches/{batch}/tasks/{gbp}").status_code == 409
-    assert client.delete(f"/api/batches/{batch}/tasks/{opp}").status_code == 200
-    # a task in a batch can't get a need the batch lacks
-    task(client, "website-audit", "Website Audit")
-    again = client.patch(f"/api/tasks/{gbp}", json={"needs": ["website-audit"]})
-    assert (again.status_code, again.json()["error"]["code"]) == (409, "missing_in_batch")
 
 
 def test_only_bots_of_the_task_can_be_added(client: TestClient, owner: User) -> None:
@@ -188,11 +224,11 @@ def test_every_bot_checks_every_business_and_the_next_task_waits_per_business(
     gbp1 = bot(client, "gbp-1", "gbp-audit")
     gbp2 = bot(client, "gbp-2", "gbp-audit")
     opp = bot(client, "opp-1", "opportunity")
-    task(client, "opportunity", "Opportunity Finder", ["gbp-audit"])
     batch = make_batch(client)["id"]
     leads(db, batch, 2, top=1)
     put_bot(client, batch, "gbp-1", "gbp-audit")
     put_bot(client, batch, "gbp-2", "gbp-audit")
+    add_task(client, batch, "opportunity", ["gbp-audit"])
     put_bot(client, batch, "opp-1", "opportunity")
 
     assert ready(client, gbp1, batch) == ready(client, gbp2, batch) == ["L-000001", "L-000002"]
@@ -298,12 +334,10 @@ def test_viewers_see_pipelines_but_cannot_change_them(
     sign_in(client, viewer.email)
 
     assert client.get(f"/api/batches/{batch}/pipeline").json()["can_start"] is False
-    assert client.get("/api/tasks").json()[0]["can_edit"] is False
+    assert client.get("/api/tasks").is_success
     assert client.get(f"/api/batches/{batch}/results", params={"bot": "gbp-1"}).is_success
     refused = [
-        client.post("/api/tasks", json={"key": "x-y", "name": "X"}),
-        client.patch(f"/api/tasks/{gbp}", json={"name": "Y"}),
-        client.delete(f"/api/tasks/{gbp}"),
+        client.patch(f"/api/batches/{batch}/tasks/{gbp}", json={"name": "Y"}),
         client.post(f"/api/batches/{batch}/tasks", json={"task_id": gbp}),
         client.patch(f"/api/batches/{batch}/tasks/{gbp}", json={"share": "split"}),
         client.delete(f"/api/batches/{batch}/tasks/{gbp}"),
@@ -323,7 +357,6 @@ def test_admins_run_batches(client: TestClient, owner: User, make_user: UserFact
     sign_in(client, admin.email)
 
     assert put_bot(client, batch, "gbp-1", "gbp-audit")["batch"]["status"] == "running"
-    assert client.post("/api/tasks", json={"key": "extra", "name": "Extra"}).status_code == 201
 
 
 def test_a_city_switched_off_in_a_batch_is_left_alone_there(
@@ -364,3 +397,17 @@ def test_leads_marked_top_in_the_hub_are_not_handed_out(
     shown = client.get(f"/api/batches/{batch}/results", params={"bot": "gbp-1"}).json()
     assert shown["total"] == 0  # Top leads are left out; the saved result stays on the lead
     assert db.get(Lead, "L-000003").results["gbp-1"]["score"] == 50  # type: ignore[union-attr]
+
+
+def test_the_agents_screen_says_where_an_agent_is_used(client: TestClient, owner: User) -> None:
+    bot(client, "gbp-1", "gbp-audit")
+    batch = make_batch(client)["id"]
+    add_task(client, batch, "gbp-audit", name="Profile check")
+    put_bot(client, batch, "gbp-1", "gbp-audit")
+
+    agent = client.get("/api/agents").json()[0]
+
+    assert agent["task"]["name"] == "Gbp Audit"
+    assert [(b["name"], b["task_name"], b["status"]) for b in agent["batches"]] == [
+        ("Batch 1", "Profile check", "running")
+    ]

@@ -13,7 +13,6 @@ class Action(enum.StrEnum):
     VIEW_HUB = "view_hub"  # Overview, Runs, Agents, Batches, Benchmarks, Leads and export
     IMPORT_LEADS = "import_leads"  # make batches, upload and confirm files
     RUN_BATCHES = "run_batches"  # a batch's tasks and bots, Start/Pause, running order
-    EDIT_TASKS = "edit_tasks"  # make, change and delete tasks
     EDIT_LEADS = "edit_leads"  # change a lead's email, phone, website, Top, notes; delete it
     OPERATE_AGENTS = "operate_agents"  # switch on/off, Run now, Stop
     CONFIGURE_AGENTS = "configure_agents"  # limit, run time, budget and settings
@@ -34,7 +33,6 @@ _ALLOWED: dict[Action, frozenset[Role]] = {
     Action.VIEW_HUB: _ALL,
     Action.IMPORT_LEADS: _STAFF,
     Action.RUN_BATCHES: _STAFF,
-    Action.EDIT_TASKS: _STAFF,
     Action.EDIT_LEADS: _STAFF,
     Action.OPERATE_AGENTS: _STAFF,
     Action.CONFIGURE_AGENTS: _STAFF,

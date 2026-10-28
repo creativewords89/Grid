@@ -38,7 +38,7 @@ const STATUS: Record<LeadImport["status"], string> = {
 
 type Tab = "tasks" | "leads" | "cities" | "results" | "files";
 const TABS: [Tab, string][] = [
-  ["tasks", "Tasks and agents"],
+  ["tasks", "Tasks"],
   ["leads", "Leads"],
   ["cities", "Cities"],
   ["results", "Results"],

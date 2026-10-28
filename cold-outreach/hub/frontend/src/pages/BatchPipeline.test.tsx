@@ -53,6 +53,7 @@ function pipeline(overrides: Partial<Pipeline> = {}, gbpBots = 1): Pipeline {
           {
             task_id: "t1",
             key: "gbp-audit",
+            job: "GBP Audit",
             name: "GBP Audit",
             needs: [],
             share: "all",
@@ -67,8 +68,9 @@ function pipeline(overrides: Partial<Pipeline> = {}, gbpBots = 1): Pipeline {
           {
             task_id: "t2",
             key: "opportunity",
+            job: "Opportunity Finder",
             name: "Opportunity Finder",
-            needs: ["GBP Audit"],
+            needs: [{ task_id: "t1", name: "GBP Audit" }],
             share: "all",
             bots: [],
             can_remove: true,
@@ -87,26 +89,18 @@ const TASKS: Task[] = [
     id: "t1",
     key: "gbp-audit",
     name: "GBP Audit",
-    about: "",
-    needs: [],
     bots: [
       { key: "gbp-full", name: "GBP audit (DataForSEO)", enabled: true },
       { key: "gbp-quick", name: "GBP quick check", enabled: true },
     ],
     batches: ["Texas November"],
-    can_edit: true,
-    can_delete: false,
   },
   {
     id: "t2",
     key: "opportunity",
     name: "Opportunity Finder",
-    about: "",
-    needs: [{ key: "gbp-audit", name: "GBP Audit" }],
     bots: [{ key: "opp", name: "Opportunity finder", enabled: true }],
     batches: [],
-    can_edit: true,
-    can_delete: false,
   },
 ];
 
@@ -145,7 +139,7 @@ test("a batch's tasks: add another agent to a task, choose how they share, then 
     "gbp-quick",
   );
   expect(await within(gbp).findByText("GBP quick check")).toBeVisible();
-  await userEvent.selectOptions(within(gbp).getByLabelText(/How the bots share/), "split");
+  await userEvent.selectOptions(within(gbp).getByLabelText(/How the agents share/), "split");
   await userEvent.click(screen.getByRole("button", { name: "Start" }));
 
   expect(await screen.findByRole("button", { name: "Pause" })).toBeVisible();
@@ -306,8 +300,8 @@ test("the setup guide ticks each step as the agents get ready", async () => {
   expect(guideSteps()).toEqual([
     ["Add an agent", true],
     ["Start it on the server with its token", true],
-    ["It connects and says which task it does", true],
-    ["Add it to this batch's task", true],
+    ["It connects and says which job it does", true],
+    ["Add a task for it to this batch", true],
     ["Switch it on", false],
     ["Start the batch", false],
   ]);
@@ -330,4 +324,59 @@ test("with no agents the guide starts at adding one", async () => {
   await screen.findByRole("region", { name: "Setup guide" });
   expect(guideSteps().every(([, done]) => !done)).toBe(true);
   expect(screen.getByText(/press \+ Add agent/)).toBeVisible();
+});
+
+test("add a task: its job, its name and what it needs first in this batch", async () => {
+  const outreach: Task = {
+    id: "t3",
+    key: "outreach",
+    name: "Outreach email",
+    bots: [{ key: "mail", name: "Outreach email (friendly)", enabled: true }],
+    batches: [],
+  };
+  const calls = mockApi({
+    "GET /auth/me": as("admin"),
+    "GET /batches": [200, [batch()]],
+    "GET /imports?batch_id=b1": [200, []],
+    "GET /batches/b1/pipeline": [200, pipeline()],
+    "GET /tasks": [200, [...TASKS, outreach]],
+    "POST /batches/b1/tasks": [201, pipeline()],
+    "PATCH /batches/b1/tasks/t2": [200, pipeline()],
+  });
+  render(<App />);
+
+  await userEvent.click(await screen.findByRole("button", { name: "Texas November" }));
+  await userEvent.click(await screen.findByRole("button", { name: "+ Add a task" }));
+  const form = screen.getByRole("form", { name: "Add a task" });
+  // Only jobs the batch doesn't have yet.
+  expect(
+    within(form)
+      .getAllByRole("option")
+      .map((o) => o.textContent),
+  ).toEqual(["Outreach email (1 agent)"]);
+  expect(within(form).getByLabelText("Name")).toHaveValue("Outreach email");
+  await userEvent.clear(within(form).getByLabelText("Name"));
+  await userEvent.type(within(form).getByLabelText("Name"), "First email");
+  await userEvent.click(within(form).getByRole("checkbox", { name: "Opportunity Finder" }));
+  await userEvent.click(within(form).getByRole("button", { name: "Add task" }));
+
+  expect(calls.find((c) => c.method === "POST" && c.path === "/batches/b1/tasks")?.body).toEqual({
+    task_id: "t3",
+    name: "First email",
+    needs: ["t2"],
+  });
+
+  // Edit a task: its name and needs.
+  const opportunity = await screen.findByRole("article", { name: "Opportunity Finder" });
+  await userEvent.click(
+    within(opportunity).getByRole("button", { name: "Edit Opportunity Finder" }),
+  );
+  const edit = within(opportunity).getByRole("form", { name: "Edit Opportunity Finder" });
+  expect(within(edit).getByRole("checkbox", { name: "GBP Audit" })).toBeChecked();
+  await userEvent.click(within(edit).getByRole("checkbox", { name: "GBP Audit" }));
+  await userEvent.click(within(edit).getByRole("button", { name: "Save" }));
+  expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({
+    name: "Opportunity Finder",
+    needs: [],
+  });
 });

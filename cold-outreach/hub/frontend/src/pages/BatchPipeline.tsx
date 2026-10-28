@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useState, type DragEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type DragEvent,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import {
   api,
   ApiError,
@@ -18,9 +25,10 @@ import { Alert } from "../components/ui";
 import { when } from "../format";
 import { LeadDialog } from "./Leads";
 
-// A batch's tasks and agents (SPEC section 6.7): the agent library grouped by task on the
-// left, the steps on the right. Each task can have several agents, which either all check every
-// business or split the businesses. Every business moves on as soon as what it needs is done.
+// A batch's tasks (SPEC section 6.7): the agent library grouped by job on the left, the steps
+// on the right. A task is made here: its job, its name and what it needs first in this batch.
+// Each task can have several agents of its job, which either all check every business or
+// split the businesses. Every business moves on as soon as what it needs is done.
 
 const SHARE: Record<Share, string> = {
   all: "Every agent checks every business",
@@ -41,6 +49,7 @@ export function PipelineTab({
   const [agents, setAgents] = useState<Agent[] | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [adding, setAdding] = useState(false);
   const staff = pipeline.batch.can_run;
 
   useEffect(() => {
@@ -58,13 +67,16 @@ export function PipelineTab({
   const inBatch = new Map(slots.map((slot) => [slot.key, slot]));
   const onBot = new Set(slots.flatMap((slot) => slot.bots.map((b) => b.key)));
 
-  async function act(action: () => Promise<Pipeline>) {
+  /** Run a change; false when it was refused (the reason is shown). */
+  async function act(action: () => Promise<Pipeline>): Promise<boolean> {
     setBusy(true);
     setError("");
     try {
       onChange(await action());
+      return true;
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Not saved.");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -73,7 +85,7 @@ export function PipelineTab({
   /** Put an agent on its task in this batch, adding the task first when it isn't there. */
   function addBot(task: Task, key: string) {
     void act(async () => {
-      if (!inBatch.has(task.key)) await api.addBatchTask(batchId, task.id);
+      if (!inBatch.has(task.key)) await api.addBatchTask(batchId, { task_id: task.id, needs: [] });
       return api.addBot(batchId, task.id, key);
     });
   }
@@ -98,8 +110,8 @@ export function PipelineTab({
           <h2>Agents</h2>
           <p className="muted small">
             {staff
-              ? "Drag an agent onto its task, or press Add."
-              : "The agents, grouped by their task."}
+              ? "Grouped by the job they do. Drag an agent onto a task of its job, or press Add."
+              : "The agents, grouped by the job they do."}
           </p>
           {tasks.map((task) => (
             <div key={task.id} className="stack-tight">
@@ -157,33 +169,35 @@ export function PipelineTab({
                     onDrop={(e) => drop(e, slot)}
                     onAddBot={(key) => void act(() => api.addBot(batchId, slot.task_id, key))}
                     onRemoveBot={(key) => void act(() => api.removeBot(batchId, slot.task_id, key))}
-                    onShare={(share) => void act(() => api.setShare(batchId, slot.task_id, share))}
+                    onShare={(share) =>
+                      void act(() => api.updateBatchTask(batchId, slot.task_id, { share }))
+                    }
+                    others={slots.filter((o) => o.task_id !== slot.task_id)}
+                    onEdit={(patch) => act(() => api.updateBatchTask(batchId, slot.task_id, patch))}
                     onRemove={() => void act(() => api.removeBatchTask(batchId, slot.task_id))}
                   />
                 ))}
               </div>
             </section>
           ))}
-          {staff && missing.length > 0 && (
-            <div className="field">
-              <label htmlFor="batch-add-task">+ Add a task</label>
-              <select
-                id="batch-add-task"
-                value=""
-                disabled={busy}
-                onChange={(e) =>
-                  e.target.value && void act(() => api.addBatchTask(batchId, e.target.value))
-                }
-              >
-                <option value="">Choose…</option>
-                {missing.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                    {t.needs.length > 0 && ` (needs ${t.needs.map((n) => n.name).join(", ")})`}
-                  </option>
-                ))}
-              </select>
+          {staff && !adding && (
+            <div>
+              <button className="button button-primary" onClick={() => setAdding(true)}>
+                + Add a task
+              </button>
             </div>
+          )}
+          {staff && adding && (
+            <AddTask
+              jobs={missing}
+              slots={slots}
+              busy={busy}
+              onCancel={() => setAdding(false)}
+              onAdd={async (body) => {
+                await act(() => api.addBatchTask(batchId, body));
+                setAdding(false);
+              }}
+            />
           )}
         </div>
       </div>
@@ -201,6 +215,8 @@ function TaskSlot({
   onRemoveBot,
   onShare,
   onRemove,
+  others,
+  onEdit,
 }: {
   slot: PipelineTask;
   task: Task | undefined;
@@ -211,8 +227,11 @@ function TaskSlot({
   onRemoveBot: (key: string) => void;
   onShare: (share: Share) => void;
   onRemove: () => void;
+  others: PipelineTask[];
+  onEdit: (patch: { name: string; needs: string[] }) => Promise<boolean>;
 }) {
-  const others = (task?.bots ?? []).filter((b) => !slot.bots.some((x) => x.key === b.key));
+  const [editing, setEditing] = useState(false);
+  const free = (task?.bots ?? []).filter((b) => !slot.bots.some((x) => x.key === b.key));
   return (
     <article
       className={`card stack-tight task-slot ${slot.bots.length === 0 ? "task-slot-empty" : ""}`}
@@ -224,20 +243,48 @@ function TaskSlot({
         <div>
           <h3>{slot.name}</h3>
           <p className="muted small">
-            Needs: {slot.needs.length > 0 ? slot.needs.join(", ") : "the lead file"}
+            {slot.name !== slot.job && `Job: ${slot.job} · `}
+            Needs:{" "}
+            {slot.needs.length > 0 ? slot.needs.map((n) => n.name).join(", ") : "the lead file"}
           </p>
         </div>
-        {staff && slot.can_remove && (
-          <button
-            className="link-button"
-            disabled={busy}
-            aria-label={`Remove ${slot.name} from the batch`}
-            onClick={onRemove}
-          >
-            Remove task
-          </button>
+        {staff && (
+          <span className="row">
+            <button
+              className="link-button"
+              disabled={busy}
+              aria-label={`Edit ${slot.name}`}
+              onClick={() => setEditing(!editing)}
+            >
+              Edit
+            </button>
+            {slot.can_remove && (
+              <button
+                className="link-button"
+                disabled={busy}
+                aria-label={`Remove ${slot.name} from the batch`}
+                onClick={onRemove}
+              >
+                Remove
+              </button>
+            )}
+          </span>
         )}
       </div>
+      {editing && (
+        <TaskForm
+          title={`Edit ${slot.name}`}
+          name={slot.name}
+          needs={slot.needs.map((n) => n.task_id)}
+          slots={others}
+          busy={busy}
+          submitLabel="Save"
+          onCancel={() => setEditing(false)}
+          onSubmit={async (name, needs) => {
+            if (await onEdit({ name, needs })) setEditing(false);
+          }}
+        />
+      )}
       {slot.bots.length === 0 && (
         <p className="small field-error">No agent yet: the businesses wait here.</p>
       )}
@@ -253,7 +300,7 @@ function TaskSlot({
       ))}
       {staff && (
         <div className="row">
-          {others.length > 0 && (
+          {free.length > 0 && (
             <select
               aria-label={`Add another agent to ${slot.name}`}
               value=""
@@ -263,7 +310,7 @@ function TaskSlot({
               <option value="">
                 {slot.bots.length === 0 ? "+ Add an agent…" : "+ Add another agent…"}
               </option>
-              {others.map((b) => (
+              {free.map((b) => (
                 <option key={b.key} value={b.key}>
                   {b.name}
                 </option>
@@ -272,7 +319,7 @@ function TaskSlot({
           )}
           {slot.bots.length > 1 && (
             <label className="small">
-              How the bots share{" "}
+              How the agents share{" "}
               <select
                 value={slot.share}
                 disabled={busy}
@@ -290,6 +337,147 @@ function TaskSlot({
       )}
       {!staff && slot.bots.length > 1 && <p className="muted small">{SHARE[slot.share]}</p>}
     </article>
+  );
+}
+
+/** The name and what a task needs first: the batch's other tasks, ticked. */
+function TaskForm({
+  title,
+  name: startName,
+  needs: startNeeds,
+  slots,
+  busy,
+  submitLabel,
+  children,
+  onCancel,
+  onSubmit,
+}: {
+  title: string;
+  name: string;
+  needs: string[];
+  slots: PipelineTask[];
+  busy: boolean;
+  submitLabel: string;
+  children?: ReactNode;
+  onCancel: () => void;
+  onSubmit: (name: string, needs: string[]) => void;
+}) {
+  const [name, setName] = useState(startName);
+  const [needs, setNeeds] = useState<string[]>(startNeeds);
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    onSubmit(name.trim(), needs);
+  }
+
+  return (
+    <form className="card stack-tight task-form" onSubmit={submit} aria-label={title}>
+      <h3>{title}</h3>
+      {children}
+      <div className="field">
+        <label htmlFor={`task-name-${title}`}>Name</label>
+        <input
+          id={`task-name-${title}`}
+          value={name}
+          maxLength={80}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </div>
+      <fieldset className="plain stack-tight">
+        <legend className="small">Needs first (tasks of this batch)</legend>
+        {slots.length === 0 && (
+          <p className="muted small">Only the lead file: no other tasks yet.</p>
+        )}
+        {slots.map((other) => (
+          <label key={other.task_id} className="row small">
+            <input
+              type="checkbox"
+              checked={needs.includes(other.task_id)}
+              onChange={(e) =>
+                setNeeds(
+                  e.target.checked
+                    ? [...needs, other.task_id]
+                    : needs.filter((n) => n !== other.task_id),
+                )
+              }
+            />
+            {other.name}
+          </label>
+        ))}
+      </fieldset>
+      <div className="row">
+        <button className="button button-primary" disabled={busy}>
+          {submitLabel}
+        </button>
+        <button type="button" className="button" disabled={busy} onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** + Add a task: its job (only jobs not in the batch yet), name and what it needs first. */
+function AddTask({
+  jobs,
+  slots,
+  busy,
+  onCancel,
+  onAdd,
+}: {
+  jobs: Task[];
+  slots: PipelineTask[];
+  busy: boolean;
+  onCancel: () => void;
+  onAdd: (body: { task_id: string; name: string; needs: string[] }) => void;
+}) {
+  const ordered = [...jobs].sort((a, b) => Number(b.bots.length > 0) - Number(a.bots.length > 0));
+  const [jobId, setJobId] = useState(ordered[0]?.id ?? "");
+  const job = jobs.find((j) => j.id === jobId);
+  if (jobs.length === 0) {
+    return (
+      <div className="card stack-tight">
+        <p className="muted small">
+          Every job your agents do already has a task here. Add an agent that does another job on
+          Agents first.
+        </p>
+        <div>
+          <button className="button" onClick={onCancel}>
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <TaskForm
+      key={jobId}
+      title="Add a task"
+      name={job?.name ?? ""}
+      needs={[]}
+      slots={slots}
+      busy={busy}
+      submitLabel="Add task"
+      onCancel={onCancel}
+      onSubmit={(name, needs) => onAdd({ task_id: jobId, name, needs })}
+    >
+      <div className="field">
+        <label htmlFor="task-job">Job (what your agents do)</label>
+        <select id="task-job" value={jobId} onChange={(e) => setJobId(e.target.value)}>
+          {ordered.map((j) => (
+            <option key={j.id} value={j.id}>
+              {j.name}
+              {j.bots.length === 0
+                ? " (no agent yet)"
+                : ` (${j.bots.length} agent${j.bots.length === 1 ? "" : "s"})`}
+            </option>
+          ))}
+        </select>
+        {job && job.bots.length > 0 && (
+          <p className="hint">Agents for it: {job.bots.map((b) => b.name).join(", ")}</p>
+        )}
+      </div>
+    </TaskForm>
   );
 }
 

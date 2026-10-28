@@ -121,7 +121,7 @@ export type Agent = {
   time_zone: string;
   daily_budget_usd: string;
   task: { key: string; name: string } | null;
-  batches: { id: string; name: string; status: BatchStatus; ready: boolean }[];
+  batches: { id: string; name: string; status: BatchStatus; ready: boolean; task_name: string }[];
   missing_connections: string[];
   last_run: Run | null;
   next_run_at: string | null;
@@ -345,19 +345,22 @@ export type Batch = {
   can_delete: boolean;
 };
 
+/** A job agents do (from their manifests), with the agents that do it. */
 export type Task = {
   id: string;
   key: string;
   name: string;
-  about: string;
-  needs: { key: string; name: string }[];
   bots: { key: string; name: string; enabled: boolean }[];
   batches: string[];
-  can_edit: boolean;
-  can_delete: boolean;
 };
 
-export type TaskIn = { key?: string; name: string; about: string; needs: string[] };
+/** A batch's task: its job, name, the jobs of this batch's tasks it needs, how agents share. */
+export type BatchTaskIn = {
+  task_id: string;
+  name?: string;
+  needs: string[];
+  share?: Share;
+};
 
 export type Share = "all" | "split";
 
@@ -376,8 +379,9 @@ export type BotProgress = {
 export type PipelineTask = {
   task_id: string;
   key: string;
+  job: string;
   name: string;
-  needs: string[];
+  needs: { task_id: string; name: string }[];
   share: Share;
   bots: BotProgress[];
   can_remove: boolean;
@@ -630,10 +634,13 @@ export const api = {
   pipeline: (id: string) => request<Pipeline>("GET", `/batches/${id}/pipeline`),
   startBatch: (id: string) => request<Pipeline>("POST", `/batches/${id}/start`),
   pauseBatch: (id: string) => request<Pipeline>("POST", `/batches/${id}/pause`),
-  addBatchTask: (id: string, taskId: string, share: Share = "all") =>
-    request<Pipeline>("POST", `/batches/${id}/tasks`, { task_id: taskId, share }),
-  setShare: (id: string, taskId: string, share: Share) =>
-    request<Pipeline>("PATCH", `/batches/${id}/tasks/${taskId}`, { share }),
+  addBatchTask: (id: string, body: BatchTaskIn) =>
+    request<Pipeline>("POST", `/batches/${id}/tasks`, body),
+  updateBatchTask: (
+    id: string,
+    taskId: string,
+    patch: { name?: string; needs?: string[]; share?: Share },
+  ) => request<Pipeline>("PATCH", `/batches/${id}/tasks/${taskId}`, patch),
   removeBatchTask: (id: string, taskId: string) =>
     request<Pipeline>("DELETE", `/batches/${id}/tasks/${taskId}`),
   addBot: (id: string, taskId: string, key: string) =>
@@ -645,10 +652,6 @@ export const api = {
     filters: { bot: string; outcome?: Outcome | ""; band?: Band | ""; page?: number },
   ) => request<BotResults>("GET", `/batches/${id}/results${leadQuery(filters)}`),
   tasks: () => request<Task[]>("GET", "/tasks"),
-  createTask: (body: TaskIn) => request<Task>("POST", "/tasks", body),
-  updateTask: (id: string, body: Omit<TaskIn, "key">) =>
-    request<Task>("PATCH", `/tasks/${id}`, body),
-  deleteTask: (id: string) => request<void>("DELETE", `/tasks/${id}`),
   leads: (filters: LeadFilters) => request<LeadPage>("GET", `/leads${leadQuery(filters)}`),
   lead: (id: string) => request<LeadDetail>("GET", `/leads/${id}`),
   updateLead: (id: string, patch: LeadPatch) => request<LeadDetail>("PATCH", `/leads/${id}`, patch),
