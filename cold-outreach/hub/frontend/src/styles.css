@@ -2317,6 +2317,29 @@ textarea {
   box-shadow: inset 0 -2px 0 var(--brand);
 }
 
+/* A batch's Cities tab: its tabs on the left, the search and filters on the right. */
+.cities-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.cities-bar .sheet-tabs {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.cities-bar .filters-row {
+  padding-bottom: 6px;
+}
+
+.cities-bar .field-buttons {
+  flex: 0 0 auto;
+}
+
 .sheet-tabs .sheet-tab-empty {
   color: var(--muted);
 }
