@@ -81,7 +81,61 @@ class Registry:
 
 
 def _lead_row(lead: reader.Lead) -> dict[str, Any]:
-    return dict(lead.values, emails=lead.emails, rows=lead.rows)
+    return dict(lead.values, emails=lead.emails, rows=lead.rows, extra=lead.extra)
+
+
+# The file's columns, in the order the team's files have them (SPEC section 6.4).
+SHEET_COLUMNS = (
+    ("business_name", "Business name"),
+    ("gbp_link", "MAP"),
+    ("address", "Address"),
+    ("city", "City"),
+    ("website", "Website"),
+    ("phone", "Phone"),
+    ("whatsapp", "WA"),
+    ("facebook", "Facebook"),
+    ("instagram", "Instagram"),
+    ("email", "Email"),
+    ("reviews", "Reviews"),
+    ("rating", "Average"),
+    ("level", "Level"),
+    ("notes", "Notes"),
+)
+
+
+def _sheet(report: reader.Report, rows: list[dict[str, Any]], batch: Batch) -> dict[str, Any]:
+    """Every row of the file by tab, and what happens to it."""
+    lead_of = {where: index for index, row in enumerate(rows) for where in row["rows"]}
+    counts: dict[str, int] = {}
+    out = []
+    for item in report.sheet:
+        index = lead_of.get(f"{item.tab} row {item.line}")
+        row = rows[index] if index is not None else None
+        if row is None:
+            status = "skipped"
+        elif not row["lead_id"]:
+            status = "new"
+        else:
+            status = "updated" if row["batch_id"] == str(batch.id) else "other_batch"
+        counts[item.tab] = counts.get(item.tab, 0) + 1
+        out.append(
+            {
+                "tab": item.tab,
+                "line": item.line,
+                "status": status,
+                "merged": bool(row and len(row["rows"]) > 1),
+                "top": bool(row and row.get("level") == "Top"),
+                "values": item.values,
+                "extra": item.extra,
+                "raw": item.raw,
+                "bad_emails": item.bad_emails,
+            }
+        )
+    return {
+        "tabs": [{"name": name, "rows": counts.get(name, 0)} for name in report.tab_names],
+        "extra_columns": report.extra_columns,
+        "rows": out,
+    }
 
 
 def preview(db: Session, user: User, file_name: str, content: bytes, batch: Batch) -> Import:
@@ -98,6 +152,7 @@ def preview(db: Session, user: User, file_name: str, content: bytes, batch: Batc
     for row in rows:
         match = registry.match(row)
         row["lead_id"] = match.lead_id if match else ""
+        row["batch_id"] = str(match.batch_id) if match and match.batch_id else ""
         if match is None:
             continue
         label = f"{row['business_name'] or row['gbp_link']} ({match.lead_id}"
@@ -154,6 +209,7 @@ def preview(db: Session, user: User, file_name: str, content: bytes, batch: Batc
             "new_lists": new_lists,
         },
         rows=rows,
+        sheet=_sheet(report, rows, batch),
     )
     db.add(imp)
     return imp
@@ -169,6 +225,8 @@ def _next_number(db: Session) -> int:
 
 def _apply(db: Session, imp: Import, row: dict[str, Any], lead: Lead | None, number: int) -> Lead:
     values = {k: v for k, v in row.items() if isinstance(v, str)}
+    values.pop("lead_id", None)
+    values.pop("batch_id", None)
     if lead is None:
         lead = Lead(
             lead_id=f"L-{number:06d}",
@@ -200,6 +258,7 @@ def _apply(db: Session, imp: Import, row: dict[str, Any], lead: Lead | None, num
     lead.emails = list(dict.fromkeys([*lead.emails, *row.get("emails", [])]))
     # A value from the file replaces the saved one; an empty cell never blanks it.
     lead.data = dict(lead.data or {}) | {f: values[f] for f in DATA_FIELDS if values.get(f)}
+    lead.extra = dict(lead.extra or {}) | {k: v for k, v in row.get("extra", {}).items() if v}
     lead.last_import_id = imp.id
     return lead
 
@@ -228,9 +287,12 @@ def confirm(db: Session, imp: Import, user: User) -> Import:
     registry = Registry.load(db)
     number = _next_number(db)
     added = updated = 0
+    lead_of: dict[str, str] = {}
     for row in imp.rows:
         match = registry.match(row)
         lead = _apply(db, imp, row, match, number)
+        for where in row["rows"]:
+            lead_of[where] = lead.lead_id
         if match is None:
             number += 1
             added += 1
@@ -252,6 +314,14 @@ def confirm(db: Session, imp: Import, user: User) -> Import:
     imp.confirmed_at = now()
     imp.counts = dict(imp.counts, saved_new=added, saved_updated=updated)
     imp.rows = []  # the leads have them now
+    # Keep where each row went; its values are the lead's from now on.
+    sheet = dict(imp.sheet or {})
+    sheet["rows"] = [
+        {key: item[key] for key in ("tab", "line", "status", "merged", "top")}
+        | {"lead_id": lead_of.get(f"{item['tab']} row {item['line']}")}
+        for item in sheet.get("rows", [])
+    ]
+    imp.sheet = sheet
     return imp
 
 
@@ -260,3 +330,72 @@ def discard(imp: Import) -> None:
         raise ApiError(409, "not_preview", f"This import is {imp.status.value}.")
     imp.status = ImportStatus.DISCARDED
     imp.rows = []
+    imp.sheet = {}
+
+
+# --- the file tab by tab ------------------------------------------------------------------
+
+SHEET_PAGE = 100
+STATUSES = ("new", "updated", "other_batch", "merged", "top", "skipped")
+
+
+def _lead_values(lead: Lead) -> dict[str, str]:
+    data = lead.data or {}
+    values = {
+        "business_name": lead.business_name,
+        "gbp_link": lead.gbp_link,
+        "city": lead.city,
+        "level": lead.level,
+        "email": ", ".join(lead.emails),
+        **{f: data.get(f, "") for f in DATA_FIELDS},
+    }
+    return {k: v for k, v in values.items() if v}
+
+
+def sheet_page(
+    db: Session, imp: Import, tab: str | None, status: str | None, page: int
+) -> dict[str, Any]:
+    """One page of the file's rows, tab by tab. A waiting file shows its own cleaned
+    values; a saved file shows each lead as the Hub has it now."""
+    sheet = imp.sheet or {}
+    rows = list(sheet.get("rows", []))
+    by_tab: dict[str, int] = {}
+    by_status = dict.fromkeys(STATUSES, 0)
+    for row in rows:
+        by_tab[row["tab"]] = by_tab.get(row["tab"], 0) + 1
+    shown = [r for r in rows if not tab or r["tab"] == tab]
+    for row in shown:
+        by_status[row["status"]] += 1
+        by_status["merged"] += row["merged"]
+        by_status["top"] += row["top"]
+    if status in ("merged", "top"):
+        shown = [r for r in shown if r[status]]
+    elif status:
+        shown = [r for r in shown if r["status"] == status]
+    pages = max(1, -(-len(shown) // SHEET_PAGE))
+    chosen = [dict(r) for r in shown[(page - 1) * SHEET_PAGE : page * SHEET_PAGE]]
+    if imp.status == ImportStatus.CONFIRMED:
+        ids = [r["lead_id"] for r in chosen if r.get("lead_id")]
+        found = {x.lead_id: x for x in db.scalars(select(Lead).where(Lead.lead_id.in_(ids)))}
+        for row in chosen:
+            lead = found.get(row.get("lead_id") or "")
+            row["values"] = _lead_values(lead) if lead else {}
+            row["extra"] = dict(lead.extra or {}) if lead else {}
+            row["raw"], row["bad_emails"] = {}, []
+            row["deleted"] = bool(row.get("lead_id")) and lead is None
+    extra_columns = list(sheet.get("extra_columns", []))
+    for row in chosen:
+        extra_columns += [k for k in row.get("extra", {}) if k not in extra_columns]
+    return {
+        "kept": bool(sheet.get("rows")),
+        "tabs": [
+            {"name": t["name"], "rows": by_tab.get(t["name"], 0)} for t in sheet.get("tabs", [])
+        ],
+        "columns": [{"key": k, "label": label} for k, label in SHEET_COLUMNS]
+        + [{"key": f"extra:{name}", "label": name} for name in extra_columns],
+        "statuses": by_status,
+        "rows": chosen,
+        "total": len(shown),
+        "page": page,
+        "pages": pages,
+    }

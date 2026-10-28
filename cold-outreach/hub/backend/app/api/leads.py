@@ -62,6 +62,7 @@ class LeadOut(BaseModel):
     gbp_link: str
     emails: list[str]
     data: dict[str, str]
+    extra: dict[str, str]  # the file's other columns, by their header
     results: dict[str, Any]
 
 
@@ -76,6 +77,7 @@ class LeadPage(BaseModel):
     page: int
     pages: int
     agents: dict[str, str]  # agent key -> the label of its results
+    extra_columns: list[str]  # the file's other columns these leads have
 
 
 def _out(lead: Lead, batches: dict[uuid.UUID, str]) -> LeadOut:
@@ -90,6 +92,7 @@ def _out(lead: Lead, batches: dict[uuid.UUID, str]) -> LeadOut:
         gbp_link=lead.gbp_link,
         emails=lead.emails,
         data=lead.data or {},
+        extra=lead.extra or {},
         results=lead.results or {},
     )
 
@@ -154,6 +157,13 @@ def _query(
     return query
 
 
+def _extra_columns(db: Session, query: Select[Lead]) -> list[str]:
+    """The headers of the file's other columns that these leads have, A to Z."""
+    leads = query.order_by(None).subquery()
+    keys = db.scalars(select(func.jsonb_object_keys(leads.c.extra)).distinct())
+    return sorted(keys, key=str.lower)
+
+
 Search = Annotated[str | None, Query(max_length=200)]
 City = Annotated[str | None, Query(max_length=120)]
 AgentKey = Annotated[str | None, Query(max_length=40)]
@@ -184,6 +194,7 @@ def list_leads(
         page=page,
         pages=max(1, -(-total // PAGE)),
         agents=_agent_labels(db),
+        extra_columns=_extra_columns(db, query),
     )
 
 
@@ -215,6 +226,8 @@ def export_leads(
     sheet.title = "Leads"
     header = ["Lead ID", "Batch", "Niche", "City", "Level", "Business Name", "GBP Link", "Email"]
     header += [title for title, _ in DATA_COLUMNS]
+    extra_columns = _extra_columns(db, query)
+    header += extra_columns
     for label in labels.values():
         header += [f"{label} Status", f"{label} Score", f"{label} Summary", f"{label} Checked"]
     sheet.append(header)
@@ -231,6 +244,7 @@ def export_leads(
             ", ".join(lead.emails),
         ]
         line += [data.get(key, "") for _, key in DATA_COLUMNS]
+        line += [(lead.extra or {}).get(name, "") for name in extra_columns]
         for key in labels:
             result = (lead.results or {}).get(key) or {}
             line += [result.get(k) for k in ("status", "score", "summary", "at")]

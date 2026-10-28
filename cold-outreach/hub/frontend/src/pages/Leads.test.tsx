@@ -17,13 +17,22 @@ function lead(id: string, overrides: Partial<Lead> = {}): Lead {
     gbp_link: "https://share.google/mc",
     emails: ["kevin@mc.com", "info@mc.com"],
     data: { phone: "(918) 523-8300", website: "https://mc.com/", address: "12 Elm St" },
+    extra: {},
     results: {},
     ...overrides,
   };
 }
 
 function leadPage(leads: Lead[], overrides: Partial<LeadPage> = {}): LeadPage {
-  return { leads, total: leads.length, page: 1, pages: 1, agents: {}, ...overrides };
+  return {
+    leads,
+    total: leads.length,
+    page: 1,
+    pages: 1,
+    agents: {},
+    extra_columns: [],
+    ...overrides,
+  };
 }
 
 function detail(overrides: Partial<LeadDetail> = {}): LeadDetail {

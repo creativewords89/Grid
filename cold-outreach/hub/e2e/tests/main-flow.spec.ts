@@ -107,9 +107,20 @@ test("a batch is made and a lead file is read, checked and saved in the Hub", as
   await expect(count("duplicates merged")).toContainText("1");
   await expect(count("Top (never contacted)")).toContainText("1");
   await expect(count("cities")).toContainText("2");
+  // The file itself, tab by tab, with every column.
+  const file = preview.getByRole("region", { name: "The file, tab by tab" });
+  await expect(file.getByRole("tab", { name: /All tabs \(5\)/ })).toBeVisible();
+  await expect(file.getByRole("row").first()).toContainText("Business name");
+  await expect(file.getByText("Sparkle Home Cleaning").first()).toBeVisible();
 
   await preview.getByRole("button", { name: "Save 4 businesses" }).click();
   await expect(preview.getByText("Saved: 4 new and 0 updated.")).toBeVisible();
+  await expect(
+    preview
+      .getByRole("region", { name: "The file, tab by tab" })
+      .getByText("L-000001")
+      .first(),
+  ).toBeVisible();
   await page.getByRole("button", { name: "All batches" }).click();
   await expect(page.getByRole("row", { name: /Texas November/ })).toContainText(
     "1 Top",

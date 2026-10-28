@@ -2337,3 +2337,61 @@ textarea {
 .setup-next {
   color: var(--warn);
 }
+
+/* ---- a lead file tab by tab (SPEC section 6.4) ---- */
+
+.sheet-tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sheet-tabs button {
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  background: var(--surface-2);
+  color: var(--text);
+  padding: 6px 12px;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+}
+
+.sheet-tabs button[aria-selected="true"] {
+  background: var(--surface);
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--brand);
+}
+
+.sheet-tabs .sheet-tab-empty {
+  color: var(--muted);
+}
+
+.pill-sheet-new {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.pill-sheet-updated {
+  background: var(--info-bg);
+  color: var(--brand);
+}
+
+.pill-sheet-other_batch {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.pill-sheet-skipped {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.changed-mark {
+  color: var(--warn);
+  font-weight: 700;
+}

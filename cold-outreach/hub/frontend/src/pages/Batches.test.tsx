@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, vi } from "vitest";
-import type { Batch, Benchmark, LeadImport } from "../api";
+import type { Batch, Benchmark, ImportSheet, LeadImport } from "../api";
 import { App } from "../App";
 import { makeUser, mockApi } from "../test/mockApi";
 
@@ -186,7 +186,7 @@ test("add a file to a batch, read the preview, save it", async () => {
   expect(within(card).getByText("Sparkle (L-000004, in Spring batch)")).toBeVisible();
   expect(within(card).getByText("without a GBP link").previousSibling).toHaveTextContent("2");
   expect(within(card).getByText(/no Level column/)).toBeVisible();
-  await userEvent.click(within(card).getByText("Columns that were ignored"));
+  await userEvent.click(within(card).getByText("Other columns (kept with the leads)"));
   expect(within(card).getByText("Operation Hour (in 1 tab)")).toBeVisible();
   await userEvent.click(within(card).getByRole("button", { name: "Save 3,995 businesses" }));
 
@@ -317,4 +317,91 @@ test("a waiting preview opens again and can be discarded", async () => {
 
   expect(await screen.findByRole("form", { name: "Add a lead file" })).toBeVisible();
   expect(calls.some((c) => c.path === "/imports/i1/discard")).toBe(true);
+});
+
+function sheet(overrides: Partial<ImportSheet> = {}): ImportSheet {
+  return {
+    kept: true,
+    tabs: [
+      { name: "Tulsa", rows: 2 },
+      { name: "Jackson", rows: 0 },
+      { name: "Dallas", rows: 1 },
+    ],
+    columns: [
+      { key: "business_name", label: "Business name" },
+      { key: "gbp_link", label: "MAP" },
+      { key: "email", label: "Email" },
+      { key: "extra:Operation Hour", label: "Operation Hour" },
+    ],
+    statuses: { new: 2, updated: 0, other_batch: 1, merged: 0, top: 0, skipped: 0 },
+    rows: [
+      {
+        tab: "Tulsa",
+        line: 2,
+        status: "new",
+        merged: false,
+        top: false,
+        values: { business_name: "Multi-Clean", email: "kevin@mc.com" },
+        extra: { "Operation Hour": "9-5" },
+        raw: { email: "Kevin@MC.com" },
+        bad_emails: ["http:"],
+      },
+      {
+        tab: "Tulsa",
+        line: 3,
+        status: "other_batch",
+        merged: false,
+        top: false,
+        values: { business_name: "Sparkle" },
+        extra: {},
+        raw: {},
+        bad_emails: [],
+      },
+    ],
+    total: 2,
+    page: 1,
+    pages: 1,
+    ...overrides,
+  };
+}
+
+test("the preview shows the file tab by tab with every column", async () => {
+  const calls = mockApi({
+    "GET /auth/me": as("owner"),
+    "GET /batches": [200, [batch({ can_delete: false })]],
+    "GET /benchmarks": [200, []],
+    "GET /imports?batch_id=b1": [200, [preview()]],
+    "GET /imports/i1/sheet?page=1": [200, sheet()],
+    "GET /imports/i1/sheet?tab=Dallas&page=1": [200, sheet({ rows: [], total: 0 })],
+    "GET /imports/i1/sheet?tab=Dallas&status=other_batch&page=1": [
+      200,
+      sheet({ rows: [], total: 0 }),
+    ],
+  });
+  render(<App />);
+
+  await userEvent.click(await screen.findByRole("button", { name: "Batch 1" }));
+  const file = await screen.findByRole("region", { name: "The file, tab by tab" });
+  const tabs = within(file).getByRole("tablist", { name: "Tabs of the file" });
+  expect(
+    within(tabs)
+      .getAllByRole("tab")
+      .map((t) => t.textContent),
+  ).toEqual(["All tabs (3)", "Tulsa (2)", "Jackson (0)", "Dallas (1)"]);
+  const rows = within(file).getAllByRole("row");
+  expect(rows[0]).toHaveTextContent("Business nameMAPEmailOperation Hour");
+  expect(within(rows[1]!).getByText("9-5")).toBeVisible();
+  expect(within(rows[1]!).getByText("kevin@mc.com").closest("td")).toHaveAttribute(
+    "title",
+    "In the file: Kevin@MC.com",
+  );
+  expect(within(rows[1]!).getByText(/Not an email: http:/)).toBeVisible();
+  expect(within(rows[2]!).getByText("In another batch")).toBeVisible();
+
+  await userEvent.click(within(tabs).getByRole("tab", { name: /Dallas/ }));
+  await userEvent.selectOptions(within(file).getByLabelText("Show"), "other_batch");
+  expect(await within(file).findByText("No rows here.")).toBeVisible();
+  expect(
+    calls.some((c) => c.path === "/imports/i1/sheet?tab=Dallas&status=other_batch&page=1"),
+  ).toBe(true);
 });

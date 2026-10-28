@@ -4,7 +4,7 @@ sees the history and the lists."""
 
 import uuid
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, File, Form, Query, UploadFile
 from pydantic import BaseModel, Field, StringConstraints
@@ -96,6 +96,23 @@ def _get(db: Session, import_id: uuid.UUID) -> Import:
 def get_import(import_id: uuid.UUID, me: CurrentUser, db: Db) -> ImportOut:
     ensure(me, Action.VIEW_HUB)
     return ImportOut.of(_get(db, import_id))
+
+
+@router.get("/imports/{import_id}/sheet")
+def sheet(
+    import_id: uuid.UUID,
+    me: CurrentUser,
+    db: Db,
+    tab: Annotated[str | None, Query(max_length=120)] = None,
+    status: Annotated[
+        Literal["new", "updated", "other_batch", "merged", "top", "skipped"] | None, Query()
+    ] = None,
+    page: Annotated[int, Query(ge=1, le=10_000)] = 1,
+) -> dict[str, Any]:
+    """The file tab by tab: every row with every column and what happens (or happened) to
+    it (SPEC section 6.4)."""
+    ensure(me, Action.VIEW_HUB)
+    return service.sheet_page(db, _get(db, import_id), tab, status, page)
 
 
 @router.post("/imports/{import_id}/confirm", response_model=ImportOut)
