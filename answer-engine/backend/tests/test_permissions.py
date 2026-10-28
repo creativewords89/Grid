@@ -33,6 +33,7 @@ SPEC_TABLE: dict[Action, tuple[Rule, Rule, Rule]] = {
     Action.DELETE_THREAD: ("any", "no", "no"),
     Action.MANAGE_USERS: ("any", "no", "no"),
     Action.MANAGE_SETTINGS: ("any", "no", "no"),
+    Action.MANAGE_VOICE: ("any", "no", "no"),
     Action.MANAGE_KB: ("any", "no", "no"),
     Action.VIEW_USAGE: ("any", "no", "no"),
     Action.EDIT_OWN_PROFILE: ("any", "any", "any"),

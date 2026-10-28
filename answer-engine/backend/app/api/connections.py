@@ -7,18 +7,26 @@ is in History as "changed", without values.
 
 import logging
 import secrets
+from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, StringConstraints
+from sqlalchemy import func, select
 
 from app import audit, connections, settings_store
 from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
+from app.db.models import KbOp, KbOpState
 from app.errors import ApiError
+from app.kb.live import all_live_chunk_ids
+from app.kb.store import DOCS, VERIFIED
 from app.mail import Mailer, get_mailer
+from app.marketing import service as marketing
 from app.permissions import Action, ensure
 from app.reviews.telegram import TelegramError, get_telegram
+from app.verified import service as verified
+from app.voice import service as voice
 
 log = logging.getLogger(__name__)
 
@@ -39,11 +47,20 @@ class FieldOut(BaseModel):
     hint: str | None  # secret fields: "••••ab12"
 
 
+class NamespaceOut(BaseModel):
+    namespace: str
+    used_for: str
+    records: int
+    last_synced: datetime | None
+    pending: bool
+
+
 class GroupOut(BaseModel):
     id: str
     name: str
     ready: bool
     fields: list[FieldOut]
+    namespaces: list[NamespaceOut] = []
 
 
 class ConnectionsOut(BaseModel):
@@ -89,8 +106,49 @@ def _out(db: Db) -> ConnectionsOut:
                     hint=connections.hint(text) if field.secret and text else None,
                 )
             )
-        groups.append(GroupOut(id=group, name=name, ready=ready[group], fields=fields))
+        groups.append(
+            GroupOut(
+                id=group,
+                name=name,
+                ready=ready[group],
+                fields=fields,
+                namespaces=_namespaces(db) if group == "pinecone" else [],
+            )
+        )
     return ConnectionsOut(groups=groups)
+
+
+def _namespaces(db: Db) -> list[NamespaceOut]:
+    """The Pinecone namespaces the Answer Engine uses, with what Postgres says they hold."""
+    rows: list[tuple[str, str, int]] = [
+        (DOCS, "Knowledge base (facts)", len(all_live_chunk_ids(db))),
+        (VERIFIED, "Verified answers", len(verified.all_live_records(db))),
+    ]
+    active = voice.counts(db)
+    for platform in marketing.platforms(db):
+        rows.append(
+            (voice.namespace(platform), f"Brand voice: {platform.name}", active.get(platform.id, 0))
+        )
+    synced = dict(
+        db.execute(
+            select(KbOp.namespace, func.max(KbOp.updated_at))
+            .where(KbOp.state == KbOpState.DONE)
+            .group_by(KbOp.namespace)
+        ).all()
+    )
+    waiting = set(
+        db.scalars(select(KbOp.namespace).where(KbOp.state == KbOpState.PENDING).distinct())
+    )
+    return [
+        NamespaceOut(
+            namespace=name,
+            used_for=used_for,
+            records=records,
+            last_synced=synced.get(name),
+            pending=name in waiting,
+        )
+        for name, used_for, records in rows
+    ]
 
 
 @router.get("", response_model=ConnectionsOut)

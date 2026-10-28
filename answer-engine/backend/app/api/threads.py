@@ -24,6 +24,7 @@ from app.db.models import (
     ThreadMessage,
     ThreadStatus,
     User,
+    VoiceExample,
 )
 from app.errors import ApiError
 from app.kb.store import VectorStore
@@ -78,6 +79,11 @@ class ThreadList(BaseModel):
     counts: dict[str, int]
 
 
+class StyleUsed(BaseModel):
+    id: uuid.UUID
+    question: str
+
+
 class DraftInfo(BaseModel):
     answer_id: uuid.UUID
     confidence: int | None
@@ -86,6 +92,7 @@ class DraftInfo(BaseModel):
     sources: list[dict[str, Any]]
     needs_info: dict[str, str] | None
     corrected_after_post: str | None
+    style_examples: list[StyleUsed] = []
 
 
 class MessageView(BaseModel):
@@ -216,7 +223,15 @@ def _draft_info(db: Db, m: ThreadMessage) -> DraftInfo | None:
         if m.state == DraftState.POSTED and answer.current_text != m.body
         else None
     )
+    style: list[StyleUsed] = []
+    voice_ids = [uuid.UUID(i) for i in (answer.usage or {}).get("voice", [])]
+    if voice_ids:
+        found = {
+            e.id: e for e in db.scalars(select(VoiceExample).where(VoiceExample.id.in_(voice_ids)))
+        }
+        style = [StyleUsed(id=i, question=found[i].question[:200]) for i in voice_ids if i in found]
     return DraftInfo(
+        style_examples=style,
         answer_id=answer.id,
         confidence=answer.confidence,
         outcome=answer.outcome.value if answer.outcome else None,

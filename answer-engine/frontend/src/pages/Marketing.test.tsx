@@ -457,3 +457,32 @@ test("a conversation has no side panel", async () => {
   expect(screen.queryByRole("complementary", { name: "Details" })).toBeNull();
   expect(screen.queryByRole("complementary", { name: "Help" })).toBeNull();
 });
+
+test("a draft shows which brand voice examples it took its style from", async () => {
+  window.history.pushState(null, "", "/marketing?thread=reddit%3A1abc2de");
+  const ready = draftMsg("ready");
+  mockApi({
+    "GET /auth/me": me,
+    ...lists(),
+    "GET /threads/reddit%3A1abc2de": [
+      200,
+      detail([
+        question,
+        {
+          ...ready,
+          draft: {
+            ...ready.draft!,
+            style_examples: [
+              { id: "e1", question: "How long does GBP verification take?" },
+              { id: "e2", question: "Can I speed up verification?" },
+            ],
+          },
+        },
+      ]),
+    ],
+  });
+  render(<App />);
+
+  await userEvent.click(await screen.findByText("Style from: 2 examples"));
+  expect(screen.getByText("Can I speed up verification?")).toBeVisible();
+});

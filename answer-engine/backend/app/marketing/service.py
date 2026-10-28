@@ -42,11 +42,13 @@ from app.db.models import (
     TrashKind,
     UsageKind,
     User,
+    VoiceExample,
 )
 from app.kb.store import VectorStore
 from app.marketing.url_parser import Parsed, PlatformRule, UrlError, parse
 from app.notifications import service as notifications
 from app.reviews import service as reviews
+from app.voice import service as voice
 
 log = logging.getLogger(__name__)
 
@@ -463,8 +465,10 @@ def draft(
     )
     query = target.body if first.id == target.id else f"{first.body}\n\n{target.body}"
     found = retrieve(db, store, query[:4000])
+    picked = voice.pick(db, store, platform, target.body, thread.community)
     forum, refs = _forum(thread)
     prompt = draft_message(
+        voice=voice.prompt_block(platform, picked),
         platform=platform.name,
         style=platform.style_prompt,
         community=thread.community,
@@ -498,10 +502,12 @@ def draft(
             "output_tokens": spent.output_tokens,
             "cost_usd": round(spent.cost_usd, 6),
             "context": [item.chunk_id for item in found.items],
+            "voice": [str(e.id) for e in picked.examples],
         },
     )
     db.add(answer)
     db.flush()
+    voice.mark_used(picked.examples)
     _discard_drafts(db, thread, target.id)
     message = ThreadMessage(
         thread_id=thread.id,
@@ -527,6 +533,59 @@ def draft(
     refresh_status(db, thread)
     db.commit()
     return message
+
+
+@dataclass
+class Preview:
+    text: str
+    examples: list[VoiceExample]
+    matched: bool
+    sources: list[str]
+    checks: voice.Checks
+
+
+def preview_draft(
+    db: Session,
+    platform: Platform,
+    question: str,
+    community: str | None,
+    by: User,
+    answerer: Answerer,
+    store: VectorStore,
+) -> Preview:
+    """Brand voice → Try it (SPEC 6.13): a draft for a sample question, with the platform's
+    brand voice. Nothing is saved; the Claude cost counts as a draft."""
+    question = _question(question)
+    community = (community or "").strip()[:200] or None
+    found = retrieve(db, store, question[:4000])
+    picked = voice.pick(db, store, platform, question, community)
+    prompt = draft_message(
+        voice=voice.prompt_block(platform, picked),
+        platform=platform.name,
+        style=platform.style_prompt,
+        community=community,
+        community_notes=community_notes(db, platform, community),
+        items=found.items,
+        thread=thread_block(
+            [ForumMessage(ref="m1", author="them", name=None, body=question, reply_to=None)],
+            "m1",
+        ),
+        instruction=None,
+    )
+    completion = answerer.draft(prompt)
+    spent = Usage()
+    spent.add(completion.model, completion.input_tokens, completion.output_tokens)
+    usage_log.record(db, by.id, UsageKind.DRAFT, spent)
+    if completion.stop_reason == "refusal" or not completion.text.strip():
+        raise MarketingError(502, "no_draft", "No draft could be written for this question.")
+    text = with_disclosure(completion.text.strip(), platform.disclosure_line)
+    return Preview(
+        text=text,
+        examples=picked.examples,
+        matched=picked.matched,
+        sources=list(dict.fromkeys(item.label for item in found.items))[:5],
+        checks=voice.check(platform, text),
+    )
 
 
 def edit_draft(db: Session, message: ThreadMessage, by: User, body: str) -> ThreadMessage:
@@ -561,6 +620,7 @@ def mark_posted(
     message.posted_at = now()
     message.external_url = url.strip() if url else None
     message.external_comment_id = parsed.comment_id if parsed else None
+    voice.suggest_from_post(db, message)
     touch(thread)
     refresh_status(db, thread)
     audit.record(db, by, "posted", "thread", thread.id, thread.title)
@@ -643,6 +703,8 @@ def on_review_decided(db: Session, answer: Answer, action: str, by: User) -> Non
     platform = thread.platform.name
     link = f"/marketing?thread={thread.id}"
     if message.state == DraftState.POSTED:
+        if action == "edit":
+            voice.correct_suggestion(db, message, answer.current_text)
         if action in ("edit", "reject") and message.posted_by:
             poster = db.get(User, message.posted_by)
             if poster is not None and poster.id != by.id:

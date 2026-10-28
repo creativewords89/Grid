@@ -4,6 +4,7 @@
 - The support check says "partial" when the question contains "long" (so the answer goes
   to review), unless a team-verified answer was given; otherwise "full".
 - Marketing drafts are a fixed helpful reply; "mention us" in the prompt adds GridRankers.
+- Brand voice style guides are two fixed lines.
 - Follow-up rewrites prefix the question.
 """
 
@@ -56,6 +57,9 @@ class Handler(BaseHTTPRequestHandler):
             claims = ["takes 3 weeks"] if long_q else []
             out = json.dumps({"verdict": verdict, "unsupported_claims": claims})
             return self.json(message(model, out, 2100, 30))
+        if "house style guide" in system:
+            guide = "- 2-4 short, friendly sentences.\n- End with a small question back to them."
+            return self.json(message(model, guide, 1800, 40))
         if "You draft replies" in system:
             text = (
                 "Verification usually takes 5 to 14 days by postcard or video. Keep your name, "

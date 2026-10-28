@@ -4,6 +4,7 @@ import { api, ApiError, type FileList, type FileTypeFilter, type StoredFile } fr
 import { useAuth } from "../auth";
 import { Alert, Confirm } from "../components/ui";
 import { formatDate, formatSize } from "../format";
+import { BrandVoice } from "./BrandVoice";
 import { Trash } from "./Trash";
 
 // SPEC section 6.1. The server checks the real type from the content.
@@ -36,25 +37,30 @@ type Upload = {
 
 export function Documents() {
   const { user } = useAuth();
-  const [tab, setTab] = useState<"files" | "trash">("files");
+  const [tab, setTab] = useState<"files" | "voice" | "trash">("files");
   const isOwner = user?.role === "owner";
 
   return (
     <section className="page">
       <div className="page-head">
         <h1>Documents</h1>
+      </div>
+      <div className="tabs doc-tabs" role="tablist" aria-label="Documents">
+        <button role="tab" aria-selected={tab === "files"} onClick={() => setTab("files")}>
+          Knowledge base
+        </button>
+        <button role="tab" aria-selected={tab === "voice"} onClick={() => setTab("voice")}>
+          Brand voice
+        </button>
         {isOwner && (
-          <div className="tabs" role="tablist">
-            <button role="tab" aria-selected={tab === "files"} onClick={() => setTab("files")}>
-              Files
-            </button>
-            <button role="tab" aria-selected={tab === "trash"} onClick={() => setTab("trash")}>
-              Trash
-            </button>
-          </div>
+          <button role="tab" aria-selected={tab === "trash"} onClick={() => setTab("trash")}>
+            Trash
+          </button>
         )}
       </div>
-      {tab === "files" ? <Files /> : <Trash />}
+      {tab === "files" && <Files />}
+      {tab === "voice" && <BrandVoice />}
+      {tab === "trash" && <Trash />}
     </section>
   );
 }

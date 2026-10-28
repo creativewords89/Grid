@@ -18,6 +18,7 @@ from app.kb.live import live_chunk_ids
 from app.kb.store import DELETE_BATCH, DOCS, UPSERT_BATCH, VERIFIED, Record, VectorStore
 from app.notifications import service as notifications
 from app.verified import service as verified
+from app.voice import service as voice
 
 log = logging.getLogger(__name__)
 
@@ -85,6 +86,8 @@ def _run(db: Session, store: VectorStore, op: KbOp) -> None:
         records = doc_records(db, op.record_ids)
     elif op.namespace == VERIFIED:
         records = verified_records(db, op.record_ids)
+    elif op.namespace.startswith(voice.PREFIX):
+        records = voice.records(db, op.namespace, op.record_ids)
     else:
         raise ValueError(f"no records for namespace {op.namespace!r}")
     for start in range(0, len(records), UPSERT_BATCH):

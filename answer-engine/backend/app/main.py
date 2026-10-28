@@ -29,6 +29,7 @@ from app.api import (
     usage,
     users,
     verified,
+    voice,
 )
 from app.api import settings as settings_api
 from app.config import get_settings
@@ -93,6 +94,7 @@ def create_app() -> FastAPI:
         threads,
         usage,
         system,
+        voice,
     ):
         app.include_router(module.router, prefix="/api")
     return app

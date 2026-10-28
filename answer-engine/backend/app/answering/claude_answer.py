@@ -20,6 +20,7 @@ from app.answering.prompts import (
     CHECK_SYSTEM,
     DRAFT_SYSTEM,
     REWRITE_SYSTEM,
+    VOICE_GUIDE_SYSTEM,
 )
 
 log = logging.getLogger(__name__)
@@ -59,6 +60,7 @@ class Answerer(Protocol):
     ) -> Generator[str, None, Completion]: ...
     def check(self, prompt: str) -> CheckResult: ...
     def draft(self, prompt: str) -> Completion: ...
+    def voice_guide(self, prompt: str) -> Completion: ...
 
 
 def parse_check(completion: Completion) -> CheckResult:
@@ -167,6 +169,19 @@ class ClaudeAnswerer:
             fallbacks="default",
             output_config={"effort": self.effort},
             system=system,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return _completion(message)
+
+    def voice_guide(self, prompt: str) -> Completion:
+        """A platform's brand-voice style guide, written from its examples (SPEC 6.13)."""
+        message = self.client.beta.messages.create(
+            model=self.answer_model,
+            max_tokens=DRAFT_MAX_TOKENS,
+            betas=[FALLBACK_BETA],
+            fallbacks="default",
+            output_config={"effort": self.effort},
+            system=[{"type": "text", "text": VOICE_GUIDE_SYSTEM}],
             messages=[{"role": "user", "content": prompt}],
         )
         return _completion(message)
