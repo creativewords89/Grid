@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api, ApiError, type ConnectionField, type Connections as Data } from "../api";
 import { Alert } from "../components/ui";
+import { ago } from "../format";
 
 // Settings → Connections (SPEC section 7.8): API keys and connection details, entered here
 // instead of on the server. Keys are write-only: once saved, only their last four
@@ -195,6 +196,44 @@ function ConnectionGroup({
           );
         })}
       </div>
+      {group.namespaces && group.namespaces.length > 0 && (
+        <div className="stack-tight">
+          <h4 className="conn-ns-head">In use</h4>
+          <div className="table-wrap">
+            <table className="table conn-ns">
+              <thead>
+                <tr>
+                  <th scope="col">Namespace</th>
+                  <th scope="col">Used for</th>
+                  <th scope="col">Records</th>
+                  <th scope="col">Last synced</th>
+                </tr>
+              </thead>
+              <tbody>
+                {group.namespaces.map((n) => (
+                  <tr key={n.namespace}>
+                    <td className="mono">{n.namespace}</td>
+                    <td>{n.used_for}</td>
+                    <td>{n.records.toLocaleString()}</td>
+                    <td>
+                      {n.pending ? (
+                        <span className="tag tag-warn">Sync pending</span>
+                      ) : n.last_synced ? (
+                        ago(n.last_synced)
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="hint">
+            Other namespaces in this index are not touched by the Answer Engine.
+          </p>
+        </div>
+      )}
       <div className="row">
         <button className="button button-primary" disabled={busy !== ""}>
           {busy === "save" ? "Saving…" : "Save"}

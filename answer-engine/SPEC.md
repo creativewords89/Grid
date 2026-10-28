@@ -106,6 +106,8 @@ Three roles, stored on the user as `role`:
 | Delete a thread | ✔ | ✘ | ✘ |
 | Manage users (invite, deactivate, change role, reset password) | ✔ | ✘ | ✘ |
 | Settings (thresholds, models, platforms, reminders, limits) | ✔ | ✘ | ✘ |
+| See Brand voice and use **Try it** | ✔ | ✔ | ✔ |
+| Change Brand voice (upload examples, style guide, writing rules, approve suggestions) | ✔ | ✘ | ✘ |
 | Rebuild the Pinecone index, see sync status | ✔ | ✘ | ✘ |
 | Usage and cost dashboard | ✔ | ✘ | ✘ |
 | Set own profile, password and notification channel; link own Telegram | ✔ | ✔ | ✔ |
@@ -146,6 +148,8 @@ All tables have `id` (UUID v7 unless stated), `created_at` and `updated_at` (`ti
 | `platforms` | slug UNIQUE (reddit, facebook, …), name, enabled BOOL, parser ENUM(reddit, facebook, generic), hosts TEXT[] (the websites a generic platform covers, e.g. quora.com), style_prompt TEXT, disclosure_line TEXT NULL, position. Reddit and Facebook are created the first time platforms are read. |
 | `communities` | platform_id, name (e.g. `r/SEO`), notes TEXT (e.g. "no links") |
 | `notifications` | user_id, kind (answer_reviewed, needs_info, thread_draft_ready, reply_corrected_after_post, review_escalated, sync_failing, file_failed), ref_kind, ref_id, title, body, link NULL (a path in the app), read_at NULL, channel NULL + sent_at NULL (email or Telegram delivery) |
+| `voice_examples` | Brand voice (section 6.13): platform_id, source ENUM(file, posted), state ENUM(suggested, active, dismissed), question, answer, community NULL, notes NULL, enabled BOOL, starred BOOL, corrected BOOL (a posted reply a reviewer corrected), thread_message_id NULL UNIQUE (the posted reply it came from), used_count, last_used_at NULL, created_by, decided_by. |
+| `platforms` (step 24) | adds the brand voice: voice_guide TEXT, voice_guide_edited BOOL, voice_guide_at, voice_max_words NULL, voice_emojis ENUM(none, one, any), voice_links ENUM(never, when_asked, allowed), voice_banned TEXT[], voice_file_name / voice_file_at / voice_file_by (the examples file last uploaded). |
 | `kb_ops` | outbox for Pinecone (section 6.4): seq BIGINT IDENTITY (sending order; UUID v7 isn't ordered within a millisecond), op ENUM(upsert, delete), namespace, record_ids TEXT[] (at most 1000), file_id NULL (for "Sync pending"), state ENUM(pending, done), attempts, next_attempt_at, last_error. Done ops are kept 7 days. |
 | `jobs` | kind, payload JSONB, state ENUM(queued, running, done, failed), attempts, run_after, locked_by, locked_at, last_error, dedupe_key UNIQUE NULL (scheduled jobs use `kind:YYYY-MM-DD` so each runs once per slot) |
 | `trash` | kind ENUM(file, verified_answer, thread, conversation), ref_id, title, data JSONB, deleted_by, deleted_at. Purged after 30 days. |
@@ -200,6 +204,7 @@ All tables have `id` (UUID v7 unless stated), `created_at` and `updated_at` (`ti
 - **Namespaces:**
   - `docs`: one record per chunk. ID `doc_{file_id}_{n}`, fields `text`, `file_id`, `file_name`, `page_from`, `page_to`, `sheet`.
   - `verified`: one record per active verified answer. ID `va_{verified_answer_id}`, with `text` = `Q: {question}\nA: {answer}` and the field `verified_answer_id`.
+  - `voice-{platform slug}` (step 24): one record per active, switched-on brand voice example of that platform. ID `vx_{example_id}`, with `text` = the example's question and the field `example_id` (section 6.13). Other namespaces in the index are never touched.
 - Record IDs are deterministic and stored in Postgres, so updates and deletes target exact IDs. **The code never deletes by metadata filter.**
 
 ### 6.4 Keeping Pinecone in sync
@@ -448,6 +453,7 @@ Sources: [1] Onboarding.pdf p.3
 | Nightly Pinecone check | Daily 03:00 |
 | Trash purge | Daily 04:00 |
 | Thread auto-close | Daily 04:30 |
+| Brand voice style guide (`voice_guide`) | After an examples upload, unless the guide was edited |
 | Session cleanup | Daily 05:00 |
 
 - **Trash:**
@@ -456,6 +462,21 @@ Sources: [1] Onboarding.pdf p.3
   - Restore (Owner) puts everything back, including Pinecone records.
   - Purge deletes the original file from disk.
 - **Audit:** every add, edit, delete, restore, review decision, role change, setting change and rebuild writes an `audit` row with field-level `changes`. Shown in Settings → History.
+
+### 6.13 Brand voice (build step 24)
+
+Real questions with the answers we liked, **per platform**, teach marketing drafts our tone, length and wording. **Facts still come only from the knowledge base**: examples are style, never facts. No model is fine-tuned; the examples and a style guide are given to Claude with each draft.
+
+- **Examples file:** Documents → Brand voice → {platform} → **Upload examples** (Owner). Excel or CSV with a header row: **question** and **answer** (also accepted: "their question", "our answer", "reply", "response"), optional **group** (or "community", "subreddit") and **notes**. Title lines above the header are skipped (the spreadsheet reader of section 6.1). Rows without a question or an answer are skipped and counted; repeated rows (same text ignoring case and punctuation) are skipped and counted. At most 5,000 examples per platform; the upload size limit is the documents' one. A **new version replaces the previous file's examples**; approved posted replies stay. A **Download template** CSV shows the layout.
+- **Per example** (Owner): switch on/off, star (preferred), edit, delete. Everyone sees the list, with how often each was used.
+- **Style guide:** after an upload, a job (`voice_guide`) has Claude read up to 120 examples (starred first, then posted replies) and write 5–8 plain instructions ("2–4 short sentences", "often end with a question back to them"). The Owner can **Edit** it; an edited guide is kept when new examples arrive. **Rewrite from examples** writes it again, replacing the edit (after a confirmation). Without a Claude key the job does nothing until **Rewrite from examples**.
+- **Writing rules** (Owner): maximum length in words (10–1000, or no limit), emojis (none / at most one / any; default at most one), links (never / only when they ask / allowed; default only when they ask), words never to use, and the disclosure line (the platform's existing field). They are instructions to Claude; **Try it** checks a draft against them.
+- **Picking examples for a draft:** the message being answered is searched in `voice-{slug}` (top 30, reranked to 12). Only active, switched-on examples of that platform count, with a relevance of at least 0.2. Scores get +0.1 for the same group (community) and +0.05 for a starred example or an approved posted reply; the 8 most recently used examples of the platform are multiplied by 0.7 (gentle rotation, so replies don't all sound alike). Then up to **4** are taken in score order, skipping any whose answer shares 60% or more of its words with one already taken (near-copies). If none qualifies, the 2 most typical (starred, then most used) are used. A search failure never stops a draft.
+- **The draft prompt** gets `<brand_voice>` (style guide and writing rules) and `<style_examples>` (question and our answer, escaped). The draft system prompt says to copy the style, never facts or sentences. The picked examples' IDs are stored with the draft (`answers.usage.voice`), their `used_count` / `last_used_at` updated, and the draft shows **Style from: N examples**.
+- **Suggestions from posted replies:** every reply marked as posted becomes a **suggested** example (their message it answered, our posted text, the thread's community; `corrected` when a reviewer changed the draft). A correction after posting updates a waiting suggestion. In **To approve** the Owner can **Approve**, **Edit, then approve** or **Dismiss**; only approved ones are searched.
+- **Try it:** anyone can type a sample question (and optionally a group) and get a draft with the current brand voice: retrieval, examples and rules as for a real draft, with checks (word count against the limit, links, emojis, banned words found), the examples used (or that typical ones were used) and the documents the facts came from. Nothing is saved; the Claude cost counts as a draft. Examples are not marked as used.
+- **Pinecone:** changes go through the outbox (section 6.4) like documents; the nightly check and Rebuild cover every platform's namespace. Settings → Connections → Pinecone lists the namespaces in use with their record counts (from Postgres), last sync and "Sync pending".
+- **Audit:** uploads, example edits and deletions, approvals and dismissals, style guide edits and rewrites, and writing rules changes.
 
 ## 7. Screens
 
@@ -475,6 +496,13 @@ A clean, simple layout. Left sidebar: **Ask**, **Documents**, **Marketing**, **V
 - **Filters:** search and type filter. Shows the total pages and the OCR pages used this month.
 - **Uploading:** one file per request (with a progress bar), so Caddy can cap request bodies at 210 MB; the app enforces the real per-file limit.
 - **Trash tab** (Owner only): deleted files with who deleted them, when they will be removed for good, and Restore / Delete forever.
+- **Tabs** (step 24): **Knowledge base** (the files above) · **Brand voice** · Trash (Owner).
+- **Brand voice** (section 6.13): **Facebook | Reddit** tabs (each switched-on platform; the last one used is remembered on the device), then four parts:
+  - **Examples:** the current file (name, how many, who uploaded it and when) with **Download template** and **Upload examples / Upload new version** (Owner); the column hint; then the examples (their question, our answer, group, from File or Posted reply, times used) with search, **Show more**, and for the Owner on/off, Star and Delete.
+  - **Style guide & rules:** the style guide (who wrote it and when; **Edit**, **Rewrite from examples**) and the writing rules form (read only for others).
+  - **Try it:** the sample question and group, and the test draft with its checks, examples and sources.
+  - **To approve** (with a count): suggested posted replies with who posted them, when and "Corrected by a reviewer"; Approve / Edit, then approve / Dismiss for the Owner.
+  - Others see "Only the Owner can change Brand voice. Everyone can see it."
 
 ### 7.3 Marketing
 Laid out like Chat (step 20): conversations on the left, the work on the right.
@@ -513,6 +541,7 @@ Laid out like Chat (step 20): conversations on the left, the work on the right.
 - **Answering:** models, effort, minimum relevance.
 - **Platforms & communities:** style prompts, disclosure lines, community notes.
 - **Knowledge base:** sync status, pending ops, last nightly check, **Rebuild index**.
+- **Connections → Pinecone** (step 24): **In use**: each namespace the app uses (`docs`, `verified`, `voice-{slug}`), what it holds, its record count, its last sync or **Sync pending**, and that other namespaces in the index are not touched.
 - **Limits:** max upload size, questions per user per day, monthly cost alert.
 - **System:** failed jobs, version, backups status.
 - **History:** the audit log.
@@ -535,6 +564,7 @@ Every route checks the session, the CSRF token (for writes) and `permissions.can
 | Answer Log | `GET /answer-log` (filters `outcome`, `status`, `flagged`, `kind`, `person`, `date_from`, `date_to`, `q`, `page`), `GET /answer-log/gaps`, `GET /answer-log/{id}`, `POST /answers/{id}/admin-review` `{action: approve|edit|reject|no_answer, text?, note?, verified_choice?}` |
 | Verified | `GET /verified?show=active|disabled|expired|needs_check|all&q=` (with counts per tab), `GET /verified/{id}`, `PATCH /verified/{id}` `{question?, answer?, expires_at?, clear_expiry?, checked?}`, `POST /verified/{id}/disable`, `POST /verified/{id}/enable`, `DELETE /verified/{id}`, `GET /verified/{id}/history`, `POST /verified/{id}/restore-version` `{version}` |
 | Marketing | `POST /threads/resolve` `{url}` → `{found, thread?, parsed, matched_message_id?, reopened, error?}`, `POST /threads` `{url, question, title?, author_name?}` (`url` is a link or a post's code; 409 `exists`), `GET /threads`, `GET /threads/{id}`, `POST /threads/{id}/replies`, `POST /threads/{id}/draft` `{parent_id, instruction?}`, `PATCH /thread-messages/{id}`, `POST /thread-messages/{id}/posted` `{url?}`, `POST /threads/{id}/close`, `POST /threads/{id}/reopen`, `DELETE /threads/{id}`; platforms: `GET /platforms`, `POST /platforms` (Owner), `PATCH /platforms/{id}`, `POST /platforms/{id}/communities`, `PATCH /communities/{id}`, `DELETE /communities/{id}` |
+| Brand voice | `GET /voice` (platforms with example and suggestion counts), `GET /voice/{slug}` (file, counts, guide, rules, `can_manage`), `GET /voice/{slug}/examples?state=active\|suggested&q=&offset=&limit=`, `POST /voice/{slug}/file` (multipart `file`; → `{added, skipped, duplicates, voice}`), `PATCH /voice/examples/{id}` `{enabled?, starred?, question?, answer?}`, `DELETE /voice/examples/{id}`, `POST /voice/examples/{id}/approve` `{answer?}`, `POST /voice/examples/{id}/dismiss`, `PUT /voice/{slug}/guide` `{text}`, `POST /voice/{slug}/guide/rewrite`, `PUT /voice/{slug}/rules` `{max_words, emojis, links, banned, disclosure_line}`, `POST /voice/{slug}/try` `{question, community?}`. Viewing and Try it: everyone; changes: Owner. Drafts (`ThreadDetail`) carry `draft.style_examples`; `GET /connections` carries the Pinecone group's `namespaces`. |
 | Notifications | `GET /notifications` (your own, newest first, with the unread count), `POST /notifications/read` `{ids?}` (none: mark all), `GET`+`POST /notifications/stop-emails?u=&t=` (signed link, no session) |
 | Live updates | `GET /updates?since=` → `{cursor, answers, notifications, unread, files_changed, reviews_waiting}` |
 | Users | `GET /users`, `POST /users/invite`, `PATCH /users/{id}`, `POST /users/{id}/reset-password`, `POST /me/telegram-link` (a one-time code), `DELETE /me/telegram-link` |
@@ -714,3 +744,4 @@ Every route checks the session, the CSRF token (for writes) and `permissions.can
 21. **Marketing list by platform (change requested after step 20):** Facebook | Reddit tabs with counts, a Filter menu beside the list heading instead of status chips, the New conversation button removed, the last tab remembered (section 7.3). Screen only. **Tests:** the tabs, the filter menu and its counts, the remembered tab.
 22. **Marketing with a details panel (change requested after step 21):** a large + New conversation button again, the new-conversation steps with highlighted example codes, and a right-hand panel: help while starting, the post, the person, the group rules and the activity in a conversation (section 7.3). Screen only. **Tests:** the steps and examples, the help panel, the details panel (code, link, conversations with the person, group rules, posted by).
 23. **Marketing without the right-hand panel (change requested after step 22):** the help and details panel removed; the + New conversation button and the guided steps stay. Screen only. **Tests:** no side panel in a conversation.
+24. **Brand voice (change requested after step 23):** Documents gets **Knowledge base | Brand voice** tabs. Per platform: an examples file (Excel or CSV) searched in its own Pinecone namespace `voice-{slug}`, a style guide the AI writes from the examples (Owner-editable), writing rules, 3–5 close and varied examples picked for every marketing draft (same group preferred, gentle rotation), posted replies suggested for approval, **Try it**, and the namespaces listed under Settings → Connections (sections 6.13, 7.2, 7.8). Migration 0015. **Tests:** parsing (header names, skipped and duplicate rows, bad files), a new version replacing file examples but keeping approved replies, Pinecone records per namespace and the nightly check, on/off, star, edit and delete, every permission (Owner changes, everyone sees and tries), the style guide job (and an edited guide kept), writing rules, picking (group boost, near-copies, rotation, typical fallback, other platforms never used), the draft prompt and `style_examples`, suggestions and their approval, Try it checks, the namespaces in Settings; the screens; the e2e flow (upload, style guide, Try it).

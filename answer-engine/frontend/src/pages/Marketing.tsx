@@ -1005,6 +1005,19 @@ function OurReply({
             Sources: {[...new Set(draft.sources.map((s) => s.file_name))].join(" · ")}
           </p>
         )}
+        {draft?.style_examples && draft.style_examples.length > 0 && (
+          <details className="mk-style small">
+            <summary>
+              Style from: {draft.style_examples.length} example
+              {draft.style_examples.length === 1 ? "" : "s"}
+            </summary>
+            <ul>
+              {draft.style_examples.map((e) => (
+                <li key={e.id}>{e.question}</li>
+              ))}
+            </ul>
+          </details>
+        )}
       </div>
       {draft?.needs_info && (
         <form

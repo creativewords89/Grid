@@ -1,5 +1,5 @@
-"""Nightly check and Rebuild (SPEC section 6.4): make Pinecone match Postgres again, for both
-namespaces (document chunks and verified answers)."""
+"""Nightly check and Rebuild (SPEC section 6.4): make Pinecone match Postgres again, for every
+namespace (document chunks, verified answers and each platform's brand voice examples)."""
 
 from dataclasses import asdict, dataclass
 
@@ -12,6 +12,7 @@ from app.kb import outbox
 from app.kb.live import all_live_chunk_ids
 from app.kb.store import DOCS, VERIFIED, VectorStore
 from app.verified import service as verified
+from app.voice import service as voice
 
 LAST_CHECK = "kb_last_check"
 
@@ -32,7 +33,11 @@ def reconcile(
 ) -> CheckResult:
     """Queue upserts for records Pinecone lacks (all of them on a rebuild) and deletes for
     records it shouldn't have. The sync worker then sends them."""
-    wanted = {DOCS: all_live_chunk_ids(db), VERIFIED: verified.all_live_records(db)}
+    wanted = {
+        DOCS: all_live_chunk_ids(db),
+        VERIFIED: verified.all_live_records(db),
+        **voice.all_live_records(db),
+    }
     expected = sum(len(ids) for ids in wanted.values())
     if store is None:
         result = CheckResult(

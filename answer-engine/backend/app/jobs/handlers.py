@@ -35,6 +35,7 @@ from app.kb.store import DOCS, get_store
 from app.notifications import service as notifications  # also registers its job
 from app.reviews import jobs as review_jobs  # noqa: F401  (registers the review jobs)
 from app.verified import service as verified
+from app.voice import service as voice
 
 
 def _fail_file(db: Session, payload: Payload, message: str, retried: bool) -> None:
@@ -178,6 +179,26 @@ def verified_expiry(db: Session, payload: Payload) -> None:
     """Daily 02:00: verified answers past their expiry date stop being used (SPEC 6.9)."""
     verified.expire_due(db)
     db.commit()
+
+
+@job(voice.GUIDE_JOB)
+def voice_guide(db: Session, payload: Payload) -> None:
+    """After new examples: the AI writes the platform's style guide, unless the Owner edited
+    it (SPEC 6.13). Without a Claude key it waits for "Rewrite from examples"."""
+    from app.answering.claude_answer import get_answerer
+    from app.db.models import Platform
+
+    platform = db.get(Platform, uuid.UUID(payload["platform_id"]))
+    if platform is None or platform.voice_guide_edited:
+        return
+    answerer = get_answerer(db)
+    if answerer is None:
+        return
+    by = db.get(User, uuid.UUID(payload["user_id"])) if payload.get("user_id") else None
+    try:
+        voice.write_guide(db, platform, answerer, by)
+    except voice.VoiceError as exc:
+        raise UserFacingError(exc.message) from None
 
 
 @job("thread_auto_close")

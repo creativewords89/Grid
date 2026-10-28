@@ -109,7 +109,8 @@ test("lists documents with their status and only the actions allowed", async () 
   expect(within(rows[1]!).queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
   expect(within(rows[1]!).getByText("v2")).toBeVisible();
   expect(screen.getByText(/2 files · 3 pages/)).toBeVisible();
-  expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+  expect(screen.queryByRole("tab", { name: "Trash" })).not.toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Brand voice" })).toBeVisible();
 });
 
 test("scanned pages being read show their progress", async () => {

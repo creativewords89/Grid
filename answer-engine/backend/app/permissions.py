@@ -37,6 +37,7 @@ class Action(enum.StrEnum):
     DELETE_THREAD = "delete_thread"
     MANAGE_USERS = "manage_users"
     MANAGE_SETTINGS = "manage_settings"
+    MANAGE_VOICE = "manage_voice"  # brand voice: examples, style guide, rules, approvals
     MANAGE_KB = "manage_kb"  # rebuild the index, see sync status
     VIEW_USAGE = "view_usage"
     EDIT_OWN_PROFILE = "edit_own_profile"
@@ -67,6 +68,7 @@ _ANY: dict[Action, frozenset[Role]] = {
     Action.DELETE_THREAD: _OWNER,
     Action.MANAGE_USERS: _OWNER,
     Action.MANAGE_SETTINGS: _OWNER,
+    Action.MANAGE_VOICE: _OWNER,
     Action.MANAGE_KB: _OWNER,
     Action.VIEW_USAGE: _OWNER,
     Action.EDIT_OWN_PROFILE: _ALL,

@@ -301,8 +301,87 @@ export type ConnectionField = {
   hint: string | null;
 };
 
+export type PineconeNamespace = {
+  namespace: string;
+  used_for: string;
+  records: number;
+  last_synced: string | null;
+  pending: boolean;
+};
+
 export type Connections = {
-  groups: { id: string; name: string; ready: boolean; fields: ConnectionField[] }[];
+  groups: {
+    id: string;
+    name: string;
+    ready: boolean;
+    fields: ConnectionField[];
+    namespaces?: PineconeNamespace[];
+  }[];
+};
+
+// Brand voice (SPEC section 6.13)
+export type VoiceEmojis = "none" | "one" | "any";
+export type VoiceLinks = "never" | "when_asked" | "allowed";
+
+export type VoicePlatform = {
+  slug: string;
+  name: string;
+  enabled: boolean;
+  examples: number;
+  suggested: number;
+};
+
+export type VoiceRules = {
+  max_words: number | null;
+  emojis: VoiceEmojis;
+  links: VoiceLinks;
+  banned: string[];
+  disclosure_line: string | null;
+};
+
+export type Voice = {
+  slug: string;
+  name: string;
+  file: { name: string; uploaded_at: string | null; uploaded_by: Person | null } | null;
+  from_file: number;
+  from_posted: number;
+  suggested: number;
+  guide: string;
+  guide_edited: boolean;
+  guide_at: string | null;
+  rules: VoiceRules;
+  can_manage: boolean;
+};
+
+export type VoiceExample = {
+  id: string;
+  question: string;
+  answer: string;
+  community: string | null;
+  notes: string | null;
+  source: "file" | "posted";
+  state: "suggested" | "active" | "dismissed";
+  enabled: boolean;
+  starred: boolean;
+  corrected: boolean;
+  used_count: number;
+  created_by: Person | null;
+  created_at: string;
+};
+
+export type VoiceTry = {
+  text: string;
+  matched: boolean;
+  examples: { id: string; question: string; answer: string }[];
+  sources: string[];
+  checks: {
+    words: number;
+    max_words: number | null;
+    too_long: boolean;
+    links: boolean;
+    emojis: number;
+    banned: string[];
+  };
 };
 
 export type UsageTotals = {
@@ -467,6 +546,7 @@ export type ThreadMessage = {
     sources: Source[];
     needs_info: { question: string; asked_by: string } | null;
     corrected_after_post: string | null;
+    style_examples?: { id: string; question: string }[];
   } | null;
 };
 
@@ -728,6 +808,40 @@ export const api = {
   deleteFile: (id: string) => request<void>("DELETE", `/files/${id}`),
   fileUrl: (id: string, inline = false) =>
     `/api/files/${id}/download${inline ? "?inline=true" : ""}`,
+
+  voicePlatforms: () => request<VoicePlatform[]>("GET", "/voice"),
+  voice: (slug: string) => request<Voice>("GET", `/voice/${slug}`),
+  voiceExamples: (slug: string, state: "active" | "suggested", q = "", offset = 0) => {
+    const params = new URLSearchParams({ state, offset: String(offset), limit: "50" });
+    if (q) params.set("q", q);
+    return request<{ items: VoiceExample[]; total: number }>(
+      "GET",
+      `/voice/${slug}/examples?${params.toString()}`,
+    );
+  },
+  uploadVoice: (slug: string, file: File, onProgress?: (pct: number) => void) =>
+    sendFile<{ added: number; skipped: number; duplicates: number; voice: Voice }>(
+      `/voice/${slug}/file`,
+      "file",
+      file,
+      onProgress,
+    ),
+  updateVoiceExample: (
+    id: string,
+    patch: Partial<Pick<VoiceExample, "enabled" | "starred" | "question" | "answer">>,
+  ) => request<VoiceExample>("PATCH", `/voice/examples/${id}`, patch),
+  deleteVoiceExample: (id: string) => request<void>("DELETE", `/voice/examples/${id}`),
+  approveVoiceExample: (id: string, answer?: string) =>
+    request<VoiceExample>("POST", `/voice/examples/${id}/approve`, answer ? { answer } : {}),
+  dismissVoiceExample: (id: string) =>
+    request<VoiceExample>("POST", `/voice/examples/${id}/dismiss`),
+  saveVoiceGuide: (slug: string, text: string) =>
+    request<Voice>("PUT", `/voice/${slug}/guide`, { text }),
+  rewriteVoiceGuide: (slug: string) => request<Voice>("POST", `/voice/${slug}/guide/rewrite`),
+  saveVoiceRules: (slug: string, rules: VoiceRules) =>
+    request<Voice>("PUT", `/voice/${slug}/rules`, rules),
+  tryVoice: (slug: string, question: string, community?: string) =>
+    request<VoiceTry>("POST", `/voice/${slug}/try`, { question, community: community || null }),
 
   listTrash: () => request<TrashItem[]>("GET", "/trash"),
   restoreTrash: (id: string) => request<void>("POST", `/trash/${id}/restore`),

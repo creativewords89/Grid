@@ -116,6 +116,8 @@ class FakeAnswerer:
     draft_reply: str = "Verification usually takes 1-2 weeks. Keep your details consistent."
     draft_stop: str = "end_turn"
     drafts: list[str] = field(default_factory=list)
+    guide_reply: str = "- 2-4 short sentences.\n- Friendly, no sales tone."
+    guides: list[str] = field(default_factory=list)
 
     def rewrite(self, transcript: str, question: str) -> "Completion":
         from app.answering.claude_answer import Completion
@@ -144,6 +146,12 @@ class FakeAnswerer:
         self.drafts.append(prompt)
         text = "" if self.draft_stop == "refusal" else self.draft_reply
         return Completion(text, self.draft_stop, "claude-opus-5-5", 2500, 150)
+
+    def voice_guide(self, prompt: str) -> "Completion":
+        from app.answering.claude_answer import Completion
+
+        self.guides.append(prompt)
+        return Completion(self.guide_reply, "end_turn", "claude-opus-5-5", 1800, 90)
 
     def check(self, prompt: str) -> "CheckResult":
         from app.answering.claude_answer import CheckResult, Completion

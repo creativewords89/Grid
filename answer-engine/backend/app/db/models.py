@@ -679,6 +679,18 @@ class PlatformParser(enum.StrEnum):
     GENERIC = "generic"
 
 
+class VoiceEmojis(enum.StrEnum):
+    NONE = "none"
+    ONE = "one"  # at most one
+    ANY = "any"
+
+
+class VoiceLinks(enum.StrEnum):
+    NEVER = "never"
+    WHEN_ASKED = "when_asked"
+    ALLOWED = "allowed"
+
+
 class Platform(TimestampMixin, Base):
     """Where marketing replies are posted (SPEC section 6.10). Owner-editable."""
 
@@ -694,6 +706,28 @@ class Platform(TimestampMixin, Base):
     style_prompt: Mapped[str] = mapped_column(Text, default="")
     disclosure_line: Mapped[str | None] = mapped_column(Text)
     position: Mapped[int] = mapped_column(Integer, default=0)
+    # Brand voice (SPEC section 6.13): the style guide the AI wrote from the examples (or the
+    # Owner's edit of it), the writing rules, and the examples file last uploaded.
+    voice_guide: Mapped[str] = mapped_column(Text, default="", server_default="")
+    voice_guide_edited: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    voice_guide_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    voice_max_words: Mapped[int | None] = mapped_column(Integer)
+    voice_emojis: Mapped[VoiceEmojis] = mapped_column(
+        _enum(VoiceEmojis, "voice_emojis"), default=VoiceEmojis.ONE, server_default="one"
+    )
+    voice_links: Mapped[VoiceLinks] = mapped_column(
+        _enum(VoiceLinks, "voice_links"),
+        default=VoiceLinks.WHEN_ASKED,
+        server_default="when_asked",
+    )
+    voice_banned: Mapped[list[str]] = mapped_column(
+        ARRAY(String(100)), default=list, server_default="{}"
+    )
+    voice_file_name: Mapped[str | None] = mapped_column(String(255))
+    voice_file_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    voice_file_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
 
 
 class Community(TimestampMixin, Base):
@@ -803,3 +837,52 @@ class ThreadMessage(TimestampMixin, Base):
         Index("ix_thread_messages_thread", "thread_id", "created_at"),
         Index("ix_thread_messages_answer", "answer_id"),
     )
+
+
+class VoiceSource(enum.StrEnum):
+    FILE = "file"  # from the uploaded examples file
+    POSTED = "posted"  # a reply our team posted, suggested and then approved
+
+
+class VoiceState(enum.StrEnum):
+    SUGGESTED = "suggested"  # waiting in To approve
+    ACTIVE = "active"
+    DISMISSED = "dismissed"
+
+
+class VoiceExample(TimestampMixin, Base):
+    """A real question with the answer we liked, teaching a platform's style (SPEC 6.13).
+    Searched in Pinecone's `voice-{slug}` namespace by its question."""
+
+    __tablename__ = "voice_examples"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    platform_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("platforms.id", ondelete="CASCADE"))
+    source: Mapped[VoiceSource] = mapped_column(_enum(VoiceSource, "voice_source"))
+    state: Mapped[VoiceState] = mapped_column(_enum(VoiceState, "voice_state"))
+    question: Mapped[str] = mapped_column(Text)
+    answer: Mapped[str] = mapped_column(Text)
+    community: Mapped[str | None] = mapped_column(String(200))
+    notes: Mapped[str | None] = mapped_column(Text)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    starred: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    corrected: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    thread_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("thread_messages.id", ondelete="SET NULL"), unique=True
+    )
+    used_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+    platform: Mapped[Platform] = relationship()
+
+    __table_args__ = (Index("ix_voice_examples_platform_state", "platform_id", "state"),)
+
+    @property
+    def record_id(self) -> str:
+        return f"vx_{self.id.hex}"
