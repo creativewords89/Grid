@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type LeadList } from "../api";
 import { Alert } from "../components/ui";
+import { day } from "../format";
 
 // A batch's cities (SPEC section 6.4 item 8): switched off, a city's businesses in this batch
 // are left alone by the agents. Other batches with the same city aren't touched. Cities with
@@ -45,6 +46,7 @@ export function BatchCities({
   const [cities, setCities] = useState<LeadList[] | null>(null);
   const [typed, setTyped] = useState("");
   const [tab, setTab] = useState<CityTab>("ready");
+  const [fromFile, setFromFile] = useState(""); // a file's id: only the cities it brought
   const [page, setPage] = useState(1);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -78,7 +80,14 @@ export function BatchCities({
     return <p className="muted">No cities yet: they come with the batch&apos;s lead files.</p>;
   }
   const wanted = typed.trim().toLowerCase();
-  const onTab = cities.filter((c) => tabOf(c) === tab);
+  // The files cities first came with, oldest first (step 22).
+  const files = [
+    ...new Map(
+      cities.flatMap((c) => (c.added_from ? [[c.added_from.id, c.added_from] as const] : [])),
+    ).values(),
+  ].sort((a, b) => (a.confirmed_at ?? "").localeCompare(b.confirmed_at ?? ""));
+  const inFile = fromFile ? cities.filter((c) => c.added_from?.id === fromFile) : cities;
+  const onTab = inFile.filter((c) => tabOf(c) === tab);
   const shown = wanted ? onTab.filter((c) => c.city.toLowerCase().includes(wanted)) : onTab;
   const off = onTab.filter((c) => !c.active).length;
   const pages = Math.max(1, Math.ceil(shown.length / PAGE));
@@ -102,7 +111,7 @@ export function BatchCities({
               setPage(1);
             }}
           >
-            {label} <span className="muted">({cities.filter((c) => tabOf(c) === key).length})</span>
+            {label} <span className="muted">({inFile.filter((c) => tabOf(c) === key).length})</span>
           </button>
         ))}
       </div>
@@ -119,6 +128,27 @@ export function BatchCities({
             }}
           />
         </div>
+        {files.length > 0 && (
+          <div className="field">
+            <label htmlFor={`cities-file-${batchId}`}>From file</label>
+            <select
+              id={`cities-file-${batchId}`}
+              value={fromFile}
+              onChange={(e) => {
+                setFromFile(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">All files</option>
+              {files.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.file_name}
+                  {f.confirmed_at ? ` · ${day(f.confirmed_at)}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         {/* Not ready cities have no switch: they wait for a Top (step 21). */}
         {staff && tab !== "not_ready" && (
           <div className="field">
@@ -155,6 +185,7 @@ export function BatchCities({
           <thead>
             <tr>
               <th>City</th>
+              <th>Added from</th>
               <th>Businesses</th>
               <th>Top</th>
               {tab === "small" && <th>Ready</th>}
@@ -172,6 +203,21 @@ export function BatchCities({
                   <button className="link-button" onClick={() => onOpenCity(item.city)}>
                     {item.city}
                   </button>
+                  {item.new && (
+                    <>
+                      {" "}
+                      <span className="pill pill-active">New</span>
+                    </>
+                  )}
+                </td>
+                <td className="small muted">
+                  {item.added_from
+                    ? `${item.added_from.file_name}${
+                        item.added_from.confirmed_at
+                          ? ` · ${day(item.added_from.confirmed_at)}`
+                          : ""
+                      }`
+                    : "—"}
                 </td>
                 <td>{item.leads.toLocaleString()}</td>
                 <td>{item.top}</td>

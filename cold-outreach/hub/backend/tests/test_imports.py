@@ -224,10 +224,12 @@ def mark_top(client: TestClient, *lead_ids: str, top: bool = True) -> None:
     assert response.status_code == 200, response.text
 
 
-def upload(client: TestClient, content: bytes, batch: str = "Batch 1") -> dict[str, Any]:
+def upload(
+    client: TestClient, content: bytes, batch: str = "Batch 1", name: str = "leads.xlsx"
+) -> dict[str, Any]:
     response = client.post(
         "/api/imports",
-        files={"file": ("leads.xlsx", content)},
+        files={"file": (name, content)},
         data={"batch_id": batch_id(client, batch)},
     )
     assert response.status_code == 201, response.text
@@ -422,6 +424,44 @@ def test_a_batchs_cities_count_leads_and_can_be_switched_off(
     off = client.put(url, json={"active": False}).json()
     assert [x["active"] for x in off] == [False, False]
     assert all(x["active"] for x in client.put(url, json={"active": True}).json())
+
+
+def test_each_city_says_the_file_it_first_came_with(client: TestClient, owner: User) -> None:
+    """Step 22: a city shows the file it first came with; the latest file's cities are new;
+    deleting that file moves the city to the next file that has its businesses."""
+    first = upload(client, workbook(FILE), name="october.xlsx")
+    client.post(f"/api/imports/{first['id']}/confirm")
+    second = upload(
+        client,
+        workbook(
+            {
+                "More": [
+                    STANDARD,
+                    row("Fresh Tulsa", "https://share.google/ft", "918 555 0300"),
+                    row("Shine ATX", "https://share.google/atx", "512 555 0100", city="Austin"),
+                ]
+            }
+        ),
+        name="november.xlsx",
+    )
+    client.post(f"/api/imports/{second['id']}/confirm")
+    url = f"/api/batches/{first['batch_id']}/cities"
+
+    def origins() -> dict[str, tuple[str | None, bool]]:
+        return {
+            x["city"]: ((x["added_from"] or {}).get("file_name"), x["new"])
+            for x in client.get(url).json()
+        }
+
+    assert origins() == {
+        "Austin": ("november.xlsx", True),
+        "Dallas": ("october.xlsx", False),
+        "Tulsa": ("october.xlsx", False),
+    }
+
+    assert client.delete(f"/api/imports/{first['id']}").status_code == 204
+
+    assert origins() == {"Austin": ("november.xlsx", True), "Tulsa": ("november.xlsx", True)}
 
 
 def test_the_same_city_in_two_batches_is_switched_separately(

@@ -150,6 +150,13 @@ test("the leads are in their batch and download as Excel", async () => {
   await expect(
     page.getByRole("switch", { name: "Tulsa on or off" }),
   ).not.toBeChecked();
+  // Each city says the file it came with; the latest file's cities are New.
+  await expect(page.getByRole("row", { name: /Tulsa/ })).toContainText(
+    "cleaning-leads.xlsx",
+  );
+  await expect(
+    page.getByRole("row", { name: /Tulsa/ }).locator(".pill-active"),
+  ).toHaveText("New");
   // Unmuted by hand, so the demo agent can work on them.
   await page.getByRole("button", { name: "All on" }).click();
   await expect(

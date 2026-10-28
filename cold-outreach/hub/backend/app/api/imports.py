@@ -232,6 +232,12 @@ def _drop_empty_cities(db: Session, batch_id: uuid.UUID) -> None:
 # --- a batch's cities (SPEC section 6.4 item 8) --------------------------------------------
 
 
+class FileRef(BaseModel):
+    id: uuid.UUID
+    file_name: str
+    confirmed_at: datetime | None
+
+
 class ListOut(BaseModel):
     id: uuid.UUID
     batch_id: uuid.UUID
@@ -244,6 +250,8 @@ class ListOut(BaseModel):
     leads: int
     top: int
     ready: bool  # a Top chosen: agents may work on it (SPEC step 20); Not ready otherwise
+    added_from: FileRef | None  # the file the city first came with (step 22)
+    new: bool  # it came with the batch's latest file
 
 
 def _cities(db: Session, batch_id: uuid.UUID) -> list[ListOut]:
@@ -255,11 +263,32 @@ def _cities(db: Session, batch_id: uuid.UUID) -> list[ListOut]:
             .group_by(Lead.city)
         )
     }
+    # The file a city first came with: the oldest file that brought one of its businesses
+    # into this batch (each lead keeps the file it first came from). Worked out each time, so
+    # deleting that file moves it to the next one.
+    first: dict[str, FileRef] = {}
+    for city, file_id, file_name, confirmed_at, _ in db.execute(
+        select(Lead.city, Import.id, Import.file_name, Import.confirmed_at, Import.created_at)
+        .join(Import, Import.id == Lead.first_import_id)
+        .where(Lead.batch_id == batch_id)
+        .distinct()
+        .order_by(Import.confirmed_at, Import.created_at)
+    ):
+        first.setdefault(
+            city.lower(), FileRef(id=file_id, file_name=file_name, confirmed_at=confirmed_at)
+        )
+    latest = db.scalar(
+        select(Import.id)
+        .where(Import.batch_id == batch_id, Import.status == ImportStatus.CONFIRMED)
+        .order_by(Import.confirmed_at.desc(), Import.created_at.desc())
+        .limit(1)
+    )
     out = []
     for item in db.scalars(
         select(LeadList).where(LeadList.batch_id == batch_id).order_by(func.lower(LeadList.city))
     ):
         total, top = counts.get(item.city.lower(), (0, 0))
+        origin = first.get(item.city.lower())
         out.append(
             ListOut(
                 id=item.id,
@@ -273,6 +302,8 @@ def _cities(db: Session, batch_id: uuid.UUID) -> list[ListOut]:
                 leads=total,
                 top=top,
                 ready=top > 0,
+                added_from=origin,
+                new=origin is not None and origin.id == latest,
             )
         )
     return out

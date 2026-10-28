@@ -221,6 +221,8 @@ export type LeadList = {
   leads: number;
   top: number;
   ready: boolean; // a Top chosen: agents may work on it (step 20)
+  added_from: { id: string; file_name: string; confirmed_at: string | null } | null;
+  new: boolean; // it came with the batch's latest file (step 22)
 };
 
 export type GbpTargets = {

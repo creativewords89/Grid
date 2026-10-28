@@ -408,7 +408,17 @@ test("the preview shows the file tab by tab with every column", async () => {
 
 // --- step 15: leads and cities in the batch, deleting files, finding a business --------------
 
-function city(id: string, name: string, active = true, leads = 27, top = 1) {
+const OCTOBER = { id: "i1", file_name: "october.xlsx", confirmed_at: "2026-10-01T10:00:00Z" };
+const NOVEMBER = { id: "i2", file_name: "november.xlsx", confirmed_at: "2026-11-01T10:00:00Z" };
+
+function city(
+  id: string,
+  name: string,
+  active = true,
+  leads = 27,
+  top = 1,
+  from: typeof OCTOBER = OCTOBER,
+) {
   return {
     id,
     batch_id: "b1",
@@ -421,6 +431,8 @@ function city(id: string, name: string, active = true, leads = 27, top = 1) {
     leads,
     top,
     ready: top > 0,
+    added_from: from,
+    new: from === NOVEMBER,
   };
 }
 
@@ -465,7 +477,11 @@ test("a batch's cities: Ready, Not ready and small ones; switch one, all off, op
     "GET /batches/b1/pipeline": [200, emptyPipeline],
     "GET /batches/b1/cities": [
       200,
-      [city("c1", "Akron", false, 4, 0), city("c2", "Tulsa"), city("c3", "Dallas", true, 30, 0)],
+      [
+        city("c1", "Akron", false, 4, 0),
+        city("c2", "Tulsa"),
+        city("c3", "Dallas", true, 30, 0, NOVEMBER),
+      ],
     ],
     "PATCH /lists/c1": [200, city("c1", "Akron", true, 4)],
     "PATCH /lists/c2": [200, city("c2", "Tulsa", false)],
@@ -492,6 +508,17 @@ test("a batch's cities: Ready, Not ready and small ones; switch one, all off, op
     small: false,
     ready: true,
   });
+
+  // Each city says the file it first came with; the latest file's are New (step 22).
+  expect(screen.getByRole("row", { name: /Tulsa/ })).toHaveTextContent("october.xlsx");
+  expect(screen.getByRole("row", { name: /Tulsa/ })).not.toHaveTextContent("New");
+  await userEvent.selectOptions(screen.getByLabelText("From file"), "i2");
+  expect(screen.getByRole("tab", { name: /^Ready \(0\)/ })).toBeVisible();
+  expect(screen.getByRole("tab", { name: /^Not ready \(1\)/ })).toBeVisible();
+  await userEvent.click(screen.getByRole("tab", { name: /^Not ready/ }));
+  expect(screen.getByRole("row", { name: /Dallas/ })).toHaveTextContent("New");
+  expect(screen.getByRole("row", { name: /Dallas/ })).toHaveTextContent("november.xlsx");
+  await userEvent.selectOptions(screen.getByLabelText("From file"), "");
 
   // Not ready: no Top chosen yet, agents leave it alone.
   await userEvent.click(screen.getByRole("tab", { name: /^Not ready \(1\)/ }));
