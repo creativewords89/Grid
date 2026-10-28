@@ -72,7 +72,39 @@ test("the leads show like a sheet, with the agents' scores, filters and pages", 
   expect(screen.getByText("230 leads · page 1 of 3")).toBeVisible();
   expect(within(rows[0]!).getByText("GBP")).toBeVisible();
   expect(within(rows[1]!).getByText("61")).toBeVisible();
-  expect(within(rows[1]!).getByText("kevin@mc.com +1")).toBeVisible();
+  // Every field of the lead file is a column, links open in a new tab.
+  const headers = within(rows[0]!)
+    .getAllByRole("columnheader")
+    .map((h) => h.textContent);
+  expect(headers).toEqual([
+    "Lead ID",
+    "Business name",
+    "GBP link",
+    "Address",
+    "City",
+    "Website",
+    "Phone",
+    "WhatsApp",
+    "Email",
+    "Facebook",
+    "Instagram",
+    "Reviews",
+    "Rating",
+    "Level",
+    "Notes",
+    "Batch",
+    "GBP",
+  ]);
+  expect(within(rows[1]!).getByText("kevin@mc.com, info@mc.com")).toBeVisible();
+  expect(within(rows[1]!).getByText("12 Elm St")).toBeVisible();
+  expect(within(rows[1]!).getByRole("link", { name: "mc.com/" })).toHaveAttribute(
+    "href",
+    "https://mc.com/",
+  );
+  expect(within(rows[1]!).getByRole("link", { name: "Open map" })).toHaveAttribute(
+    "target",
+    "_blank",
+  );
   expect(within(rows[2]!).getByText("Top")).toBeVisible();
   expect(screen.getByRole("link", { name: "Download Excel" })).toHaveAttribute(
     "href",
@@ -195,4 +227,43 @@ test("a viewer sees a lead but can't change it", async () => {
 
   expect(await within(dialog).findByLabelText("Email(s)")).toBeDisabled();
   expect(within(dialog).queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+});
+
+test("only web addresses become links, and the Lists follow the leads", async () => {
+  mockApi({
+    "GET /auth/me": as("viewer"),
+    "GET /batches": [200, []],
+    "GET /leads": [
+      200,
+      leadPage([
+        lead("L-000001", {
+          gbp_link: "",
+          data: { website: "javascript:alert(1)", facebook: "sparkle.cleaning" },
+        }),
+      ]),
+    ],
+    "GET /lists": [
+      200,
+      [
+        {
+          id: "l1",
+          city: "Tulsa",
+          niche: "Cleaning",
+          active: true,
+          daily_limit: null,
+          leads: 27,
+          top: 2,
+        },
+      ],
+    ],
+  });
+  render(<App />);
+
+  const row = (await screen.findAllByRole("row"))[1]!;
+  expect(within(row).getByText("javascript:alert(1)").closest("a")).toBeNull();
+  expect(within(row).getByRole("link", { name: "sparkle.cleaning" })).toHaveAttribute(
+    "href",
+    "https://sparkle.cleaning",
+  );
+  expect(await screen.findByRole("switch", { name: "Tulsa · Cleaning on or off" })).toBeDisabled();
 });

@@ -6,15 +6,18 @@ import {
   type Batch,
   type LeadDetail,
   type LeadFilters,
+  type LeadList,
   type LeadPage,
   type LeadPatch,
 } from "../api";
 import { Alert, Field, Modal } from "../components/ui";
+import { useAuth } from "../auth";
 import { when } from "../format";
 
 // Leads (SPEC sections 6.4 and 7): every business the Hub keeps, like a spreadsheet. Search,
 // filter, sort, page through 100 at a time, download what is shown as Excel, and open a lead
-// to see the agents' results and files, or (Owners and Admins) change or delete it.
+// to see the agents' results and files, or (Owners and Admins) change or delete it. The
+// table shows every field of the lead file side by side; the Lists (City + Niche) follow.
 
 const SORTS: [NonNullable<LeadFilters["sort"]>, string][] = [
   ["lead_id", "Lead ID"],
@@ -29,7 +32,9 @@ function startFilters(): LeadFilters {
 }
 
 export function Leads() {
+  const { user } = useAuth();
   const [filters, setFilters] = useState<LeadFilters>(startFilters);
+  const [lists, setLists] = useState<LeadList[]>([]);
   const [typed, setTyped] = useState({ q: "", city: "" });
   const [batches, setBatches] = useState<Batch[]>([]);
   const [data, setData] = useState<LeadPage | null>(null);
@@ -42,6 +47,15 @@ export function Leads() {
       .then(setBatches)
       .catch(() => setBatches([]));
   }, []);
+
+  const loadLists = useCallback(() => {
+    api
+      .lists()
+      .then(setLists)
+      .catch(() => setLists([]));
+  }, []);
+  useEffect(loadLists, [loadLists]);
+  const staff = user?.role === "owner" || user?.role === "admin";
 
   const load = useCallback(() => {
     api
@@ -167,15 +181,15 @@ export function Leads() {
       {data?.total === 0 && <p className="muted">No leads match.</p>}
       {data && data.leads.length > 0 && (
         <div className="card table-card table-scroll">
-          <table className="table">
+          <table className="table leads-table">
             <thead>
               <tr>
                 <th>Lead ID</th>
-                <th>Business</th>
-                <th>City</th>
-                <th className="hide-narrow">Batch</th>
-                <th className="hide-narrow">Website</th>
-                <th className="hide-narrow">Email</th>
+                <th className="sticky-col">Business name</th>
+                {COLUMNS.map(([key, label]) => (
+                  <th key={key}>{label}</th>
+                ))}
+                <th>Batch</th>
                 {agents.map(([key, label]) => (
                   <th key={key}>{label}</th>
                 ))}
@@ -184,27 +198,25 @@ export function Leads() {
             <tbody>
               {data.leads.map((lead) => (
                 <tr key={lead.lead_id}>
-                  <td className="small">{lead.lead_id}</td>
-                  <td>
+                  <td className="small nowrap">{lead.lead_id}</td>
+                  <td className="sticky-col">
                     <button
                       className="link-button cell-strong"
                       onClick={() => setOpen(lead.lead_id)}
                     >
-                      {lead.business_name || lead.gbp_link || lead.lead_id}
+                      {lead.business_name || lead.lead_id}
                     </button>
-                    {lead.level === "Top" && <span className="pill pill-top">Top</span>}
                   </td>
-                  <td>{lead.city}</td>
-                  <td className="hide-narrow small">{lead.batch_name ?? "—"}</td>
-                  <td className="hide-narrow small">{lead.data.website ? "Yes" : "No"}</td>
-                  <td className="hide-narrow small">
-                    {lead.emails[0] ?? "—"}
-                    {lead.emails.length > 1 && ` +${lead.emails.length - 1}`}
-                  </td>
+                  {COLUMNS.map(([key]) => (
+                    <td key={key} className="small">
+                      <Cell lead={lead} field={key} />
+                    </td>
+                  ))}
+                  <td className="small nowrap">{lead.batch_name ?? "—"}</td>
                   {agents.map(([key]) => {
                     const result = lead.results[key];
                     return (
-                      <td key={key} className="small">
+                      <td key={key} className="small nowrap">
                         {result
                           ? `${result.score ?? "—"}${result.status !== "OK" ? ` · ${result.status}` : ""}`
                           : "—"}
@@ -243,7 +255,58 @@ export function Leads() {
           onChanged={load}
         />
       )}
+      <Lists lists={lists} staff={staff} onChange={loadLists} />
     </section>
+  );
+}
+
+// Every field of the lead file, in the file's order (after Lead ID and Business name).
+const COLUMNS: [string, string][] = [
+  ["gbp_link", "GBP link"],
+  ["address", "Address"],
+  ["city", "City"],
+  ["website", "Website"],
+  ["phone", "Phone"],
+  ["whatsapp", "WhatsApp"],
+  ["emails", "Email"],
+  ["facebook", "Facebook"],
+  ["instagram", "Instagram"],
+  ["reviews", "Reviews"],
+  ["rating", "Rating"],
+  ["level", "Level"],
+  ["notes", "Notes"],
+];
+const LINKS = new Set(["gbp_link", "website", "facebook", "instagram"]);
+
+/** A web address that is safe to open: http(s) only, a bare domain gets https://. */
+function webLink(value: string): string | null {
+  const text = value.trim();
+  if (/^https?:\/\/[^\s]+$/i.test(text)) return text;
+  if (/^[a-z0-9-]+(\.[a-z0-9-]+)+(\/[^\s]*)?$/i.test(text)) return `https://${text}`;
+  return null;
+}
+
+function Cell({ lead, field }: { lead: LeadPage["leads"][number]; field: string }) {
+  let value: string;
+  if (field === "gbp_link") value = lead.gbp_link;
+  else if (field === "city") value = lead.city;
+  else if (field === "level") value = lead.level;
+  else if (field === "emails") value = lead.emails.join(", ");
+  else value = lead.data[field] ?? "";
+  if (!value) return <span className="muted">—</span>;
+  if (field === "level" && value === "Top") return <span className="pill pill-top">Top</span>;
+  const link = LINKS.has(field) ? webLink(value) : null;
+  if (link) {
+    return (
+      <a className="cell-link" href={link} target="_blank" rel="noopener noreferrer" title={value}>
+        {field === "gbp_link" ? "Open map" : value.replace(/^https?:\/\/(www\.)?/i, "")}
+      </a>
+    );
+  }
+  return (
+    <span className={field === "notes" || field === "address" ? "cell-wrap" : "nowrap"}>
+      {value}
+    </span>
   );
 }
 
@@ -461,5 +524,70 @@ export function LeadDialog({
         </div>
       )}
     </Modal>
+  );
+}
+
+function Lists({
+  lists,
+  staff,
+  onChange,
+}: {
+  lists: LeadList[];
+  staff: boolean;
+  onChange: () => void;
+}) {
+  const [error, setError] = useState("");
+  if (lists.length === 0) return null;
+
+  async function toggle(item: LeadList, active: boolean) {
+    setError("");
+    try {
+      await api.updateList(item.id, { active });
+      onChange();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Not saved.");
+    }
+  }
+
+  return (
+    <div className="card table-card">
+      {error && <Alert kind="error">{error}</Alert>}
+      <table className="table">
+        <caption className="table-caption">
+          Lists: switch one off and the agents leave its businesses alone
+        </caption>
+        <thead>
+          <tr>
+            <th>City</th>
+            <th>Niche</th>
+            <th>Businesses</th>
+            <th>Top</th>
+            <th>On</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lists.map((item) => (
+            <tr key={item.id} className={item.active ? undefined : "row-muted"}>
+              <td>{item.city}</td>
+              <td>{item.niche}</td>
+              <td>{item.leads}</td>
+              <td>{item.top}</td>
+              <td>
+                <label className="switch">
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    checked={item.active}
+                    disabled={!staff}
+                    aria-label={`${item.city} · ${item.niche} on or off`}
+                    onChange={(e) => void toggle(item, e.target.checked)}
+                  />
+                </label>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, vi } from "vitest";
-import type { Batch, BotProgress, BotResults, Pipeline, Task } from "../api";
+import type { Agent, Batch, BotProgress, BotResults, Pipeline, Task } from "../api";
 import { App } from "../App";
 import { makeUser, mockApi } from "../test/mockApi";
 
@@ -116,7 +116,7 @@ const as = (role: "owner" | "admin" | "viewer") =>
 beforeEach(() => window.history.pushState(null, "", "/batches"));
 afterEach(() => vi.unstubAllGlobals());
 
-test("a batch's tasks: add another bot to a task, choose how they share, then start", async () => {
+test("a batch's tasks: add another agent to a task, choose how they share, then start", async () => {
   const calls = mockApi({
     "GET /auth/me": as("admin"),
     "GET /batches": [200, [batch()]],
@@ -137,11 +137,11 @@ test("a batch's tasks: add another bot to a task, choose how they share, then st
   const gbp = await screen.findByRole("article", { name: "GBP Audit" });
   expect(within(gbp).getByText(/2,800 done · 10 ready · avg score 54/)).toBeVisible();
   const opportunity = screen.getByRole("article", { name: "Opportunity Finder" });
-  expect(within(opportunity).getByText(/No bot yet/)).toBeVisible();
+  expect(within(opportunity).getByText(/No agent yet/)).toBeVisible();
   expect(within(opportunity).getByText("Needs: GBP Audit")).toBeVisible();
 
   await userEvent.selectOptions(
-    within(gbp).getByLabelText("Add another bot to GBP Audit"),
+    within(gbp).getByLabelText("Add another agent to GBP Audit"),
     "gbp-quick",
   );
   expect(await within(gbp).findByText("GBP quick check")).toBeVisible();
@@ -155,7 +155,7 @@ test("a batch's tasks: add another bot to a task, choose how they share, then st
   expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ share: "split" });
 });
 
-test("a bot from the library is added to its task, and the task first when missing", async () => {
+test("an agent from the library is added to its task, and the task first when missing", async () => {
   const empty = pipeline({ steps: [], can_start: false, start_problem: "Add a task first." });
   const calls = mockApi({
     "GET /auth/me": as("owner"),
@@ -172,7 +172,7 @@ test("a bot from the library is added to its task, and the task first when missi
   await userEvent.click(await screen.findByRole("button", { name: "Texas November" }));
   expect(await screen.findByText(/To start: Add a task first/)).toBeVisible();
   expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
-  const library = screen.getByRole("complementary", { name: "Bot library" });
+  const library = screen.getByRole("complementary", { name: "Agent library" });
   await userEvent.click(
     await within(library).findByRole("button", { name: "Add GBP audit (DataForSEO) to GBP Audit" }),
   );
@@ -184,7 +184,7 @@ test("a bot from the library is added to its task, and the task first when missi
   ]);
 });
 
-test("each bot's results: counts, filters and its leads", async () => {
+test("each agent's results: counts, filters and its leads", async () => {
   const results: BotResults = {
     bot: "gbp-full",
     bot_name: "GBP audit (DataForSEO)",
@@ -249,4 +249,85 @@ test("the running order: move a batch up", async () => {
   expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ ids: ["b2", "b1"] });
   const rows = await screen.findAllByRole("row");
   expect(rows[1]).toHaveTextContent("Florida December");
+});
+
+function agent(overrides: Partial<Agent> = {}): Agent {
+  return {
+    key: "demo",
+    name: "Demo agent",
+    enabled: false,
+    connected: true,
+    last_seen_at: "2026-10-28T06:00:00Z",
+    manifest: {
+      name: "Demo agent",
+      version: "1.0.0",
+      description: "",
+      settings: [],
+      connections: [],
+      result_label: "Demo",
+      cost_per_item_usd: 0.001,
+    },
+    config: {},
+    daily_limit: 100,
+    run_time: "02:00",
+    time_zone: "Asia/Dhaka",
+    daily_budget_usd: "5.00",
+    task: { key: "demo", name: "Demo" },
+    batches: [],
+    missing_connections: [],
+    last_run: null,
+    next_run_at: null,
+    spent_today_usd: "0",
+    ...overrides,
+  };
+}
+
+function guideSteps(): [string, boolean][] {
+  const guide = screen.getByRole("region", { name: "Setup guide" });
+  return within(guide)
+    .getAllByRole("listitem")
+    .map((li) => [li.querySelector(".cell-strong")!.textContent!, li.className === "setup-done"]);
+}
+
+test("the setup guide ticks each step as the agents get ready", async () => {
+  mockApi({
+    "GET /auth/me": as("admin"),
+    "GET /batches": [200, [batch()]],
+    "GET /lists": [200, []],
+    "GET /imports?batch_id=b1": [200, []],
+    "GET /batches/b1/pipeline": [200, pipeline({}, 1)],
+    "GET /tasks": [200, TASKS],
+    "GET /agents": [200, [agent({ key: "gbp-full" })]],
+  });
+  render(<App />);
+
+  await userEvent.click(await screen.findByRole("button", { name: "Texas November" }));
+  expect(await screen.findByText(/Only the/)).toHaveTextContent("Only the demo agent is set up");
+  expect(guideSteps()).toEqual([
+    ["Add an agent", true],
+    ["Start it on the server with its token", true],
+    ["It connects and says which task it does", true],
+    ["Add it to this batch's task", true],
+    ["Switch it on", false],
+    ["Start the batch", false],
+  ]);
+});
+
+test("with no agents the guide starts at adding one", async () => {
+  const empty = pipeline({ steps: [], can_start: false });
+  mockApi({
+    "GET /auth/me": as("owner"),
+    "GET /batches": [200, [batch()]],
+    "GET /lists": [200, []],
+    "GET /imports?batch_id=b1": [200, []],
+    "GET /batches/b1/pipeline": [200, empty],
+    "GET /tasks": [200, []],
+    "GET /agents": [200, []],
+  });
+  render(<App />);
+
+  await userEvent.click(await screen.findByRole("button", { name: "Texas November" }));
+  await screen.findByRole("region", { name: "Setup guide" });
+  expect(guideSteps().every(([, done]) => !done)).toBe(true);
+  expect(screen.getByText(/press \+ Add agent/)).toBeVisible();
 });

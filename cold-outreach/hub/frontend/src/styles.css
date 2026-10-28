@@ -2237,3 +2237,103 @@ textarea {
 .count-chosen {
   outline: 2px solid var(--brand);
 }
+
+/* ---- the Leads table: every field of the lead file side by side ---- */
+
+.leads-table th,
+.leads-table td {
+  white-space: nowrap;
+}
+
+.leads-table .sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
+  box-shadow: 1px 0 0 var(--border);
+  white-space: normal;
+  min-width: 180px;
+}
+
+.leads-table .cell-wrap {
+  display: inline-block;
+  white-space: normal;
+  min-width: 220px;
+  max-width: 320px;
+}
+
+.leads-table .cell-link {
+  display: inline-block;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+/* ---- agent setup (SPEC section 7) ---- */
+
+.command {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.setup-guide {
+  border-color: var(--brand);
+}
+
+.setup-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  counter-reset: setup;
+}
+
+.setup-steps li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  counter-increment: setup;
+}
+
+.setup-steps p {
+  margin: 2px 0 0;
+}
+
+.setup-mark {
+  flex: 0 0 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.setup-mark:empty::before {
+  content: counter(setup);
+}
+
+.setup-done .setup-mark {
+  border-color: var(--ok);
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.setup-done .cell-strong {
+  color: var(--muted);
+}
+
+.setup-next {
+  color: var(--warn);
+}

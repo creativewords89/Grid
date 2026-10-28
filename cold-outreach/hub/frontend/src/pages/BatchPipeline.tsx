@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type DragEvent } from "react";
 import {
   api,
   ApiError,
+  type Agent,
   type Band,
   type BotProgress,
   type BotResults,
@@ -11,17 +12,19 @@ import {
   type Share,
   type Task,
 } from "../api";
+import { useAuth } from "../auth";
+import { SetupGuide } from "../components/agentSetup";
 import { Alert } from "../components/ui";
 import { when } from "../format";
 import { LeadDialog } from "./Leads";
 
-// A batch's tasks and bots (SPEC section 6.7): the bot library grouped by task on the left,
-// the steps on the right. Each task can have several bots, which either all check every
+// A batch's tasks and agents (SPEC section 6.7): the agent library grouped by task on the
+// left, the steps on the right. Each task can have several agents, which either all check every
 // business or split the businesses. Every business moves on as soon as what it needs is done.
 
 const SHARE: Record<Share, string> = {
-  all: "Every bot checks every business",
-  split: "Split the businesses between bots",
+  all: "Every agent checks every business",
+  split: "Split the businesses between agents",
 };
 
 export function PipelineTab({
@@ -33,7 +36,9 @@ export function PipelineTab({
   pipeline: Pipeline;
   onChange: (next: Pipeline) => void;
 }) {
+  const { user } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [agents, setAgents] = useState<Agent[] | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const staff = pipeline.batch.can_run;
@@ -43,7 +48,11 @@ export function PipelineTab({
       .tasks()
       .then(setTasks)
       .catch(() => setTasks([]));
-  }, []);
+    api
+      .agents()
+      .then(setAgents)
+      .catch(() => setAgents(null));
+  }, [pipeline]);
 
   const slots = pipeline.steps.flatMap((s) => s.tasks);
   const inBatch = new Map(slots.map((slot) => [slot.key, slot]));
@@ -61,7 +70,7 @@ export function PipelineTab({
     }
   }
 
-  /** Put a bot on its task in this batch, adding the task first when it isn't there. */
+  /** Put an agent on its task in this batch, adding the task first when it isn't there. */
   function addBot(task: Task, key: string) {
     void act(async () => {
       if (!inBatch.has(task.key)) await api.addBatchTask(batchId, task.id);
@@ -80,96 +89,103 @@ export function PipelineTab({
 
   const missing = tasks.filter((t) => !inBatch.has(t.key));
   return (
-    <div className="pipeline">
-      <aside className="card stack bot-library" aria-label="Bot library">
-        <h2>Bots</h2>
-        <p className="muted small">
-          {staff ? "Drag a bot onto its task, or press Add." : "The bots, grouped by their task."}
-        </p>
-        {tasks.map((task) => (
-          <div key={task.id} className="stack-tight">
-            <h3 className="small-head">{task.name}</h3>
-            {task.bots.length === 0 && <p className="muted small">No bot does this yet.</p>}
-            {task.bots.map((b) => (
-              <div
-                key={b.key}
-                className={`library-bot ${onBot.has(b.key) ? "library-bot-used" : ""}`}
-                draggable={staff && !onBot.has(b.key)}
-                onDragStart={(e) => e.dataTransfer.setData("text/plain", b.key)}
-              >
-                <span>
-                  {b.name}
-                  {!b.enabled && <span className="muted small"> · off</span>}
-                </span>
-                {onBot.has(b.key) ? (
-                  <span className="pill pill-active">In use</span>
-                ) : (
-                  staff && (
-                    <button
-                      className="link-button"
-                      disabled={busy}
-                      aria-label={`Add ${b.name} to ${task.name}`}
-                      onClick={() => addBot(task, b.key)}
-                    >
-                      Add
-                    </button>
-                  )
-                )}
-              </div>
-            ))}
-          </div>
-        ))}
-      </aside>
-      <div className="stack">
-        {error && <Alert kind="error">{error}</Alert>}
-        {slots.length === 0 && (
-          <p className="muted">No tasks yet. Add a task, then choose its bots.</p>
-        )}
-        {pipeline.steps.map((step) => (
-          <section key={step.step} className="stack-tight" aria-label={`Step ${step.step}`}>
-            <h2 className="small-head">
-              Step {step.step}
-              {step.tasks.length > 1 && " · side by side"}
-            </h2>
-            <div className="step-tasks">
-              {step.tasks.map((slot) => (
-                <TaskSlot
-                  key={slot.task_id}
-                  slot={slot}
-                  task={tasks.find((t) => t.id === slot.task_id)}
-                  staff={staff}
-                  busy={busy}
-                  onDrop={(e) => drop(e, slot)}
-                  onAddBot={(key) => void act(() => api.addBot(batchId, slot.task_id, key))}
-                  onRemoveBot={(key) => void act(() => api.removeBot(batchId, slot.task_id, key))}
-                  onShare={(share) => void act(() => api.setShare(batchId, slot.task_id, share))}
-                  onRemove={() => void act(() => api.removeBatchTask(batchId, slot.task_id))}
-                />
+    <div className="stack">
+      {agents && (
+        <SetupGuide agents={agents} pipeline={pipeline} isOwner={user?.role === "owner"} />
+      )}
+      <div className="pipeline">
+        <aside className="card stack bot-library" aria-label="Agent library">
+          <h2>Agents</h2>
+          <p className="muted small">
+            {staff
+              ? "Drag an agent onto its task, or press Add."
+              : "The agents, grouped by their task."}
+          </p>
+          {tasks.map((task) => (
+            <div key={task.id} className="stack-tight">
+              <h3 className="small-head">{task.name}</h3>
+              {task.bots.length === 0 && <p className="muted small">No agent does this yet.</p>}
+              {task.bots.map((b) => (
+                <div
+                  key={b.key}
+                  className={`library-bot ${onBot.has(b.key) ? "library-bot-used" : ""}`}
+                  draggable={staff && !onBot.has(b.key)}
+                  onDragStart={(e) => e.dataTransfer.setData("text/plain", b.key)}
+                >
+                  <span>
+                    {b.name}
+                    {!b.enabled && <span className="muted small"> · off</span>}
+                  </span>
+                  {onBot.has(b.key) ? (
+                    <span className="pill pill-active">In use</span>
+                  ) : (
+                    staff && (
+                      <button
+                        className="link-button"
+                        disabled={busy}
+                        aria-label={`Add ${b.name} to ${task.name}`}
+                        onClick={() => addBot(task, b.key)}
+                      >
+                        Add
+                      </button>
+                    )
+                  )}
+                </div>
               ))}
             </div>
-          </section>
-        ))}
-        {staff && missing.length > 0 && (
-          <div className="field">
-            <label htmlFor="batch-add-task">+ Add a task</label>
-            <select
-              id="batch-add-task"
-              value=""
-              disabled={busy}
-              onChange={(e) =>
-                e.target.value && void act(() => api.addBatchTask(batchId, e.target.value))
-              }
-            >
-              <option value="">Choose…</option>
-              {missing.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                  {t.needs.length > 0 && ` (needs ${t.needs.map((n) => n.name).join(", ")})`}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+          ))}
+        </aside>
+        <div className="stack">
+          {error && <Alert kind="error">{error}</Alert>}
+          {slots.length === 0 && (
+            <p className="muted">No tasks yet. Add a task, then choose its agents.</p>
+          )}
+          {pipeline.steps.map((step) => (
+            <section key={step.step} className="stack-tight" aria-label={`Step ${step.step}`}>
+              <h2 className="small-head">
+                Step {step.step}
+                {step.tasks.length > 1 && " · side by side"}
+              </h2>
+              <div className="step-tasks">
+                {step.tasks.map((slot) => (
+                  <TaskSlot
+                    key={slot.task_id}
+                    slot={slot}
+                    task={tasks.find((t) => t.id === slot.task_id)}
+                    staff={staff}
+                    busy={busy}
+                    onDrop={(e) => drop(e, slot)}
+                    onAddBot={(key) => void act(() => api.addBot(batchId, slot.task_id, key))}
+                    onRemoveBot={(key) => void act(() => api.removeBot(batchId, slot.task_id, key))}
+                    onShare={(share) => void act(() => api.setShare(batchId, slot.task_id, share))}
+                    onRemove={() => void act(() => api.removeBatchTask(batchId, slot.task_id))}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
+          {staff && missing.length > 0 && (
+            <div className="field">
+              <label htmlFor="batch-add-task">+ Add a task</label>
+              <select
+                id="batch-add-task"
+                value=""
+                disabled={busy}
+                onChange={(e) =>
+                  e.target.value && void act(() => api.addBatchTask(batchId, e.target.value))
+                }
+              >
+                <option value="">Choose…</option>
+                {missing.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                    {t.needs.length > 0 && ` (needs ${t.needs.map((n) => n.name).join(", ")})`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -223,7 +239,7 @@ function TaskSlot({
         )}
       </div>
       {slot.bots.length === 0 && (
-        <p className="small field-error">No bot yet: the businesses wait here.</p>
+        <p className="small field-error">No agent yet: the businesses wait here.</p>
       )}
       {slot.bots.map((bot) => (
         <BotRow
@@ -239,13 +255,13 @@ function TaskSlot({
         <div className="row">
           {others.length > 0 && (
             <select
-              aria-label={`Add another bot to ${slot.name}`}
+              aria-label={`Add another agent to ${slot.name}`}
               value=""
               disabled={busy}
               onChange={(e) => e.target.value && onAddBot(e.target.value)}
             >
               <option value="">
-                {slot.bots.length === 0 ? "+ Add a bot…" : "+ Add another bot…"}
+                {slot.bots.length === 0 ? "+ Add an agent…" : "+ Add another agent…"}
               </option>
               {others.map((b) => (
                 <option key={b.key} value={b.key}>
@@ -360,14 +376,14 @@ export function ResultsTab({ batchId, pipeline }: { batchId: string; pipeline: P
   }, [batchId, bot, outcome, band, page]);
   useEffect(load, [load]);
 
-  if (bots.length === 0) return <p className="muted">Add bots to the batch to see results.</p>;
+  if (bots.length === 0) return <p className="muted">Add agents to the batch to see results.</p>;
   const labels = Object.fromEntries(bots.map((b) => [b.key, b.name]));
   return (
     <div className="stack">
       {error && <Alert kind="error">{error}</Alert>}
       <div className="row">
         <div className="field">
-          <label htmlFor="results-bot">Bot</label>
+          <label htmlFor="results-bot">Agent</label>
           <select
             id="results-bot"
             value={bot}

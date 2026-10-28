@@ -8,6 +8,8 @@ import {
   type ManifestSetting,
 } from "../api";
 import { useAuth } from "../auth";
+import { setupState } from "../agentSetup";
+import { StartCommands } from "../components/agentSetup";
 import { Alert, CopyLink, Field, Modal } from "../components/ui";
 import { ago, money, when } from "../format";
 import { CONNECTION_NAMES, RUN_STATUS } from "../labels";
@@ -106,6 +108,7 @@ function AgentCard({
   const [editing, setEditing] = useState(false);
   const last = agent.last_run;
   const running = agent.batches.filter((b) => b.status === "running");
+  const setup = setupState(agent);
   const active = last?.status === "queued" || last?.status === "running";
 
   async function act(action: () => Promise<unknown>, success?: string) {
@@ -155,6 +158,17 @@ function AgentCard({
             ? `Not connected · last seen ${ago(agent.last_seen_at)}`
             : "Never connected: start the agent on the server with its token"}
       </p>
+      <p className={`small ${setup.done ? "" : "setup-next"}`}>Setup: {setup.label}</p>
+      {!agent.manifest && !agent.last_seen_at && (
+        <details>
+          <summary className="small">How to start it</summary>
+          <StartCommands agentKey={agent.key} token="PASTE_ITS_TOKEN" />
+          <p className="muted small">
+            Lost the token? The Owner presses New token: the window shows it with these commands
+            filled in.
+          </p>
+        </details>
+      )}
       {agent.missing_connections.length > 0 && (
         <Alert kind="error">
           Needs these connections first:{" "}
@@ -506,6 +520,7 @@ function TokenDialog({
           AGENT_TOKEN, next to HUB_URL. A new token stops the old one at once.
         </Alert>
         <CopyLink link={result.token} label="Agent token" />
+        <StartCommands agentKey={result.agent.key} token={result.token} />
         <div className="modal-actions">
           <button type="button" className="button button-primary" onClick={onClose}>
             Done
