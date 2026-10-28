@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app import audit, pipeline
+from app import audit, jobs, pipeline
 from app.api.batches import BatchOut, batch_out, get_batch
 from app.api.schemas import Strict
 from app.api.tasks import get_task
@@ -254,6 +254,45 @@ def add_task(batch_id: uuid.UUID, body: SlotIn, me: CurrentUser, db: Db) -> Pipe
         batch.name,
         [{"field": "task", "from": None, "to": name}],
     )
+    db.commit()
+    return pipeline_out(db, me, batch)
+
+
+@router.post("/batches/{batch_id}/tasks/standard", response_model=PipelineOut)
+def add_standard_tasks(batch_id: uuid.UUID, me: CurrentUser, db: Db) -> PipelineOut:
+    """Add the standard steps (step 24) the batch doesn't have yet, each needing the
+    standard jobs before it that are in the batch."""
+    ensure(me, Action.RUN_BATCHES)
+    batch = get_batch(db, batch_id)
+    jobs.ensure_built_in(db)
+    have = {slot.task.key for slot in pipeline.slots_of(db, batch)}
+    by_key = {t.key: t for t in db.scalars(select(Task))}
+    added = []
+    for key, needs in jobs.STANDARD:
+        if key in have:
+            continue
+        task = by_key[key]
+        have.add(key)
+        db.add(
+            BatchTask(
+                batch_id=batch.id,
+                task_id=task.id,
+                name=task.name,
+                needs=[k for k in needs if k in have],
+                share=ShareMode.ALL,
+            )
+        )
+        added.append(task.name)
+    if added:
+        audit.record(
+            db,
+            me,
+            "add_task",
+            "batch",
+            batch.id,
+            batch.name,
+            [{"field": "task", "from": None, "to": ", ".join(added)}],
+        )
     db.commit()
     return pipeline_out(db, me, batch)
 

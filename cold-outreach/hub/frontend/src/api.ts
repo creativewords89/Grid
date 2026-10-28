@@ -638,6 +638,8 @@ export const api = {
   pauseBatch: (id: string) => request<Pipeline>("POST", `/batches/${id}/pause`),
   addBatchTask: (id: string, body: BatchTaskIn) =>
     request<Pipeline>("POST", `/batches/${id}/tasks`, body),
+  // GBP Audit + Website Audit → Opportunity Finder → Email Writer (step 24).
+  addStandardTasks: (id: string) => request<Pipeline>("POST", `/batches/${id}/tasks/standard`),
   updateBatchTask: (
     id: string,
     taskId: string,

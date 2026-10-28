@@ -733,9 +733,9 @@ function UploadForm({ batch, onRead }: { batch: Batch; onRead: (item: LeadImport
       <p className="muted">
         An Excel file (.xlsx) of {batch.niche} businesses with one tab per city, as you build them
         now: Business name, MAP, Address, City, Website, Phone, WA, Facebook, Instagram, Email,
-        Reviews, Average, and an optional Level column (write Top for businesses we never contact).
-        A business already in another batch stays there. Nothing is saved until you confirm the
-        preview.
+        Reviews, Average. Top businesses (never contacted) are chosen in the Hub, on each city: a
+        Level column is kept as another column. A business already in another batch stays there.
+        Nothing is saved until you confirm the preview.
       </p>
       {errors.form && <Alert kind="error">{errors.form}</Alert>}
       <div className="field">

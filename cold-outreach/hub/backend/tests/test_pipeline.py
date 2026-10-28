@@ -494,3 +494,49 @@ def test_the_agents_screen_says_where_an_agent_is_used(client: TestClient, owner
     assert [(b["name"], b["task_name"], b["status"]) for b in agent["batches"]] == [
         ("Batch 1", "Profile check", "running")
     ]
+
+
+# --- built-in jobs and the standard steps (step 24) -------------------------------------------
+
+
+def test_built_in_jobs_are_there_before_any_agent(client: TestClient, owner: User) -> None:
+    jobs = client.get("/api/tasks").json()
+
+    assert [j["name"] for j in jobs] == [
+        "GBP Audit",
+        "Website Audit",
+        "Social Audit",
+        "Opportunity Finder",
+        "Email Writer",
+        "Sending and Follow-up",
+        "Reply",
+    ]
+    assert all(j["bots"] == [] for j in jobs)
+    # A task can be added without an agent yet.
+    batch = make_batch(client)["id"]
+    added = client.post(f"/api/batches/{batch}/tasks", json={"task_id": jobs[2]["id"]})
+    assert added.status_code == 201
+    # An agent's manifest naming a built-in job joins it, keeping one job.
+    bot(client, "gbp-1", "gbp-audit")
+    again = client.get("/api/tasks").json()
+    assert len(again) == 7 and [b["key"] for b in again[0]["bots"]] == ["gbp-1"]
+
+
+def test_the_standard_steps_are_added_once(
+    client: TestClient, owner: User, make_user: UserFactory
+) -> None:
+    batch = make_batch(client)["id"]
+    add_task(client, batch, "gbp-audit")  # already there: kept as it is
+
+    steps = client.post(f"/api/batches/{batch}/tasks/standard").json()["steps"]
+
+    assert [[(t["name"], [n["name"] for n in t["needs"]]) for t in s["tasks"]] for s in steps] == [
+        [("GBP Audit", []), ("Website Audit", [])],
+        [("Opportunity Finder", ["GBP Audit", "Website Audit"])],
+        [("Email Writer", ["Opportunity Finder"])],
+    ]
+    again = client.post(f"/api/batches/{batch}/tasks/standard").json()["steps"]
+    assert sum(len(s["tasks"]) for s in again) == 4
+    client.cookies.clear()
+    sign_in(client, make_user(Role.VIEWER).email)
+    assert client.post(f"/api/batches/{batch}/tasks/standard").status_code == 403

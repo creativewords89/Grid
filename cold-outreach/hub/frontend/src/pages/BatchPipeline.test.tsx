@@ -299,3 +299,41 @@ test("add a task: its job, its name and what it needs first in this batch", asyn
     needs: [],
   });
 });
+
+test("a new batch starts from the standard steps, before any agent exists", async () => {
+  const jobs: Task[] = [
+    { id: "t1", key: "gbp-audit", name: "GBP Audit", bots: [], batches: [] },
+    { id: "t2", key: "opportunity", name: "Opportunity Finder", bots: [], batches: [] },
+  ];
+  const empty = pipeline({ steps: [], can_start: false, start_problem: "Add a task first." });
+  const standard = pipeline();
+  const first = standard.steps[0]?.tasks[0];
+  if (first) first.bots = []; // no agent does GBP Audit yet
+  const calls = mockApi({
+    "GET /auth/me": as("admin"),
+    "GET /batches": [200, [batch()]],
+    "GET /imports?batch_id=b1": [200, []],
+    "GET /batches/b1/pipeline": [200, empty],
+    "GET /tasks": [200, jobs],
+    "POST /batches/b1/tasks/standard": [200, standard],
+  });
+  render(<App />);
+
+  await userEvent.click(await screen.findByRole("button", { name: "Texas November" }));
+  const library = await screen.findByRole("region", { name: "Agent library" });
+  expect(within(library).getByText(/No agents yet/)).toBeVisible();
+  expect(within(library).getByRole("link", { name: "Add one on Agents" })).toHaveAttribute(
+    "href",
+    "/agents",
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Use the standard steps" }));
+
+  expect(calls.some((c) => c.method === "POST" && c.path === "/batches/b1/tasks/standard")).toBe(
+    true,
+  );
+  const gbp = await screen.findByRole("article", { name: "GBP Audit" });
+  expect(within(gbp).getByText(/No agent does this job yet/)).toBeVisible();
+  expect(within(gbp).getByRole("link", { name: "add one on Agents" })).toBeVisible();
+  expect(within(gbp).queryByRole("combobox")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Use the standard steps" })).not.toBeInTheDocument();
+});

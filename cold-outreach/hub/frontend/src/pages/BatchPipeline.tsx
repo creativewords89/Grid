@@ -20,12 +20,31 @@ import {
 } from "../api";
 import { Alert } from "../components/ui";
 import { when } from "../format";
+import { navigate } from "../router";
 import { LeadDialog } from "./Leads";
 
 // A batch's tasks (SPEC section 6.7): the agent library grouped by job on the left, the steps
 // on the right. A task is made here: its job, its name and what it needs first in this batch.
 // Each task can have several agents of its job, which either all check every business or
 // split the businesses. Every business moves on as soon as what it needs is done.
+
+// The standard steps' jobs (step 24): what "Use the standard steps" adds.
+const STANDARD = ["gbp-audit", "website-audit", "opportunity", "email-writer"];
+
+/** A link to the Agents screen, where agents are added. */
+function AgentsLink({ children }: { children: ReactNode }) {
+  return (
+    <a
+      href="/agents"
+      onClick={(e) => {
+        e.preventDefault();
+        navigate("/agents");
+      }}
+    >
+      {children}
+    </a>
+  );
+}
 
 const SHARE: Record<Share, string> = {
   all: "Every agent checks every business",
@@ -103,8 +122,11 @@ export function PipelineTab({
           task.name.toLowerCase().includes(wanted),
       ),
     }))
-    .filter((g) => g.bots.length > 0 || !wanted);
+    // Jobs without an agent aren't listed: the library holds agents (step 24).
+    .filter((g) => g.bots.length > 0);
+  const noAgents = tasks.every((t) => t.bots.length === 0);
   const missing = tasks.filter((t) => !inBatch.has(t.key));
+  const standardMissing = STANDARD.some((key) => !inBatch.has(key));
   const batch = pipeline.batch;
   return (
     <div className="stack">
@@ -121,10 +143,14 @@ export function PipelineTab({
               onChange={(e) => setFind(e.target.value)}
             />
           </div>
-          {tasks.length === 0 && (
+          {noAgents && (
             <p className="muted small">
-              No agent has connected yet. Its job appears here when it does.
+              No agents yet. <AgentsLink>Add one on Agents</AgentsLink>; it appears here, under the
+              job it does.
             </p>
+          )}
+          {!noAgents && wanted && groups.length === 0 && (
+            <p className="muted small">No agent matches.</p>
           )}
           {groups.map(({ task, bots }) => (
             <div key={task.id} className="library-group">
@@ -187,7 +213,7 @@ export function PipelineTab({
                 {batch.leads.toLocaleString()} businesses
               </span>
             ) : (
-              <span className="warn-text">None yet: add one on Files and settings</span>
+              <span className="warn-text">None yet: add one on Lead files</span>
             )}
           </div>
           {pipeline.steps.map((step) => (
@@ -224,6 +250,34 @@ export function PipelineTab({
               </div>
             </div>
           ))}
+          {staff && slots.length === 0 && (
+            <div className="card stack-tight">
+              <p className="small">
+                Start from the standard steps: <strong>GBP Audit</strong> and{" "}
+                <strong>Website Audit</strong> side by side, then{" "}
+                <strong>Opportunity Finder</strong>, then <strong>Email Writer</strong>. You can
+                change them afterwards.
+              </p>
+              <div>
+                <button
+                  className="button button-primary"
+                  disabled={busy}
+                  onClick={() => void act(() => api.addStandardTasks(batchId))}
+                >
+                  Use the standard steps
+                </button>
+              </div>
+            </div>
+          )}
+          {staff && slots.length > 0 && standardMissing && !adding && (
+            <button
+              className="link-button small"
+              disabled={busy}
+              onClick={() => void act(() => api.addStandardTasks(batchId))}
+            >
+              Add the missing standard steps
+            </button>
+          )}
           {staff && !adding && (
             <button className="add-task-link" onClick={() => setAdding(true)}>
               + Add a task to this batch
@@ -367,8 +421,20 @@ function TaskSlot({
       {empty && (
         <>
           <div className="drop-zone">
-            <span className="muted">No agent yet: drop one here{staff ? ", or" : "."}</span>
-            {staff && (
+            {free.length === 0 ? (
+              <span className="muted">
+                No agent does this job yet
+                {staff && (
+                  <>
+                    : <AgentsLink>add one on Agents</AgentsLink>
+                  </>
+                )}
+                .
+              </span>
+            ) : (
+              <span className="muted">No agent yet: drop one here{staff ? ", or" : "."}</span>
+            )}
+            {staff && free.length > 0 && (
               <select
                 className="choose-agent-select"
                 aria-label={`Add an agent to ${slot.name}`}
@@ -516,10 +582,7 @@ function AddTask({
   if (jobs.length === 0) {
     return (
       <div className="card stack-tight">
-        <p className="muted small">
-          Every job your agents do already has a task here. Add an agent that does another job on
-          Agents first.
-        </p>
+        <p className="muted small">Every job already has a task in this batch.</p>
         <div>
           <button className="button" onClick={onCancel}>
             Close
