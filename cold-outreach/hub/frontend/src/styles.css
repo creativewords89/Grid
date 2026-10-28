@@ -2454,3 +2454,18 @@ textarea {
   min-width: 200px;
   max-width: 260px;
 }
+
+.city-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--info-bg);
+}
+
+.row-chosen td {
+  background: var(--info-bg);
+}

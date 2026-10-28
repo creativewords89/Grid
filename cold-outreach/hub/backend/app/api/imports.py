@@ -202,6 +202,8 @@ def delete_import(import_id: uuid.UUID, me: CurrentUser, db: Db) -> None:
     db.flush()
     if imp.batch_id is not None:
         _drop_empty_cities(db, imp.batch_id)
+        db.flush()
+        service.mute_small_cities(db, imp.batch_id)
     audit.record(
         db,
         me,
@@ -236,6 +238,8 @@ class ListOut(BaseModel):
     city: str
     niche: str
     active: bool
+    set_by_hand: bool  # a person switched it; the small-city rule leaves it alone
+    small: bool  # fewer than 10 businesses: listed on the Small cities tab
     daily_limit: int | None
     leads: int
     top: int
@@ -262,6 +266,8 @@ def _cities(db: Session, batch_id: uuid.UUID) -> list[ListOut]:
                 city=item.city,
                 niche=item.niche,
                 active=item.active,
+                set_by_hand=item.set_by_hand,
+                small=total < service.SMALL_CITY,
                 daily_limit=item.daily_limit,
                 leads=total,
                 top=top,
@@ -278,17 +284,23 @@ def batch_cities(batch_id: uuid.UUID, me: CurrentUser, db: Db) -> list[ListOut]:
 
 class AllCitiesIn(Strict):
     active: bool
+    small: bool | None = None  # only the small cities (True), only the others (False)
 
 
 @router.put("/batches/{batch_id}/cities", response_model=list[ListOut])
 def switch_all_cities(
     batch_id: uuid.UUID, body: AllCitiesIn, me: CurrentUser, db: Db
 ) -> list[ListOut]:
-    """All on or all off."""
+    """All on or all off (on the tab shown: small cities or the others). They count as
+    switched by hand from then on."""
     ensure(me, Action.OPERATE_AGENTS)
     batch = get_batch(db, batch_id)
+    small = {c.id for c in _cities(db, batch.id) if c.small}
     changed = 0
     for item in db.scalars(select(LeadList).where(LeadList.batch_id == batch.id)):
+        if body.small is not None and (item.id in small) != body.small:
+            continue
+        item.set_by_hand = True
         if item.active != body.active:
             item.active = body.active
             changed += 1
@@ -321,6 +333,7 @@ def update_list(list_id: uuid.UUID, body: ListPatch, me: CurrentUser, db: Db) ->
     before = {"active": item.active, "daily_limit": item.daily_limit}
     if body.active is not None:
         item.active = body.active
+        item.set_by_hand = True
     if body.daily_limit is not None:
         item.daily_limit = body.daily_limit
     if body.clear_daily_limit:

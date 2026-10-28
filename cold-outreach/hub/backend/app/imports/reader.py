@@ -46,8 +46,8 @@ SYNONYMS: dict[str, tuple[str, ...]] = {
     "reviews": ("reviews", "review", "number of reviews", "reviews count", "review count"),
     "rating": ("rating", "ratings", "average", "average rating", "average ratings"),
     "notes": ("notes", "note", "comment", "comments", "issue 1", "issue 2", "issue 3"),
-    "level": ("level",),
 }
+# Top is chosen in the Hub (SPEC section 6.4 item 5): a Level column is kept like any other.
 
 
 def _squash(text: str) -> str:
@@ -235,6 +235,8 @@ def read_rows(content: bytes, report: Report) -> list[Row]:
             if not name:
                 continue
             target = HEADER_TO_FIELD.get(_squash(name))
+            if _squash(name) == "level":
+                report.has_level_column = True
             if target is None:
                 report.unknown_columns.setdefault(name, []).append(tab)
                 if name not in others.values():
@@ -243,8 +245,6 @@ def read_rows(content: bytes, report: Report) -> list[Row]:
                     report.extra_columns.append(name[:80])
             elif target not in columns.values() or target in ("notes", "email"):
                 columns[index] = target
-        if "level" in columns.values():
-            report.has_level_column = True
         found = 0
         for offset, raw in enumerate(cells[header_at + 1 :], start=header_at + 2):
             values: dict[str, str] = {}

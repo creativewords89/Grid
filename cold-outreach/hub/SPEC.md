@@ -148,7 +148,7 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 | `imports` | `batch_id`, `file_name`, `niche`, `uploaded_by`, `status` (`preview`, `confirmed`, `failed`, `discarded`), counts, `preview` JSON, `errors` JSON, `sheet` JSON (every row of the file by tab: while waiting its cleaned values, original text and what happens to it; once confirmed only its tab, row number, Lead ID and what happened) |
 | `leads` | every business: `lead_id` (`L-000123`), `batch_id` (the batch it was first imported into), `niche`, `city`, `business_name`, `level`, `gbp_link`, `emails`, the matching keys `phone_digits`, `name_address`, `website_domain`, `data` JSON (address, website, phone, WhatsApp, Facebook, Instagram, reviews, rating, notes), `extra` JSON (the file's other columns, by their header, e.g. "Operation Hour"), `results` JSON (by agent key: status, score, summary, details, benchmark id and version, when), `first_import_id`, `last_import_id` |
 | `lead_files` | files agents saved for a lead (reports): `lead_id`, `agent_key`, `name`, `content_type`, `size`; the bytes are on disk at `REPORTS_DIR/<lead_id>/<id>` |
-| `lists` | the **cities of a batch**, one per batch + city: `batch_id`, `city`, `niche`, `active`, optional `daily_limit` |
+| `lists` | the **cities of a batch**, one per batch + city: `batch_id`, `city`, `niche`, `active`, `set_by_hand` (a person switched it, so the small-city rule leaves it alone), optional `daily_limit` |
 | `do_not_contact` | `kind` (`email`, `phone`, `gbp`, `domain`), `value`, `reason` (`top`, `opt_out`, `manual`), `lead_id` |
 | `alerts` | what was sent, to whom, on which channel, when |
 | `audit_log` | who did what (sign-ins, settings changes, connection changed/removed, imports, runs started/stopped). Never secret values. |
@@ -296,9 +296,11 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    Top wins. **A business is in one batch only**, the one it was first imported into: found in
    a file added to another batch, it is listed as "already in another batch", stays where it
    is, and its new details (an email, a phone) are still added.
-5. **Level:** `Top` (any case) from the optional `Level` column. A file without a Level column
-   never changes anyone's Level. Top leads put their email(s), phone and GBP link on the
-   do-not-contact list (reason `top`); losing Top removes those entries.
+5. **Top** (the best businesses of a city: never audited or contacted) is **chosen in the
+   Hub** (item 9), never from a file (step 17): a `Level` column is kept like any other
+   column and changes nobody's Top, and the preview says so. Top leads put their email(s),
+   phone and GBP link on the do-not-contact list (reason `top`); losing Top removes those
+   entries.
 6. **Preview** (nothing written but the import): businesses, new, already known in this
    batch (updated), already in another batch,
    duplicates merged, Top, cities, without a GBP link, without a website, rows skipped, emails
@@ -325,11 +327,24 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    batch's **Cities** tab with their businesses and Top counts, a search and **All on** /
    **All off**; Owners and Admins switch a city on or off. A city switched off **in a batch**
    is left alone in that batch only: its leads are not handed to agents (section 6.7). A city
-   name opens the batch's Leads tab for that city. (Step 15 moved the old City + Niche lists
+   name opens the batch's Leads tab for that city, with a bar saying so, **← Back to
+   Cities** (to the same tab, page and search) and **Show all leads**. (Step 15 moved the old City + Niche lists
    into each batch that has leads there, keeping on or off.)
+   **Small cities:** a city with **fewer than 10 businesses** in the batch is switched off by
+   the Hub and listed apart, on the **Small cities (under 10)** tab next to **Cities (10+)**.
+   The Hub decides this again after every saved or deleted file (a small city that grows to 10
+   is switched on), but never for a city a person switched on or off by hand (`set_by_hand`):
+   an Owner or Admin can unmute a small city one by one. All on / All off works on the tab
+   shown. Each tab shows **20 cities a page** with Previous / Next (a search narrows them
+   first). (Step 16: cities that were off stay off as if set by hand; the others follow the
+   rule.)
 9. **A batch's Leads tab** (everyone): 100 leads a page; a search (name, Lead ID, city,
    email, phone, website, GBP link), city, Top and website; sort by Lead ID, newest,
-   name, city or an agent's score (best first). The table shows **every field of the lead
+   name, city, rating or reviews (highest first) or an agent's score (best first).
+   **Choosing Top:** Owners and Admins tick leads (a box on each row, and one for the whole
+   page) and press **Mark as Top** or **Remove Top** (at most 500 at a time; one History
+   entry with the count). From then on agents don't get them (section 6.7); results agents
+   saved before stay. The table shows **every field of the lead
    file side by side**, like the Excel file: Lead ID, Business name, GBP link, Address, City,
    Website, Phone, WhatsApp, Email(s), Facebook, Instagram, Reviews, Rating, Level, Notes,
    the file's other columns and Batch, then each agent's score and status; it scrolls sideways with the business name kept
@@ -633,3 +648,13 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     **Tests:** cities per batch and the migration, readiness skips cities switched off, file
     deletion (running refused, which leads go and stay, do-not-contact kept, History), rights,
     the batch page's address and tabs, e2e.
+16. **Small cities muted** (asked for after step 15): cities with fewer than 10 businesses in
+    a batch are switched off by the Hub and shown on their own tab; a person can unmute one,
+    and the Hub then leaves it alone; 20 cities a page. **Tests:** the rule after saving and deleting files, a
+    city growing to 10, set-by-hand cities untouched, the tabs and their counts, the
+    migration.
+17. **Top chosen in the Hub** (asked for after step 16): ticking leads on the batch's Leads
+    tab and marking or unmarking them Top together; sorting by rating and reviews; files
+    never change Top (a Level column is kept as another column). **Tests:** marking and
+    unmarking with do-not-contact, rights, the 500 limit, sorting with odd values, a file
+    with a Level column changing nobody's Top, agents not getting Top leads.

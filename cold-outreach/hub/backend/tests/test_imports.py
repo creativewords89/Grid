@@ -216,6 +216,11 @@ def leads(client: TestClient, **params: Any) -> dict[str, dict[str, Any]]:
     return {lead["lead_id"]: lead for lead in page["leads"]}
 
 
+def mark_top(client: TestClient, *lead_ids: str, top: bool = True) -> None:
+    response = client.post("/api/leads/top", json={"lead_ids": list(lead_ids), "top": top})
+    assert response.status_code == 200, response.text
+
+
 def upload(client: TestClient, content: bytes, batch: str = "Batch 1") -> dict[str, Any]:
     response = client.post(
         "/api/imports",
@@ -243,10 +248,12 @@ def test_preview_saves_nothing_but_the_import(client: TestClient, owner: User, d
 
     assert body["status"] == "preview"
     counts = body["counts"]
-    assert (counts["leads"], counts["new"], counts["top"], counts["no_gbp_link"]) == (4, 4, 1, 1)
+    assert (counts["leads"], counts["new"], counts["top"], counts["no_gbp_link"]) == (4, 4, 0, 1)
     assert counts["invalid_emails"] == 1
     assert sorted(body["preview"]["new_lists"]) == ["Dallas", "Tulsa"]
-    assert body["preview"]["top"] == ["Top Shine (Tulsa row 3)"]
+    # Top is chosen in the Hub: the file's Level column is only another column.
+    assert body["preview"]["has_level_column"] is True
+    assert body["preview"]["top"] == []
     assert db.scalar(select(Lead.lead_id)) is None
 
 
@@ -271,7 +278,10 @@ def test_confirm_gives_ids_keeps_the_rows_and_protects_top_leads(
     assert first["emails"] == ["kevin@mc.com"]
     assert first["data"]["phone"] == "(918) 523-8300"
     assert first["data"]["website"] == "https://multi-clean.com/"
-    assert saved["L-000002"]["level"] == "Top"
+    assert saved["L-000002"]["level"] == ""  # the file's "Top" changes nothing
+    assert saved["L-000002"]["extra"] == {"Level": "Top"}
+    assert db.scalar(select(DoNotContact)) is None
+    mark_top(client, "L-000002")
     blocked = {(d.kind, d.value) for d in db.scalars(select(DoNotContact))}
     assert blocked == {
         ("gbp", "https://share.google/ts"),
@@ -289,6 +299,7 @@ def test_confirm_gives_ids_keeps_the_rows_and_protects_top_leads(
 def test_a_second_import_updates_instead_of_adding(client: TestClient, owner: User) -> None:
     first = upload(client, workbook(FILE))
     client.post(f"/api/imports/{first['id']}/confirm")
+    mark_top(client, "L-000002")
     again = workbook(
         {
             "Tulsa": [
@@ -314,7 +325,7 @@ def test_a_second_import_updates_instead_of_adding(client: TestClient, owner: Us
     multi = saved["L-000001"]
     assert multi["emails"] == ["kevin@mc.com", "new@mc.com"]
     assert multi["data"]["website"] == "https://multi-clean.com/"  # an empty cell never blanks it
-    assert saved["L-000002"]["level"] == "Top"  # this file had no Level column
+    assert saved["L-000002"]["level"] == "Top"  # chosen in the Hub: files don't change it
     assert saved["L-000005"]["business_name"] == "Brand New"
 
 
@@ -396,6 +407,7 @@ def test_a_batchs_cities_count_leads_and_can_be_switched_off(
 ) -> None:
     preview = upload(client, workbook(FILE))
     client.post(f"/api/imports/{preview['id']}/confirm")
+    mark_top(client, "L-000002")
     url = f"/api/batches/{preview['batch_id']}/cities"
 
     cities = {x["city"]: x for x in client.get(url).json()}
@@ -420,9 +432,11 @@ def test_the_same_city_in_two_batches_is_switched_separately(
     first, second = batch_id(client, "Batch 1"), batch_id(client, "Batch 2")
     tulsa = client.get(f"/api/batches/{first}/cities").json()[0]
 
-    client.patch(f"/api/lists/{tulsa['id']}", json={"active": False})
+    assert tulsa["active"] is False  # one business: a small city, muted
+    client.patch(f"/api/lists/{tulsa['id']}", json={"active": True})
 
-    assert client.get(f"/api/batches/{second}/cities").json()[0]["active"] is True
+    assert client.get(f"/api/batches/{first}/cities").json()[0]["active"] is True
+    assert client.get(f"/api/batches/{second}/cities").json()[0]["active"] is False
 
 
 # --- the file tab by tab (step 14) ------------------------------------------------------------
@@ -475,11 +489,16 @@ def test_the_preview_shows_the_file_tab_by_tab(client: TestClient, owner: User) 
     assert first["raw"]["email"] == "Kevin@MC.com"  # the original text of a changed cell
     assert first["extra"] == {"Operation Hour": "9-5"}
     assert [r["status"] for r in shown["rows"]] == ["new", "new", "skipped", "new", "new"]
-    assert shown["statuses"]["merged"] == 2 and shown["statuses"]["top"] == 1
-    tulsa_top = sheet(client, preview["id"], tab="Tulsa", status="top")
-    assert [r["line"] for r in tulsa_top["rows"]] == [3]
+    assert shown["statuses"]["merged"] == 2 and shown["statuses"]["top"] == 0  # not from files
+    assert shown["rows"][1]["extra"] == {"Level": "Top"}
     assert sheet(client, preview["id"], status="skipped")["total"] == 1
     assert sheet(client, preview["id"], tab="Dallas")["total"] == 1
+    # A business chosen as Top in the Hub shows as Top when a file has it again.
+    client.post(f"/api/imports/{preview['id']}/confirm")
+    mark_top(client, "L-000002")
+    again = upload(client, workbook(SHEET_FILE))
+    tulsa_top = sheet(client, again["id"], tab="Tulsa", status="top")
+    assert [r["line"] for r in tulsa_top["rows"]] == [3]
 
 
 def test_other_columns_are_saved_and_shown_and_never_blanked(
@@ -500,7 +519,7 @@ def test_other_columns_are_saved_and_shown_and_never_blanked(
     page = client.get("/api/leads").json()
     multi = next(x for x in page["leads"] if x["business_name"] == "Multi-Clean")
     assert multi["extra"] == {"Operation Hour": "9-5"}  # the empty cell didn't blank it
-    assert page["extra_columns"] == ["Operation Hour"]
+    assert page["extra_columns"] == ["Level", "Operation Hour"]
     from openpyxl import load_workbook
 
     book = load_workbook(io.BytesIO(client.get("/api/leads/export").content)).active
@@ -555,6 +574,7 @@ def test_deleting_a_file_takes_the_leads_it_brought_in_first(
 ) -> None:
     first = upload(client, workbook(FILE))
     client.post(f"/api/imports/{first['id']}/confirm")
+    mark_top(client, "L-000002")
     later = {
         "Tulsa": [
             STANDARD,
@@ -620,3 +640,72 @@ def test_viewers_cannot_delete_files_or_switch_cities(
         client.put(f"/api/batches/{preview['batch_id']}/cities", json={"active": False}).status_code
         == 403
     )
+
+
+# --- small cities muted (step 16) -------------------------------------------------------------
+
+
+def test_small_cities_are_muted_and_follow_new_files_unless_set_by_hand(
+    client: TestClient, owner: User
+) -> None:
+    big = [row(f"Big {n}", f"https://share.google/b{n}", str(n)) for n in range(10)]
+    first = upload(
+        client,
+        workbook(
+            {
+                "Tulsa": [STANDARD, *big],
+                "Dallas": [
+                    STANDARD,
+                    *[
+                        row(f"D {n}", f"https://share.google/d{n}", f"9{n}", city="Dallas")
+                        for n in range(3)
+                    ],
+                ],
+                "Austin": [STANDARD, row("A", "https://share.google/a", "71", city="Austin")],
+            }
+        ),
+    )
+    client.post(f"/api/imports/{first['id']}/confirm")
+    url = f"/api/batches/{first['batch_id']}/cities"
+    cities = {c["city"]: c for c in client.get(url).json()}
+    assert {k: (c["active"], c["small"]) for k, c in cities.items()} == {
+        "Austin": (False, True),
+        "Dallas": (False, True),
+        "Tulsa": (True, False),
+    }
+    # Unmuted by hand: the rule leaves Austin alone from now on.
+    client.patch(f"/api/lists/{cities['Austin']['id']}", json={"active": True})
+
+    more = [row(f"D {n}", f"https://share.google/e{n}", f"8{n}", city="Dallas") for n in range(7)]
+    second = upload(client, workbook({"Dallas": [STANDARD, *more]}))
+    client.post(f"/api/imports/{second['id']}/confirm")
+    after = {c["city"]: c for c in client.get(url).json()}
+    assert (after["Dallas"]["active"], after["Dallas"]["small"]) == (True, False)  # grew to 10
+    assert after["Austin"]["active"] is True and after["Austin"]["set_by_hand"] is True
+
+    # Deleting the second file makes Dallas small again: muted.
+    client.delete(f"/api/imports/{second['id']}")
+    assert {c["city"]: c["active"] for c in client.get(url).json()}["Dallas"] is False
+
+
+def test_all_on_works_on_the_tab_shown(client: TestClient, owner: User) -> None:
+    big = [row(f"Big {n}", f"https://share.google/b{n}", str(n)) for n in range(10)]
+    preview = upload(
+        client,
+        workbook(
+            {
+                "Tulsa": [STANDARD, *big],
+                "Austin": [STANDARD, row("A", "https://share.google/a", "71", city="Austin")],
+            }
+        ),
+    )
+    client.post(f"/api/imports/{preview['id']}/confirm")
+    url = f"/api/batches/{preview['batch_id']}/cities"
+
+    client.put(url, json={"active": False, "small": False})  # Cities (10+): all off
+    client.put(url, json={"active": True, "small": True})  # Small cities: all on
+
+    assert {c["city"]: c["active"] for c in client.get(url).json()} == {
+        "Austin": True,
+        "Tulsa": False,
+    }

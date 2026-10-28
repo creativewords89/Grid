@@ -349,6 +349,8 @@ class LeadList(TimestampMixin, Base):
     city: Mapped[str] = mapped_column(String(120))
     niche: Mapped[str] = mapped_column(String(80))
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    # A person switched it on or off: the small-city rule leaves it alone.
+    set_by_hand: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     daily_limit: Mapped[int | None] = mapped_column(Integer)
 
     __table_args__ = (Index("uq_lists_batch_city", "batch_id", func.lower(city), unique=True),)

@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, vi } from "vitest";
 import type { Lead, LeadDetail, LeadPage } from "../api";
+import { AuthProvider } from "../auth";
 import { BatchLeads } from "./Leads";
 import { makeUser, mockApi } from "../test/mockApi";
 
@@ -77,7 +78,11 @@ test("the leads show like a sheet, with the agents' scores, filters and pages", 
       leadPage([lead("L-000101")], { total: 230, page: 2, pages: 3 }),
     ],
   });
-  render(<BatchLeads batchId="b1" />);
+  render(
+    <AuthProvider>
+      <BatchLeads batchId="b1" />
+    </AuthProvider>,
+  );
 
   const rows = await screen.findAllByRole("row");
   expect(screen.getByText("230 leads · page 1 of 3")).toBeVisible();
@@ -101,7 +106,7 @@ test("the leads show like a sheet, with the agents' scores, filters and pages", 
     "Instagram",
     "Reviews",
     "Rating",
-    "Level",
+    "Top",
     "Notes",
     "Batch",
     "GBP",
@@ -144,7 +149,11 @@ test("sorting by an agent's score", async () => {
     "GET /leads?batch_id=b1": [200, leadPage([lead("L-000001")], { agents: { demo: "Demo" } })],
     "GET /leads?batch_id=b1&sort=score&score_of=demo&page=1": [200, leadPage([])],
   });
-  render(<BatchLeads batchId="b1" />);
+  render(
+    <AuthProvider>
+      <BatchLeads batchId="b1" />
+    </AuthProvider>,
+  );
 
   expect(await screen.findByText("Multi-Clean")).toBeVisible();
   await userEvent.selectOptions(screen.getByLabelText("Sort by"), "score:demo");
@@ -174,7 +183,11 @@ test("open a lead, change it and mark it Top", async () => {
     ],
     "PATCH /leads/L-000001": [200, detail({ level: "Top", emails: ["owner@mc.com"] })],
   });
-  render(<BatchLeads batchId="b1" />);
+  render(
+    <AuthProvider>
+      <BatchLeads batchId="b1" />
+    </AuthProvider>,
+  );
 
   await userEvent.click(await screen.findByRole("button", { name: "Multi-Clean" }));
   const dialog = await screen.findByRole("dialog", { name: "Multi-Clean" });
@@ -213,7 +226,11 @@ test("deleting a lead asks once more", async () => {
       return [204];
     },
   });
-  render(<BatchLeads batchId="b1" />);
+  render(
+    <AuthProvider>
+      <BatchLeads batchId="b1" />
+    </AuthProvider>,
+  );
 
   await userEvent.click(await screen.findByRole("button", { name: "Multi-Clean" }));
   const dialog = await screen.findByRole("dialog", { name: "Multi-Clean" });
@@ -230,7 +247,11 @@ test("a viewer sees a lead but can't change it", async () => {
     "GET /leads?batch_id=b1": [200, leadPage([lead("L-000001")])],
     "GET /leads/L-000001": [200, detail({ can_edit: false })],
   });
-  render(<BatchLeads batchId="b1" />);
+  render(
+    <AuthProvider>
+      <BatchLeads batchId="b1" />
+    </AuthProvider>,
+  );
 
   await userEvent.click(await screen.findByRole("button", { name: "Multi-Clean" }));
   const dialog = await screen.findByRole("dialog", { name: "Multi-Clean" });
@@ -253,7 +274,11 @@ test("only web addresses become links", async () => {
       ]),
     ],
   });
-  render(<BatchLeads batchId="b1" />);
+  render(
+    <AuthProvider>
+      <BatchLeads batchId="b1" />
+    </AuthProvider>,
+  );
 
   const row = (await screen.findAllByRole("row"))[1]!;
   expect(within(row).getByText("javascript:alert(1)").closest("a")).toBeNull();
@@ -261,4 +286,64 @@ test("only web addresses become links", async () => {
     "href",
     "https://sparkle.cleaning",
   );
+});
+
+test("an Admin ticks leads and marks them Top; sorting by rating", async () => {
+  let marked = false;
+  const calls = mockApi({
+    "GET /auth/me": as("admin"),
+    "GET /leads?batch_id=b1": () => [
+      200,
+      leadPage([
+        lead("L-000001", { level: marked ? "Top" : "" }),
+        lead("L-000002", { business_name: "Shine", level: marked ? "Top" : "" }),
+        lead("L-000003", { business_name: "Dusty" }),
+      ]),
+    ],
+    "POST /leads/top": () => {
+      marked = true;
+      return [200, { changed: 2 }];
+    },
+    "GET /leads?batch_id=b1&sort=rating&page=1": [200, leadPage([])],
+  });
+  render(
+    <AuthProvider>
+      <BatchLeads batchId="b1" />
+    </AuthProvider>,
+  );
+
+  await userEvent.click(await screen.findByRole("checkbox", { name: "Choose Multi-Clean" }));
+  await userEvent.click(screen.getByRole("checkbox", { name: "Choose Shine" }));
+  const bar = screen.getByRole("region", { name: "Chosen leads" });
+  expect(bar).toHaveTextContent("2 chosen");
+  await userEvent.click(within(bar).getByRole("button", { name: "Mark as Top" }));
+
+  expect(await screen.findByText("2 leads marked as Top: agents leave them alone.")).toBeVisible();
+  expect(calls.find((c) => c.method === "POST")?.body).toEqual({
+    lead_ids: ["L-000001", "L-000002"],
+    top: true,
+  });
+  expect(screen.queryByRole("region", { name: "Chosen leads" })).not.toBeInTheDocument();
+  // The whole page at once.
+  await userEvent.click(screen.getByRole("checkbox", { name: "Choose every lead on this page" }));
+  expect(screen.getByRole("region", { name: "Chosen leads" })).toHaveTextContent("3 chosen");
+
+  await userEvent.selectOptions(screen.getByLabelText("Sort by"), "rating");
+  await screen.findByText("No leads match.");
+  expect(calls.some((c) => c.path === "/leads?batch_id=b1&sort=rating&page=1")).toBe(true);
+});
+
+test("viewers can't choose Top", async () => {
+  mockApi({
+    "GET /auth/me": as("viewer"),
+    "GET /leads?batch_id=b1": [200, leadPage([lead("L-000001")])],
+  });
+  render(
+    <AuthProvider>
+      <BatchLeads batchId="b1" />
+    </AuthProvider>,
+  );
+
+  expect(await screen.findByText("Multi-Clean")).toBeVisible();
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
 });

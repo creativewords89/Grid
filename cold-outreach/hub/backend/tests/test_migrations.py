@@ -211,7 +211,7 @@ def test_city_niche_lists_go_into_each_batch_with_leads_there(fresh_database_url
                     "('00000000-0000-0000-0000-000000000003', 'Austin', 'Cleaning', true)"
                 )
             )
-        command.upgrade(cfg, "head")
+        command.upgrade(cfg, "0013")
         with engine.connect() as conn:
             moved = conn.execute(
                 text(
@@ -227,3 +227,49 @@ def test_city_niche_lists_go_into_each_batch_with_leads_there(fresh_database_url
 
     assert moved == [("One", "Tulsa", False), ("Two", "Dallas", True), ("Two", "Tulsa", False)]
     assert back == [("Dallas", True), ("Tulsa", False)]
+
+
+def test_small_cities_are_muted_unless_switched_off_by_hand(fresh_database_url: str) -> None:
+    """Step 16: cities that were off stay off (as if set by hand); the rest follow the
+    fewer-than-10 rule."""
+    cfg = alembic_config(fresh_database_url)
+    command.upgrade(cfg, "0013")
+    engine = create_engine(fresh_database_url)
+    batch = "00000000-0000-0000-0000-00000000000a"
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text("INSERT INTO batches (id, name, niche) VALUES (:id, 'One', 'Cleaning')"),
+                {"id": batch},
+            )
+            for n in range(12):
+                city = "Big" if n < 10 else "Small"
+                conn.execute(
+                    text(
+                        "INSERT INTO leads (lead_id, batch_id, niche, city, business_name) "
+                        "VALUES (:id, :batch, 'Cleaning', :city, 'X')"
+                    ),
+                    {"id": f"L-{n:06d}", "batch": batch, "city": city},
+                )
+            for n, (city, active) in enumerate((("Big", True), ("Small", True), ("Off", False))):
+                conn.execute(
+                    text(
+                        "INSERT INTO lists (id, batch_id, city, niche, active) "
+                        "VALUES (:id, :batch, :city, 'Cleaning', :active)"
+                    ),
+                    {
+                        "id": f"00000000-0000-0000-0000-00000000000{n}",
+                        "batch": batch,
+                        "city": city,
+                        "active": active,
+                    },
+                )
+        command.upgrade(cfg, "0014")
+        with engine.connect() as conn:
+            rows = conn.execute(
+                text("SELECT city, active, set_by_hand FROM lists ORDER BY city")
+            ).all()
+    finally:
+        engine.dispose()
+
+    assert rows == [("Big", True, False), ("Off", False, True), ("Small", False, False)]

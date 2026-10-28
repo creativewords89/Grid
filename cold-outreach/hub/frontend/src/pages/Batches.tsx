@@ -478,16 +478,32 @@ function BatchView({
       {tab === "tasks" && pipeline && (
         <PipelineTab batchId={batch.id} pipeline={pipeline} onChange={changed} />
       )}
+      {tab === "leads" && city && (
+        <div className="city-bar" role="region" aria-label="Leads of one city">
+          <button className="button" onClick={() => setTab("cities")}>
+            ← Back to Cities
+          </button>
+          <span>
+            Leads in <strong>{city}</strong>
+          </span>
+          <button className="link-button" onClick={() => setCity("")}>
+            Show all leads
+          </button>
+        </div>
+      )}
       {tab === "leads" && <BatchLeads key={city} batchId={batch.id} city={city} />}
-      {tab === "cities" && (
-        <BatchCities
-          batchId={batch.id}
-          staff={staff}
-          onOpenCity={(name) => {
-            setCity(name);
-            setTab("leads");
-          }}
-        />
+      {/* Kept while a city's leads are open, so Back returns to the same tab, page and search. */}
+      {(tab === "cities" || (tab === "leads" && city)) && (
+        <div hidden={tab !== "cities"}>
+          <BatchCities
+            batchId={batch.id}
+            staff={staff}
+            onOpenCity={(name) => {
+              setCity(name);
+              setTab("leads");
+            }}
+          />
+        </div>
       )}
       {tab === "results" && pipeline && (
         <ResultsTab batchId={batch.id} pipeline={pipeline} onShowLeads={() => setTab("leads")} />
@@ -781,19 +797,18 @@ function PreviewCard({
         <Count label="already known (updated)" value={counts.updated} />
         <Count label="already in another batch" value={counts.other_batch ?? 0} warn />
         <Count label="duplicates merged" value={counts.merged} />
-        <Count label="Top (never contacted)" value={counts.top} />
+        <Count label="already Top (never contacted)" value={counts.top} />
         <Count label="cities" value={counts.cities} />
         <Count label="without a GBP link" value={counts.no_gbp_link} warn />
         <Count label="without a website" value={counts.no_website} />
         <Count label="rows skipped" value={counts.skipped_rows} warn />
         <Count label="emails that look wrong" value={counts.invalid_emails} warn />
       </div>
-      {!preview.has_level_column && (
-        <p className="muted small">
-          This file has no Level column, so no business is marked Top and existing Top marks stay as
-          they are.
-        </p>
-      )}
+      <p className="muted small">
+        Top is chosen in the Hub (the batch&apos;s Leads tab), not from the file
+        {preview.has_level_column && ": this file's Level column is kept as another column"}.
+        Businesses already Top stay Top.
+      </p>
       <Details title="New lists (City + Niche)" items={preview.new_lists ?? []} />
       <Details title="Already known, will be updated" items={preview.updated ?? []} />
       <Details

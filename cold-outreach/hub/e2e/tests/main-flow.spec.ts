@@ -105,7 +105,8 @@ test("a batch is made and a lead file is read, checked and saved in the Hub", as
     preview.locator(".count", { has: page.getByText(label, { exact: true }) });
   await expect(count("businesses")).toContainText("4");
   await expect(count("duplicates merged")).toContainText("1");
-  await expect(count("Top (never contacted)")).toContainText("1");
+  await expect(count("already Top (never contacted)")).toContainText("0");
+  await expect(preview.getByText(/Top is chosen in the Hub/)).toBeVisible();
   await expect(count("cities")).toContainText("2");
   // The file itself, tab by tab, with every column.
   const file = preview.getByRole("region", { name: "The file, tab by tab" });
@@ -123,7 +124,7 @@ test("a batch is made and a lead file is read, checked and saved in the Hub", as
   ).toBeVisible();
   await page.getByRole("button", { name: "All batches" }).click();
   await expect(page.getByRole("row", { name: /Texas November/ })).toContainText(
-    "1 Top",
+    "4",
   );
 });
 
@@ -141,16 +142,33 @@ test("the leads are in their batch and download as Excel", async () => {
     .getByRole("button", { name: "Texas November", exact: true })
     .first()
     .click();
-  await page.getByRole("tab", { name: "Cities" }).click();
+  // Both cities have fewer than 10 businesses: muted by the Hub, on their own tab.
+  await page.getByRole("tab", { name: "Cities", exact: true }).click();
+  await page
+    .getByRole("tab", { name: /Small cities \(under 10\) \(2\)/ })
+    .click();
+  await expect(
+    page.getByRole("switch", { name: "Tulsa on or off" }),
+  ).not.toBeChecked();
+  // Unmuted by hand, so the demo agent can work on them.
+  await page.getByRole("button", { name: "All on" }).click();
   await expect(
     page.getByRole("switch", { name: "Tulsa on or off" }),
   ).toBeChecked();
+  // A city's leads, and back to the cities.
+  await page.getByRole("button", { name: "Tulsa", exact: true }).click();
+  await expect(page.getByText("1 lead", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "← Back to Cities" }).click();
+  await expect(page.getByRole("tab", { name: /Small cities/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await page.getByRole("tab", { name: "Leads" }).click();
   await expect(page.getByText("4 leads")).toBeVisible();
   // Every field of the file side by side.
   await expect(
     page.getByRole("row", {
-      name: /^Lead ID Business name GBP link Address City Website Phone WhatsApp Email Facebook Instagram Reviews Rating Level Notes Batch/,
+      name: /Lead ID Business name GBP link Address City Website Phone WhatsApp Email Facebook Instagram Reviews Rating Top Notes Level Batch/,
     }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Sparkle Home Cleaning" }).click();
@@ -175,6 +193,16 @@ test("the leads are in their batch and download as Excel", async () => {
   const file = await download;
   expect(file.suggestedFilename()).toMatch(/^leads-\d{4}-\d{2}-\d{2}\.xlsx$/);
   await page.getByLabel("Website").selectOption("");
+
+  // Top is chosen in the Hub: tick it, Mark as Top.
+  await page.getByRole("checkbox", { name: "Choose Big Shine Co" }).click();
+  await page.getByRole("button", { name: "Mark as Top" }).click();
+  await expect(
+    page.getByText("1 lead marked as Top: agents leave them alone."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("row", { name: /Big Shine Co/ }).locator(".pill-top"),
+  ).toBeVisible();
 });
 
 test("the demo agent joins, works on the batch and finishes a run", async () => {

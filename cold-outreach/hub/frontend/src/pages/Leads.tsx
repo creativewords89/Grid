@@ -8,6 +8,7 @@ import {
   type LeadPage,
   type LeadPatch,
 } from "../api";
+import { useAuth } from "../auth";
 import { Alert, Field, Modal } from "../components/ui";
 import { when } from "../format";
 
@@ -21,6 +22,8 @@ const SORTS: [NonNullable<LeadFilters["sort"]>, string][] = [
   ["newest", "Newest first"],
   ["name", "Business name"],
   ["city", "City"],
+  ["rating", "Rating (highest first)"],
+  ["reviews", "Reviews (most first)"],
 ];
 
 /** A batch's leads (SPEC section 6.4 item 9): its own tab on the batch page. */
@@ -30,6 +33,10 @@ export function BatchLeads({ batchId, city = "" }: { batchId: string; city?: str
   const [data, setData] = useState<LeadPage | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [chosen, setChosen] = useState<Set<string>>(new Set());
+  const [notice, setNotice] = useState("");
+  const { user } = useAuth();
+  const staff = user?.role === "owner" || user?.role === "admin";
 
   const load = useCallback(() => {
     api
@@ -50,6 +57,33 @@ export function BatchLeads({ batchId, city = "" }: { batchId: string; city?: str
   }
 
   const agents = Object.entries(data?.agents ?? {});
+  const onPage = data?.leads.map((l) => l.lead_id) ?? [];
+  const allChosen = onPage.length > 0 && onPage.every((id) => chosen.has(id));
+
+  function toggle(id: string, on: boolean) {
+    setChosen((now) => {
+      const next = new Set(now);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  async function markTop(top: boolean) {
+    setError("");
+    try {
+      const done = await api.markTop([...chosen], top);
+      setNotice(
+        `${done.changed.toLocaleString()} ${done.changed === 1 ? "lead" : "leads"} ${
+          top ? "marked as Top: agents leave them alone" : "no longer Top"
+        }.`,
+      );
+      setChosen(new Set());
+      load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Not saved.");
+    }
+  }
   const shown: LeadFilters = { ...filters, page: undefined };
   const sortValue = filters.sort === "score" ? `score:${filters.score_of}` : (filters.sort ?? "");
 
@@ -139,12 +173,50 @@ export function BatchLeads({ batchId, city = "" }: { batchId: string; city?: str
           {data.pages > 1 && ` · page ${data.page} of ${data.pages}`}
         </p>
       )}
+      {notice && <Alert kind="success">{notice}</Alert>}
+      {staff && chosen.size > 0 && (
+        <div className="city-bar" role="region" aria-label="Chosen leads">
+          <strong>{chosen.size.toLocaleString()} chosen</strong>
+          <button
+            className="button button-primary"
+            disabled={chosen.size > 500}
+            onClick={() => void markTop(true)}
+          >
+            Mark as Top
+          </button>
+          <button
+            className="button"
+            disabled={chosen.size > 500}
+            onClick={() => void markTop(false)}
+          >
+            Remove Top
+          </button>
+          <button className="link-button" onClick={() => setChosen(new Set())}>
+            Clear
+          </button>
+          <span className="muted small">
+            {chosen.size > 500
+              ? "At most 500 at a time."
+              : "Top businesses are never audited or contacted."}
+          </span>
+        </div>
+      )}
       {data?.total === 0 && <p className="muted">No leads match.</p>}
       {data && data.leads.length > 0 && (
         <div className="card table-card table-scroll table-tall">
           <table className="table leads-table">
             <thead>
               <tr>
+                {staff && (
+                  <th>
+                    <input
+                      type="checkbox"
+                      aria-label="Choose every lead on this page"
+                      checked={allChosen}
+                      onChange={(e) => onPage.forEach((id) => toggle(id, e.target.checked))}
+                    />
+                  </th>
+                )}
                 <th>Lead ID</th>
                 <th className="sticky-col">Business name</th>
                 {COLUMNS.map(([key, label]) => (
@@ -161,7 +233,20 @@ export function BatchLeads({ batchId, city = "" }: { batchId: string; city?: str
             </thead>
             <tbody>
               {data.leads.map((lead) => (
-                <tr key={lead.lead_id}>
+                <tr
+                  key={lead.lead_id}
+                  className={chosen.has(lead.lead_id) ? "row-chosen" : undefined}
+                >
+                  {staff && (
+                    <td>
+                      <input
+                        type="checkbox"
+                        aria-label={`Choose ${lead.business_name || lead.lead_id}`}
+                        checked={chosen.has(lead.lead_id)}
+                        onChange={(e) => toggle(lead.lead_id, e.target.checked)}
+                      />
+                    </td>
+                  )}
                   <td className="small nowrap">{lead.lead_id}</td>
                   <td className="sticky-col">
                     <button
@@ -241,7 +326,7 @@ const COLUMNS: [string, string][] = [
   ["instagram", "Instagram"],
   ["reviews", "Reviews"],
   ["rating", "Rating"],
-  ["level", "Level"],
+  ["level", "Top"],
   ["notes", "Notes"],
 ];
 const LINKS = new Set(["gbp_link", "website", "facebook", "instagram"]);
