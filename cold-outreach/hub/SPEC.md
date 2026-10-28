@@ -507,6 +507,12 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    6.4 item 9, with the lead window of item 10), **Cities** (item 8), **Results** (section
    6.7) and **Files and settings** (its benchmark choice, rename, delete when empty, **Add a
    lead file**, the preview and its past files, each with **Delete**, item 11).
+   (Step 23: the tabs are **Tasks**, **Cities**, **Results**, **Lead files** and **Settings**.
+   **Lead files** holds two views, **Leads** (the table above, the file's rows as the Hub
+   keeps them) and **Files** (**Add a lead file**, the preview and the past files, each with
+   **Delete**); **Settings** holds the benchmark choice, rename and delete when empty. A
+   city's leads opened from Cities stay under **Cities**. Addresses keep `tab=leads`,
+   `tab=files` and add `tab=settings`.)
    There is no setup guide box on the Tasks tab (taken off after step 18); how to add
    and start an agent is on Agents.
    `/import` opens Batches.
@@ -707,3 +713,7 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     `new`. No migration: worked out from `leads.first_import_id`. **Tests:** two files, the
     latest one's cities new, deleting the first file moving its city to the second, the
     filter and its counts, e2e.
+23. **Leads with the lead files** (asked for after step 22): the batch's tabs become Tasks,
+    Cities, Results, Lead files (views Leads and Files) and Settings; a city's leads stay
+    under Cities. **Tests:** the tabs and views, old addresses, a city's leads under Cities,
+    settings on their own tab, e2e.

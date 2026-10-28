@@ -36,21 +36,23 @@ const STATUS: Record<LeadImport["status"], string> = {
   discarded: "Discarded",
 };
 
-type Tab = "tasks" | "leads" | "cities" | "results" | "files";
+// "leads" and "files" are the two views of the Lead files tab (step 23).
+type Tab = "tasks" | "cities" | "results" | "leads" | "files" | "settings";
 const TABS: [Tab, string][] = [
   ["tasks", "Tasks"],
-  ["leads", "Leads"],
   ["cities", "Cities"],
   ["results", "Results"],
-  ["files", "Files and settings"],
+  ["leads", "Lead files"],
+  ["settings", "Settings"],
 ];
+const ALL_TABS: Tab[] = ["tasks", "cities", "results", "leads", "files", "settings"];
 
 /** The open batch and tab from the address: /batches?batch=<id>&tab=<tab>, and the old
  * /leads?batch=<id> opens that batch's Leads tab. */
 function fromAddress(): { batch: string | null; tab: Tab | null } {
   const params = new URLSearchParams(window.location.search);
   const tab = params.get("tab");
-  const known = TABS.some(([key]) => key === tab) ? (tab as Tab) : null;
+  const known = ALL_TABS.includes(tab as Tab) ? (tab as Tab) : null;
   return {
     batch: params.get("batch"),
     tab: window.location.pathname === "/leads" ? "leads" : known,
@@ -487,7 +489,13 @@ function BatchView({
           <button
             key={key}
             role="tab"
-            aria-selected={tab === key}
+            aria-selected={
+              key === "leads"
+                ? (tab === "leads" && !city) || tab === "files"
+                : key === "cities"
+                  ? tab === "cities" || (tab === "leads" && !!city)
+                  : tab === key
+            }
             onClick={() => {
               if (key === "leads") setCity("");
               setTab(key);
@@ -499,6 +507,17 @@ function BatchView({
       </nav>
       {tab === "tasks" && pipeline && (
         <PipelineTab batchId={batch.id} pipeline={pipeline} onChange={changed} />
+      )}
+      {/* The Lead files tab: the leads the files brought, and the files themselves. */}
+      {(tab === "files" || (tab === "leads" && !city)) && (
+        <div className="sheet-tabs" role="tablist" aria-label="Lead files">
+          <button role="tab" aria-selected={tab === "leads"} onClick={() => setTab("leads")}>
+            Leads
+          </button>
+          <button role="tab" aria-selected={tab === "files"} onClick={() => setTab("files")}>
+            Files
+          </button>
+        </div>
       )}
       {tab === "leads" && city && (
         <div className="city-bar" role="region" aria-label="Leads of one city">
@@ -531,7 +550,7 @@ function BatchView({
       {tab === "results" && pipeline && (
         <ResultsTab batchId={batch.id} pipeline={pipeline} onShowLeads={() => setTab("leads")} />
       )}
-      {tab === "files" && (
+      {tab === "settings" && (
         <BatchSettings batch={batch} staff={staff} onChanged={onChanged} onDeleted={onBack} />
       )}
       {tab === "files" && staff && !current && (
