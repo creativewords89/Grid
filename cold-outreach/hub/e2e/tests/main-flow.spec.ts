@@ -131,9 +131,22 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
   await card.getByRole("button", { name: "Settings" }).click();
   await page.getByLabel("Items per run").fill("4");
   await page.getByLabel("Seconds per item").fill("0.2");
-  await page.getByLabel("Add a batch").selectOption({ label: "Texas November (Cleaning)" });
   await page.getByRole("button", { name: "Save" }).click();
-  await expect(card.getByText("Works on: Texas November")).toBeVisible();
+  await expect(card.getByText("Settings saved.")).toBeVisible();
+  await expect(card.getByText(/Task: Demo/)).toBeVisible();
+
+  // The batch chooses the bot for its task, then starts.
+  await page.getByRole("link", { name: "Batches" }).click();
+  await page.getByRole("button", { name: "Texas November", exact: true }).click();
+  const library = page.getByRole("complementary", { name: "Bot library" });
+  await library.getByRole("button", { name: "Add Demo agent to Demo" }).click();
+  const slot = page.getByRole("article", { name: "Demo" });
+  await expect(slot.getByText("Demo agent")).toBeVisible();
+  await page.getByRole("button", { name: "Start" }).click();
+  await expect(page.getByRole("button", { name: "Pause" })).toBeVisible();
+
+  await page.getByRole("link", { name: "Agents" }).click();
+  await expect(card.getByText(/Works on: Texas November/)).toBeVisible();
   const power = card.getByRole("switch", { name: "Demo agent on or off" });
   await power.click(); // saved on the server first, then shown as on
   await expect(power).toBeChecked();
@@ -144,8 +157,8 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
     await card.getByRole("button", { name: "Refresh" }).click();
     await expect(card.getByText("Finished")).toBeVisible({ timeout: 1000 });
   }).toPass({ timeout: 45_000 });
-  // Three leads audited; the Top one skipped.
-  await expect(card.getByText(/3 done, 1 skipped/)).toBeVisible();
+  // Three leads audited; the Top one is never handed out.
+  await expect(card.getByText(/3 done/)).toBeVisible();
 
   // Its results are on the Leads screen, and can be sorted by.
   await page.getByRole("link", { name: "Leads" }).click();
@@ -153,13 +166,20 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
   await expect(page.getByRole("row", { name: /Email Demo$/ })).toBeVisible();
   const scored = page.getByRole("row", { name: /Sparkle Home Cleaning/ });
   await expect(scored.getByRole("cell").last()).toHaveText(/^\d+$/);
+
+  // And on the batch's Results tab, for that bot.
+  await page.getByRole("link", { name: "Batches" }).click();
+  await page.getByRole("button", { name: "Texas November", exact: true }).click();
+  await page.getByRole("tab", { name: "Results" }).click();
+  await expect(page.getByRole("button", { name: /3\s*Done/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sparkle Home Cleaning" })).toBeVisible();
 });
 
 test("the run is on the Runs screen and the changes are in History", async () => {
   await page.getByRole("link", { name: "Runs" }).click();
   const row = page.getByRole("row", { name: /Demo agent/ });
   await expect(row.getByText("Finished")).toBeVisible();
-  await expect(row.getByText("3 · 0 · 1")).toBeVisible();
+  await expect(row.getByText("3 · 0 · 0")).toBeVisible();
   await expect(row.getByText("Run now by Olivia")).toBeVisible();
 
   await page.getByRole("link", { name: "History" }).click();

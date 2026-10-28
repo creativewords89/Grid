@@ -374,10 +374,10 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
   it only needs the lead file). Owners and Admins make, change and delete tasks on the
   **Tasks** screen. A task can't need itself or make a circle (A needs B needs A), and can't
   be deleted while a bot does it or a batch uses it.
-- Every agent (**bot**) does **one task**, named by its manifest (`task`). When the Hub has no
-  task with that key yet, it makes one (named from the key, needing nothing) that Owners and
-  Admins can then fill in. A manifest naming another task moves the bot to it; batches that
-  had chosen it for the old task lose it there.
+- Every agent (**bot**) does **one task**, named by its manifest (`task`; its own key when
+  left out). When the Hub has no task with that key yet, it makes one (named from the key,
+  needing nothing) that Owners and Admins can then fill in. A manifest naming another task
+  moves the bot to it; batches that had chosen it for the old task lose it there.
 - **A batch's pipeline:** Owners and Admins add tasks to a batch and **one or more bots** to
   each task (bots of that task only). A task can be added only when the tasks it needs are
   in the batch, and removed only when no other task in the batch needs it. Tasks are shown

@@ -2,7 +2,7 @@
 
 A batch is named by the team, holds the leads of one niche and uses one benchmark of that
 niche. Files are added to a batch at any time; a business stays in the batch it was first
-imported into. Agents work through the batches chosen for them, in order.
+imported into. Its tasks and bots, Start/Pause and results are in `batch_pipeline.py`.
 """
 
 import uuid
@@ -14,11 +14,11 @@ from pydantic import BaseModel, StringConstraints
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app import audit
+from app import audit, pipeline
 from app.api.benchmarks import get_benchmark, niche_spelling
 from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
-from app.db.models import Agent, Batch, Import, ImportStatus, Lead
+from app.db.models import Batch, Import, ImportStatus, Lead
 from app.errors import ApiError
 from app.permissions import Action, can, ensure
 
@@ -41,9 +41,13 @@ class BatchOut(BaseModel):
     leads: int
     top: int
     files: int
-    agents: list[str]  # the agents that work on it
+    bots: list[str]  # the bots of its tasks
+    status: str  # not_started, running or paused
+    position: int  # the running order
+    progress_pct: int | None  # share of its bots' work that is finished
     created_at: datetime
     can_edit: bool
+    can_run: bool  # choose tasks and bots, Start/Pause, move up or down
     can_rename: bool
     can_delete: bool
 
@@ -64,11 +68,11 @@ def batch_out(db: Session, me: CurrentUser, batch: Batch) -> BatchOut:
         .select_from(Import)
         .where(Import.batch_id == batch.id, Import.status == ImportStatus.PREVIEW)
     )
-    agents = [
-        agent.name
-        for agent in db.scalars(select(Agent).order_by(Agent.created_at))
-        if str(batch.id) in (agent.batch_ids or [])
-    ]
+    flow = pipeline.Pipeline(db, batch)
+    bots = [bot.agent.name for slot in flow.slots for bot in slot.bots]
+    counts = flow.progress().values() if bots and leads else []
+    finished = sum(c.done for c in counts)
+    total = finished + sum(c.failed + c.ready + c.waiting for c in counts)
     benchmark = batch.benchmark
     staff = can(me, Action.IMPORT_LEADS)
     return BatchOut(
@@ -81,9 +85,13 @@ def batch_out(db: Session, me: CurrentUser, batch: Batch) -> BatchOut:
         leads=leads,
         top=top,
         files=files or 0,
-        agents=agents,
+        bots=bots,
+        status=batch.status,
+        position=batch.position,
+        progress_pct=round(100 * finished / total) if total else None,
         created_at=batch.created_at,
         can_edit=staff,
+        can_run=can(me, Action.RUN_BATCHES),
         can_rename=staff,
         can_delete=staff and leads == 0 and not files and not pending,
     )
@@ -125,7 +133,7 @@ def _benchmark_for(db: Session, niche: str, benchmark_id: uuid.UUID | None) -> u
 @router.get("/batches", response_model=list[BatchOut])
 def list_batches(me: CurrentUser, db: Db) -> list[BatchOut]:
     ensure(me, Action.VIEW_HUB)
-    batches = db.scalars(select(Batch).order_by(Batch.created_at))
+    batches = db.scalars(select(Batch).order_by(Batch.position, Batch.created_at))
     return [batch_out(db, me, batch) for batch in batches]
 
 
@@ -151,6 +159,7 @@ def create_batch(body: BatchIn, me: CurrentUser, db: Db) -> BatchOut:
         niche=niche,
         benchmark_id=_benchmark_for(db, niche, body.benchmark_id),
         created_by=me.id,
+        position=(db.scalar(select(func.max(Batch.position))) or 0) + 1,
     )
     db.add(batch)
     db.flush()
@@ -193,9 +202,6 @@ def delete_batch(batch_id: uuid.UUID, me: CurrentUser, db: Db) -> None:
     batch = get_batch(db, batch_id)
     if not batch_out(db, me, batch).can_delete:
         raise ApiError(409, "not_empty", "Only a batch without leads or files can be deleted.")
-    for agent in db.scalars(select(Agent)):
-        if str(batch.id) in (agent.batch_ids or []):
-            agent.batch_ids = [b for b in agent.batch_ids if b != str(batch.id)]
     for imp in db.scalars(select(Import).where(Import.batch_id == batch.id)):
         db.delete(imp)  # discarded or failed files
     audit.record(db, me, "delete", "batch", batch.id, batch.name, [])

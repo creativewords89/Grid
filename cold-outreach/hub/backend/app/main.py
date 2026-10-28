@@ -12,6 +12,7 @@ from app.api import (
     agents,
     alerts,
     auth,
+    batch_pipeline,
     batches,
     benchmarks,
     connections,
@@ -22,6 +23,7 @@ from app.api import (
     me,
     runs,
     setup,
+    tasks,
     users,
 )
 from app.config import get_settings
@@ -74,6 +76,8 @@ def create_app() -> FastAPI:
         runs,
         imports,
         batches,
+        batch_pipeline,
+        tasks,
         leads,
         benchmarks,
         alerts,

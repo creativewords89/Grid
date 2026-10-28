@@ -16,11 +16,15 @@ SPEC_TABLE: dict[Action, tuple[bool, bool, bool]] = {
     Action.VIEW_HUB: (Y, Y, Y),
     # Make, rename or delete a batch; upload and confirm its files
     Action.IMPORT_LEADS: (Y, Y, N),
+    # Choose a batch's tasks and bots, start or pause it, change the batches' running order
+    Action.RUN_BATCHES: (Y, Y, N),
+    # Make, change or delete a task
+    Action.EDIT_TASKS: (Y, Y, N),
     # Change a lead's email, phone, website, Top mark or notes; delete a lead
     Action.EDIT_LEADS: (Y, Y, N),
     # Switch an agent on/off, press Run now or Stop
     Action.OPERATE_AGENTS: (Y, Y, N),
-    # Change an agent's batches, limit, run time, budget and settings
+    # Change an agent's limit, run time, budget and settings
     Action.CONFIGURE_AGENTS: (Y, Y, N),
     # Make, change or delete a benchmark
     Action.EDIT_BENCHMARKS: (Y, Y, N),

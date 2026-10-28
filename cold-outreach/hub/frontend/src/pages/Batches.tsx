@@ -1,13 +1,30 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { api, ApiError, type Batch, type Benchmark, type LeadImport, type LeadList } from "../api";
+import {
+  api,
+  ApiError,
+  type Batch,
+  type BatchStatus,
+  type Benchmark,
+  type LeadImport,
+  type LeadList,
+  type Pipeline,
+} from "../api";
 import { useAuth } from "../auth";
 import { Alert, Field } from "../components/ui";
 import { when } from "../format";
 import { navigate } from "../router";
+import { PipelineTab, ResultsTab } from "./BatchPipeline";
 
 // Batches (SPEC sections 6.4 and 7): make a batch (a name, one niche, one benchmark of that
 // niche), then add Excel files to it at any time. A business stays in the batch it came in
-// with. Agents work through the batches chosen for them. The lists (City + Niche) follow.
+// with. Each batch chooses its tasks and bots and is started or paused; running batches
+// share their bots in the running order. The lists (City + Niche) follow.
+
+const BATCH_STATUS: Record<BatchStatus, string> = {
+  not_started: "Not started",
+  running: "Running",
+  paused: "Paused",
+};
 
 const STATUS: Record<LeadImport["status"], string> = {
   preview: "Waiting for confirm",
@@ -39,6 +56,20 @@ export function Batches() {
   if (!user) return null;
   const staff = user.role === "owner" || user.role === "admin";
   const current = batches?.find((b) => b.id === open);
+
+  async function move(index: number, by: number) {
+    if (!batches) return;
+    const next = [...batches];
+    const [item] = next.splice(index, 1);
+    next.splice(index + by, 0, item!);
+    setError("");
+    try {
+      setBatches(await api.orderBatches(next.map((b) => b.id)));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Not saved.");
+      load();
+    }
+  }
 
   if (current) {
     return (
@@ -83,23 +114,54 @@ export function Batches() {
       {batches && batches.length > 0 && (
         <div className="card table-card">
           <table className="table">
+            <caption className="table-caption">
+              Running batches share their bots in this order: the higher one goes first.
+            </caption>
             <thead>
               <tr>
+                {staff && <th>Order</th>}
                 <th>Batch</th>
+                <th>Status</th>
                 <th>Niche</th>
                 <th>Benchmark</th>
                 <th>Businesses</th>
                 <th className="hide-narrow">Files</th>
-                <th className="hide-narrow">Agents</th>
+                <th className="hide-narrow">Bots</th>
+                <th className="hide-narrow">Progress</th>
               </tr>
             </thead>
             <tbody>
-              {batches.map((batch) => (
+              {batches.map((batch, index) => (
                 <tr key={batch.id}>
+                  {staff && (
+                    <td className="nowrap">
+                      <button
+                        className="icon-button"
+                        aria-label={`Move ${batch.name} up`}
+                        disabled={index === 0}
+                        onClick={() => void move(index, -1)}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        className="icon-button"
+                        aria-label={`Move ${batch.name} down`}
+                        disabled={index === batches.length - 1}
+                        onClick={() => void move(index, 1)}
+                      >
+                        ↓
+                      </button>
+                    </td>
+                  )}
                   <td>
                     <button className="link-button cell-strong" onClick={() => setOpen(batch.id)}>
                       {batch.name}
                     </button>
+                  </td>
+                  <td>
+                    <span className={`pill pill-batch-${batch.status}`}>
+                      {BATCH_STATUS[batch.status]}
+                    </span>
                   </td>
                   <td>{batch.niche}</td>
                   <td>
@@ -114,7 +176,10 @@ export function Batches() {
                     {batch.top > 0 && <span className="muted small"> · {batch.top} Top</span>}
                   </td>
                   <td className="hide-narrow">{batch.files}</td>
-                  <td className="hide-narrow small">{batch.agents.join(", ") || "—"}</td>
+                  <td className="hide-narrow small">{batch.bots.join(", ") || "—"}</td>
+                  <td className="hide-narrow small">
+                    {batch.progress_pct === null ? "—" : `${batch.progress_pct}%`}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -263,13 +328,46 @@ function BatchView({
   const [imports, setImports] = useState<LeadImport[]>([]);
   const [current, setCurrent] = useState<LeadImport | null>(null);
   const [error, setError] = useState("");
+  // A new batch starts with its files; one with leads with its tasks and bots.
+  const [tab, setTab] = useState<"tasks" | "results" | "files">(
+    batch.leads === 0 ? "files" : "tasks",
+  );
+  const [pipeline, setPipeline] = useState<Pipeline | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api
+      .pipeline(batch.id)
+      .then(setPipeline)
+      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Not loaded."));
+  }, [batch.id]);
+
+  const changed = (next: Pipeline) => {
+    setPipeline(next);
+    onChanged();
+  };
+
+  async function startOrPause(start: boolean) {
+    setBusy(true);
+    setError("");
+    try {
+      changed(await (start ? api.startBatch(batch.id) : api.pauseBatch(batch.id)));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Didn't work.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  const status = pipeline?.batch.status ?? batch.status;
 
   const load = useCallback(() => {
     api
       .imports(batch.id)
       .then((found) => {
         setImports(found);
-        setCurrent((shown) => shown ?? found.find((i) => i.status === "preview") ?? null);
+        const waiting = found.find((i) => i.status === "preview");
+        if (waiting) setTab("files");
+        setCurrent((shown) => shown ?? waiting ?? null);
       })
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Not loaded."));
   }, [batch.id]);
@@ -281,11 +379,26 @@ function BatchView({
         <div>
           <h1>{batch.name}</h1>
           <p className="muted small">
+            <span className={`pill pill-batch-${status}`}>{BATCH_STATUS[status]}</span>{" "}
             {batch.niche} · {batch.leads.toLocaleString()} businesses · {batch.files} files
-            {batch.agents.length > 0 && ` · worked on by ${batch.agents.join(", ")}`}
           </p>
         </div>
         <div className="row">
+          {batch.can_run && status === "running" && (
+            <button className="button" disabled={busy} onClick={() => void startOrPause(false)}>
+              Pause
+            </button>
+          )}
+          {batch.can_run && status !== "running" && (
+            <button
+              className="button button-primary"
+              disabled={busy || !pipeline?.can_start}
+              title={pipeline?.start_problem ?? undefined}
+              onClick={() => void startOrPause(true)}
+            >
+              {status === "paused" ? "Resume" : "Start"}
+            </button>
+          )}
           <a
             className="button"
             href={`/leads?batch=${batch.id}`}
@@ -302,8 +415,30 @@ function BatchView({
         </div>
       </div>
       {error && <Alert kind="error">{error}</Alert>}
-      <BatchSettings batch={batch} staff={staff} onChanged={onChanged} onDeleted={onBack} />
-      {staff && !current && (
+      {batch.can_run && status !== "running" && pipeline?.start_problem && (
+        <p className="muted small">To start: {pipeline.start_problem}</p>
+      )}
+      <div className="tabs" role="tablist" aria-label="Batch">
+        {(
+          [
+            ["tasks", "Tasks and bots"],
+            ["results", "Results"],
+            ["files", "Files and settings"],
+          ] as const
+        ).map(([key, label]) => (
+          <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === "tasks" && pipeline && (
+        <PipelineTab batchId={batch.id} pipeline={pipeline} onChange={changed} />
+      )}
+      {tab === "results" && pipeline && <ResultsTab batchId={batch.id} pipeline={pipeline} />}
+      {tab === "files" && (
+        <BatchSettings batch={batch} staff={staff} onChanged={onChanged} onDeleted={onBack} />
+      )}
+      {tab === "files" && staff && !current && (
         <UploadForm
           batch={batch}
           onRead={(item) => {
@@ -312,7 +447,7 @@ function BatchView({
           }}
         />
       )}
-      {current && (
+      {tab === "files" && current && (
         <PreviewCard
           item={current}
           staff={staff}
@@ -325,7 +460,7 @@ function BatchView({
           onClose={() => setCurrent(null)}
         />
       )}
-      <History imports={imports} onOpen={setCurrent} />
+      {tab === "files" && <History imports={imports} onOpen={setCurrent} />}
     </section>
   );
 }

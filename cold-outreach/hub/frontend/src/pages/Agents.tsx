@@ -4,7 +4,6 @@ import {
   ApiError,
   type Agent,
   type AgentSettings,
-  type Batch,
   type ConfigValue,
   type ManifestSetting,
 } from "../api";
@@ -106,6 +105,7 @@ function AgentCard({
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
   const last = agent.last_run;
+  const running = agent.batches.filter((b) => b.status === "running");
   const active = last?.status === "queued" || last?.status === "running";
 
   async function act(action: () => Promise<unknown>, success?: string) {
@@ -178,13 +178,15 @@ function AgentCard({
         </span>
       </p>
       <p className="small">
-        {agent.batches.length > 0 ? (
+        Task: {agent.task ? agent.task.name : "named when it first connects"} ·{" "}
+        {running.length > 0 ? (
           <>
-            Works on:{" "}
-            {agent.batches.map((b) => b.name + (b.ready ? "" : " (no benchmark)")).join(" → ")}
+            Works on: {running.map((b) => b.name + (b.ready ? "" : " (no benchmark)")).join(" → ")}
           </>
         ) : (
-          <span className="field-error">No batches chosen: it has nothing to work on.</span>
+          <span className="field-error">
+            No running batch uses it: add it to a batch&apos;s task and start the batch.
+          </span>
         )}
       </p>
       <p className="small">
@@ -276,17 +278,8 @@ function SettingsDialog({
   const [runTime, setRunTime] = useState(agent.run_time);
   const [zone, setZone] = useState(agent.time_zone);
   const [budget, setBudget] = useState(agent.daily_budget_usd);
-  const [chosen, setChosen] = useState<string[]>(agent.batches.map((b) => b.id));
-  const [allBatches, setAllBatches] = useState<Batch[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    api
-      .batches()
-      .then(setAllBatches)
-      .catch(() => setAllBatches([]));
-  }, []);
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -298,7 +291,6 @@ function SettingsDialog({
       run_time: runTime,
       time_zone: zone,
       daily_budget_usd: budget,
-      batch_ids: chosen,
     };
     try {
       onSaved(await api.updateAgent(agent.key, body));
@@ -349,13 +341,6 @@ function SettingsDialog({
             {errors.time_zone && <p className="field-error">{errors.time_zone}</p>}
           </div>
         </div>
-        <BatchChooser
-          chosen={chosen}
-          all={allBatches}
-          known={agent.batches}
-          error={errors.batch_ids}
-          onChange={setChosen}
-        />
         {settings.length > 0 && <h3>{agent.manifest?.name} settings</h3>}
         <div className="connection-fields">
           {settings.map((s) => (
@@ -378,92 +363,6 @@ function SettingsDialog({
         </div>
       </form>
     </Modal>
-  );
-}
-
-/** The batches the agent works through, in order: add, move up or down, remove. */
-function BatchChooser({
-  chosen,
-  all,
-  known,
-  error,
-  onChange,
-}: {
-  chosen: string[];
-  all: Batch[];
-  known: Agent["batches"];
-  error?: string;
-  onChange: (ids: string[]) => void;
-}) {
-  const name = (id: string) =>
-    all.find((b) => b.id === id)?.name ?? known.find((b) => b.id === id)?.name ?? id;
-  const others = all.filter((b) => !chosen.includes(b.id));
-  const move = (index: number, by: number) => {
-    const next = [...chosen];
-    const [item] = next.splice(index, 1);
-    next.splice(index + by, 0, item!);
-    onChange(next);
-  };
-  return (
-    <fieldset className="stack plain" aria-label="Batches">
-      <h3>Batches</h3>
-      <p className="muted small">
-        It works through these in order: the first until it is done, then the next. With nothing
-        left to do it waits for new files.
-      </p>
-      {chosen.length === 0 && <p className="small">No batches chosen yet.</p>}
-      <ol className="batch-order">
-        {chosen.map((id, index) => (
-          <li key={id}>
-            <span>{name(id)}</span>
-            <button
-              type="button"
-              className="link-button"
-              aria-label={`Move ${name(id)} up`}
-              disabled={index === 0}
-              onClick={() => move(index, -1)}
-            >
-              ↑
-            </button>
-            <button
-              type="button"
-              className="link-button"
-              aria-label={`Move ${name(id)} down`}
-              disabled={index === chosen.length - 1}
-              onClick={() => move(index, 1)}
-            >
-              ↓
-            </button>
-            <button
-              type="button"
-              className="link-button"
-              aria-label={`Remove ${name(id)}`}
-              onClick={() => onChange(chosen.filter((x) => x !== id))}
-            >
-              Remove
-            </button>
-          </li>
-        ))}
-      </ol>
-      {others.length > 0 && (
-        <div className="field">
-          <label htmlFor="agent-add-batch">Add a batch</label>
-          <select
-            id="agent-add-batch"
-            value=""
-            onChange={(e) => e.target.value && onChange([...chosen, e.target.value])}
-          >
-            <option value="">Choose…</option>
-            {others.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name} ({b.niche})
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-      {error && <p className="field-error">{error}</p>}
-    </fieldset>
   );
 }
 

@@ -61,3 +61,34 @@ def batch_id(client: TestClient, name: str = "Batch 1", niche: str = "Cleaning")
         if batch["name"] == name:
             return str(batch["id"])
     return str(make_batch(client, name, niche)["id"])
+
+
+def task_id_of(client: TestClient, task_key: str) -> str:
+    for task in client.get("/api/tasks").json():
+        if task["key"] == task_key:
+            return str(task["id"])
+    raise AssertionError(f"no task {task_key}")
+
+
+def put_bot(
+    client: TestClient,
+    batch: str,
+    bot: str,
+    task_key: str | None = None,
+    share: str = "all",
+    start: bool = True,
+) -> dict[str, Any]:
+    """Add the bot's task to the batch (when missing) and the bot to it, then start it."""
+    task = task_id_of(client, task_key or bot)
+    pipeline = client.get(f"/api/batches/{batch}/pipeline").json()
+    present = {slot["task_id"] for step in pipeline["steps"] for slot in step["tasks"]}
+    if task not in present:
+        added = client.post(f"/api/batches/{batch}/tasks", json={"task_id": task, "share": share})
+        assert added.status_code == 201, added.text
+    response = client.post(f"/api/batches/{batch}/tasks/{task}/bots", json={"key": bot})
+    assert response.status_code == 200, response.text
+    if start:
+        response = client.post(f"/api/batches/{batch}/start")
+        assert response.status_code == 200, response.text
+    body: dict[str, Any] = response.json()
+    return body

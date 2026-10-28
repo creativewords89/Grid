@@ -171,9 +171,11 @@ to the internet.
      -v "$PWD/agents/demo:/agent:ro" python:3.12-slim python /agent/agent.py
    ```
 
-3. Back on **Agents**, the card says **Connected** within a minute. In its **Settings**,
-   **Add a batch** (the agent works through its batches in order), switch it **on**, and
-   press **Run now** to try it. **Runs** shows how it went. Remove the
+3. Back on **Agents**, the card says **Connected** within a minute (its task, "Demo", is
+   made on **Tasks**). Open a batch on **Batches**, add the demo agent to its task on the
+   **Tasks and bots** tab and press **Start**; then switch the agent **on** and press
+   **Run now** to try it. Add `-e AGENT_TASK=gbp-audit` (or another task key) to the
+   `docker run` to try several demo agents as the steps of one batch. **Runs** shows how it went. Remove the
    demo agent afterwards with `docker rm -f demo-agent` (and switch it off in the Hub).
 
 ## 8. Backups

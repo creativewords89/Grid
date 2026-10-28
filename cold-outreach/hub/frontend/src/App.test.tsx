@@ -68,6 +68,7 @@ test.each([
       "Overview",
       "Benchmarks",
       "Batches",
+      "Tasks",
       "Leads",
       "Agents",
       "Runs",
@@ -76,8 +77,8 @@ test.each([
       "History",
     ],
   ],
-  ["admin", ["Overview", "Benchmarks", "Batches", "Leads", "Agents", "Runs"]],
-  ["viewer", ["Overview", "Benchmarks", "Batches", "Leads", "Agents", "Runs"]],
+  ["admin", ["Overview", "Benchmarks", "Batches", "Tasks", "Leads", "Agents", "Runs"]],
+  ["viewer", ["Overview", "Benchmarks", "Batches", "Tasks", "Leads", "Agents", "Runs"]],
 ] as const)("the %s sees their sidebar", async (role, items) => {
   mockApi({
     "GET /auth/me": [200, { user: makeUser({ role }), csrf_token: "t" }],

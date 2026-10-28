@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import DoNotContact, Lead, LeadList, Role, User
 from tests.conftest import UserFactory, sign_in
-from tests.hub_data import GBP, WEBSITE, make_batch, make_benchmark
+from tests.hub_data import GBP, WEBSITE, make_batch, make_benchmark, put_bot
 from tests.test_agents import MANIFEST, add_agent, agent_call
 
 
@@ -227,11 +227,11 @@ def test_an_empty_batch_can_be_renamed_and_deleted(client: TestClient, owner: Us
     batch = make_batch(client)
     token = add_agent(client)
     agent_call(client, "PUT", "/manifest", token, MANIFEST)
-    client.patch("/api/agents/gbp-audit", json={"batch_ids": [batch["id"]]})
+    put_bot(client, batch["id"], "gbp-audit")
     url = f"/api/batches/{batch['id']}"
 
     assert client.patch(url, json={"name": "Spring"}).json()["name"] == "Spring"
-    assert client.get("/api/batches").json()[0]["agents"] == ["GBP audit"]
+    assert client.get("/api/batches").json()[0]["bots"] == ["GBP audit"]
     assert client.delete(url).status_code == 204
     assert client.get("/api/batches").json() == []
     assert client.get("/api/agents").json()[0]["batches"] == []
@@ -262,8 +262,12 @@ def test_an_agent_works_through_its_batches_in_order(
     agent_call(client, "PUT", "/manifest", token, MANIFEST)
     client.put("/api/agents/gbp-audit/enabled", json={"enabled": True})
 
-    saved = client.patch("/api/agents/gbp-audit", json={"batch_ids": [second["id"], first["id"]]})
-    assert [b["name"] for b in saved.json()["batches"]] == ["Batch 2", "Batch 1"]
+    put_bot(client, first["id"], "gbp-audit")
+    put_bot(client, second["id"], "gbp-audit")
+    order = client.put("/api/batches/order", json={"ids": [second["id"], first["id"]]})
+    assert [b["name"] for b in order.json()] == ["Batch 2", "Batch 1"]
+    saved = client.get("/api/agents").json()[0]
+    assert [b["name"] for b in saved["batches"]] == ["Batch 2", "Batch 1"]
     db.add_all(
         [
             Lead(
@@ -297,28 +301,19 @@ def test_an_agent_works_through_its_batches_in_order(
     assert [b["name"] for b in run["batches"]] == ["Batch 2", "Batch 1"]
     assert run["batches"][0]["benchmark_version"] == 1
     leads = agent_call(client, "GET", f"/batches/{second['id']}/leads", token).json()
-    assert [(x["lead_id"], x["city"], x["level"]) for x in leads] == [
-        ("L-000001", "Tulsa", ""),
-        ("L-000002", "Dallas", "Top"),
-    ]
+    assert [(x["lead_id"], x["city"], x["level"]) for x in leads] == [("L-000001", "Tulsa", "")]
     benchmark = agent_call(client, "GET", f"/benchmarks/{run['batches'][0]['benchmark_id']}", token)
     assert benchmark.json()["gbp"]["photos"] == 120
     assert benchmark.json()["website"]["services"][0]["name"] == "Deep cleaning"
 
 
-@pytest.mark.parametrize(
-    "batch_ids",
-    [["00000000-0000-0000-0000-000000000000"], "dup"],
-)
-def test_bad_batch_choices_are_refused(client: TestClient, owner: User, batch_ids: Any) -> None:
-    batch = make_batch(client)
-    add_agent(client)
-    if batch_ids == "dup":
-        batch_ids = [batch["id"], batch["id"]]
+def test_the_running_order_must_name_every_batch(client: TestClient, owner: User) -> None:
+    first = make_batch(client, "Batch 1")
+    make_batch(client, "Batch 2")
 
-    response = client.patch("/api/agents/gbp-audit", json={"batch_ids": batch_ids})
+    response = client.put("/api/batches/order", json={"ids": [first["id"]]})
 
-    assert (response.status_code, list(response.json()["error"]["fields"])) == (422, ["batch_ids"])
+    assert response.status_code == 409
 
 
 def test_batches_without_a_benchmark_are_skipped_by_agents(
@@ -332,7 +327,10 @@ def test_batches_without_a_benchmark_are_skipped_by_agents(
     db.commit()
     token = add_agent(client)
     agent_call(client, "PUT", "/manifest", token, MANIFEST)
-    client.patch("/api/agents/gbp-audit", json={"batch_ids": [str(old.id)]})
+    put_bot(client, str(old.id), "gbp-audit", start=False)
+    assert client.post(f"/api/batches/{old.id}/start").status_code == 409
+    old.status = "running"
+    db.commit()
 
     assert client.get("/api/agents").json()[0]["batches"][0]["ready"] is False
     assert agent_call(client, "GET", "/batches", token).json() == []

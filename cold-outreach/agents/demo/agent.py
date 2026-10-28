@@ -1,14 +1,18 @@
 """A demo agent for trying the Agent Hub (hub/SPEC.md section 6.2). It does no real work: it
-goes through the leads of the batches chosen for it in the Hub, in order, and "audits" each
-by waiting a moment (Top leads are skipped). Only Python's standard library is needed.
+goes through the leads the Hub hands it in the batches that chose it, in the running order,
+and "audits" each by waiting a moment. Only Python's standard library is needed.
 
     HUB_URL=http://localhost:8000 AGENT_TOKEN=hub_agent_… python agent.py
+
+`AGENT_TASK` names the task it pretends to do (its own key when unset), so several demo
+agents can try a batch's pipeline: e.g. `gbp-audit`, `website-audit`, `opportunity`.
 
 Every real agent follows the same steps:
 1. send its manifest when it starts (PUT /api/agent/v1/manifest);
 2. ask for work every 30 seconds (GET /api/agent/v1/next-run; 204 means nothing to do); a
-   run lists the agent's batches in order, and each batch's leads are read by Lead ID
-   (GET /api/agent/v1/batches/{id}/leads, with each lead's full row);
+   run lists the running batches that chose the agent, in order, and each batch's leads
+   that are ready for it are read by Lead ID (GET /api/agent/v1/batches/{id}/leads, with
+   each lead's full row and the results of the tasks it waited for);
 3. save each lead's result (PUT /api/agent/v1/leads/{id}/result; reports go to
    POST /api/agent/v1/leads/{id}/files), report progress after every item and stop when
    the Hub says "stop" (the Hub can only stop an agent, for Stop or the budget, when it
@@ -58,6 +62,7 @@ MANIFEST = {
         },
     ],
     "connections": [],
+    "task": os.environ.get("AGENT_TASK", ""),
     "result_label": "Demo",
     "cost_per_item_usd": 0.001,
 }
@@ -88,7 +93,7 @@ class Hub:
 
 
 def leads_of(hub: Hub, job: dict[str, Any]) -> list[dict[str, str]]:
-    """The leads of the run's batches, batch after batch."""
+    """The leads ready for this agent in the run's batches, batch after batch."""
     leads: list[dict[str, str]] = []
     for batch in job.get("batches", []):
         status, found = hub.call("GET", f"/batches/{batch['id']}/leads")
@@ -101,8 +106,8 @@ def do_run(hub: Hub, job: dict[str, Any]) -> None:
     config = job["config"]
     total = min(int(config["items"]), int(job["daily_limit"]))
     leads = leads_of(hub, job)
-    work = [lead for lead in leads if lead["level"] != "Top"][:total]
-    skipped = sum(1 for lead in leads if lead["level"] == "Top")
+    work = leads[:total]  # the Hub never hands out Top leads
+    skipped = 0
     done = failed = 0
     cost = 0.0
     counts = {"done": 0, "failed": 0, "skipped": skipped, "cost_usd": "0"}
@@ -112,6 +117,11 @@ def do_run(hub: Hub, job: dict[str, Any]) -> None:
         fail_every = int(config["fail_every"])
         if fail_every and number % fail_every == 0:
             failed += 1
+            hub.call(
+                "PUT",
+                f"/leads/{lead['lead_id']}/result",
+                {"outcome": "failed", "status": "Failed", "summary": "A pretend failure."},
+            )
         else:
             done += 1
             # A made-up score, so the Leads screen has something to show and sort by.
@@ -119,7 +129,12 @@ def do_run(hub: Hub, job: dict[str, Any]) -> None:
             hub.call(
                 "PUT",
                 f"/leads/{lead['lead_id']}/result",
-                {"status": "OK", "score": score, "summary": "A pretend audit by the demo agent."},
+                {
+                    "outcome": "done",
+                    "status": "OK",
+                    "score": score,
+                    "summary": "A pretend audit by the demo agent.",
+                },
             )
             log.info("pretended to audit %s", lead["lead_id"])
         cost += MANIFEST["cost_per_item_usd"]  # type: ignore[operator]

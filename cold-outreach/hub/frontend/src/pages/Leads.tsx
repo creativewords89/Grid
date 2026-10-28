@@ -262,7 +262,7 @@ const SHOWN: [string, string][] = [
   ["rating", "Rating (from the file)"],
 ];
 
-function LeadDialog({
+export function LeadDialog({
   id,
   agents,
   onClose,
