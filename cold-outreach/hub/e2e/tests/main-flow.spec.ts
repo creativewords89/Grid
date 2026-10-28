@@ -154,6 +154,14 @@ test("the leads are in their batch and download as Excel", async () => {
   await expect(
     page.getByRole("switch", { name: "Tulsa on or off" }),
   ).toBeChecked();
+  // A city's leads, and back to the cities.
+  await page.getByRole("button", { name: "Tulsa", exact: true }).click();
+  await expect(page.getByText("1 lead", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "← Back to Cities" }).click();
+  await expect(page.getByRole("tab", { name: /Small cities/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await page.getByRole("tab", { name: "Leads" }).click();
   await expect(page.getByText("4 leads")).toBeVisible();
   // Every field of the file side by side.

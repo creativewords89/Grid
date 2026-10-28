@@ -497,6 +497,20 @@ test("a batch's cities: small ones on their own tab, switch one, all off, open a
     "true",
   );
   expect(calls.some((c) => c.path === "/leads?batch_id=b1&city=Tulsa")).toBe(true);
+
+  // Back to Cities returns to the same tab of cities; Show all leads drops the city.
+  const bar = screen.getByRole("region", { name: "Leads of one city" });
+  expect(bar).toHaveTextContent("Leads in Tulsa");
+  await userEvent.click(within(bar).getByRole("button", { name: "← Back to Cities" }));
+  expect(screen.getByRole("tab", { name: "Cities" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("switch", { name: "Tulsa on or off" })).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "Tulsa" }));
+  await userEvent.click(
+    within(screen.getByRole("region", { name: "Leads of one city" })).getByRole("button", {
+      name: "Show all leads",
+    }),
+  );
+  expect(screen.queryByRole("region", { name: "Leads of one city" })).not.toBeInTheDocument();
 });
 
 test("a saved file is deleted with its leads, but not while the batch runs", async () => {

@@ -325,7 +325,8 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    batch's **Cities** tab with their businesses and Top counts, a search and **All on** /
    **All off**; Owners and Admins switch a city on or off. A city switched off **in a batch**
    is left alone in that batch only: its leads are not handed to agents (section 6.7). A city
-   name opens the batch's Leads tab for that city. (Step 15 moved the old City + Niche lists
+   name opens the batch's Leads tab for that city, with a bar saying so, **← Back to
+   Cities** (to the same tab, page and search) and **Show all leads**. (Step 15 moved the old City + Niche lists
    into each batch that has leads there, keeping on or off.)
    **Small cities:** a city with **fewer than 10 businesses** in the batch is switched off by
    the Hub and listed apart, on the **Small cities (under 10)** tab next to **Cities (10+)**.

@@ -478,16 +478,32 @@ function BatchView({
       {tab === "tasks" && pipeline && (
         <PipelineTab batchId={batch.id} pipeline={pipeline} onChange={changed} />
       )}
+      {tab === "leads" && city && (
+        <div className="city-bar" role="region" aria-label="Leads of one city">
+          <button className="button" onClick={() => setTab("cities")}>
+            ← Back to Cities
+          </button>
+          <span>
+            Leads in <strong>{city}</strong>
+          </span>
+          <button className="link-button" onClick={() => setCity("")}>
+            Show all leads
+          </button>
+        </div>
+      )}
       {tab === "leads" && <BatchLeads key={city} batchId={batch.id} city={city} />}
-      {tab === "cities" && (
-        <BatchCities
-          batchId={batch.id}
-          staff={staff}
-          onOpenCity={(name) => {
-            setCity(name);
-            setTab("leads");
-          }}
-        />
+      {/* Kept while a city's leads are open, so Back returns to the same tab, page and search. */}
+      {(tab === "cities" || (tab === "leads" && city)) && (
+        <div hidden={tab !== "cities"}>
+          <BatchCities
+            batchId={batch.id}
+            staff={staff}
+            onOpenCity={(name) => {
+              setCity(name);
+              setTab("leads");
+            }}
+          />
+        </div>
       )}
       {tab === "results" && pipeline && (
         <ResultsTab batchId={batch.id} pipeline={pipeline} onShowLeads={() => setTab("leads")} />
