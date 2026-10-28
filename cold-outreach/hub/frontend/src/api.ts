@@ -310,7 +310,6 @@ export type LeadPatch = {
   email?: string;
   phone?: string;
   website?: string;
-  level?: "Top" | "";
   notes?: string;
 };
 
@@ -656,8 +655,14 @@ export const api = {
   lead: (id: string) => request<LeadDetail>("GET", `/leads/${id}`),
   updateLead: (id: string, patch: LeadPatch) => request<LeadDetail>("PATCH", `/leads/${id}`, patch),
   deleteLead: (id: string) => request<void>("DELETE", `/leads/${id}`),
-  markTop: (leadIds: string[], top: boolean) =>
-    request<{ changed: number }>("POST", "/leads/top", { lead_ids: leadIds, top }),
+  // Top is chosen in one city of a batch (SPEC step 19).
+  markTop: (batchId: string, city: string, leadIds: string[], top: boolean) =>
+    request<{ changed: number }>("POST", "/leads/top", {
+      batch_id: batchId,
+      city,
+      lead_ids: leadIds,
+      top,
+    }),
   batchCities: (batchId: string) => request<LeadList[]>("GET", `/batches/${batchId}/cities`),
   switchAllCities: (batchId: string, active: boolean, small?: boolean) =>
     request<LeadList[]>("PUT", `/batches/${batchId}/cities`, { active, small }),

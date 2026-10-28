@@ -37,6 +37,8 @@ export function BatchLeads({ batchId, city = "" }: { batchId: string; city?: str
   const [notice, setNotice] = useState("");
   const { user } = useAuth();
   const staff = user?.role === "owner" || user?.role === "admin";
+  // Top is chosen only in a city opened from the Cities tab (SPEC step 19).
+  const choosing = staff && city !== "";
 
   const load = useCallback(() => {
     api
@@ -72,7 +74,7 @@ export function BatchLeads({ batchId, city = "" }: { batchId: string; city?: str
   async function markTop(top: boolean) {
     setError("");
     try {
-      const done = await api.markTop([...chosen], top);
+      const done = await api.markTop(batchId, city, [...chosen], top);
       setNotice(
         `${done.changed.toLocaleString()} ${done.changed === 1 ? "lead" : "leads"} ${
           top ? "marked as Top: agents leave them alone" : "no longer Top"
@@ -174,7 +176,12 @@ export function BatchLeads({ batchId, city = "" }: { batchId: string; city?: str
         </p>
       )}
       {notice && <Alert kind="success">{notice}</Alert>}
-      {staff && chosen.size > 0 && (
+      {staff && !city && (
+        <p className="muted small">
+          Top is chosen in a city: open one on the Cities tab and tick its leads.
+        </p>
+      )}
+      {choosing && chosen.size > 0 && (
         <div className="city-bar" role="region" aria-label="Chosen leads">
           <strong>{chosen.size.toLocaleString()} chosen</strong>
           <button
@@ -207,7 +214,7 @@ export function BatchLeads({ batchId, city = "" }: { batchId: string; city?: str
           <table className="table leads-table">
             <thead>
               <tr>
-                {staff && (
+                {choosing && (
                   <th>
                     <input
                       type="checkbox"
@@ -237,7 +244,7 @@ export function BatchLeads({ batchId, city = "" }: { batchId: string; city?: str
                   key={lead.lead_id}
                   className={chosen.has(lead.lead_id) ? "row-chosen" : undefined}
                 >
-                  {staff && (
+                  {choosing && (
                     <td>
                       <input
                         type="checkbox"
@@ -394,7 +401,6 @@ export function LeadDialog({
     email: "",
     phone: "",
     website: "",
-    level: "",
     notes: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -408,7 +414,6 @@ export function LeadDialog({
       email: found.emails.join(", "),
       phone: found.data.phone ?? "",
       website: found.data.website ?? "",
-      level: found.level === "Top" ? "Top" : "",
       notes: found.data.notes ?? "",
     });
   }, []);
@@ -535,14 +540,12 @@ export function LeadDialog({
                   onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))}
                 />
               </div>
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={form.level === "Top"}
-                  onChange={(e) => setForm((f) => ({ ...f, level: e.target.checked ? "Top" : "" }))}
-                />
-                Top (never contacted)
-              </label>
+              {lead.level === "Top" && (
+                <p className="small">
+                  <span className="pill pill-top">Top</span> Never audited or contacted. Top is
+                  chosen in the batch&apos;s Cities tab.
+                </p>
+              )}
               <div className="field">
                 <label htmlFor="lead-notes">Notes</label>
                 <textarea

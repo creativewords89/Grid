@@ -194,7 +194,13 @@ test("the leads are in their batch and download as Excel", async () => {
   expect(file.suggestedFilename()).toMatch(/^leads-\d{4}-\d{2}-\d{2}\.xlsx$/);
   await page.getByLabel("Website").selectOption("");
 
-  // Top is chosen in the Hub: tick it, Mark as Top.
+  // Top is chosen in a city, not on the Leads tab: open Dallas, tick it, Mark as Top.
+  await expect(
+    page.getByRole("checkbox", { name: "Choose Big Shine Co" }),
+  ).toHaveCount(0);
+  await page.getByRole("tab", { name: "Cities", exact: true }).click();
+  await page.getByRole("tab", { name: /Small cities/ }).click();
+  await page.getByRole("button", { name: "Dallas", exact: true }).click();
   await page.getByRole("checkbox", { name: "Choose Big Shine Co" }).click();
   await page.getByRole("button", { name: "Mark as Top" }).click();
   await expect(

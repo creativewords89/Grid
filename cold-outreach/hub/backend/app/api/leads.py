@@ -302,7 +302,6 @@ class LeadPatch(Strict):
     email: Annotated[str, StringConstraints(max_length=2000)] | None = None
     phone: Short | None = None
     website: Short | None = None
-    level: Literal["Top", ""] | None = None
     notes: Annotated[str, StringConstraints(strip_whitespace=True, max_length=4000)] | None = None
 
 
@@ -319,8 +318,9 @@ def _view(lead: Lead) -> dict[str, Any]:
 
 @router.patch("/leads/{lead_id}", response_model=LeadDetail)
 def update_lead(lead_id: str, body: LeadPatch, me: CurrentUser, db: Db) -> LeadDetail:
-    """Change a lead's email(s), phone, website, Top mark or notes. Top keeps its email,
-    phone and GBP link on the do-not-contact list; an empty value clears a field."""
+    """Change a lead's email(s), phone, website or notes; an empty value clears a field. Top
+    is chosen in a city (`mark_top`), not here; a Top lead keeps its email, phone and GBP
+    link on the do-not-contact list."""
     ensure(me, Action.EDIT_LEADS)
     lead = _get(db, lead_id)
     before = _view(lead)
@@ -339,8 +339,6 @@ def update_lead(lead_id: str, body: LeadPatch, me: CurrentUser, db: Db) -> LeadD
         lead.website_domain = reader.website_domain(data["website"])[:255] if body.website else ""
     if body.notes is not None:
         data["notes"] = body.notes
-    if body.level is not None:
-        lead.level = body.level
     lead.data = {key: value for key, value in data.items() if value}
     changes = audit.diff(before, _view(lead))
     if changes:
@@ -351,19 +349,30 @@ def update_lead(lead_id: str, body: LeadPatch, me: CurrentUser, db: Db) -> LeadD
 
 
 class TopIn(Strict):
+    batch_id: uuid.UUID
+    city: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
     lead_ids: Annotated[list[str], Field(min_length=1, max_length=500)]
     top: bool
 
 
 @router.post("/leads/top")
 def mark_top(body: TopIn, me: CurrentUser, db: Db) -> dict[str, int]:
-    """Mark leads as Top (never audited or contacted) or take Top off, many at once (SPEC
-    section 6.4 item 9). Top keeps their email, phone and GBP link on the do-not-contact
-    list."""
+    """Mark leads of one city of a batch as Top (never audited or contacted) or take Top
+    off, many at once (SPEC section 6.4 item 9, step 19). Every lead must be in that city of
+    that batch. Top keeps their email, phone and GBP link on the do-not-contact list."""
     ensure(me, Action.EDIT_LEADS)
     level = "Top" if body.top else ""
+    wanted = set(body.lead_ids)
+    found = list(db.scalars(select(Lead).where(Lead.lead_id.in_(wanted))))
+    city = body.city.lower()
+    if len(found) != len(wanted) or any(
+        lead.batch_id != body.batch_id or lead.city.strip().lower() != city for lead in found
+    ):
+        raise ApiError(
+            422, "invalid", f"Top is chosen in one city: these leads are not all in {body.city}."
+        )
     changed = 0
-    for lead in db.scalars(select(Lead).where(Lead.lead_id.in_(set(body.lead_ids)))):
+    for lead in found:
         if lead.level != level:
             lead.level = level
             sync_do_not_contact(db, lead)

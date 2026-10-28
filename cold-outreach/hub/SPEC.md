@@ -94,7 +94,7 @@ cold-outreach/
 | See Overview, Runs, Agents, Batches, Benchmarks, Leads; download leads as Excel | ✔ | ✔ | ✔ |
 | Make, rename or delete a batch; add and confirm its files | ✔ | ✔ | ✘ |
 | Choose a batch's tasks and agents, start or pause it, change the batches' running order | ✔ | ✔ | ✘ |
-| Change a lead's email, phone, website, Top mark or notes; delete a lead | ✔ | ✔ | ✘ |
+| Change a lead's email, phone, website or notes; mark Top in a city; delete a lead | ✔ | ✔ | ✘ |
 | Switch an agent on/off, press Run now or Stop | ✔ | ✔ | ✘ |
 | Change an agent's batches, limit, run time, budget and settings | ✔ | ✔ | ✘ |
 | Make, change or delete a benchmark | ✔ | ✔ | ✘ |
@@ -340,9 +340,11 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 9. **A batch's Leads tab** (everyone): 100 leads a page; a search (name, Lead ID, city,
    email, phone, website, GBP link), city, Top and website; sort by Lead ID, newest,
    name, city, rating or reviews (highest first) or an agent's score (best first).
-   **Choosing Top:** Owners and Admins tick leads (a box on each row, and one for the whole
-   page) and press **Mark as Top** or **Remove Top** (at most 500 at a time; one History
-   entry with the count). From then on agents don't get them (section 6.7); results agents
+   The Leads tab only **shows** Top (its column and filter); Top is chosen in a city.
+   **Choosing Top** (step 19): on the **Cities** tab, open a city; on its leads Owners and
+   Admins tick leads (a box on each row, and one for the whole page) and press **Mark as
+   Top** or **Remove Top** (at most 500 at a time; one History entry with the count). The
+   server refuses a request whose leads are not all in that city of that batch. From then on agents don't get them (section 6.7); results agents
    saved before stay. The table shows **every field of the lead
    file side by side**, like the Excel file: Lead ID, Business name, GBP link, Address, City,
    Website, Phone, WhatsApp, Email(s), Facebook, Instagram, Reviews, Rating, Level, Notes,
@@ -354,9 +356,10 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    including each agent's status, score, summary and when; every text cell is stored as text,
    so a value starting with `=` never runs as a formula.
 10. **One lead** shows its row, each agent's result and the files agents saved (always
-   downloaded, never shown in the page). Owners and Admins change its email(s), phone, website,
-   Top mark and notes (in History, with the old and new value; Top keeps its email, phone and
-   GBP link on the do-not-contact list, removing Top takes them off), or delete it (its files
+   downloaded, never shown in the page). Owners and Admins change its email(s), phone, website
+   and notes (in History, with the old and new value), or delete it. It shows whether it is
+   Top but cannot change it (step 19); Top keeps its email, phone and GBP link on the
+   do-not-contact list, removing Top takes them off (its files
    go too; its do-not-contact entries stay, so a Top business imported again is still never
    contacted).
 11. **Deleting a file** (Owners and Admins), from the batch's past files, **only while the
@@ -662,3 +665,9 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     each job's needs into the batches that use it. **Tests:** adding, renaming and changing
     a task's needs in one batch without touching another, circles and missing needs refused,
     readiness from the batch's needs, the migration, rights, e2e.
+19. **Top chosen only in a city** (asked for after step 18): the batch's Leads tab shows Top
+    but has no boxes or Mark as Top; a city opened from the Cities tab has them; the lead
+    window no longer changes Top. `POST /leads/top` takes the batch and the city, and every
+    lead must be in that city of that batch; `PATCH /leads/{id}` no longer takes `level`.
+    **Tests:** marking in a city, leads of another city or batch refused, the lead window
+    refused, rights, the Leads tab without boxes, the city with them.

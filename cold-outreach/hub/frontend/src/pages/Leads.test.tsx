@@ -201,7 +201,6 @@ test("open a lead, change it and mark it Top", async () => {
   expect(email).toHaveValue("kevin@mc.com, info@mc.com");
   await userEvent.clear(email);
   await userEvent.type(email, "owner@mc.com");
-  await userEvent.click(within(dialog).getByLabelText("Top (never contacted)"));
   await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
   expect(await within(dialog).findByText("Saved.")).toBeVisible();
@@ -209,9 +208,11 @@ test("open a lead, change it and mark it Top", async () => {
     email: "owner@mc.com",
     phone: "(918) 523-8300",
     website: "https://mc.com/",
-    level: "Top",
     notes: "",
   });
+  // Top is shown, not changed, in the lead window (step 19).
+  expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
+  expect(within(dialog).getByText(/Never audited or contacted/)).toBeVisible();
 });
 
 test("deleting a lead asks once more", async () => {
@@ -288,11 +289,27 @@ test("only web addresses become links", async () => {
   );
 });
 
-test("an Admin ticks leads and marks them Top; sorting by rating", async () => {
+test("the batch's Leads tab shows Top but has no boxes to choose it", async () => {
+  mockApi({
+    "GET /auth/me": as("admin"),
+    "GET /leads?batch_id=b1": [200, leadPage([lead("L-000001", { level: "Top" })])],
+  });
+  render(
+    <AuthProvider>
+      <BatchLeads batchId="b1" />
+    </AuthProvider>,
+  );
+
+  expect(await screen.findByText("Top is chosen in a city", { exact: false })).toBeVisible();
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  expect(screen.getByRole("row", { name: /Multi-Clean/ })).toHaveTextContent("Top");
+});
+
+test("in a city an Admin ticks leads and marks them Top; sorting by rating", async () => {
   let marked = false;
   const calls = mockApi({
     "GET /auth/me": as("admin"),
-    "GET /leads?batch_id=b1": () => [
+    "GET /leads?batch_id=b1&city=Tulsa": () => [
       200,
       leadPage([
         lead("L-000001", { level: marked ? "Top" : "" }),
@@ -304,11 +321,11 @@ test("an Admin ticks leads and marks them Top; sorting by rating", async () => {
       marked = true;
       return [200, { changed: 2 }];
     },
-    "GET /leads?batch_id=b1&sort=rating&page=1": [200, leadPage([])],
+    "GET /leads?batch_id=b1&city=Tulsa&sort=rating&page=1": [200, leadPage([])],
   });
   render(
     <AuthProvider>
-      <BatchLeads batchId="b1" />
+      <BatchLeads batchId="b1" city="Tulsa" />
     </AuthProvider>,
   );
 
@@ -320,6 +337,8 @@ test("an Admin ticks leads and marks them Top; sorting by rating", async () => {
 
   expect(await screen.findByText("2 leads marked as Top: agents leave them alone.")).toBeVisible();
   expect(calls.find((c) => c.method === "POST")?.body).toEqual({
+    batch_id: "b1",
+    city: "Tulsa",
     lead_ids: ["L-000001", "L-000002"],
     top: true,
   });
@@ -330,17 +349,19 @@ test("an Admin ticks leads and marks them Top; sorting by rating", async () => {
 
   await userEvent.selectOptions(screen.getByLabelText("Sort by"), "rating");
   await screen.findByText("No leads match.");
-  expect(calls.some((c) => c.path === "/leads?batch_id=b1&sort=rating&page=1")).toBe(true);
+  expect(calls.some((c) => c.path === "/leads?batch_id=b1&city=Tulsa&sort=rating&page=1")).toBe(
+    true,
+  );
 });
 
-test("viewers can't choose Top", async () => {
+test("viewers can't choose Top, even in a city", async () => {
   mockApi({
     "GET /auth/me": as("viewer"),
-    "GET /leads?batch_id=b1": [200, leadPage([lead("L-000001")])],
+    "GET /leads?batch_id=b1&city=Tulsa": [200, leadPage([lead("L-000001")])],
   });
   render(
     <AuthProvider>
-      <BatchLeads batchId="b1" />
+      <BatchLeads batchId="b1" city="Tulsa" />
     </AuthProvider>,
   );
 

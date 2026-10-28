@@ -391,7 +391,16 @@ def test_leads_marked_top_in_the_hub_are_not_handed_out(
     put_bot(client, batch, "gbp-1", "gbp-audit")
     result(client, token, "L-000003", score=50)
 
-    client.post("/api/leads/top", json={"lead_ids": ["L-000002", "L-000003"], "top": True})
+    marked = client.post(
+        "/api/leads/top",
+        json={
+            "batch_id": batch,
+            "city": "Tulsa",
+            "lead_ids": ["L-000002", "L-000003"],
+            "top": True,
+        },
+    )
+    assert marked.json() == {"changed": 2}
 
     assert ready(client, token, batch) == ["L-000001"]
     shown = client.get(f"/api/batches/{batch}/results", params={"bot": "gbp-1"}).json()
