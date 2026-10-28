@@ -9,7 +9,7 @@ This file holds the decisions that apply to the whole system. Each part has its 
 
 | Part | Spec | State |
 |---|---|---|
-| Agent Hub | [hub/SPEC.md](hub/SPEC.md) | Built and installed (steps 1–11); step 12, tasks and the batch pipeline, done; step 13, agents made clear and the full Leads table, done; step 14, the lead file tab by tab, done |
+| Agent Hub | [hub/SPEC.md](hub/SPEC.md) | Built and installed (steps 1–11); step 12, tasks and the batch pipeline, done; step 13, agents made clear and the full Leads table, done; step 14, the lead file tab by tab, done; step 15, leads in their batch, cities per batch, deleting files, done |
 | GBP audit agent | `agents/gbp-audit/SPEC.md` | Decided (section 5), spec written before its build |
 | Website audit agent | `agents/website-audit/SPEC.md` | Decided (section 6), spec written before its build |
 | Social media audit agent | `agents/social-audit/SPEC.md` | Data source not decided |
@@ -70,14 +70,14 @@ This file is the record; where it and an older message disagree, this file wins.
 
 | Data | Lives in | Why |
 |---|---|---|
-| Leads (each row from the lead files) and each agent's result (status, score, summary, full details) | **Hub database**, Leads screen; Excel download | One place, under the Hub's roles, backed up nightly |
+| Leads (each row from the lead files) and each agent's result (status, score, summary, full details) | **Hub database**, each batch's Leads tab; Excel download | One place, under the Hub's roles, backed up nightly |
 | Report files (PDF, JSON …) | **Hub server** (`REPORTS_DIR`), listed with the lead | Too big for the database; backed up with it |
 | Users, secrets, settings, agents, runs, costs, batches, imports, benchmarks | **Hub database** (PostgreSQL) | Needs exact state and access control |
 | Outreach later (emails sent, replies, opt-outs, follow-up dates, do-not-contact list) | **Hub database** | A sent email must never be sent twice; an opt-out must never be emailed again |
 
 ### 3.2 Leads in the Hub
 
-- Every lead is kept in the Hub (screen **Leads**, like a spreadsheet): Lead ID, Batch, Niche,
+- Every lead is kept in the Hub (each batch's **Leads** tab, like a spreadsheet): Lead ID, Batch, Niche,
   City, Level, Business Name, GBP Link, Address, Website, Phone, WhatsApp, Facebook,
   Instagram, Email, Reviews, Rating, Notes, and **each agent's result**: `Status, Score,
   Summary, Checked`, with the full details (JSON) and report files (PDF …) behind it.

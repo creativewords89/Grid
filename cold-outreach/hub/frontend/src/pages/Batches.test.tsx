@@ -405,3 +405,169 @@ test("the preview shows the file tab by tab with every column", async () => {
     calls.some((c) => c.path === "/imports/i1/sheet?tab=Dallas&status=other_batch&page=1"),
   ).toBe(true);
 });
+
+// --- step 15: leads and cities in the batch, deleting files, finding a business --------------
+
+function city(id: string, name: string, active = true) {
+  return {
+    id,
+    batch_id: "b1",
+    city: name,
+    niche: "Cleaning",
+    active,
+    daily_limit: null,
+    leads: 27,
+    top: 1,
+  };
+}
+
+const emptyPipeline = {
+  batch: batch({ leads: 12 }),
+  steps: [],
+  can_start: false,
+  start_problem: "Add a task with at least one agent first.",
+};
+
+test("the old leads address opens the batch's Leads tab", async () => {
+  window.history.pushState(null, "", "/leads?batch=b1");
+  mockApi({
+    "GET /auth/me": as("viewer"),
+    "GET /batches": [200, [batch({ leads: 12 })]],
+    "GET /imports?batch_id=b1": [200, []],
+    "GET /batches/b1/pipeline": [200, emptyPipeline],
+    "GET /leads?batch_id=b1": [
+      200,
+      { leads: [], total: 0, page: 1, pages: 1, agents: {}, extra_columns: [] },
+    ],
+  });
+  render(<App />);
+
+  expect(await screen.findByRole("tab", { name: "Leads" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  expect(await screen.findByText("No leads match.")).toBeVisible();
+  expect(window.location.pathname + window.location.search).toBe("/batches?batch=b1&tab=leads");
+  expect(screen.getByRole("link", { name: "Batches" })).toHaveAttribute("aria-current", "page");
+});
+
+test("a batch's cities: switch one, all off, and open a city's leads", async () => {
+  window.history.pushState(null, "", "/batches?batch=b1&tab=cities");
+  const calls = mockApi({
+    "GET /auth/me": as("admin"),
+    "GET /batches": [200, [batch({ leads: 54 })]],
+    "GET /imports?batch_id=b1": [200, []],
+    "GET /batches/b1/pipeline": [200, emptyPipeline],
+    "GET /batches/b1/cities": [200, [city("c1", "Akron", false), city("c2", "Tulsa")]],
+    "PATCH /lists/c2": [200, city("c2", "Tulsa", false)],
+    "PUT /batches/b1/cities": [200, [city("c1", "Akron", false), city("c2", "Tulsa", false)]],
+    "GET /leads?batch_id=b1&city=Tulsa": [
+      200,
+      { leads: [], total: 0, page: 1, pages: 1, agents: {}, extra_columns: [] },
+    ],
+  });
+  render(<App />);
+
+  expect(await screen.findByText(/2 cities · 1 on · 1 off/)).toBeVisible();
+  await userEvent.type(screen.getByLabelText("Find a city"), "tul");
+  expect(screen.queryByText("Akron")).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("switch", { name: "Tulsa on or off" }));
+  await userEvent.click(screen.getByRole("button", { name: "All off" }));
+  expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ active: false });
+  expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ active: false });
+
+  await userEvent.click(screen.getByRole("button", { name: "Tulsa" }));
+  expect(await screen.findByRole("tab", { name: "Leads" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  expect(calls.some((c) => c.path === "/leads?batch_id=b1&city=Tulsa")).toBe(true);
+});
+
+test("a saved file is deleted with its leads, but not while the batch runs", async () => {
+  window.history.pushState(null, "", "/batches?batch=b1&tab=files");
+  let running = true;
+  let deleted = false;
+  const saved = preview({ status: "confirmed" });
+  const calls = mockApi({
+    "GET /auth/me": as("admin"),
+    "GET /batches": () => [200, [batch({ leads: 12, status: running ? "running" : "paused" })]],
+    "GET /benchmarks": [200, []],
+    "GET /imports?batch_id=b1": () => [200, deleted ? [] : [saved]],
+    "GET /batches/b1/pipeline": () => [
+      200,
+      { ...emptyPipeline, batch: batch({ status: running ? "running" : "paused" }) },
+    ],
+    "GET /imports/i1/deletion": [
+      200,
+      { leads_going: 3990, leads_staying: 5, batch_running: false },
+    ],
+    "DELETE /imports/i1": () => {
+      deleted = true;
+      return [204];
+    },
+  });
+  const { unmount } = render(<App />);
+
+  const remove = await screen.findByRole("button", { name: "Delete GBP_Data_2.xlsx" });
+  expect(remove).toBeDisabled();
+  expect(screen.getByText(/pause the batch first/)).toBeVisible();
+  unmount();
+
+  running = false;
+  render(<App />);
+  await userEvent.click(await screen.findByRole("button", { name: "Delete GBP_Data_2.xlsx" }));
+  const dialog = screen.getByRole("dialog", { name: "Delete GBP_Data_2.xlsx?" });
+  expect(dialog).toHaveTextContent("3,990 businesses this file brought in go");
+  expect(dialog).toHaveTextContent("5 businesses that came from earlier files stay");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Delete the file" }));
+
+  await screen.findByRole("form", { name: "Add a lead file" });
+  expect(calls.some((c) => c.method === "DELETE" && c.path === "/imports/i1")).toBe(true);
+  expect(screen.queryByText("Past imports")).not.toBeInTheDocument();
+});
+
+test("find a business in every batch", async () => {
+  mockApi({
+    "GET /auth/me": as("viewer"),
+    "GET /batches": [200, [batch(), batch({ id: "b2", name: "Batch 2" })]],
+    "GET /leads?q=sparkle": [
+      200,
+      {
+        leads: [
+          {
+            lead_id: "L-000004",
+            batch_id: "b2",
+            batch_name: "Batch 2",
+            niche: "Cleaning",
+            city: "Dallas",
+            business_name: "Sparkle",
+            level: "",
+            gbp_link: "",
+            emails: [],
+            data: {},
+            extra: {},
+            results: {},
+          },
+        ],
+        total: 1,
+        page: 1,
+        pages: 1,
+        agents: {},
+        extra_columns: [],
+      },
+    ],
+    "GET /imports?batch_id=b2": [200, []],
+    "GET /batches/b2/pipeline": [200, emptyPipeline],
+  });
+  render(<App />);
+
+  const find = await screen.findByRole("form", { name: "Find a business" });
+  await userEvent.type(within(find).getByLabelText("Find a business in every batch"), "sparkle");
+  await userEvent.click(within(find).getByRole("button", { name: "Find" }));
+  const results = (await screen.findByText("1 found")).closest("table")!;
+  await userEvent.click(within(results).getByRole("button", { name: "Batch 2" }));
+
+  expect(await screen.findByRole("heading", { name: "Batch 2" })).toBeVisible();
+  expect(window.location.search).toBe("?batch=b2&tab=files");
+});

@@ -1,8 +1,8 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, vi } from "vitest";
+import { afterEach, vi } from "vitest";
 import type { Lead, LeadDetail, LeadPage } from "../api";
-import { App } from "../App";
+import { BatchLeads } from "./Leads";
 import { makeUser, mockApi } from "../test/mockApi";
 
 function lead(id: string, overrides: Partial<Lead> = {}): Lead {
@@ -42,14 +42,13 @@ function detail(overrides: Partial<LeadDetail> = {}): LeadDetail {
 const as = (role: "owner" | "admin" | "viewer") =>
   [200, { user: makeUser({ role }), csrf_token: "t" }] as [number, unknown];
 
-beforeEach(() => window.history.pushState(null, "", "/leads"));
 afterEach(() => vi.unstubAllGlobals());
 
 test("the leads show like a sheet, with the agents' scores, filters and pages", async () => {
   const calls = mockApi({
     "GET /auth/me": as("viewer"),
     "GET /batches": [200, []],
-    "GET /leads": [
+    "GET /leads?batch_id=b1": [
       200,
       leadPage(
         [
@@ -71,11 +70,14 @@ test("the leads show like a sheet, with the agents' scores, filters and pages", 
         { total: 230, pages: 3, agents: { "gbp-audit": "GBP" } },
       ),
     ],
-    "GET /leads?page=1&q=shine": [200, leadPage([])],
-    "GET /leads?page=1&q=shine&level=top": [200, leadPage([])],
-    "GET /leads?page=2": [200, leadPage([lead("L-000101")], { total: 230, page: 2, pages: 3 })],
+    "GET /leads?batch_id=b1&page=1&q=shine": [200, leadPage([])],
+    "GET /leads?batch_id=b1&page=1&q=shine&level=top": [200, leadPage([])],
+    "GET /leads?batch_id=b1&page=2": [
+      200,
+      leadPage([lead("L-000101")], { total: 230, page: 2, pages: 3 }),
+    ],
   });
-  render(<App />);
+  render(<BatchLeads batchId="b1" />);
 
   const rows = await screen.findAllByRole("row");
   expect(screen.getByText("230 leads · page 1 of 3")).toBeVisible();
@@ -117,7 +119,7 @@ test("the leads show like a sheet, with the agents' scores, filters and pages", 
   expect(within(rows[2]!).getByText("Top")).toBeVisible();
   expect(screen.getByRole("link", { name: "Download Excel" })).toHaveAttribute(
     "href",
-    "/api/leads/export",
+    "/api/leads/export?batch_id=b1",
   );
 
   await userEvent.click(screen.getByRole("button", { name: "Next" }));
@@ -128,22 +130,21 @@ test("the leads show like a sheet, with the agents' scores, filters and pages", 
   expect(await screen.findByText("No leads match.")).toBeVisible();
   await userEvent.selectOptions(screen.getByLabelText("Top"), "top");
   await screen.findByText("No leads match.");
-  expect(calls.some((c) => c.path === "/leads?page=1&q=shine&level=top")).toBe(true);
+  expect(calls.some((c) => c.path === "/leads?batch_id=b1&page=1&q=shine&level=top")).toBe(true);
   expect(screen.getByRole("link", { name: "Download Excel" })).toHaveAttribute(
     "href",
-    "/api/leads/export?q=shine&level=top",
+    "/api/leads/export?batch_id=b1&q=shine&level=top",
   );
 });
 
-test("a batch's leads open from its link, and sorting by an agent's score", async () => {
-  window.history.pushState(null, "", "/leads?batch=b1");
+test("sorting by an agent's score", async () => {
   const calls = mockApi({
     "GET /auth/me": as("admin"),
     "GET /batches": [200, []],
     "GET /leads?batch_id=b1": [200, leadPage([lead("L-000001")], { agents: { demo: "Demo" } })],
     "GET /leads?batch_id=b1&sort=score&score_of=demo&page=1": [200, leadPage([])],
   });
-  render(<App />);
+  render(<BatchLeads batchId="b1" />);
 
   expect(await screen.findByText("Multi-Clean")).toBeVisible();
   await userEvent.selectOptions(screen.getByLabelText("Sort by"), "score:demo");
@@ -155,7 +156,7 @@ test("open a lead, change it and mark it Top", async () => {
   const calls = mockApi({
     "GET /auth/me": as("admin"),
     "GET /batches": [200, []],
-    "GET /leads": [200, leadPage([lead("L-000001")])],
+    "GET /leads?batch_id=b1": [200, leadPage([lead("L-000001")])],
     "GET /leads/L-000001": [
       200,
       detail({
@@ -173,7 +174,7 @@ test("open a lead, change it and mark it Top", async () => {
     ],
     "PATCH /leads/L-000001": [200, detail({ level: "Top", emails: ["owner@mc.com"] })],
   });
-  render(<App />);
+  render(<BatchLeads batchId="b1" />);
 
   await userEvent.click(await screen.findByRole("button", { name: "Multi-Clean" }));
   const dialog = await screen.findByRole("dialog", { name: "Multi-Clean" });
@@ -205,14 +206,14 @@ test("deleting a lead asks once more", async () => {
   mockApi({
     "GET /auth/me": as("owner"),
     "GET /batches": [200, []],
-    "GET /leads": () => [200, leadPage(deleted ? [] : [lead("L-000001")])],
+    "GET /leads?batch_id=b1": () => [200, leadPage(deleted ? [] : [lead("L-000001")])],
     "GET /leads/L-000001": [200, detail()],
     "DELETE /leads/L-000001": () => {
       deleted = true;
       return [204];
     },
   });
-  render(<App />);
+  render(<BatchLeads batchId="b1" />);
 
   await userEvent.click(await screen.findByRole("button", { name: "Multi-Clean" }));
   const dialog = await screen.findByRole("dialog", { name: "Multi-Clean" });
@@ -226,10 +227,10 @@ test("a viewer sees a lead but can't change it", async () => {
   mockApi({
     "GET /auth/me": as("viewer"),
     "GET /batches": [200, []],
-    "GET /leads": [200, leadPage([lead("L-000001")])],
+    "GET /leads?batch_id=b1": [200, leadPage([lead("L-000001")])],
     "GET /leads/L-000001": [200, detail({ can_edit: false })],
   });
-  render(<App />);
+  render(<BatchLeads batchId="b1" />);
 
   await userEvent.click(await screen.findByRole("button", { name: "Multi-Clean" }));
   const dialog = await screen.findByRole("dialog", { name: "Multi-Clean" });
@@ -238,11 +239,11 @@ test("a viewer sees a lead but can't change it", async () => {
   expect(within(dialog).queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
 });
 
-test("only web addresses become links, and the Lists follow the leads", async () => {
+test("only web addresses become links", async () => {
   mockApi({
     "GET /auth/me": as("viewer"),
     "GET /batches": [200, []],
-    "GET /leads": [
+    "GET /leads?batch_id=b1": [
       200,
       leadPage([
         lead("L-000001", {
@@ -251,22 +252,8 @@ test("only web addresses become links, and the Lists follow the leads", async ()
         }),
       ]),
     ],
-    "GET /lists": [
-      200,
-      [
-        {
-          id: "l1",
-          city: "Tulsa",
-          niche: "Cleaning",
-          active: true,
-          daily_limit: null,
-          leads: 27,
-          top: 2,
-        },
-      ],
-    ],
   });
-  render(<App />);
+  render(<BatchLeads batchId="b1" />);
 
   const row = (await screen.findAllByRole("row"))[1]!;
   expect(within(row).getByText("javascript:alert(1)").closest("a")).toBeNull();
@@ -274,5 +261,4 @@ test("only web addresses become links, and the Lists follow the leads", async ()
     "href",
     "https://sparkle.cleaning",
   );
-  expect(await screen.findByRole("switch", { name: "Tulsa · Cleaning on or off" })).toBeDisabled();
 });

@@ -342,9 +342,10 @@ def test_batches_without_a_benchmark_are_skipped_by_agents(
 def test_agents_read_lists_and_do_not_contact(client: TestClient, owner: User, db: Session) -> None:
     token = add_agent(client)
     agent_call(client, "PUT", "/manifest", token, MANIFEST)
+    batch = make_batch(client)["id"]
     db.add_all(
         [
-            LeadList(city="Dallas", niche="Cleaning", active=False),
+            LeadList(batch_id=batch, city="Dallas", niche="Cleaning", active=False),
             DoNotContact(kind="email", value="boss@top.com", reason="top", lead_id="L-000001"),
             DoNotContact(kind="phone", value="9185550000", reason="top", lead_id="L-000001"),
         ]
@@ -352,7 +353,13 @@ def test_agents_read_lists_and_do_not_contact(client: TestClient, owner: User, d
     db.commit()
 
     assert agent_call(client, "GET", "/lists", token).json() == [
-        {"city": "Dallas", "niche": "Cleaning", "active": False, "daily_limit": None}
+        {
+            "batch_id": batch,
+            "city": "Dallas",
+            "niche": "Cleaning",
+            "active": False,
+            "daily_limit": None,
+        }
     ]
     blocked = agent_call(
         client, "GET", "/do-not-contact/check?email=Boss@Top.com&phone=(918) 555-0000", token

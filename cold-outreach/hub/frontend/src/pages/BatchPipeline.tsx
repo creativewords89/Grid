@@ -357,7 +357,15 @@ const OUTCOMES: Record<Outcome, string> = {
 };
 const BANDS: Record<Band, string> = { low: "Under 40", mid: "40–69", high: "70 and over" };
 
-export function ResultsTab({ batchId, pipeline }: { batchId: string; pipeline: Pipeline }) {
+export function ResultsTab({
+  batchId,
+  pipeline,
+  onShowLeads,
+}: {
+  batchId: string;
+  pipeline: Pipeline;
+  onShowLeads: () => void;
+}) {
   const bots = pipeline.steps.flatMap((s) => s.tasks.flatMap((t) => t.bots));
   const [bot, setBot] = useState(bots[0]?.key ?? "");
   const [outcome, setOutcome] = useState<Outcome | "">("");
@@ -399,9 +407,14 @@ export function ResultsTab({ batchId, pipeline }: { batchId: string; pipeline: P
             ))}
           </select>
         </div>
-        <a className="button" href={`/leads?batch=${batchId}`}>
-          All results (Leads)
-        </a>
+        <div className="field">
+          <span className="label-spacer" aria-hidden="true">
+            &nbsp;
+          </span>
+          <button className="button" onClick={onShowLeads}>
+            All results (Leads)
+          </button>
+        </div>
       </div>
       {shown && (
         <>

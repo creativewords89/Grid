@@ -209,11 +209,17 @@ def finish(run_id: str, body: FinishIn, agent: CurrentAgent, db: Db) -> None:
 
 @router.get("/lists")
 def lists(agent: CurrentAgent, db: Db) -> list[dict[str, Any]]:
-    """Every City + Niche list; agents leave the leads of inactive lists alone."""
+    """Each batch's cities. The Hub never hands out the leads of a city switched off."""
     db.commit()  # records last_seen_at
     return [
-        {"city": x.city, "niche": x.niche, "active": x.active, "daily_limit": x.daily_limit}
-        for x in db.scalars(select(LeadList).order_by(LeadList.niche, LeadList.city))
+        {
+            "batch_id": str(x.batch_id),
+            "city": x.city,
+            "niche": x.niche,
+            "active": x.active,
+            "daily_limit": x.daily_limit,
+        }
+        for x in db.scalars(select(LeadList).order_by(LeadList.batch_id, LeadList.city))
     ]
 
 

@@ -161,9 +161,11 @@ def preview(db: Session, user: User, file_name: str, content: bytes, batch: Batc
         else:
             other = batch_names.get(match.batch_id) if match.batch_id else None
             elsewhere.append(f"{label}, in {other or 'no batch'})")
-    known_lists = {(x.city.lower(), x.niche.lower()) for x in db.scalars(select(LeadList))}
+    known_lists = {
+        x.city.lower() for x in db.scalars(select(LeadList).where(LeadList.batch_id == batch.id))
+    }
     cities = sorted({row["city"] for row in rows})
-    new_lists = [c for c in cities if (c.lower(), niche.lower()) not in known_lists]
+    new_lists = [c for c in cities if c.lower() not in known_lists]
 
     def names(selected: list[dict[str, Any]]) -> list[str]:
         return [f"{r['business_name'] or r['gbp_link']} ({r['rows'][0]})" for r in selected][
@@ -304,12 +306,11 @@ def confirm(db: Session, imp: Import, user: User) -> Import:
     for city in sorted({row["city"] for row in imp.rows}):
         exists = db.scalar(
             select(LeadList).where(
-                func.lower(LeadList.city) == city.lower(),
-                func.lower(LeadList.niche) == imp.niche.lower(),
+                LeadList.batch_id == imp.batch_id, func.lower(LeadList.city) == city.lower()
             )
         )
-        if exists is None:
-            db.add(LeadList(city=city, niche=imp.niche))
+        if exists is None and imp.batch_id is not None:
+            db.add(LeadList(batch_id=imp.batch_id, city=city, niche=imp.niche))
     imp.status = ImportStatus.CONFIRMED
     imp.confirmed_at = now()
     imp.counts = dict(imp.counts, saved_new=added, saved_updated=updated)

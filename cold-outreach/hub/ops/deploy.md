@@ -143,7 +143,7 @@ first start, and the DNS record (step 3) must already work.
 6. **Benchmarks** → **+ New benchmark** for each niche (for example "Cleaning Benchmark 1"):
    the GBP numbers and the website part.
 7. **Batches** → **+ New batch**: a name, the niche and its benchmark. Open the batch, add
-   the first lead file, check the preview and save it. **Leads** then shows every business;
+   the first lead file, check the preview and save it. the batch's **Leads** tab then shows every business;
    **Download Excel** gives any view as a file.
 
 ## 7. Start an agent

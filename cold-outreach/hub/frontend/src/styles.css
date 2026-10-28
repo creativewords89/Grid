@@ -2395,3 +2395,62 @@ textarea {
   color: var(--warn);
   font-weight: 700;
 }
+
+/* ---- a batch uses the whole screen (SPEC section 6.4 item 9) ---- */
+
+.page.page-wide {
+  max-width: none;
+}
+
+.filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  align-items: flex-end;
+}
+
+.filters-row .field {
+  flex: 1 1 170px;
+  max-width: 260px;
+  margin: 0;
+}
+
+/* Buttons in a row of filters keep their own width and line up with the boxes. */
+.filters-row .field:has(> .label-spacer) {
+  flex: 0 0 auto;
+}
+
+.filters-row select,
+.filters-row input {
+  box-sizing: border-box;
+  height: 40px;
+}
+
+/* The table scrolls inside itself; its header row stays in view. */
+.table-tall {
+  max-height: calc(100vh - 260px);
+  overflow: auto;
+}
+
+.table-tall thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+  box-shadow: 0 1px 0 var(--border);
+}
+
+.table-tall thead th.sticky-col {
+  z-index: 3;
+}
+
+.leads-table td,
+.compact-table td {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.leads-table .cell-wrap {
+  min-width: 200px;
+  max-width: 260px;
+}

@@ -324,3 +324,26 @@ def test_admins_run_batches(client: TestClient, owner: User, make_user: UserFact
 
     assert put_bot(client, batch, "gbp-1", "gbp-audit")["batch"]["status"] == "running"
     assert client.post("/api/tasks", json={"key": "extra", "name": "Extra"}).status_code == 201
+
+
+def test_a_city_switched_off_in_a_batch_is_left_alone_there(
+    client: TestClient, owner: User, db: Session
+) -> None:
+    from app.db.models import LeadList
+
+    token = bot(client, "gbp-1", "gbp-audit")
+    batch = make_batch(client)["id"]
+    leads(db, batch, 2)
+    lead = db.get(Lead, "L-000002")
+    assert lead is not None
+    lead.city = "Dallas"
+    db.add_all(
+        [
+            LeadList(batch_id=batch, city="Tulsa", niche="Cleaning"),
+            LeadList(batch_id=batch, city="dallas", niche="Cleaning", active=False),
+        ]
+    )
+    db.commit()
+    put_bot(client, batch, "gbp-1", "gbp-audit")
+
+    assert ready(client, token, batch) == ["L-000001"]

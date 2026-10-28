@@ -1,6 +1,6 @@
-"""`/api/imports`, `/api/lists` and `/api/niches`: files added to a batch, and the lists, on
-the Batches screen (SPEC sections 6.4 and 7). Owners and Admins upload and confirm; everyone
-sees the history and the lists."""
+"""`/api/imports`, a batch's cities and `/api/niches`: files added to a batch and the cities
+they bring (SPEC sections 6.4 and 7). Owners and Admins upload, confirm and delete files and
+switch cities; everyone sees the files and the cities."""
 
 import uuid
 from datetime import datetime
@@ -15,9 +15,19 @@ from app import audit
 from app.api.batches import get_batch
 from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
-from app.db.models import Batch, Benchmark, Import, Lead, LeadList
+from app.db.models import (
+    Batch,
+    BatchStatus,
+    Benchmark,
+    Import,
+    ImportStatus,
+    Lead,
+    LeadFile,
+    LeadList,
+)
 from app.errors import ApiError
 from app.imports import service
+from app.leads import files
 from app.permissions import Action, ensure
 
 router = APIRouter(tags=["imports"])
@@ -134,8 +144,95 @@ def discard(import_id: uuid.UUID, me: CurrentUser, db: Db) -> ImportOut:
     return ImportOut.of(imp)
 
 
+# --- deleting a file (SPEC section 6.4 item 11) -----------------------------------------------
+
+
+class DeletionOut(BaseModel):
+    leads_going: int  # leads this file brought in first
+    leads_staying: int  # leads from earlier files it only updated
+    batch_running: bool  # then it can't be deleted: pause the batch first
+
+
+def _deletion(db: Session, imp: Import) -> DeletionOut:
+    going = set(db.scalars(select(Lead.lead_id).where(Lead.first_import_id == imp.id)))
+    touched = {
+        row["lead_id"] for row in (imp.sheet or {}).get("rows", []) if row.get("lead_id")
+    } or set(db.scalars(select(Lead.lead_id).where(Lead.last_import_id == imp.id)))
+    staying = db.scalar(
+        select(func.count()).select_from(Lead).where(Lead.lead_id.in_(touched - going))
+    )
+    return DeletionOut(
+        leads_going=len(going),
+        leads_staying=staying or 0,
+        batch_running=bool(imp.batch and imp.batch.status == BatchStatus.RUNNING),
+    )
+
+
+@router.get("/imports/{import_id}/deletion", response_model=DeletionOut)
+def deletion(import_id: uuid.UUID, me: CurrentUser, db: Db) -> DeletionOut:
+    """What deleting this file would take with it."""
+    ensure(me, Action.VIEW_HUB)
+    return _deletion(db, _get(db, import_id))
+
+
+@router.delete("/imports/{import_id}", status_code=204)
+def delete_import(import_id: uuid.UUID, me: CurrentUser, db: Db) -> None:
+    """Delete a file with the leads it brought in first (their agents' results and files
+    too), only while its batch isn't running. Do-not-contact entries stay."""
+    ensure(me, Action.IMPORT_LEADS)
+    imp = _get(db, import_id)
+    if imp.status == ImportStatus.PREVIEW:
+        raise ApiError(409, "waiting", "This file is waiting for its preview: discard it.")
+    what = _deletion(db, imp)
+    if what.batch_running:
+        raise ApiError(
+            409, "batch_running", "The batch is running: pause the batch first, then delete."
+        )
+    going = list(db.scalars(select(Lead).where(Lead.first_import_id == imp.id)))
+    stored = [
+        (lead_id, file_id)
+        for lead_id, file_id in db.execute(
+            select(LeadFile.lead_id, LeadFile.id).where(
+                LeadFile.lead_id.in_([x.lead_id for x in going])
+            )
+        )
+    ]
+    for lead in going:
+        db.delete(lead)
+    db.flush()
+    if imp.batch_id is not None:
+        _drop_empty_cities(db, imp.batch_id)
+    audit.record(
+        db,
+        me,
+        "delete",
+        "import",
+        imp.id,
+        imp.file_name,
+        [{"field": "leads deleted", "from": what.leads_going, "to": 0}],
+    )
+    db.delete(imp)
+    db.commit()
+    for lead_id, file_id in stored:
+        files.remove(lead_id, file_id)
+
+
+def _drop_empty_cities(db: Session, batch_id: uuid.UUID) -> None:
+    """A batch's cities without leads any more go."""
+    used = set(
+        db.scalars(select(func.lower(Lead.city)).where(Lead.batch_id == batch_id).distinct())
+    )
+    for item in db.scalars(select(LeadList).where(LeadList.batch_id == batch_id)):
+        if item.city.lower() not in used:
+            db.delete(item)
+
+
+# --- a batch's cities (SPEC section 6.4 item 8) --------------------------------------------
+
+
 class ListOut(BaseModel):
     id: uuid.UUID
+    batch_id: uuid.UUID
     city: str
     niche: str
     active: bool
@@ -144,26 +241,24 @@ class ListOut(BaseModel):
     top: int
 
 
-@router.get("/lists", response_model=list[ListOut])
-def list_lists(me: CurrentUser, db: Db) -> list[ListOut]:
-    ensure(me, Action.VIEW_HUB)
+def _cities(db: Session, batch_id: uuid.UUID) -> list[ListOut]:
     counts = {
-        (city.lower(), niche.lower()): (total, top)
-        for city, niche, total, top in db.execute(
-            select(
-                Lead.city,
-                Lead.niche,
-                func.count(),
-                func.count().filter(Lead.level == "Top"),
-            ).group_by(Lead.city, Lead.niche)
+        city.lower(): (total, top)
+        for city, total, top in db.execute(
+            select(Lead.city, func.count(), func.count().filter(Lead.level == "Top"))
+            .where(Lead.batch_id == batch_id)
+            .group_by(Lead.city)
         )
     }
     out = []
-    for item in db.scalars(select(LeadList).order_by(LeadList.niche, LeadList.city)):
-        total, top = counts.get((item.city.lower(), item.niche.lower()), (0, 0))
+    for item in db.scalars(
+        select(LeadList).where(LeadList.batch_id == batch_id).order_by(func.lower(LeadList.city))
+    ):
+        total, top = counts.get(item.city.lower(), (0, 0))
         out.append(
             ListOut(
                 id=item.id,
+                batch_id=item.batch_id,
                 city=item.city,
                 niche=item.niche,
                 active=item.active,
@@ -173,6 +268,42 @@ def list_lists(me: CurrentUser, db: Db) -> list[ListOut]:
             )
         )
     return out
+
+
+@router.get("/batches/{batch_id}/cities", response_model=list[ListOut])
+def batch_cities(batch_id: uuid.UUID, me: CurrentUser, db: Db) -> list[ListOut]:
+    ensure(me, Action.VIEW_HUB)
+    return _cities(db, get_batch(db, batch_id).id)
+
+
+class AllCitiesIn(Strict):
+    active: bool
+
+
+@router.put("/batches/{batch_id}/cities", response_model=list[ListOut])
+def switch_all_cities(
+    batch_id: uuid.UUID, body: AllCitiesIn, me: CurrentUser, db: Db
+) -> list[ListOut]:
+    """All on or all off."""
+    ensure(me, Action.OPERATE_AGENTS)
+    batch = get_batch(db, batch_id)
+    changed = 0
+    for item in db.scalars(select(LeadList).where(LeadList.batch_id == batch.id)):
+        if item.active != body.active:
+            item.active = body.active
+            changed += 1
+    if changed:
+        audit.record(
+            db,
+            me,
+            "edit",
+            "batch",
+            batch.id,
+            batch.name,
+            [{"field": "cities", "from": None, "to": "all on" if body.active else "all off"}],
+        )
+    db.commit()
+    return _cities(db, batch.id)
 
 
 class ListPatch(Strict):
@@ -186,7 +317,7 @@ def update_list(list_id: uuid.UUID, body: ListPatch, me: CurrentUser, db: Db) ->
     ensure(me, Action.OPERATE_AGENTS)
     item = db.get(LeadList, list_id)
     if item is None:
-        raise ApiError(404, "not_found", "That list doesn't exist.")
+        raise ApiError(404, "not_found", "That city doesn't exist.")
     before = {"active": item.active, "daily_limit": item.daily_limit}
     if body.active is not None:
         item.active = body.active
@@ -198,7 +329,7 @@ def update_list(list_id: uuid.UUID, body: ListPatch, me: CurrentUser, db: Db) ->
     if changes:
         audit.record(db, me, "edit", "list", item.id, f"{item.city} · {item.niche}", changes)
     db.commit()
-    return next(x for x in list_lists(me, db) if x.id == item.id)
+    return next(x for x in _cities(db, item.batch_id) if x.id == item.id)
 
 
 NicheName = Annotated[str, StringConstraints(max_length=80)]

@@ -211,6 +211,7 @@ export type ImportSheet = {
 
 export type LeadList = {
   id: string;
+  batch_id: string;
   city: string;
   niche: string;
   active: boolean;
@@ -650,7 +651,15 @@ export const api = {
   lead: (id: string) => request<LeadDetail>("GET", `/leads/${id}`),
   updateLead: (id: string, patch: LeadPatch) => request<LeadDetail>("PATCH", `/leads/${id}`, patch),
   deleteLead: (id: string) => request<void>("DELETE", `/leads/${id}`),
-  lists: () => request<LeadList[]>("GET", "/lists"),
+  batchCities: (batchId: string) => request<LeadList[]>("GET", `/batches/${batchId}/cities`),
+  switchAllCities: (batchId: string, active: boolean) =>
+    request<LeadList[]>("PUT", `/batches/${batchId}/cities`, { active }),
+  importDeletion: (id: string) =>
+    request<{ leads_going: number; leads_staying: number; batch_running: boolean }>(
+      "GET",
+      `/imports/${id}/deletion`,
+    ),
+  deleteImport: (id: string) => request<void>("DELETE", `/imports/${id}`),
   updateList: (id: string, patch: { active?: boolean }) =>
     request<LeadList>("PATCH", `/lists/${id}`, patch),
   setBudget: (daily_total_budget_usd: string, time_zone: string) =>

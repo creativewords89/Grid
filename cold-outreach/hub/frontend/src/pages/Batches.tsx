@@ -6,13 +6,16 @@ import {
   type BatchStatus,
   type Benchmark,
   type LeadImport,
+  type LeadPage,
   type Pipeline,
 } from "../api";
 import { useAuth } from "../auth";
-import { Alert, Field } from "../components/ui";
+import { Alert, Confirm, Field } from "../components/ui";
 import { when } from "../format";
 import { navigate } from "../router";
+import { BatchCities } from "./BatchCities";
 import { PipelineTab, ResultsTab } from "./BatchPipeline";
+import { BatchLeads, LeadDialog } from "./Leads";
 import { SheetView } from "./ImportSheet";
 
 // Batches (SPEC sections 6.4 and 7): make a batch (a name, one niche, one benchmark of that
@@ -33,12 +36,50 @@ const STATUS: Record<LeadImport["status"], string> = {
   discarded: "Discarded",
 };
 
+type Tab = "tasks" | "leads" | "cities" | "results" | "files";
+const TABS: [Tab, string][] = [
+  ["tasks", "Tasks and agents"],
+  ["leads", "Leads"],
+  ["cities", "Cities"],
+  ["results", "Results"],
+  ["files", "Files and settings"],
+];
+
+/** The open batch and tab from the address: /batches?batch=<id>&tab=<tab>, and the old
+ * /leads?batch=<id> opens that batch's Leads tab. */
+function fromAddress(): { batch: string | null; tab: Tab | null } {
+  const params = new URLSearchParams(window.location.search);
+  const tab = params.get("tab");
+  const known = TABS.some(([key]) => key === tab) ? (tab as Tab) : null;
+  return {
+    batch: params.get("batch"),
+    tab: window.location.pathname === "/leads" ? "leads" : known,
+  };
+}
+
+function setAddress(batch: string | null, tab: Tab | null, push = false) {
+  const query = batch ? `?batch=${batch}${tab ? `&tab=${tab}` : ""}` : "";
+  const target = `/batches${query}`;
+  if (window.location.pathname + window.location.search === target) return;
+  // From /leads or /import the menu should show Batches: tell the router.
+  if (window.location.pathname !== "/batches") navigate(target, true);
+  else if (push) window.history.pushState(null, "", target);
+  else window.history.replaceState(null, "", target);
+}
+
 export function Batches() {
   const { user } = useAuth();
   const [batches, setBatches] = useState<Batch[] | null>(null);
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(() => fromAddress().batch);
+  const [startTab] = useState<Tab | null>(() => fromAddress().tab);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const back = () => setOpen(fromAddress().batch);
+    window.addEventListener("popstate", back);
+    return () => window.removeEventListener("popstate", back);
+  }, []);
 
   const load = useCallback(() => {
     api
@@ -66,13 +107,20 @@ export function Batches() {
     }
   }
 
+  const openBatch = (id: string | null) => {
+    setAddress(id, null, true);
+    setOpen(id);
+  };
+
   if (current) {
     return (
       <BatchView
+        key={current.id}
         batch={current}
         staff={staff}
+        startTab={startTab}
         onBack={() => {
-          setOpen(null);
+          openBatch(null);
           load();
         }}
         onChanged={load}
@@ -97,10 +145,11 @@ export function Batches() {
           onMade={(made) => {
             setAdding(false);
             load();
-            setOpen(made.id);
+            openBatch(made.id);
           }}
         />
       )}
+      <FindBusiness batches={batches ?? []} onOpenBatch={openBatch} />
       {batches?.length === 0 && !adding && (
         <p className="muted">
           No batches yet. Make one: give it a name, its niche and a benchmark, then add files.
@@ -149,7 +198,7 @@ export function Batches() {
                     </td>
                   )}
                   <td>
-                    <button className="link-button cell-strong" onClick={() => setOpen(batch.id)}>
+                    <button className="link-button cell-strong" onClick={() => openBatch(batch.id)}>
                       {batch.name}
                     </button>
                   </td>
@@ -311,21 +360,30 @@ function NewBatch({ onCancel, onMade }: { onCancel: () => void; onMade: (b: Batc
 function BatchView({
   batch,
   staff,
+  startTab,
   onBack,
   onChanged,
 }: {
   batch: Batch;
   staff: boolean;
+  startTab: Tab | null;
   onBack: () => void;
   onChanged: () => void;
 }) {
   const [imports, setImports] = useState<LeadImport[]>([]);
   const [current, setCurrent] = useState<LeadImport | null>(null);
   const [error, setError] = useState("");
-  // A new batch starts with its files; one with leads with its tasks and bots.
-  const [tab, setTab] = useState<"tasks" | "results" | "files">(
-    batch.leads === 0 ? "files" : "tasks",
+  // A new batch starts with its files; one with leads with its tasks and agents.
+  const [tab, setTabState] = useState<Tab>(startTab ?? (batch.leads === 0 ? "files" : "tasks"));
+  const [city, setCity] = useState("");
+  const setTab = useCallback(
+    (next: Tab) => {
+      setAddress(batch.id, next);
+      setTabState(next);
+    },
+    [batch.id],
   );
+  useEffect(() => setAddress(batch.id, tab), [batch.id, tab]);
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -364,11 +422,11 @@ function BatchView({
         setCurrent((shown) => shown ?? waiting ?? null);
       })
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Not loaded."));
-  }, [batch.id]);
+  }, [batch.id, setTab]);
   useEffect(load, [load]);
 
   return (
-    <section className="page">
+    <section className="page page-wide">
       <div className="page-head">
         <div>
           <h1>{batch.name}</h1>
@@ -393,16 +451,6 @@ function BatchView({
               {status === "paused" ? "Resume" : "Start"}
             </button>
           )}
-          <a
-            className="button"
-            href={`/leads?batch=${batch.id}`}
-            onClick={(e) => {
-              e.preventDefault();
-              navigate(`/leads?batch=${batch.id}`);
-            }}
-          >
-            See its leads
-          </a>
           <button className="button" onClick={onBack}>
             All batches
           </button>
@@ -413,14 +461,16 @@ function BatchView({
         <p className="muted small">To start: {pipeline.start_problem}</p>
       )}
       <div className="tabs" role="tablist" aria-label="Batch">
-        {(
-          [
-            ["tasks", "Tasks and agents"],
-            ["results", "Results"],
-            ["files", "Files and settings"],
-          ] as const
-        ).map(([key, label]) => (
-          <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)}>
+        {TABS.map(([key, label]) => (
+          <button
+            key={key}
+            role="tab"
+            aria-selected={tab === key}
+            onClick={() => {
+              if (key === "leads") setCity("");
+              setTab(key);
+            }}
+          >
             {label}
           </button>
         ))}
@@ -428,7 +478,20 @@ function BatchView({
       {tab === "tasks" && pipeline && (
         <PipelineTab batchId={batch.id} pipeline={pipeline} onChange={changed} />
       )}
-      {tab === "results" && pipeline && <ResultsTab batchId={batch.id} pipeline={pipeline} />}
+      {tab === "leads" && <BatchLeads key={city} batchId={batch.id} city={city} />}
+      {tab === "cities" && (
+        <BatchCities
+          batchId={batch.id}
+          staff={staff}
+          onOpenCity={(name) => {
+            setCity(name);
+            setTab("leads");
+          }}
+        />
+      )}
+      {tab === "results" && pipeline && (
+        <ResultsTab batchId={batch.id} pipeline={pipeline} onShowLeads={() => setTab("leads")} />
+      )}
       {tab === "files" && (
         <BatchSettings batch={batch} staff={staff} onChanged={onChanged} onDeleted={onBack} />
       )}
@@ -454,7 +517,19 @@ function BatchView({
           onClose={() => setCurrent(null)}
         />
       )}
-      {tab === "files" && <History imports={imports} onOpen={setCurrent} />}
+      {tab === "files" && (
+        <History
+          imports={imports}
+          staff={staff}
+          running={status === "running"}
+          onOpen={setCurrent}
+          onDeleted={(item) => {
+            if (current?.id === item.id) setCurrent(null);
+            load();
+            onChanged();
+          }}
+        />
+      )}
     </section>
   );
 }
@@ -765,22 +840,66 @@ function PreviewCard({
 
 function History({
   imports,
+  staff,
+  running,
   onOpen,
+  onDeleted,
 }: {
   imports: LeadImport[];
+  staff: boolean;
+  running: boolean;
   onOpen: (item: LeadImport) => void;
+  onDeleted: (item: LeadImport) => void;
 }) {
+  const [asking, setAsking] = useState<{
+    item: LeadImport;
+    going: number;
+    staying: number;
+  } | null>(null);
+  const [error, setError] = useState("");
   if (imports.length === 0) return null;
+
+  async function ask(item: LeadImport) {
+    setError("");
+    try {
+      const what = await api.importDeletion(item.id);
+      setAsking({ item, going: what.leads_going, staying: what.leads_staying });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Not loaded.");
+    }
+  }
+
+  async function remove(item: LeadImport) {
+    setAsking(null);
+    try {
+      await api.deleteImport(item.id);
+      onDeleted(item);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Not deleted.");
+    }
+  }
+
   return (
     <div className="card table-card">
+      {error && <Alert kind="error">{error}</Alert>}
       <table className="table">
-        <caption className="table-caption">Past imports</caption>
+        <caption className="table-caption">
+          Past imports
+          {staff && running && (
+            <span className="muted small"> · to delete a file, pause the batch first</span>
+          )}
+        </caption>
         <thead>
           <tr>
             <th>File</th>
             <th>Status</th>
             <th>Businesses</th>
             <th className="hide-narrow">When</th>
+            {staff && (
+              <th>
+                <span className="sr-only">Delete</span>
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -797,10 +916,138 @@ function History({
                 {when(item.created_at)}
                 {item.uploaded_by && ` · ${item.uploaded_by}`}
               </td>
+              {staff && (
+                <td>
+                  {item.status !== "preview" && (
+                    <button
+                      className="link-button"
+                      disabled={running}
+                      title={running ? "Pause the batch first" : undefined}
+                      aria-label={`Delete ${item.file_name}`}
+                      onClick={() => void ask(item)}
+                    >
+                      Delete
+                    </button>
+                  )}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
       </table>
+      {asking && (
+        <Confirm
+          title={`Delete ${asking.item.file_name}?`}
+          message={
+            <>
+              {asking.going.toLocaleString()} businesses this file brought in go, with their
+              agents&apos; results and reports. {asking.staying.toLocaleString()} businesses that
+              came from earlier files stay. Top businesses stay on the do-not-contact list.
+            </>
+          }
+          confirmLabel="Delete the file"
+          danger
+          onConfirm={() => void remove(asking.item)}
+          onClose={() => setAsking(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Find a business in every batch (SPEC section 6.4 item 12). */
+function FindBusiness({
+  batches,
+  onOpenBatch,
+}: {
+  batches: Batch[];
+  onOpenBatch: (id: string) => void;
+}) {
+  const [typed, setTyped] = useState("");
+  const [found, setFound] = useState<LeadPage | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const [error, setError] = useState("");
+
+  async function search(event: FormEvent) {
+    event.preventDefault();
+    if (!typed.trim()) {
+      setFound(null);
+      return;
+    }
+    setError("");
+    try {
+      setFound(await api.leads({ q: typed.trim() }));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Not found.");
+    }
+  }
+
+  return (
+    <div className="card stack">
+      <form className="filters-row" onSubmit={search} aria-label="Find a business">
+        <Field
+          label="Find a business in every batch"
+          placeholder="Name, Lead ID, email, phone, website…"
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+        />
+        <div className="field">
+          <span className="label-spacer" aria-hidden="true">
+            &nbsp;
+          </span>
+          <button className="button">Find</button>
+        </div>
+      </form>
+      {error && <Alert kind="error">{error}</Alert>}
+      {found && found.total === 0 && <p className="muted small">No business matches.</p>}
+      {found && found.total > 0 && (
+        <div className="table-scroll">
+          <table className="table compact-table">
+            <caption className="table-caption">
+              {found.total.toLocaleString()} found
+              {found.pages > 1 && " (the first 100 shown)"}
+            </caption>
+            <thead>
+              <tr>
+                <th>Lead ID</th>
+                <th>Business</th>
+                <th>City</th>
+                <th>Batch</th>
+              </tr>
+            </thead>
+            <tbody>
+              {found.leads.map((lead) => (
+                <tr key={lead.lead_id}>
+                  <td className="small">{lead.lead_id}</td>
+                  <td>
+                    <button className="link-button" onClick={() => setOpen(lead.lead_id)}>
+                      {lead.business_name || lead.lead_id}
+                    </button>
+                  </td>
+                  <td>{lead.city}</td>
+                  <td>
+                    {lead.batch_id && batches.some((b) => b.id === lead.batch_id) ? (
+                      <button className="link-button" onClick={() => onOpenBatch(lead.batch_id!)}>
+                        {lead.batch_name}
+                      </button>
+                    ) : (
+                      (lead.batch_name ?? "—")
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {open && (
+        <LeadDialog
+          id={open}
+          agents={found?.agents ?? {}}
+          onClose={() => setOpen(null)}
+          onChanged={() => void 0}
+        />
+      )}
     </div>
   );
 }
