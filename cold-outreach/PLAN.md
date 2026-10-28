@@ -9,7 +9,7 @@ This file holds the decisions that apply to the whole system. Each part has its 
 
 | Part | Spec | State |
 |---|---|---|
-| Agent Hub | [hub/SPEC.md](hub/SPEC.md) | Built and installed (steps 1–9); step 10, batches and named benchmarks, done |
+| Agent Hub | [hub/SPEC.md](hub/SPEC.md) | Built and installed (steps 1–10); step 11, leads kept in the Hub without Google, done |
 | GBP audit agent | `agents/gbp-audit/SPEC.md` | Decided (section 5), spec written before its build |
 | Website audit agent | `agents/website-audit/SPEC.md` | Decided (section 6), spec written before its build |
 | Social media audit agent | `agents/social-audit/SPEC.md` | Data source not decided |
@@ -43,13 +43,13 @@ This file is the record; where it and an older message disagree, this file wins.
 
 ```
                  ┌──────────────── AGENT HUB (hub.gridrankers.com) ────────────────┐
-                 │ Sign-in · Benchmarks · Batches · Agents (on/off, batches) · Runs │
+                 │ Sign-in · Benchmarks · Batches · Leads · Agents (on/off) · Runs │
                  │ Connections · Users · History · Alerts (email/Telegram)         │
                  └───────┬───────────────┬───────────────┬───────────────┬─────────┘
                          ▼               ▼               ▼               ▼
                    ① GBP audit     ② Website audit  ③ Social audit  ④ Outreach agents
                          └───────────────┴───────┬───────┴───────────────┘
-                              Master Google Sheet (Leads) + Google Drive (JSON, PDF)
+                         Hub: Leads (rows, results, reports) · Excel download
 ```
 
 - **Separate agents.** Each agent is its own Python package and Docker container, with its
@@ -70,23 +70,21 @@ This file is the record; where it and an older message disagree, this file wins.
 
 | Data | Lives in | Why |
 |---|---|---|
-| Leads and each agent's result columns | **Master Google Sheet**, Leads tab | The team reads and filters it every day |
-| Full audit results | **Google Drive**: `leads/{Lead ID}/gbp.json`, `website.json`, `social.json`, older ones in `history/`; reports as PDF next to them | Too big for a cell; the next agents read them |
-| Users, secrets, settings, agents, runs, costs, batches, imports, Lead ID registry, benchmarks | **Hub database** (PostgreSQL) | Needs exact state and access control |
+| Leads (each row from the lead files) and each agent's result (status, score, summary, full details) | **Hub database**, Leads screen; Excel download | One place, under the Hub's roles, backed up nightly |
+| Report files (PDF, JSON …) | **Hub server** (`REPORTS_DIR`), listed with the lead | Too big for the database; backed up with it |
+| Users, secrets, settings, agents, runs, costs, batches, imports, benchmarks | **Hub database** (PostgreSQL) | Needs exact state and access control |
 | Outreach later (emails sent, replies, opt-outs, follow-up dates, do-not-contact list) | **Hub database** | A sent email must never be sent twice; an opt-out must never be emailed again |
 
-The Sheet may show an `Outreach Status` column for reading only.
+### 3.2 Leads in the Hub
 
-### 3.2 Master Sheet, Leads tab
-
-- **Columns the Hub writes on import:** `Lead ID, City, Niche, Level, Business Name, GBP Link,
-  Address, Website, Phone, WhatsApp, Facebook, Instagram, Email, Reviews, Rating, Notes`.
-- **Columns each agent owns** (5 per agent): `GBP …`, `WEB …`, `SOC …` followed by
-  `Status, Score, Summary, JSON, Audited At`. The Website agent also writes `WEB Report`
-  (open decision 3).
-- Agents find **rows by Lead ID** and **columns by header name**, never by position, so
-  sorting or moving columns breaks nothing.
-- An agent only ever writes its own columns. Nobody's input columns are changed by an agent.
+- Every lead is kept in the Hub (screen **Leads**, like a spreadsheet): Lead ID, Batch, Niche,
+  City, Level, Business Name, GBP Link, Address, Website, Phone, WhatsApp, Facebook,
+  Instagram, Email, Reviews, Rating, Notes, and **each agent's result**: `Status, Score,
+  Summary, Checked`, with the full details (JSON) and report files (PDF …) behind it.
+- The team searches, filters and sorts there and downloads any view as an **Excel file**.
+  Owners and Admins can change a lead's email, phone, website, Top mark and notes.
+- Agents read leads and save their results and report files through the Hub's agent API;
+  an agent only ever changes its own result. No Google Sheet or Drive is used.
 
 ### 3.3 Lead files the team uploads
 
@@ -196,7 +194,7 @@ used up.
 
   | Part | Points | Checks |
   |---|---|---|
-  | Basics | 20 | claimed, phone, website, hours, full address (not for service-area businesses), keyword-stuffed name; Sheet phone/address differ from GBP |
+  | Basics | 20 | claimed, phone, website, hours, full address (not for service-area businesses), keyword-stuffed name; the lead's phone/address differ from GBP |
   | Categories | 15 | primary matches the Niche, number of additional categories, vs benchmark |
   | Description | 10 | missing, under 250 characters, no city, no niche keyword, vs benchmark |
   | Services | 20 | none, fewer than 5, no descriptions, vs benchmark |
@@ -208,15 +206,15 @@ used up.
   "Use reviews in outreach" (off) can allow it later. Q&A is not checked.
 - **Benchmark comparison** (the batch's benchmark, GBP part): lead ÷ benchmark under 25% →
   🔴, 25–60% → 🟠, 60%+ → ✅.
-- **Output:** `GBP Status, Score, Summary, JSON, Audited At`; `gbp.json` in Drive;
-  `discovered.website` for the Website agent.
+- **Output:** its result per lead in the Hub (`Status, Score, Summary`, full details as
+  JSON) and a report file; `discovered.website` for the Website agent.
 
 ## 6. Website audit agent (decided)
 
 - **Compares only against the Website Standard** of its batch's benchmark.
-- **Website to audit:** the Sheet's Website; if empty, the GBP website.
+- **Website to audit:** the lead's Website; if empty, the GBP website.
 
-  | Sheet Website | GBP website | Result |
+  | Lead's Website | GBP website | Result |
   |---|---|---|
   | empty | none | `NO_WEBSITE`: the strongest hook; no score |
   | empty | present | audit the GBP website; never say "no website" |
@@ -251,7 +249,7 @@ used up.
   (`coverage: partial`) and the report says so.
 - **Output:** English PDF report (sample: https://claude.ai/artifact/7xuNwndPhBuwxbaSNySLrn),
   "Pages we reviewed" with URLs, `pages_audited[]`, 3–5 `outreach_hooks`, 3 quick wins, mobile
-  screenshot, `discovered{}`; Sheet columns `WEB Status, Score, Summary, JSON, Audited At`.
+  screenshot, `discovered{}`; its result per lead in the Hub (`Status, Score, Summary`, full details) and the report file.
 - **Statuses:** `OK, NO_WEBSITE, NOT_OWN_SITE, UNREACHABLE, PARKED, NO_STANDARD, BLOCKED,
   BLOCKED_FINAL, ERROR`.
 
@@ -273,8 +271,8 @@ Reply agent → Handoff (WhatsApp/phone by a person) → Learning.**
 
 1. **Agent Hub** ([hub/SPEC.md](hub/SPEC.md) section 12): skeleton, sign-in, connections,
    agents, scheduler and runs, import, benchmarks, alerts, deployment.
-2. **GBP audit agent**, with the shared agent library (`agents/core`: Hub client, Sheet,
-   Drive, envelope).
+2. **GBP audit agent**, with the shared agent library (`agents/core`: Hub client, results,
+   report files, envelope).
 3. **Website audit agent**, then the Niche Standard for each starting niche.
 4. **Social audit agent** (after its data source is chosen).
 5. **Outreach agents**, one at a time.
@@ -287,7 +285,8 @@ One build step per task; each step ends green on CI before the next starts.
 2. **Benchmarks** (GBP numbers and the Website Standard) are entered in a Hub form (not
    Excel).
 3. **`WEB Report` column** (link to the PDF) is added next to the Website agent's 5 columns.
-4. **Report format:** PDF in Drive. A tracked web link (who opened it) can come later.
+4. **Report format:** PDF kept in the Hub with the lead. A tracked web link (who opened it)
+   can come later.
 5. **Lead capture** section (booking/quote form, tap-to-call, Google reviews on the site): not
    added for now.
 6. **Starting niches:** Cleaning and Construction (the two files shared so far).

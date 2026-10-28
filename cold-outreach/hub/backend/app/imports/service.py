@@ -1,11 +1,11 @@
-"""Preview and confirm a lead file (SPEC section 6.4).
+"""Preview and confirm a lead file (SPEC section 6.4). Leads are kept in the Hub.
 
 Preview reads the file, cleans and merges its rows, and matches them against the leads the
 Hub already knows. A business stays in the batch it was first imported into: matched in
 another batch, it is listed as such and updated there. Nothing is written anywhere but the
-import itself. Confirm gives Lead IDs,
-updates the registry, lists and do-not-contact list, and writes the Master Sheet; if the
-Sheet can't be written, nothing is saved, so the same IDs are used on the next try.
+import itself. Confirm gives Lead IDs and
+saves each lead's row, and updates the lists and the do-not-contact list, in one
+transaction.
 """
 
 from dataclasses import dataclass
@@ -14,13 +14,24 @@ from typing import Any
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session
 
-from app import connections, providers
 from app.auth.tokens import now
 from app.db.models import Batch, DoNotContact, Import, ImportStatus, Lead, LeadList, User
 from app.errors import ApiError
-from app.imports import reader, sheet
+from app.imports import reader
 
 SAMPLE = 25  # how many rows each preview list shows
+# The parts of a lead's row kept in `Lead.data` (the rest have columns of their own).
+DATA_FIELDS = (
+    "address",
+    "website",
+    "phone",
+    "whatsapp",
+    "facebook",
+    "instagram",
+    "reviews",
+    "rating",
+    "notes",
+)
 
 
 def _registry_keys(lead: Lead) -> dict[str, str]:
@@ -151,16 +162,6 @@ def preview(db: Session, user: User, file_name: str, content: bytes, batch: Batc
 # --- confirm --------------------------------------------------------------------------------
 
 
-def google_sheet() -> sheet.Sheet:
-    values = connections.current()
-    if not connections.ready(values, "google"):
-        raise ApiError(
-            409, "no_google", "Set up Google (Sheets and Drive) on the Connections screen first."
-        )
-    token = providers.google_token(values["google_service_account"])
-    return sheet.Sheet(token, connections.sheet_id(values["google_sheet_url"]) or "")
-
-
 def _next_number(db: Session) -> int:
     highest = db.scalar(select(func.max(Lead.lead_id)))
     return int(highest[2:]) + 1 if highest else 1
@@ -197,11 +198,13 @@ def _apply(db: Session, imp: Import, row: dict[str, Any], lead: Lead | None, num
     if imp.preview.get("has_level_column"):
         lead.level = values.get("level", "")
     lead.emails = list(dict.fromkeys([*lead.emails, *row.get("emails", [])]))
+    # A value from the file replaces the saved one; an empty cell never blanks it.
+    lead.data = dict(lead.data or {}) | {f: values[f] for f in DATA_FIELDS if values.get(f)}
     lead.last_import_id = imp.id
     return lead
 
 
-def _do_not_contact(db: Session, lead: Lead) -> None:
+def sync_do_not_contact(db: Session, lead: Lead) -> None:
     """Top leads' email, phone and GBP link are never contacted (PLAN.md section 3.4)."""
     db.execute(
         delete(DoNotContact).where(
@@ -220,27 +223,22 @@ def _do_not_contact(db: Session, lead: Lead) -> None:
 def confirm(db: Session, imp: Import, user: User) -> Import:
     if imp.status != ImportStatus.PREVIEW:
         raise ApiError(409, "not_preview", f"This import is {imp.status.value}.")
-    target = google_sheet()
     # One import at a time: Lead IDs are numbered from the highest one saved.
     db.execute(text("SELECT pg_advisory_xact_lock(4242001)"))
     registry = Registry.load(db)
-    batch_names = {b.id: b.name for b in db.scalars(select(Batch))}
     number = _next_number(db)
-    written: list[dict[str, str]] = []
+    added = updated = 0
     for row in imp.rows:
         match = registry.match(row)
         lead = _apply(db, imp, row, match, number)
         if match is None:
             number += 1
+            added += 1
             registry.add(lead)
+        else:
+            updated += 1
         if match is not None or lead.level == "Top":
-            _do_not_contact(db, lead)
-        values = {k: v for k, v in row.items() if isinstance(v, str)}
-        values["lead_id"] = lead.lead_id
-        values["niche"] = lead.niche  # a business found in another batch stays there
-        values["batch"] = batch_names.get(lead.batch_id, "") if lead.batch_id else ""
-        values["email"] = ", ".join(lead.emails)
-        written.append(values)
+            sync_do_not_contact(db, lead)
     for city in sorted({row["city"] for row in imp.rows}):
         exists = db.scalar(
             select(LeadList).where(
@@ -250,17 +248,10 @@ def confirm(db: Session, imp: Import, user: User) -> Import:
         )
         if exists is None:
             db.add(LeadList(city=city, niche=imp.niche))
-    try:
-        added, updated = sheet.write_leads(
-            target, written, write_level=bool(imp.preview.get("has_level_column"))
-        )
-    except providers.ProviderError as error:
-        db.rollback()
-        raise ApiError(502, "sheet_failed", f"{error} Nothing was saved; try again.") from None
     imp.status = ImportStatus.CONFIRMED
     imp.confirmed_at = now()
-    imp.counts = dict(imp.counts, sheet_added=added, sheet_updated=updated)
-    imp.rows = []  # the Sheet and the registry have them now
+    imp.counts = dict(imp.counts, saved_new=added, saved_updated=updated)
+    imp.rows = []  # the leads have them now
     return imp
 
 

@@ -23,7 +23,6 @@ export const RUN_STATUS: Record<Run["status"], string> = {
 
 export const CONNECTION_NAMES: Record<string, string> = {
   dataforseo: "DataForSEO",
-  google: "Google",
   pagespeed: "PageSpeed Insights",
   email: "Email",
   telegram: "Telegram",

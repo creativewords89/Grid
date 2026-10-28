@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// End-to-end test of the main flow (SPEC section 12, step 9), against the real API,
-// scheduler, web app and demo agent, with a fake Google (see serve.sh).
+// End-to-end test of the main flow (SPEC section 12), against the real API, scheduler, web
+// app and demo agent (see serve.sh).
 export default defineConfig({
   testDir: "./tests",
   timeout: 120_000,

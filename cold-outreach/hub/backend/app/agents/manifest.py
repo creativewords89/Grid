@@ -48,10 +48,8 @@ class Manifest(BaseModel):
     settings: list[Setting] = Field(default_factory=list, max_length=60)
     # Connection groups whose values the agent receives when a run starts.
     connections: list[str] = Field(default_factory=list)
-    # The Master Sheet columns the agent writes, e.g. "GBP Status".
-    sheet_columns: list[Annotated[str, StringConstraints(max_length=60)]] = Field(
-        default_factory=list, max_length=20
-    )
+    # What the Leads screen calls this agent's result, e.g. "GBP". Defaults to the name.
+    result_label: Annotated[str, StringConstraints(strip_whitespace=True, max_length=40)] = ""
     cost_per_item_usd: float = Field(default=0.0, ge=0, le=100)
 
     @model_validator(mode="after")

@@ -1,25 +1,17 @@
 """Importing lead files (SPEC section 6.4), from fixtures built like the team's real files."""
 
 import io
-import json
-from collections.abc import Iterator
 from typing import Any
 
-import httpx2
 import pytest
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import connections, providers
 from app.db.models import DoNotContact, Import, Lead, LeadList, Role, User
 from app.imports import reader
-from app.imports.sheet import column_letter
 from tests.conftest import UserFactory, sign_in
-from tests.fake_google import FakeSheets
 from tests.hub_data import batch_id
 
 STANDARD = [
@@ -218,34 +210,10 @@ def owner(client: TestClient, make_user: UserFactory) -> User:
     return user
 
 
-@pytest.fixture
-def google(
-    client: TestClient, owner: User, monkeypatch: pytest.MonkeyPatch
-) -> Iterator[FakeSheets]:
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    pem = key.private_bytes(
-        serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()
-    ).decode()
-    account = {
-        "type": "service_account",
-        "client_email": "hub@p.iam.gserviceaccount.com",
-        "private_key": pem,
-        "token_uri": "https://oauth2.googleapis.com/token",
-    }
-    client.patch(
-        "/api/connections",
-        json={
-            "values": {
-                "google_service_account": json.dumps(account),
-                "google_sheet_url": "https://docs.google.com/spreadsheets/d/1SheetIdAbCdEfGhIjKlMn/",
-                "google_drive_folder_url": "https://drive.google.com/drive/folders/1FolderIdAbCd",
-            }
-        },
-    )
-    connections.invalidate()
-    fake = FakeSheets()
-    monkeypatch.setattr(providers, "transport", httpx2.MockTransport(fake.handle))
-    yield fake
+def leads(client: TestClient, **params: Any) -> dict[str, dict[str, Any]]:
+    """The leads the Leads screen shows, by Lead ID."""
+    page = client.get("/api/leads", params=params).json()
+    return {lead["lead_id"]: lead for lead in page["leads"]}
 
 
 def upload(client: TestClient, content: bytes, batch: str = "Batch 1") -> dict[str, Any]:
@@ -270,9 +238,7 @@ FILE = {
 }
 
 
-def test_preview_writes_nothing_but_the_import(
-    client: TestClient, google: FakeSheets, db: Session
-) -> None:
+def test_preview_saves_nothing_but_the_import(client: TestClient, owner: User, db: Session) -> None:
     body = upload(client, workbook(FILE))
 
     assert body["status"] == "preview"
@@ -281,31 +247,31 @@ def test_preview_writes_nothing_but_the_import(
     assert counts["invalid_emails"] == 1
     assert sorted(body["preview"]["new_lists"]) == ["Dallas", "Tulsa"]
     assert body["preview"]["top"] == ["Top Shine (Tulsa row 3)"]
-    assert google.writes == 0
     assert db.scalar(select(Lead.lead_id)) is None
 
 
-def test_confirm_gives_ids_writes_the_sheet_and_protects_top_leads(
-    client: TestClient, google: FakeSheets, db: Session
+def test_confirm_gives_ids_keeps_the_rows_and_protects_top_leads(
+    client: TestClient, owner: User, db: Session
 ) -> None:
     preview = upload(client, workbook(FILE))
 
     done = client.post(f"/api/imports/{preview['id']}/confirm")
 
     assert done.status_code == 200, done.text
-    assert done.json()["counts"]["sheet_added"] == 4
-    table = google.table()
-    assert [r["Lead ID"] for r in table] == ["L-000001", "L-000002", "L-000003", "L-000004"]
-    first = table[0]
-    assert (first["City"], first["Niche"], first["Batch"], first["Business Name"]) == (
+    assert (done.json()["counts"]["saved_new"], done.json()["counts"]["saved_updated"]) == (4, 0)
+    saved = leads(client)
+    assert list(saved) == ["L-000001", "L-000002", "L-000003", "L-000004"]
+    first = saved["L-000001"]
+    assert (first["city"], first["niche"], first["batch_name"], first["business_name"]) == (
         "Tulsa",
         "Cleaning",
         "Batch 1",
         "Multi-Clean",
     )
-    assert first["Email"] == "kevin@mc.com"
-    assert db.get(Lead, "L-000001").batch_id is not None  # type: ignore[union-attr]
-    assert table[1]["Level"] == "Top"
+    assert first["emails"] == ["kevin@mc.com"]
+    assert first["data"]["phone"] == "(918) 523-8300"
+    assert first["data"]["website"] == "https://multi-clean.com/"
+    assert saved["L-000002"]["level"] == "Top"
     blocked = {(d.kind, d.value) for d in db.scalars(select(DoNotContact))}
     assert blocked == {
         ("gbp", "https://share.google/ts"),
@@ -317,27 +283,9 @@ def test_confirm_gives_ids_writes_the_sheet_and_protects_top_leads(
     assert db.get(Import, preview["id"]).rows == []  # type: ignore[union-attr]
 
 
-def test_a_formula_in_a_cell_stays_text(client: TestClient, google: FakeSheets) -> None:
-    content = workbook(
-        {"Tulsa": [STANDARD, row("=1+1", "https://share.google/f", "1", city="Tulsa")]}
-    )
-    preview = upload(client, content)
-    client.post(f"/api/imports/{preview['id']}/confirm")
-
-    # The fake checks every write uses valueInputOption=RAW, so this stays text in Google.
-    assert google.table()[0]["Business Name"] == "=1+1"
-
-
-def test_a_second_import_updates_instead_of_adding(
-    client: TestClient, google: FakeSheets, db: Session
-) -> None:
+def test_a_second_import_updates_instead_of_adding(client: TestClient, owner: User) -> None:
     first = upload(client, workbook(FILE))
     client.post(f"/api/imports/{first['id']}/confirm")
-    # Someone sorts the tab and an agent fills its column; neither may be disturbed.
-    google.tabs["Leads"][0].append("GBP Score")
-    for line in google.tabs["Leads"][1:]:
-        line.extend([""] * (17 - len(line)) + ["77"])
-    google.tabs["Leads"][1:] = list(reversed(google.tabs["Leads"][1:]))
     again = workbook(
         {
             "Tulsa": [
@@ -358,53 +306,16 @@ def test_a_second_import_updates_instead_of_adding(
     assert (preview["counts"]["new"], preview["counts"]["updated"]) == (1, 1)
     client.post(f"/api/imports/{preview['id']}/confirm")
 
-    table = {r["Lead ID"]: r for r in google.table()}
-    assert len(table) == 5
-    multi = table["L-000001"]
-    assert multi["Email"] == "kevin@mc.com, new@mc.com"
-    assert multi["Website"] == "https://multi-clean.com/"  # an empty cell never blanks it
-    assert multi["GBP Score"] == "77"  # the agent's column is untouched
-    assert table["L-000002"]["Level"] == "Top"  # this file had no Level column
-    assert table["L-000005"]["Business Name"] == "Brand New"
-    assert db.get(Lead, "L-000001").emails == ["kevin@mc.com", "new@mc.com"]  # type: ignore[union-attr]
+    saved = leads(client)
+    assert len(saved) == 5
+    multi = saved["L-000001"]
+    assert multi["emails"] == ["kevin@mc.com", "new@mc.com"]
+    assert multi["data"]["website"] == "https://multi-clean.com/"  # an empty cell never blanks it
+    assert saved["L-000002"]["level"] == "Top"  # this file had no Level column
+    assert saved["L-000005"]["business_name"] == "Brand New"
 
 
-def test_a_new_sheet_gets_its_leads_tab(client: TestClient, google: FakeSheets) -> None:
-    assert "Leads" not in google.tabs
-    preview = upload(client, workbook(FILE))
-    client.post(f"/api/imports/{preview['id']}/confirm")
-
-    header = google.tabs["Leads"][0]
-    assert header[:5] == ["Lead ID", "City", "Niche", "Batch", "Level"]
-    assert len(header) == 17 and column_letter(len(header) - 1) == "Q"
-
-
-def test_a_failed_sheet_write_saves_nothing_and_can_be_retried(
-    client: TestClient, google: FakeSheets, db: Session
-) -> None:
-    google.tabs["Leads"] = [["Lead ID"]]
-    preview = upload(client, workbook(FILE))
-    google.fail_writes = True
-
-    failed = client.post(f"/api/imports/{preview['id']}/confirm")
-
-    assert failed.status_code == 502
-    assert "Nothing was saved" in failed.json()["error"]["message"]
-    assert db.scalar(select(Lead.lead_id)) is None
-    google.fail_writes = False
-    assert client.post(f"/api/imports/{preview['id']}/confirm").status_code == 200
-    assert google.table()[0]["Lead ID"] == "L-000001"
-
-
-def test_confirm_needs_google(client: TestClient, owner: User) -> None:
-    preview = upload(client, workbook(FILE))
-
-    response = client.post(f"/api/imports/{preview['id']}/confirm")
-
-    assert (response.status_code, response.json()["error"]["code"]) == (409, "no_google")
-
-
-def test_discard_and_confirm_only_once(client: TestClient, google: FakeSheets) -> None:
+def test_discard_and_confirm_only_once(client: TestClient, owner: User) -> None:
     preview = upload(client, workbook(FILE))
 
     assert client.post(f"/api/imports/{preview['id']}/discard").json()["status"] == "discarded"
@@ -428,9 +339,7 @@ def test_bad_uploads(client: TestClient, owner: User) -> None:
     assert unknown.status_code == 404
 
 
-def test_a_business_stays_in_the_batch_it_came_in(
-    client: TestClient, google: FakeSheets, db: Session
-) -> None:
+def test_a_business_stays_in_the_batch_it_came_in(client: TestClient, owner: User) -> None:
     first = upload(client, workbook(FILE))
     client.post(f"/api/imports/{first['id']}/confirm")
     again = workbook(
@@ -449,10 +358,10 @@ def test_a_business_stays_in_the_batch_it_came_in(
     assert preview["preview"]["other_batch"] == ["Multi-Clean (L-000001, in Batch 1)"]
     client.post(f"/api/imports/{preview['id']}/confirm")
 
-    table = {r["Lead ID"]: r for r in google.table()}
-    assert table["L-000001"]["Batch"] == "Batch 1"
-    assert table["L-000001"]["Email"] == "kevin@mc.com, new@mc.com"  # still updated
-    assert table["L-000005"]["Batch"] == "Batch 2"
+    saved = leads(client)
+    assert saved["L-000001"]["batch_name"] == "Batch 1"
+    assert saved["L-000001"]["emails"] == ["kevin@mc.com", "new@mc.com"]  # still updated
+    assert saved["L-000005"]["batch_name"] == "Batch 2"
     batches = {b["name"]: b for b in client.get("/api/batches").json()}
     assert (batches["Batch 1"]["leads"], batches["Batch 2"]["leads"]) == (4, 1)
     assert batches["Batch 2"]["files"] == 1
@@ -462,7 +371,7 @@ def test_a_business_stays_in_the_batch_it_came_in(
 
 @pytest.mark.parametrize("role", [Role.VIEWER])
 def test_viewers_see_but_cannot_import(
-    client: TestClient, google: FakeSheets, make_user: UserFactory, role: Role
+    client: TestClient, owner: User, make_user: UserFactory, role: Role
 ) -> None:
     preview = upload(client, workbook(FILE))
     client.cookies.clear()
@@ -479,7 +388,7 @@ def test_viewers_see_but_cannot_import(
     assert denied.status_code == 403
 
 
-def test_lists_count_leads_and_can_be_switched_off(client: TestClient, google: FakeSheets) -> None:
+def test_lists_count_leads_and_can_be_switched_off(client: TestClient, owner: User) -> None:
     preview = upload(client, workbook(FILE))
     client.post(f"/api/imports/{preview['id']}/confirm")
 

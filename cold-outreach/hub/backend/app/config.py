@@ -1,7 +1,7 @@
 """Settings read from the environment (`.env` on the server, SPEC section 10).
 
 Only what the Hub needs before it can read its own database lives here. Every other key
-(DataForSEO, Google, SMTP, Telegram …) is entered in the website (SPEC section 6.1).
+(DataForSEO, PageSpeed, SMTP, Telegram …) is entered in the website (SPEC section 6.1).
 """
 
 from functools import lru_cache
@@ -23,13 +23,12 @@ class Settings(BaseSettings):
         default="postgresql+psycopg://hub:hub@localhost:5432/hub",
         description="SQLAlchemy URL, always the psycopg (v3) driver.",
     )
-    # The outside services' addresses. Only the end-to-end tests change them (to local fakes).
+    # The outside services' addresses (tests point them at fakes).
     dataforseo_url: str = "https://api.dataforseo.com/v3"
-    google_token_url: str = "https://oauth2.googleapis.com/token"  # noqa: S105 (an address)
-    google_sheets_url: str = "https://sheets.googleapis.com/v4/spreadsheets"
-    google_drive_url: str = "https://www.googleapis.com/drive/v3/files"
     pagespeed_url: str = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
     telegram_url: str = "https://api.telegram.org"
+    # Where the files agents save for leads (reports) are kept; backed up with the database.
+    reports_dir: str = "data/reports"
     # The backup service's status file (ops/backup.sh). Empty: backups aren't checked.
     backup_status_file: str = ""
     # One JSON object per log line in production (SPEC section 9).

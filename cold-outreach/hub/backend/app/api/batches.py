@@ -44,7 +44,7 @@ class BatchOut(BaseModel):
     agents: list[str]  # the agents that work on it
     created_at: datetime
     can_edit: bool
-    can_rename: bool  # only while it has no leads: the Master Sheet shows the name
+    can_rename: bool
     can_delete: bool
 
 
@@ -84,7 +84,7 @@ def batch_out(db: Session, me: CurrentUser, batch: Batch) -> BatchOut:
         agents=agents,
         created_at=batch.created_at,
         can_edit=staff,
-        can_rename=staff and leads == 0,
+        can_rename=staff,
         can_delete=staff and leads == 0 and not files and not pending,
     )
 
@@ -167,19 +167,12 @@ class BatchPatch(Strict):
 
 @router.patch("/batches/{batch_id}", response_model=BatchOut)
 def update_batch(batch_id: uuid.UUID, body: BatchPatch, me: CurrentUser, db: Db) -> BatchOut:
-    """Rename a batch that has no leads yet, or choose another benchmark of its niche (the
-    agents then check its leads against that one)."""
+    """Rename a batch, or choose another benchmark of its niche (the agents then check its
+    leads against that one)."""
     ensure(me, Action.IMPORT_LEADS)
     batch = get_batch(db, batch_id)
     before = {"name": batch.name, "benchmark": batch.benchmark.name if batch.benchmark else None}
     if body.name is not None and body.name != batch.name:
-        if not batch_out(db, me, batch).can_rename:
-            raise ApiError(
-                409,
-                "has_leads",
-                "A batch with leads keeps its name: the Master Sheet shows it.",
-                {"name": "This batch already has leads."},
-            )
         batch.name = _name(db, body.name, other_than=batch.id)
     if body.benchmark_id is not None:
         batch.benchmark_id = _benchmark_for(db, batch.niche, body.benchmark_id)

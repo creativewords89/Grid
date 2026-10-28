@@ -10,8 +10,9 @@ from app.db.models import Role, User
 
 
 class Action(enum.StrEnum):
-    VIEW_HUB = "view_hub"  # Overview, Runs, Agents, Batches, Benchmarks
+    VIEW_HUB = "view_hub"  # Overview, Runs, Agents, Batches, Benchmarks, Leads and export
     IMPORT_LEADS = "import_leads"  # make batches, upload and confirm files
+    EDIT_LEADS = "edit_leads"  # change a lead's email, phone, website, Top, notes; delete it
     OPERATE_AGENTS = "operate_agents"  # switch on/off, Run now, Stop
     CONFIGURE_AGENTS = "configure_agents"  # batches, limit, run time, budget and settings
     EDIT_BENCHMARKS = "edit_benchmarks"  # make, change and delete benchmarks
@@ -30,6 +31,7 @@ _OWNER = frozenset({Role.OWNER})
 _ALLOWED: dict[Action, frozenset[Role]] = {
     Action.VIEW_HUB: _ALL,
     Action.IMPORT_LEADS: _STAFF,
+    Action.EDIT_LEADS: _STAFF,
     Action.OPERATE_AGENTS: _STAFF,
     Action.CONFIGURE_AGENTS: _STAFF,
     Action.EDIT_BENCHMARKS: _STAFF,

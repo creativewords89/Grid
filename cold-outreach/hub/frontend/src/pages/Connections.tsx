@@ -14,7 +14,6 @@ import { ago } from "../format";
 
 const TEST_LABEL: Record<string, string> = {
   dataforseo: "Test and show balance",
-  google: "Test the Sheet and folder",
   pagespeed: "Test the key",
   email: "Send a test email",
   telegram: "Test and find the group",
@@ -23,8 +22,6 @@ const TEST_LABEL: Record<string, string> = {
 const HELP: Record<string, string> = {
   dataforseo:
     "From app.dataforseo.com → API Access: the API login and API password (not your website password). Used by the GBP audit agent.",
-  google:
-    "In Google Cloud, create a service account and download its JSON key. Share the Master Sheet and the Drive folder with the service account's email as Editor. The folder should be in a Shared Drive.",
   pagespeed:
     "From Google Cloud → APIs & Services → Credentials, with the PageSpeed Insights API turned on. Used by the Website audit agent.",
   email:
@@ -131,12 +128,6 @@ function Group({ group, onSaved }: { group: ConnectionGroup; onSaved: (data: Dat
     setForm((f) => ({ ...f, [key]: value }));
   };
 
-  async function readFile(key: string, file: File | undefined) {
-    if (!file) return;
-    const text = await file.text();
-    setForm((f) => ({ ...f, [key]: text }));
-  }
-
   const last = group.last_test;
   return (
     <form className="card stack connection" onSubmit={save} aria-labelledby={`conn-${group.id}`}>
@@ -163,33 +154,20 @@ function Group({ group, onSaved }: { group: ConnectionGroup; onSaved: (data: Dat
                 {f.label}
                 {!f.required && <span className="muted small"> (optional)</span>}
               </label>
-              {f.kind === "json" ? (
-                <>
-                  <input
-                    id={id}
-                    type="file"
-                    accept=".json,application/json"
-                    aria-invalid={errors[f.name] ? true : undefined}
-                    onChange={(e) => void readFile(f.name, e.target.files?.[0])}
-                  />
-                  {typed && <p className="hint">Key file ready to save.</p>}
-                </>
-              ) : (
-                <input
-                  id={id}
-                  type={f.kind === "secret" ? "password" : f.kind === "number" ? "number" : "text"}
-                  autoComplete={f.kind === "secret" ? "new-password" : "off"}
-                  spellCheck={false}
-                  placeholder={
-                    f.kind === "secret" && f.set
-                      ? `${f.hint} · paste a new one to replace it`
-                      : f.placeholder
-                  }
-                  value={typed}
-                  aria-invalid={errors[f.name] ? true : undefined}
-                  onChange={set(f.name)}
-                />
-              )}
+              <input
+                id={id}
+                type={f.kind === "secret" ? "password" : f.kind === "number" ? "number" : "text"}
+                autoComplete={f.kind === "secret" ? "new-password" : "off"}
+                spellCheck={false}
+                placeholder={
+                  f.kind === "secret" && f.set
+                    ? `${f.hint} · paste a new one to replace it`
+                    : f.placeholder
+                }
+                value={typed}
+                aria-invalid={errors[f.name] ? true : undefined}
+                onChange={set(f.name)}
+              />
               {errors[f.name] ? (
                 <p className="field-error">{errors[f.name]}</p>
               ) : f.unreadable ? (
@@ -234,5 +212,5 @@ function Group({ group, onSaved }: { group: ConnectionGroup; onSaved: (data: Dat
 }
 
 function secret(field: ConnectionField): boolean {
-  return field.kind === "secret" || field.kind === "json";
+  return field.kind === "secret";
 }

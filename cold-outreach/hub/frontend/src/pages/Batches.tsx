@@ -11,7 +11,7 @@ import { navigate } from "../router";
 
 const STATUS: Record<LeadImport["status"], string> = {
   preview: "Waiting for confirm",
-  confirmed: "Sent to the Master Sheet",
+  confirmed: "Saved",
   failed: "Failed",
   discarded: "Discarded",
 };
@@ -285,9 +285,21 @@ function BatchView({
             {batch.agents.length > 0 && ` · worked on by ${batch.agents.join(", ")}`}
           </p>
         </div>
-        <button className="button" onClick={onBack}>
-          All batches
-        </button>
+        <div className="row">
+          <a
+            className="button"
+            href={`/leads?batch=${batch.id}`}
+            onClick={(e) => {
+              e.preventDefault();
+              navigate(`/leads?batch=${batch.id}`);
+            }}
+          >
+            See its leads
+          </a>
+          <button className="button" onClick={onBack}>
+            All batches
+          </button>
+        </div>
       </div>
       {error && <Alert kind="error">{error}</Alert>}
       <BatchSettings batch={batch} staff={staff} onChanged={onChanged} onDeleted={onBack} />
@@ -460,8 +472,8 @@ function UploadForm({ batch, onRead }: { batch: Batch; onRead: (item: LeadImport
         An Excel file (.xlsx) of {batch.niche} businesses with one tab per city, as you build them
         now: Business name, MAP, Address, City, Website, Phone, WA, Facebook, Instagram, Email,
         Reviews, Average, and an optional Level column (write Top for businesses we never contact).
-        A business already in another batch stays there. Nothing is sent to the Master Sheet until
-        you confirm the preview.
+        A business already in another batch stays there. Nothing is saved until you confirm the
+        preview.
       </p>
       {errors.form && <Alert kind="error">{errors.form}</Alert>}
       <div className="field">
@@ -556,8 +568,7 @@ function PreviewCard({
       {error && <Alert kind="error">{error}</Alert>}
       {item.status === "confirmed" && (
         <Alert kind="success">
-          Sent: {counts.sheet_added ?? 0} rows added and {counts.sheet_updated ?? 0} updated in the
-          Master Sheet.
+          Saved: {counts.saved_new ?? 0} new and {counts.saved_updated ?? 0} updated.
         </Alert>
       )}
       <div className="counts">
@@ -605,9 +616,7 @@ function PreviewCard({
             disabled={busy !== ""}
             onClick={() => void act("confirm")}
           >
-            {busy === "confirm"
-              ? "Sending to the Master Sheet…"
-              : `Send ${counts.leads.toLocaleString()} businesses to the Master Sheet`}
+            {busy === "confirm" ? "Saving…" : `Save ${counts.leads.toLocaleString()} businesses`}
           </button>
           <button className="button" disabled={busy !== ""} onClick={() => void act("discard")}>
             Discard

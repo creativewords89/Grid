@@ -1,13 +1,10 @@
 # Restoring a backup
 
-A restore **replaces** the Hub's database with the copy from a backup. Anything added or
-changed after that backup is lost (imports, runs, settings, users), so only restore when
-something has really gone wrong: the database was damaged, the server was rebuilt, or data
-was deleted by mistake.
-
-The Master Sheet and the Drive reports are in Google and are **not** part of the backup;
-a restore doesn't change them. Leads imported after the backup are still in the Sheet, so
-import those files again after restoring and the Hub matches them up.
+A restore **replaces** the Hub's database and its report files with the copy from a backup.
+Anything added or changed after that backup is lost (leads, agents' results and reports,
+imports, runs, settings, users), so only restore when something has really gone wrong: the
+database was damaged, the server was rebuilt, or data was deleted by mistake. Lead files
+added after the backup can simply be added again: the Hub matches the businesses up.
 
 All commands run on the server, in `/opt/gridrankers/cold-outreach/hub`.
 

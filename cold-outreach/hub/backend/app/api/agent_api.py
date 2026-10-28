@@ -1,11 +1,12 @@
 """`/api/agent/v1`: what agents call (SPEC section 6.2). An agent signs in with its token
 (`Authorization: Bearer …`) and can only see and change its own runs."""
 
+import json
 import uuid
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile, status
 from pydantic import BaseModel, Field, StringConstraints, ValidationError
 from sqlalchemy import or_, select
 
@@ -21,12 +22,14 @@ from app.db.models import (
     Benchmark,
     DoNotContact,
     Lead,
+    LeadFile,
     LeadList,
     Run,
     RunStatus,
 )
 from app.errors import ApiError
 from app.imports.reader import phone_digits
+from app.leads import files
 from app.runs import service as runs
 
 router = APIRouter(prefix="/agent/v1", tags=["agent api"])
@@ -213,14 +216,96 @@ def batches(agent: CurrentAgent, db: Db) -> list[BatchOut]:
 
 
 @router.get("/batches/{batch_id}/leads")
-def batch_leads(batch_id: uuid.UUID, agent: CurrentAgent, db: Db) -> list[dict[str, str]]:
-    """The batch's leads by Lead ID; the full rows are in the Master Sheet's Leads tab.
-    Top leads are listed too, so an agent can tell them apart, but never audited."""
+def batch_leads(batch_id: uuid.UUID, agent: CurrentAgent, db: Db) -> list[dict[str, Any]]:
+    """The batch's leads: each row from the lead files and this agent's own last result
+    (None when it hasn't checked the lead yet). Top leads are listed too, so an agent can
+    tell them apart, but they are never audited."""
     db.commit()
     if db.get(Batch, batch_id) is None:
         raise ApiError(404, "not_found", "That batch doesn't exist.")
     leads = db.scalars(select(Lead).where(Lead.batch_id == batch_id).order_by(Lead.lead_id))
-    return [{"lead_id": x.lead_id, "city": x.city, "level": x.level} for x in leads]
+    return [
+        {
+            "lead_id": x.lead_id,
+            "niche": x.niche,
+            "city": x.city,
+            "level": x.level,
+            "business_name": x.business_name,
+            "gbp_link": x.gbp_link,
+            "emails": x.emails,
+            **(x.data or {}),
+            "result": (x.results or {}).get(agent.key),
+        }
+        for x in leads
+    ]
+
+
+def _lead(db: Db, lead_id: str) -> Lead:
+    lead = db.get(Lead, lead_id)
+    if lead is None:
+        raise ApiError(404, "not_found", "That lead doesn't exist.")
+    return lead
+
+
+class ResultIn(Strict):
+    status: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)]
+    score: Annotated[float, Field(ge=0, le=100)] | None = None
+    summary: Annotated[str, StringConstraints(max_length=4000)] = ""
+    details: dict[str, Any] = Field(default_factory=dict)
+    benchmark_id: str | None = None
+    benchmark_version: int | None = None
+
+
+MAX_DETAILS = 200_000  # characters of JSON; bigger reports go in a file
+
+
+@router.put("/leads/{lead_id}/result", status_code=status.HTTP_204_NO_CONTENT)
+def put_result(lead_id: str, body: ResultIn, agent: CurrentAgent, db: Db) -> None:
+    """Save what this agent found for a lead; it replaces the agent's previous result."""
+    lead = _lead(db, lead_id)
+    result = body.model_dump(mode="json")
+    if len(json.dumps(result["details"])) > MAX_DETAILS:
+        raise ApiError(413, "too_large", "details is too big; save the report as a file.")
+    result["at"] = now().isoformat()
+    lead.results = dict(lead.results or {}) | {agent.key: result}
+    db.commit()
+
+
+@router.post("/leads/{lead_id}/files", status_code=201)
+def save_file(
+    lead_id: str,
+    agent: CurrentAgent,
+    db: Db,
+    file: Annotated[UploadFile, File()],
+    name: Annotated[str, Form()],
+) -> dict[str, str]:
+    """Save a file for a lead, e.g. `gbp-report.pdf`. The same name from the same agent
+    replaces the earlier file. PDF, JSON, PNG, JPEG or CSV, at most 20 MB."""
+    lead = _lead(db, lead_id)
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+    if content_type not in files.CONTENT_TYPES:
+        raise ApiError(415, "bad_type", "Send a PDF, JSON, PNG, JPEG or CSV file.")
+    if not files.NAME.match(name):
+        raise ApiError(422, "bad_name", "Use letters, digits, dots, dashes or underscores.")
+    content = file.file.read(files.MAX_BYTES + 1)
+    if len(content) > files.MAX_BYTES:
+        raise ApiError(413, "too_large", "The file is over 20 MB.")
+    row = db.scalar(
+        select(LeadFile).where(
+            LeadFile.lead_id == lead.lead_id,
+            LeadFile.agent_key == agent.key,
+            LeadFile.name == name,
+        )
+    )
+    if row is None:
+        row = LeadFile(lead_id=lead.lead_id, agent_key=agent.key, name=name)
+        db.add(row)
+    row.content_type = content_type
+    row.size = len(content)
+    db.flush()
+    files.write(lead.lead_id, row.id, content)
+    db.commit()
+    return {"id": str(row.id)}
 
 
 @router.get("/benchmarks/{benchmark_id}")

@@ -196,7 +196,7 @@ def test_a_batch_has_a_name_one_niche_and_a_benchmark_of_that_niche(
     assert taken.status_code == 409
 
 
-def test_a_batch_with_leads_keeps_its_name_but_can_change_benchmark(
+def test_a_batch_with_leads_can_be_renamed_and_change_benchmark_but_not_deleted(
     client: TestClient, owner: User, db: Session
 ) -> None:
     batch = make_batch(client)
@@ -217,7 +217,8 @@ def test_a_batch_with_leads_keeps_its_name_but_can_change_benchmark(
     switched = client.patch(url, json={"benchmark_id": other["id"]})
     deleted = client.delete(url)
 
-    assert (renamed.status_code, renamed.json()["error"]["code"]) == (409, "has_leads")
+    assert renamed.json()["name"] == "New name"
+    assert client.get("/api/leads/L-000001").json()["batch_name"] == "New name"
     assert switched.json()["benchmark"]["name"] == "Cleaning Benchmark 2"
     assert deleted.status_code == 409
 
@@ -296,9 +297,9 @@ def test_an_agent_works_through_its_batches_in_order(
     assert [b["name"] for b in run["batches"]] == ["Batch 2", "Batch 1"]
     assert run["batches"][0]["benchmark_version"] == 1
     leads = agent_call(client, "GET", f"/batches/{second['id']}/leads", token).json()
-    assert leads == [
-        {"lead_id": "L-000001", "city": "Tulsa", "level": ""},
-        {"lead_id": "L-000002", "city": "Dallas", "level": "Top"},
+    assert [(x["lead_id"], x["city"], x["level"]) for x in leads] == [
+        ("L-000001", "Tulsa", ""),
+        ("L-000002", "Dallas", "Top"),
     ]
     benchmark = agent_call(client, "GET", f"/benchmarks/{run['batches'][0]['benchmark_id']}", token)
     assert benchmark.json()["gbp"]["photos"] == 120

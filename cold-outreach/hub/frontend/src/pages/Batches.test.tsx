@@ -149,7 +149,7 @@ test("a niche without a benchmark points to the Benchmarks screen", async () => 
   expect(screen.getByLabelText("Benchmark")).toBeDisabled();
 });
 
-test("add a file to a batch, read the preview, send it to the Master Sheet", async () => {
+test("add a file to a batch, read the preview, save it", async () => {
   const calls = mockApi({
     "GET /auth/me": as("admin"),
     "GET /batches": [200, [batch({ leads: 12, files: 1, can_rename: false, can_delete: false })]],
@@ -161,7 +161,7 @@ test("add a file to a batch, read the preview, send it to the Master Sheet", asy
       200,
       preview({
         status: "confirmed",
-        counts: { ...preview().counts, sheet_added: 3990, sheet_updated: 5 },
+        counts: { ...preview().counts, saved_new: 3990, saved_updated: 5 },
       }),
     ],
   });
@@ -183,11 +183,9 @@ test("add a file to a batch, read the preview, send it to the Master Sheet", asy
   expect(within(card).getByText(/no Level column/)).toBeVisible();
   await userEvent.click(within(card).getByText("Columns that were ignored"));
   expect(within(card).getByText("Operation Hour (in 1 tab)")).toBeVisible();
-  await userEvent.click(
-    within(card).getByRole("button", { name: "Send 3,995 businesses to the Master Sheet" }),
-  );
+  await userEvent.click(within(card).getByRole("button", { name: "Save 3,995 businesses" }));
 
-  expect(await screen.findByText(/3990 rows added and 5 updated/)).toBeVisible();
+  expect(await screen.findByText(/Saved: 3990 new and 5 updated/)).toBeVisible();
   const posted = calls.find((c) => c.path === "/imports" && c.method === "POST");
   expect(posted?.csrf).toBe("t");
   expect((posted?.body as { batch_id: string }).batch_id).toBe("b1");
@@ -288,7 +286,7 @@ test("a viewer sees batches, files and lists but can't add or switch", async () 
   expect(screen.queryByRole("button", { name: "+ New batch" })).not.toBeInTheDocument();
   expect(screen.getByRole("switch", { name: "Tulsa · Cleaning on or off" })).toBeDisabled();
   await userEvent.click(screen.getByRole("button", { name: "Batch 1" }));
-  expect(await screen.findByText("Sent to the Master Sheet")).toBeVisible();
+  expect(await screen.findByText("Saved")).toBeVisible();
   expect(screen.queryByRole("form", { name: "Add a lead file" })).not.toBeInTheDocument();
 });
 

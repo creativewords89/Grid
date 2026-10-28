@@ -10,7 +10,6 @@ seconds, so a change made in the website reaches the scheduler too without a res
 
 import base64
 import hashlib
-import json
 import logging
 import re
 import threading
@@ -31,7 +30,7 @@ log = logging.getLogger(__name__)
 STORE_KEY = "connections"
 CACHE_SECONDS = 10.0
 
-Kind = Literal["text", "secret", "number", "json"]
+Kind = Literal["text", "secret", "number"]
 
 
 @dataclass(frozen=True)
@@ -44,20 +43,12 @@ class Field:
 
     @property
     def secret(self) -> bool:
-        # A service account key file holds a private key, so it is write-only too.
-        return self.kind in ("secret", "json")
+        return self.kind == "secret"
 
 
 FIELDS: dict[str, Field] = {
     "dataforseo_login": Field("dataforseo", "Login (API email)", placeholder="you@gridrankers.com"),
     "dataforseo_password": Field("dataforseo", "API password", "secret"),
-    "google_service_account": Field("google", "Service account key (JSON file)", "json"),
-    "google_sheet_url": Field(
-        "google", "Master Sheet link", placeholder="https://docs.google.com/spreadsheets/d/…"
-    ),
-    "google_drive_folder_url": Field(
-        "google", "Drive folder link", placeholder="https://drive.google.com/drive/folders/…"
-    ),
     "pagespeed_api_key": Field("pagespeed", "API key", "secret", placeholder="AIza…"),
     "smtp_host": Field("email", "SMTP server", placeholder="smtp.hostinger.com"),
     "smtp_port": Field("email", "Port", "number", placeholder="587"),
@@ -74,7 +65,6 @@ FIELDS: dict[str, Field] = {
 }
 GROUPS = {
     "dataforseo": "DataForSEO",
-    "google": "Google (Sheets and Drive)",
     "pagespeed": "PageSpeed Insights",
     "email": "Email (SMTP)",
     "telegram": "Telegram alerts",
@@ -83,39 +73,12 @@ GROUPS = {
 
 # --- checking what is typed ---------------------------------------------------------------
 
-SHEET_ID = re.compile(r"/spreadsheets/d/([A-Za-z0-9_-]{20,})")
-FOLDER_ID = re.compile(r"/folders/([A-Za-z0-9_-]{10,})")
-SERVICE_ACCOUNT_KEYS = ("client_email", "private_key", "token_uri")
-
-
-def sheet_id(url: str) -> str | None:
-    match = SHEET_ID.search(url)
-    return match.group(1) if match else None
-
-
-def folder_id(url: str) -> str | None:
-    match = FOLDER_ID.search(url)
-    return match.group(1) if match else None
-
 
 def problem(name: str, value: str) -> str | None:
     """Why a value can't be saved, or None. Never repeats the value."""
     field = FIELDS[name]
     if field.kind == "number" and not (value.isdigit() and 0 < int(value) < 65536):
         return "Enter a port number, like 587 or 465."
-    if field.kind == "json":
-        try:
-            data = json.loads(value)
-        except ValueError:
-            return "This isn't a JSON key file. Download the key again as JSON."
-        if not isinstance(data, dict) or data.get("type") != "service_account":
-            return "This isn't a service account key. In Google Cloud, create a key of type JSON."
-        if any(not data.get(key) for key in SERVICE_ACCOUNT_KEYS):
-            return "This key file is incomplete. Download it again."
-    if name == "google_sheet_url" and sheet_id(value) is None:
-        return "Paste the Sheet's link from the browser's address bar."
-    if name == "google_drive_folder_url" and folder_id(value) is None:
-        return "Paste the folder's link from the browser's address bar."
     if name == "smtp_from" and "@" not in value:
         return "Enter an email address."
     if name == "telegram_chat_id" and not re.fullmatch(r"-?\d{3,20}", value):

@@ -18,7 +18,8 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY alembic.ini docker-entrypoint.sh ./
 COPY app ./app
 
-RUN useradd --system --uid 10001 --home /app hub
+RUN useradd --system --uid 10001 --home /app hub \
+    && mkdir -p /data/reports && chown hub /data/reports
 USER hub
 
 EXPOSE 8000

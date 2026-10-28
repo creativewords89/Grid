@@ -8,9 +8,11 @@ Every real agent follows the same steps:
 1. send its manifest when it starts (PUT /api/agent/v1/manifest);
 2. ask for work every 30 seconds (GET /api/agent/v1/next-run; 204 means nothing to do); a
    run lists the agent's batches in order, and each batch's leads are read by Lead ID
-   (GET /api/agent/v1/batches/{id}/leads; the full rows are in the Master Sheet);
-3. report progress after every item and stop when the Hub says "stop" (the Hub can
-   only stop an agent, for Stop or the budget, when it reports);
+   (GET /api/agent/v1/batches/{id}/leads, with each lead's full row);
+3. save each lead's result (PUT /api/agent/v1/leads/{id}/result; reports go to
+   POST /api/agent/v1/leads/{id}/files), report progress after every item and stop when
+   the Hub says "stop" (the Hub can only stop an agent, for Stop or the budget, when it
+   reports);
 4. report how the run ended (POST /api/agent/v1/runs/{id}/finish).
 """
 
@@ -56,7 +58,7 @@ MANIFEST = {
         },
     ],
     "connections": [],
-    "sheet_columns": [],
+    "result_label": "Demo",
     "cost_per_item_usd": 0.001,
 }
 
@@ -112,6 +114,13 @@ def do_run(hub: Hub, job: dict[str, Any]) -> None:
             failed += 1
         else:
             done += 1
+            # A made-up score, so the Leads screen has something to show and sort by.
+            score = sum(ord(c) for c in lead["lead_id"]) % 101
+            hub.call(
+                "PUT",
+                f"/leads/{lead['lead_id']}/result",
+                {"status": "OK", "score": score, "summary": "A pretend audit by the demo agent."},
+            )
             log.info("pretended to audit %s", lead["lead_id"])
         cost += MANIFEST["cost_per_item_usd"]  # type: ignore[operator]
         counts = {"done": done, "failed": failed, "skipped": skipped, "cost_usd": f"{cost:.4f}"}

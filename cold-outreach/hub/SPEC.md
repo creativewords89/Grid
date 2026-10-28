@@ -14,13 +14,16 @@ SQLAlchemy, React, Caddy, encrypted write-only keys) by copying, not importing.
 
 - One sign-in for the team; roles decide what each person can do (section 3).
 - **Batches:** make a batch (a name, one niche, one benchmark), then add lead files (`.xlsx`)
-  to it from the browser: clean, merge duplicates, give Lead IDs, preview, then write them to
-  the Master Sheet.
+  to it from the browser: clean, merge duplicates, give Lead IDs, preview, then save them in
+  the Hub.
+- **Leads:** every business in one place, like a spreadsheet: search, filter, sort, open one
+  to see what the agents found, change a few fields, and download what is shown as Excel. No
+  Google Sheet or Drive is used.
 - **Agents** screen: switch each agent on or off, choose the batches it works through (in
   order), set its daily limit, run time, budget and its own settings, press **Run now** or
   **Stop**.
-- **Connections** screen: enter API keys and accounts (DataForSEO, Google service account,
-  Master Sheet, Drive folder, PageSpeed, SMTP, Telegram) with a **Test** button each. Keys are
+- **Connections** screen: enter API keys and accounts (DataForSEO, PageSpeed, SMTP,
+  Telegram) with a **Test** button each. Keys are
   encrypted and never shown again.
 - **Runs** and **Overview**: what ran, what failed, what it cost, today and this month.
 - **Benchmarks:** named sets per niche ("Cleaning Benchmark 1") with the GBP numbers and the
@@ -31,7 +34,7 @@ SQLAlchemy, React, Caddy, encrypted write-only keys) by copying, not importing.
 ### Non-goals (first version)
 
 - Running agent code inside the Hub. Agents are separate containers (section 6.2).
-- Editing lead data in the Hub. The Master Sheet is where people read and edit leads.
+- Editing every field of a lead in the Hub: a new file updates the rest (section 6.4).
 - Self sign-up. People join by invite only.
 
 ## 2. Architecture
@@ -44,7 +47,7 @@ SQLAlchemy, React, Caddy, encrypted write-only keys) by copying, not importing.
 | Scheduler | Same codebase, separate container (`scheduler`): decides when runs are due, marks stale runs, sends alerts and the daily summary |
 | Database | **PostgreSQL 16**, the master copy of everything the Hub owns |
 | Front end | **React + Vite + TypeScript**, bundled, no external CDNs |
-| Google | Sheets and Drive APIs through the service account saved in Connections |
+| Leads and reports | In the database (each lead's row and the agents' results) and, for files agents save, on disk (`REPORTS_DIR`); both backed up nightly. No Google Sheet or Drive. |
 | Alerts | SMTP email and a Telegram bot (its own bot and group) |
 | Secrets | `SECRET_KEY`, `APP_URL` and the database password in `.env`; every other key entered in the website (section 6.1) |
 
@@ -58,7 +61,7 @@ cold-outreach/
     docker-compose.yml     caddy, api, scheduler, db, backup
     docker-compose.shared.yml  on the same server as the Answer Engine
     ops/                   deploy.md, backup and restore scripts
-    e2e/                   Playwright tests, fake Google
+    e2e/                   Playwright tests
     .env.example
     caddy/                 Caddyfile + Dockerfile (builds the React app, serves it)
     backend/
@@ -71,10 +74,10 @@ cold-outreach/
         connections.py     encrypted keys, Test buttons
         agents/            registry, manifests, agent API, tokens
         runs/              scheduling, budgets, stale runs
-        imports/           xlsx reading, header synonyms, cleaning, merging, Sheet writing
+        imports/           xlsx reading, header synonyms, cleaning, merging
+        leads/             files agents save for leads (reports)
         benchmarks/        the benchmark's shape (GBP numbers, Website Standard)
         alerts/            email, Telegram, daily summary
-        google/            Sheets and Drive clients
         audit.py
       tests/
     frontend/src/
@@ -85,8 +88,9 @@ cold-outreach/
 
 | Action | Owner | Admin | Viewer |
 |---|---|---|---|
-| See Overview, Runs, Agents, Batches, Benchmarks | ✔ | ✔ | ✔ |
+| See Overview, Runs, Agents, Batches, Benchmarks, Leads; download leads as Excel | ✔ | ✔ | ✔ |
 | Make, rename or delete a batch; add and confirm its files | ✔ | ✔ | ✘ |
+| Change a lead's email, phone, website, Top mark or notes; delete a lead | ✔ | ✔ | ✘ |
 | Switch an agent on/off, press Run now or Stop | ✔ | ✔ | ✘ |
 | Change an agent's batches, limit, run time, budget and settings | ✔ | ✔ | ✘ |
 | Make, change or delete a benchmark | ✔ | ✔ | ✘ |
@@ -133,7 +137,8 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 | `benchmarks` | `name` (unique, e.g. "Cleaning Benchmark 1"), `niche`, `gbp` JSON (the numbers of PLAN.md 3.5; a missing one isn't compared), `website` JSON (the Website Standard), `version` (raised by every change of either), `updated_by` |
 | `batches` | `name` (unique, typed by the team), `niche`, `benchmark_id` (required; empty only for leads moved in from before batches), `created_by` |
 | `imports` | `batch_id`, `file_name`, `niche`, `uploaded_by`, `status` (`preview`, `confirmed`, `failed`, `discarded`), counts, `preview` JSON, `errors` JSON |
-| `leads` | the Lead ID registry: `lead_id` (`L-000123`), `batch_id` (the batch it was first imported into), `niche`, `city`, `business_name`, `level`, `gbp_link`, `phone_digits`, `website_domain`, `emails`, `first_import_id`, `last_import_id`. The full row lives in the Sheet. |
+| `leads` | every business: `lead_id` (`L-000123`), `batch_id` (the batch it was first imported into), `niche`, `city`, `business_name`, `level`, `gbp_link`, `emails`, the matching keys `phone_digits`, `name_address`, `website_domain`, `data` JSON (address, website, phone, WhatsApp, Facebook, Instagram, reviews, rating, notes), `results` JSON (by agent key: status, score, summary, details, benchmark id and version, when), `first_import_id`, `last_import_id` |
+| `lead_files` | files agents saved for a lead (reports): `lead_id`, `agent_key`, `name`, `content_type`, `size`; the bytes are on disk at `REPORTS_DIR/<lead_id>/<id>` |
 | `lists` | one per City + Niche: `active`, optional `daily_limit` |
 | `do_not_contact` | `kind` (`email`, `phone`, `gbp`, `domain`), `value`, `reason` (`top`, `opt_out`, `manual`), `lead_id` |
 | `alerts` | what was sent, to whom, on which channel, when |
@@ -149,20 +154,19 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
   | Connection | Fields | Test |
   |---|---|---|
   | DataForSEO | API login, API password | account call; shows the balance |
-  | Google (Sheets and Drive) | service account key file (uploaded), Master Sheet link, Drive folder link | gets a token, opens the Sheet (lists the Leads tab's columns, or says the first import will create it), creates and deletes a file in the folder |
   | PageSpeed Insights | API key | scores example.com on mobile |
   | Email (SMTP) | server, port, username and password (optional), From | sends a test message to the Owner |
   | Telegram alerts | bot token, alerts group (optional) | checks the bot; when no group is set, finds the latest group the bot has seen and saves it; sends a test message there |
 
-- Values are checked before saving (port number, email address, Sheet and folder links, a
-  service account key file, a numeric group id) and refused with a reason under the field.
+- Values are checked before saving (port number, email address, a numeric group id) and
+  refused with a reason under the field.
 - Stored in `settings.connections`, each value encrypted with Fernet using a key derived from
-  `SECRET_KEY`. **Write-only:** secrets (and the key file) are never returned, only whether
+  `SECRET_KEY`. **Write-only:** secrets are never returned, only whether
   they are set and their last four characters. History records "changed" or "removed".
   Test results and errors never repeat a key, password or token.
 - If `SECRET_KEY` changes, stored values can't be read and show as "enter it again".
-- Google's service accounts have no storage of their own, so the Drive folder should be in a
-  Shared Drive with the service account as a member; the Test explains this when it happens.
+- There is no Google connection: leads and reports are kept in the Hub (step 11 removed the
+  Sheets and Drive connection and its saved values).
 - Once Email is set up, invites and password resets are sent by email instead of being shown
   to the Owner.
 
@@ -178,7 +182,8 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 - **Manifest:** when it starts, an agent sends `PUT /api/agent/v1/manifest`:
   `name`, `version`, `description`, `settings` (each with `key`, `type` of `int`, `float`,
   `text`, `bool` or `choice`, `label`, `help`, `default`, `min`/`max`, `choices`),
-  `connections` it needs (Connections group ids), `sheet_columns` it owns, and an estimated
+  `connections` it needs (Connections group ids), `result_label` (what the Leads screen calls
+  its results, e.g. "GBP"; its name when empty), and an estimated
   `cost_per_item_usd`. A manifest with unknown fields or connections, or a default outside its
   own limits, is refused. The Hub builds the agent's settings form from it; values set in the
   Hub are checked against it (type, limits, choices) and an unset value uses the default.
@@ -194,8 +199,13 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
     (agent switched off; from step 5 also Stop pressed and budgets used up). This is also the
     heartbeat.
   - `POST /runs/{id}/finish`: final counts, cost, `stop_reason`, failures summary.
-  - Reference data: `GET /batches` (as in `next-run`), `GET /batches/{id}/leads` (each lead's
-    Lead ID, city and Level; the full rows are in the Leads tab), `GET /benchmarks/{id}` (the
+  - Leads: `GET /batches/{id}/leads` (each lead's full row and this agent's own last
+    `result`, or none), `PUT /leads/{lead_id}/result` (`status`, `score` 0–100, `summary`,
+    `details` JSON up to 200,000 characters, `benchmark_id`, `benchmark_version`; replaces
+    the agent's previous result) and `POST /leads/{lead_id}/files` (a report: PDF, JSON, PNG,
+    JPEG or CSV up to 20 MB, named with letters, digits, dots, dashes and underscores; the
+    same name from the same agent replaces it).
+  - Reference data: `GET /batches` (as in `next-run`), `GET /benchmarks/{id}` (the
     GBP numbers, the Website Standard and the `version`), `GET /lists` (City + Niche, on or
     off, limit) and `GET /do-not-contact/check?email=&phone=&gbp=&domain=` (`blocked` and
     why).
@@ -246,9 +256,8 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    ignored), **one niche** (typed or picked; a different case uses the existing spelling) and
    **one benchmark of that niche** (required). The order of work is: make a benchmark, make a
    batch with it, add files. Files can be added to a batch at any time, also to old batches.
-   A batch can change to another benchmark of its niche at any time; it can be renamed only
-   while it has no leads (the Leads tab shows its name) and deleted only while it has no leads
-   and no files. Agents work through the batches chosen for them (section 6.2). Batches have
+   A batch can change to another benchmark of its niche, or be renamed, at any time; it can
+   be deleted only while it has no leads and no files. Agents work through the batches chosen for them (section 6.2). Batches have
    no on/off switch: an agent with nothing left to do waits.
 1. **Upload** (Owner, Admin): an `.xlsx` (max 20 MB) **into a batch**; its niche is the
    batch's. Reading a large file (4,000 rows, 248 tabs) takes about 15 seconds.
@@ -279,18 +288,25 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    duplicates merged, Top, cities, without a GBP link, without a website, rows skipped, emails
    that look wrong, with up to 25 examples of each, plus new lists, ignored columns and empty
    tabs. A waiting preview reopens when the screen is opened again.
-7. **Confirm** (needs the Google connection): Lead IDs continue from the highest one saved
-   (`L-000001` …), one import at a time; the registry, lists and do-not-contact list are updated;
-   the Leads tab is written, with each lead's **Batch** name. A new Sheet gets a Leads tab with the header row; missing headers
-   are added at the end. Rows are found by Lead ID and columns by header name; new leads are
-   appended, known ones updated in place, **only the import's columns**, and an empty value
-   never blanks a filled cell. Every value is written as plain text (`RAW`), so a cell starting
-   with `=` can't become a formula. Writes are batched (500 ranges, 2,000 rows a call) and
-   retried after Google's "too many requests". If the Sheet can't be written, nothing is saved
-   and the same Lead IDs are used on the next try. Once confirmed, the import keeps only its
-   counts.
+7. **Confirm** saves everything in one transaction: Lead IDs continue from the highest one
+   saved (`L-000001` …), one import at a time; each lead's row is kept with it (a value from
+   the file replaces the saved one; an empty cell never blanks it); the lists and the
+   do-not-contact list are updated. Once confirmed, the import keeps only its counts (new and
+   updated).
 8. **Lists** (one per City + Niche) are created by confirmed imports and shown on the Batches
    screen with their businesses and Top counts; Owners and Admins switch a list on or off.
+9. **The Leads screen** (everyone): 100 leads a page; filter by batch, a search (name, Lead
+   ID, city, email, phone, website, GBP link), city, Top and website; sort by Lead ID, newest,
+   name, city or an agent's score (best first). Each agent's score and status is a column.
+   **Download Excel** gives the leads on screen (same filters, up to 50,000), every column
+   including each agent's status, score, summary and when; every text cell is stored as text,
+   so a value starting with `=` never runs as a formula.
+10. **One lead** shows its row, each agent's result and the files agents saved (always
+   downloaded, never shown in the page). Owners and Admins change its email(s), phone, website,
+   Top mark and notes (in History, with the old and new value; Top keeps its email, phone and
+   GBP link on the do-not-contact list, removing Top takes them off), or delete it (its files
+   go too; its do-not-contact entries stay, so a Top business imported again is still never
+   contacted).
 
 ### 6.5 Benchmarks
 
@@ -348,15 +364,18 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    unused); the editor has the GBP numbers and the Website Standard.
 4. **Batches:** the batches with niche, benchmark, businesses (and Top), files and agents;
    **+ New batch** (name, niche, a benchmark of that niche; a link to Benchmarks when the
-   niche has none). A batch opens to its benchmark choice, rename and delete (when allowed),
-   **Add a lead file**, the preview and its past files. The Lists (City + Niche) with their
+   niche has none). A batch opens to its benchmark choice, rename, delete (when empty), **See
+   its leads**, **Add a lead file**, the preview and its past files. The Lists (City + Niche) with their
    on/off switches follow the batches. `/import` opens Batches.
-5. **Agents:** one card per agent: on/off switch, the batches it works on ("Works on: A →
+5. **Leads** (after Batches): the table, filters, pages and **Download Excel** of section 6.4;
+   a lead opens in a window with its row, the agents' results and files, and (Owners and
+   Admins) its editable fields and Delete. `/leads?batch=<id>` opens one batch's leads.
+6. **Agents:** one card per agent: on/off switch, the batches it works on ("Works on: A →
    B", or a warning when none), last run, next run, today's cost, Run now, Stop; **Settings**
    opens the form: batches (add, move up or down, remove), limits, and the manifest's
    settings.
-6. **Runs:** filter by agent and status; each run's counts, cost, stop reason and failures.
-7. **Connections** (Owner), **Users** (Owner), **History** (Owner: who did what, newest
+7. **Runs:** filter by agent and status; each run's counts, cost, stop reason and failures.
+8. **Connections** (Owner), **Users** (Owner), **History** (Owner: who did what, newest
    first, filtered by area; a connection change only says "(changed)"), **Profile**.
 
 ## 8. REST API (`/api`, JSON)
@@ -365,7 +384,7 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 `/agents` (+ `/{key}/enabled`, `/{key}/run`, `/{key}/stop`, `/{key}/token`), `/runs`,
 `/overview`, `/budget`, `/benchmarks` (+ `/{id}`), `/batches` (+ `/{id}`), `/imports`
 (upload into a batch → preview, `?batch_id=`, `/{id}/confirm`, `/{id}/discard`), `/niches`,
-`/lists`, `/alerts`,
+`/leads` (+ `/export`, `/{lead_id}`, `/{lead_id}/files/{id}`), `/lists`, `/alerts`,
 `/alert-settings`, `/history`, and the agent API (section 6.2). Every user endpoint checks
 `permissions.can`; every write checks CSRF.
 
@@ -377,10 +396,10 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 - Logs are JSON lines in production (`JSON_LOGS=true`), each carrying a request id that is
   also returned in `X-Request-ID`. The access log never writes query strings, and no log
   holds keys, tokens, passwords or lead data.
-- Outside services are called at fixed addresses (`config.py`), so a key file can't send the
-  Google sign-in elsewhere (its `token_uri` is ignored). Only the end-to-end tests change
-  these addresses, to local fakes.
-- Nightly database backup kept 14 days, optionally copied off the server; the scheduler
+- Outside services are called at fixed addresses (`config.py`).
+- Files agents save for leads are stored under ids the Hub makes (never the agent's file
+  name), only as PDF, JSON, PNG, JPEG or CSV, and always downloaded, never shown in the page.
+- Nightly backup of the database and the reports, kept 14 days, optionally copied off the server; the scheduler
   alerts the Owners when it failed or is more than 36 hours old (section 10).
 
 ## 10. Deployment
@@ -389,9 +408,10 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 - `.env` holds `APP_DOMAIN`, `APP_URL`, `SECRET_KEY`, the database password and the backup
   settings only; everything else is entered in the website.
 - Services: `caddy`, `api`, `scheduler`, `db` and `backup` (`ops/backup.sh` nightly at
-  `BACKUP_TIME`, `pg_dump` checked with `pg_restore --list`, `last-backup.json` read by the
-  scheduler). `ops/restore.sh` restores; `ops/restore-test.sh` restores the latest backup
-  into a scratch database and compares every table's row count (CI runs it too).
+  `BACKUP_TIME`: a `pg_dump` checked with `pg_restore --list` and an archive of the `reports`
+  volume (`REPORTS_DIR`); `last-backup.json` read by the scheduler). `ops/restore.sh`
+  restores both; `ops/restore-test.sh` restores the latest backup into a scratch database
+  and compares every table's row count and the number of report files (CI runs it too).
 - Agents join the Hub's Docker network (`agent-hub`) and reach it at `http://api:8000`.
 - **Next to the Answer Engine** (our VPS, KVM 1, US location): `docker-compose.shared.yml`
   (switched on with `COMPOSE_FILE` in `.env`) takes away the Hub Caddy's ports; it joins the
@@ -405,10 +425,9 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 
 See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
 
-1. **Lists** (City + Niche on/off and per-list limit) live in the Hub, not in a Sheet tab,
-   since files are now uploaded in the Hub.
-2. **The Sheet has one tab, Leads.** Benchmarks are held in the Hub and given to agents through
-   the agent API.
+1. **Lists** (City + Niche on/off and per-list limit) live in the Hub.
+2. **No Google Sheet or Drive** (step 11): leads, results and reports are kept in the Hub;
+   people download Excel files from the Leads screen.
 
 ## 12. Build plan (one step per task)
 
@@ -450,3 +469,13 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     **Tests:** benchmark rules and versions, batch rules (benchmark of the niche, rename and
     delete only when empty), a business stays in its first batch, agents' batch order and
     skipping batches without a benchmark, the data migration, e2e through a batch.
+11. **Leads kept in the Hub, no Google** (asked for after step 10): each lead's row and the
+    agents' results in the database, report files on disk (`REPORTS_DIR`, backed up); the
+    Leads screen (search, filters, pages, sort by score, one lead with its results and files,
+    edit and delete) and its Excel download; agents read full rows and save results and files
+    through the agent API; the Google connection, Sheet writing and the fake Google removed;
+    batches can be renamed at any time; the demo agent saves a result per lead.
+    **Tests:** filters, search, pages, Excel (text stays text), editing with do-not-contact,
+    delete keeps do-not-contact, Owner/Admin/Viewer rights, agents' results and files (types,
+    names, replacing, another lead's file), the migration removing the Google values, e2e
+    through the Leads screen.

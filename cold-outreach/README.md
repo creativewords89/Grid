@@ -25,8 +25,8 @@ cd ../frontend
 npm ci
 npm run lint && npm run format:check && npm run typecheck && npm test && npm run build
 
-# End-to-end (Playwright): starts its own API, scheduler, web app and a fake Google on a
-# fresh database named hub_e2e, then creates the Owner, connects Google, imports a lead
+# End-to-end (Playwright): starts its own API, scheduler and web app on a fresh database
+# named hub_e2e, then creates the Owner, a benchmark and a batch, imports a lead
 # file and runs the demo agent in a real browser.
 cd ../e2e
 npm ci && npx playwright install chromium

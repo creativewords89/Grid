@@ -1,18 +1,16 @@
 import { expect, test, type Page } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
-import { generateKeyPairSync } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-// The Hub's main flow on a brand-new install (SPEC section 12, steps 9 and 10): create the
-// Owner → Connections → a benchmark → a batch and its file → the demo agent works on the
-// batch → Runs → History.
+// The Hub's main flow on a brand-new install (SPEC section 12, steps 9 to 11): create the
+// Owner → a benchmark → a batch and its file → the leads, in the Hub and as Excel → the demo
+// agent works on the batch and saves its results → Leads, Runs and History.
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
 const RUN = path.join(HERE, "..", ".run");
 const DEMO_AGENT = path.join(HERE, "..", "..", "..", "agents", "demo", "agent.py");
 const API = "http://localhost:8200";
-const GOOGLE = "http://127.0.0.1:9921";
 const OWNER = { name: "Olivia", email: "olivia@example.com", password: "olivia owner passphrase" };
 
 test.describe.configure({ mode: "serial" });
@@ -29,28 +27,6 @@ test.afterAll(async () => {
   await page.close();
 });
 
-function serviceAccountKey(): Buffer {
-  const { privateKey } = generateKeyPairSync("rsa", {
-    modulusLength: 2048,
-    privateKeyEncoding: { type: "pkcs8", format: "pem" },
-    publicKeyEncoding: { type: "spki", format: "pem" },
-  });
-  return Buffer.from(
-    JSON.stringify({
-      type: "service_account",
-      client_email: "hub@gridrankers-e2e.iam.gserviceaccount.com",
-      private_key: privateKey,
-      // Ignored by the Hub (it uses its own GOOGLE_TOKEN_URL), as a real key's would be.
-      token_uri: "https://oauth2.googleapis.com/token",
-    }),
-  );
-}
-
-async function leadsTab(): Promise<string[][]> {
-  const state = (await (await fetch(`${GOOGLE}/_state`)).json()) as Record<string, string[][]>;
-  return state["Leads"] ?? [];
-}
-
 test("the first Owner is created with the setup code", async () => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Create the Owner account" })).toBeVisible();
@@ -61,27 +37,6 @@ test("the first Owner is created with the setup code", async () => {
   await page.getByRole("button", { name: /Create/ }).click();
 
   await expect(page.getByRole("heading", { name: "Connections" })).toBeVisible();
-});
-
-test("Google is connected and tested from the Connections screen", async () => {
-  const google = page.getByRole("form", { name: "Google (Sheets and Drive)" });
-  await google.getByLabel("Service account key (JSON file)").setInputFiles({
-    name: "key.json",
-    mimeType: "application/json",
-    buffer: serviceAccountKey(),
-  });
-  await google
-    .getByLabel("Master Sheet link")
-    .fill("https://docs.google.com/spreadsheets/d/1E2eSheetIdAbCdEfGhIjKlMnOp/edit");
-  await google
-    .getByLabel("Drive folder link")
-    .fill("https://drive.google.com/drive/folders/1E2eFolderIdAbCd");
-  await google.getByRole("button", { name: "Save" }).click();
-  await expect(google.getByText("Set up", { exact: true })).toBeVisible();
-
-  await google.getByRole("button", { name: "Test the Sheet and folder" }).click();
-  await expect(google.getByText(/Opened “E2E Master”/)).toBeVisible();
-  await expect(google.getByText(/The Drive folder can be written to/)).toBeVisible();
 });
 
 test("a benchmark is made for the niche", async () => {
@@ -100,7 +55,7 @@ test("a benchmark is made for the niche", async () => {
   await expect(page.getByRole("row", { name: /Cleaning Benchmark 1/ })).toContainText("v1");
 });
 
-test("a batch is made and a lead file is read, checked and sent to the Master Sheet", async () => {
+test("a batch is made and a lead file is read, checked and saved in the Hub", async () => {
   await page.getByRole("link", { name: "Batches" }).click();
   await page.getByRole("button", { name: "+ New batch" }).click();
   const made = page.getByRole("form", { name: "New batch" });
@@ -123,19 +78,34 @@ test("a batch is made and a lead file is read, checked and sent to the Master Sh
   await expect(count("Top (never contacted)")).toContainText("1");
   await expect(count("cities")).toContainText("2");
 
-  await preview.getByRole("button", { name: "Send 4 businesses to the Master Sheet" }).click();
-  await expect(preview.getByText("Sent: 4 rows added and 0 updated")).toBeVisible();
-
-  const rows = await leadsTab();
-  expect(rows).toHaveLength(5); // the header and four leads
-  expect(rows[0]).toContain("Lead ID");
-  const sparkle = rows.find((row) => row.includes("Sparkle Home Cleaning"))!;
-  expect(sparkle).toContain("hello@sparklehome.com, office@sparklehome.com");
-  expect(sparkle.join(" ")).not.toContain("utm_source");
-  expect(sparkle[rows[0]!.indexOf("Batch")]).toBe("Texas November");
+  await preview.getByRole("button", { name: "Save 4 businesses" }).click();
+  await expect(preview.getByText("Saved: 4 new and 0 updated.")).toBeVisible();
   await page.getByRole("button", { name: "All batches" }).click();
   await expect(page.getByRole("row", { name: /Texas November/ })).toContainText("1 Top");
   await expect(page.getByRole("switch", { name: "Tulsa · Cleaning on or off" })).toBeChecked();
+});
+
+test("the leads are on the Leads screen and download as Excel", async () => {
+  await page.getByRole("link", { name: "Leads" }).click();
+  await expect(page.getByText("4 leads")).toBeVisible();
+  await page.getByRole("button", { name: "Sparkle Home Cleaning" }).click();
+  const dialog = page.getByRole("dialog", { name: "Sparkle Home Cleaning" });
+  // The duplicate rows were merged into one lead with both emails; tracking was removed.
+  await expect(dialog.getByLabel("Email(s)")).toHaveValue(
+    "hello@sparklehome.com, office@sparklehome.com",
+  );
+  await expect(dialog.getByLabel("Website")).toHaveValue("https://sparklehome.com/");
+  await expect(dialog.getByText(/Texas November/)).toBeVisible();
+  await dialog.getByRole("button", { name: "Close" }).click();
+
+  await page.getByLabel("Website").selectOption("no");
+  await expect(page.getByText("1 lead", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Maid Pro Dallas" })).toBeVisible();
+  const download = page.waitForEvent("download");
+  await page.getByRole("link", { name: "Download Excel" }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toMatch(/^leads-\d{4}-\d{2}-\d{2}\.xlsx$/);
+  await page.getByLabel("Website").selectOption("");
 });
 
 test("the demo agent joins, works on the batch and finishes a run", async () => {
@@ -176,6 +146,13 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
   }).toPass({ timeout: 45_000 });
   // Three leads audited; the Top one skipped.
   await expect(card.getByText(/3 done, 1 skipped/)).toBeVisible();
+
+  // Its results are on the Leads screen, and can be sorted by.
+  await page.getByRole("link", { name: "Leads" }).click();
+  await page.getByLabel("Sort by").selectOption({ label: "Demo score (best first)" });
+  await expect(page.getByRole("row", { name: /Email Demo$/ })).toBeVisible();
+  const scored = page.getByRole("row", { name: /Sparkle Home Cleaning/ });
+  await expect(scored.getByRole("cell").last()).toHaveText(/^\d+$/);
 });
 
 test("the run is on the Runs screen and the changes are in History", async () => {
@@ -190,7 +167,6 @@ test("the run is on the Runs screen and the changes are in History", async () =>
   await expect(
     page.getByRole("row", { name: /confirm imports · cleaning-leads\.xlsx/ }),
   ).toBeVisible();
-  await expect(page.getByText("google_service_account: — → (changed)")).toBeVisible();
   await expect(page.getByRole("row", { name: /create batches · Texas November/ })).toBeVisible();
   await expect(
     page.getByRole("row", { name: /create benchmarks · Cleaning Benchmark 1/ }),

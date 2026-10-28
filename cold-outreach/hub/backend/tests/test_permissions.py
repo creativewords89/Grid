@@ -12,10 +12,12 @@ Y, N = True, False
 
 # (Owner, Admin, Viewer) for each row of the SPEC section 3 table.
 SPEC_TABLE: dict[Action, tuple[bool, bool, bool]] = {
-    # See Overview, Runs, Agents, Batches, Benchmarks
+    # See Overview, Runs, Agents, Batches, Benchmarks, Leads; download leads as Excel
     Action.VIEW_HUB: (Y, Y, Y),
     # Make, rename or delete a batch; upload and confirm its files
     Action.IMPORT_LEADS: (Y, Y, N),
+    # Change a lead's email, phone, website, Top mark or notes; delete a lead
+    Action.EDIT_LEADS: (Y, Y, N),
     # Switch an agent on/off, press Run now or Stop
     Action.OPERATE_AGENTS: (Y, Y, N),
     # Change an agent's batches, limit, run time, budget and settings

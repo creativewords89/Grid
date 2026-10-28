@@ -8,6 +8,7 @@ import { Connections } from "./pages/Connections";
 import { FirstRun } from "./pages/FirstRun";
 import { Forgot } from "./pages/Forgot";
 import { History } from "./pages/History";
+import { Leads } from "./pages/Leads";
 import { Overview } from "./pages/Overview";
 import { Profile } from "./pages/Profile";
 import { Runs } from "./pages/Runs";
@@ -45,6 +46,7 @@ function Routes() {
   else if (path === "/runs") page = <Runs />;
   else if (path === "/batches" || path === "/import") page = <Batches />;
   else if (path === "/benchmarks") page = <Benchmarks />;
+  else if (path === "/leads") page = <Leads />;
   else if (path === "/profile") page = <Profile />;
   else page = <Overview />;
   return <Shell path={path}>{page}</Shell>;

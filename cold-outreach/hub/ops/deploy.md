@@ -11,8 +11,9 @@ You need about 45 minutes the first time. Updates later take five minutes.
 steps 1–5; steps 6–10 are the same.
 
 **Never paste API keys or passwords into a chat, an email or a ticket.** The Hub's own
-settings file (`.env`, step 4) fills itself in; every service key (DataForSEO, Google,
-email, Telegram) is entered in the website (step 6), where it is stored encrypted.
+settings file (`.env`, step 4) fills itself in; every service key (DataForSEO, PageSpeed,
+email, Telegram) is entered in the website (step 6), where it is stored encrypted. No Google
+Sheet or Drive is needed: leads and reports are kept in the Hub.
 
 ---
 
@@ -131,7 +132,6 @@ first start, and the DNS record (step 3) must already work.
    | Service | What to enter | Then press |
    |---|---|---|
    | **DataForSEO** | the API login and password from app.dataforseo.com → API Access | **Test and show balance** |
-   | **Google (Sheets and Drive)** | the service account's JSON key file; the Master Sheet's link; the Drive folder's link. Share the Sheet and the folder with the service account's email as **Editor** first | **Test the Sheet and folder** |
    | **PageSpeed Insights** | an API key from Google Cloud → APIs & Services → Credentials | **Test the key** |
    | **Email (SMTP)** | your email provider's server, port (587), username, password and From address | **Send a test email** |
    | **Telegram alerts** | a bot token from @BotFather (`/newbot`). Add the bot to your alerts group and send any message there first | **Test and find the group** |
@@ -143,7 +143,8 @@ first start, and the DNS record (step 3) must already work.
 6. **Benchmarks** → **+ New benchmark** for each niche (for example "Cleaning Benchmark 1"):
    the GBP numbers and the website part.
 7. **Batches** → **+ New batch**: a name, the niche and its benchmark. Open the batch, add
-   the first lead file, check the preview and send it to the Master Sheet.
+   the first lead file, check the preview and save it. **Leads** then shows every business;
+   **Download Excel** gives any view as a file.
 
 ## 7. Start an agent
 
