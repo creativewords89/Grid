@@ -486,3 +486,29 @@ test("a draft shows which brand voice examples it took its style from", async ()
   await userEvent.click(await screen.findByText("Style from: 2 examples"));
   expect(screen.getByText("Can I speed up verification?")).toBeVisible();
 });
+
+test("renaming a conversation", async () => {
+  window.history.pushState(null, "", "/marketing?thread=reddit%3A1abc2de");
+  const calls = mockApi({
+    "GET /auth/me": me,
+    ...lists(),
+    "GET /threads/reddit%3A1abc2de": [200, detail([question, draftMsg("ready")])],
+    "PATCH /threads/reddit%3A1abc2de": [
+      200,
+      detail([question, draftMsg("ready")], { title: "Dentist verification" }),
+    ],
+  });
+  render(<App />);
+
+  await userEvent.click(await screen.findByRole("button", { name: "Rename conversation" }));
+  const box = screen.getByLabelText("Conversation title");
+  await userEvent.clear(box);
+  await userEvent.type(box, "Dentist verification");
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+  expect(await screen.findByRole("heading", { name: /Dentist verification/ })).toBeVisible();
+  expect(screen.queryByLabelText("Conversation title")).toBeNull();
+  expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({
+    title: "Dentist verification",
+  });
+});

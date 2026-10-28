@@ -152,6 +152,10 @@ class DraftIn(Strict):
     instruction: Annotated[str, StringConstraints(max_length=500)] | None = None
 
 
+class RenameIn(Strict):
+    title: Short
+
+
 class EditIn(Strict):
     body: Text
 
@@ -576,6 +580,18 @@ def posted(message_id: uuid.UUID, body: PostedIn, me: CurrentUser, db: Db) -> Th
         raise _raise(error) from None
     db.commit()
     return detail(db, _get(db, message.thread_id), me)
+
+
+@router.patch("/threads/{thread_id}", response_model=ThreadDetail)
+def rename(thread_id: str, body: RenameIn, me: CurrentUser, db: Db) -> ThreadDetail:
+    ensure(me, Action.WORK_THREADS)
+    thread = _get(db, thread_id)
+    try:
+        service.rename(db, thread, me, body.title)
+    except MarketingError as error:
+        raise _raise(error) from None
+    db.commit()
+    return detail(db, thread, me)
 
 
 @router.post("/threads/{thread_id}/close", response_model=ThreadDetail)

@@ -3,7 +3,8 @@
 - Answers (streamed) cite the first and last document they are given.
 - The support check says "partial" when the question contains "long" (so the answer goes
   to review), unless a team-verified answer was given; otherwise "full".
-- Marketing drafts are a fixed helpful reply; "mention us" in the prompt adds GridRankers.
+- Marketing drafts are a fixed helpful reply; "mention us" in the prompt adds GridRankers,
+  and a short title is added when the prompt asks for one.
 - Brand voice style guides are two fixed lines.
 - Follow-up rewrites prefix the question.
 """
@@ -67,6 +68,8 @@ class Handler(BaseHTTPRequestHandler):
             )
             if "mention us" in prompt.lower():
                 text += " We see this a lot at GridRankers."
+            if "<short_title>" in prompt:
+                text += "\n<short_title>GBP verification time</short_title>"
             return self.json(message(model, text, 2600, 60))
         question = prompt.split("Follow-up question:")[-1].strip()
         return self.json(message(model, "Client handbook " + question, 200, 20))

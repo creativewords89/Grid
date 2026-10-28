@@ -670,6 +670,7 @@ function ThreadView({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [renaming, setRenaming] = useState<string | null>(null);
   const end = useRef<HTMLDivElement>(null);
 
   const setThread = useCallback(
@@ -717,12 +718,61 @@ function ThreadView({
     <section className="mk-thread" aria-labelledby="mk-thread-title">
       <header className="mk-thread-head">
         <div className="mk-thread-info">
-          <h1 id="mk-thread-title" className="mk-title">
-            <span className={`platform-badge platform-${thread.platform}`}>
-              {thread.platform_name}
-            </span>{" "}
-            {thread.title}
-          </h1>
+          {renaming === null ? (
+            <div className="mk-title-row">
+              <h1 id="mk-thread-title" className="mk-title">
+                <span className={`platform-badge platform-${thread.platform}`}>
+                  {thread.platform_name}
+                </span>{" "}
+                {thread.title}
+              </h1>
+              <button
+                className="icon-button mk-rename"
+                aria-label="Rename conversation"
+                title="Rename"
+                onClick={() => setRenaming(thread.title)}
+              >
+                ✎
+              </button>
+            </div>
+          ) : (
+            <form
+              className="row mk-rename-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void run("rename", async () => {
+                  const next = await api.renameThread(id, renaming);
+                  setRenaming(null);
+                  return next;
+                });
+              }}
+            >
+              <h1 id="mk-thread-title" className="sr-only">
+                {thread.title}
+              </h1>
+              <input
+                className="input"
+                aria-label="Conversation title"
+                value={renaming}
+                maxLength={60}
+                autoFocus
+                onChange={(e) => setRenaming(e.target.value)}
+              />
+              <button
+                className="button button-small button-primary"
+                disabled={busy === "rename" || !renaming.trim()}
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                className="button button-small"
+                onClick={() => setRenaming(null)}
+              >
+                Cancel
+              </button>
+            </form>
+          )}
           <p className="muted small">
             {[
               thread.community,

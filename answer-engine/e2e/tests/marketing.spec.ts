@@ -26,6 +26,10 @@ test("a Reddit conversation from first draft to follow-up", async ({
   await page.getByLabel("Their username (optional)").fill("u/dentist_dan");
   await page.getByRole("button", { name: "Start and draft reply" }).click();
   await expect(page.locator(".bubble-us.draft")).toBeVisible();
+  // The first draft gives the conversation a short title.
+  await expect(page.locator("#mk-thread-title")).toContainText(
+    "GBP verification time",
+  );
 
   // A low-confidence draft is locked until a reviewer approves it.
   const status = page.locator(".mk-thread-head .pill");
