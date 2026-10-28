@@ -189,8 +189,8 @@ class Agent(TimestampMixin, Base):
         Numeric(10, 2), default=Decimal("5"), server_default="5"
     )
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # The batches it works through, in order (ids as text).
-    batch_ids: Mapped[list[str]] = mapped_column(JSONB, default=list, server_default="[]")
+    # The task its manifest names (SPEC section 6.7); None until it has connected once.
+    task_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"))
 
     runs: Mapped[list["Run"]] = relationship(back_populates="agent", passive_deletes=True)
 
@@ -388,9 +388,15 @@ class Benchmark(TimestampMixin, Base):
     __table_args__ = (Index("uq_benchmarks_name", func.lower(name), unique=True),)
 
 
+class BatchStatus(enum.StrEnum):
+    NOT_STARTED = "not_started"
+    RUNNING = "running"
+    PAUSED = "paused"
+
+
 class Batch(TimestampMixin, Base):
     """A named group of leads of one niche, checked against one Benchmark (SPEC section
-    6.4). Files are added to a batch; agents work through the batches chosen for them."""
+    6.4). Files are added to a batch; its tasks and bots are chosen in it (section 6.7)."""
 
     __tablename__ = "batches"
 
@@ -405,9 +411,82 @@ class Batch(TimestampMixin, Base):
         ForeignKey("users.id", ondelete="SET NULL")
     )
 
+    status: Mapped[str] = mapped_column(
+        String(20), default=BatchStatus.NOT_STARTED, server_default=BatchStatus.NOT_STARTED
+    )
+    # The running order: when two running batches use the same bot, the lower comes first.
+    position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
     benchmark: Mapped[Benchmark | None] = relationship()
 
     __table_args__ = (Index("uq_batches_name", func.lower(name), unique=True),)
+
+
+class Task(TimestampMixin, Base):
+    """A job a batch can have done, such as GBP Audit (SPEC section 6.7). Each agent does
+    one task; `needs` are the keys of the tasks it waits for."""
+
+    __tablename__ = "tasks"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    key: Mapped[str] = mapped_column(String(40), unique=True)
+    name: Mapped[str] = mapped_column(String(80))
+    about: Mapped[str] = mapped_column(String(300), default="", server_default="")
+    needs: Mapped[list[str]] = mapped_column(JSONB, default=list, server_default="[]")
+
+
+class ShareMode(enum.StrEnum):
+    ALL = "all"  # every bot checks every business
+    SPLIT = "split"  # each business goes to one bot
+
+
+class BatchTask(Base):
+    """A task in a batch's pipeline, and how its bots share the work."""
+
+    __tablename__ = "batch_tasks"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    batch_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("batches.id", ondelete="CASCADE"))
+    task_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tasks.id", ondelete="RESTRICT"))
+    share: Mapped[str] = mapped_column(String(10), default=ShareMode.ALL, server_default="all")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    task: Mapped[Task] = relationship()
+    bots: Mapped[list["BatchTaskBot"]] = relationship(
+        order_by="BatchTaskBot.position", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+    __table_args__ = (Index("uq_batch_tasks", "batch_id", "task_id", unique=True),)
+
+
+class BatchTaskBot(Base):
+    """A bot doing a task in a batch."""
+
+    __tablename__ = "batch_task_bots"
+
+    batch_task_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("batch_tasks.id", ondelete="CASCADE"), primary_key=True
+    )
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True
+    )
+    position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+    agent: Mapped[Agent] = relationship()
+
+
+class LeadBotShare(Base):
+    """For a task whose bots split the businesses: which bot a lead went to."""
+
+    __tablename__ = "lead_bot_shares"
+
+    batch_task_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("batch_tasks.id", ondelete="CASCADE"), primary_key=True
+    )
+    lead_id: Mapped[str] = mapped_column(
+        ForeignKey("leads.lead_id", ondelete="CASCADE"), primary_key=True
+    )
+    agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"))
 
 
 class Alert(Base):

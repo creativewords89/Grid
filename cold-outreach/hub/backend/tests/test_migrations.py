@@ -119,3 +119,60 @@ def test_the_google_connection_is_removed(fresh_database_url: str) -> None:
         engine.dispose()
 
     assert values == {"connections": {"smtp_host": "y"}, "connection_tests": {"email": {}}}
+
+
+def test_agents_batch_lists_become_pipelines(fresh_database_url: str) -> None:
+    """Step 12: each agent gets the task named after its key and the batches it worked on
+    get that task with it; those batches run first, the rest are not started."""
+    cfg = alembic_config(fresh_database_url)
+    command.upgrade(cfg, "0010")
+    engine = create_engine(fresh_database_url)
+    a, b, c = (
+        "00000000-0000-0000-0000-00000000000a",
+        "00000000-0000-0000-0000-00000000000b",
+        "00000000-0000-0000-0000-00000000000c",
+    )
+    try:
+        with engine.begin() as conn:
+            for n, batch in enumerate((a, b, c)):
+                conn.execute(
+                    text(
+                        "INSERT INTO batches (id, name, niche, created_at) "
+                        "VALUES (:id, :name, 'Cleaning', now() + make_interval(secs => :n))"
+                    ),
+                    {"id": batch, "name": f"Batch {n}", "n": n},
+                )
+            conn.execute(
+                text(
+                    "INSERT INTO agents (id, key, name, token_hash, batch_ids) VALUES "
+                    "('00000000-0000-0000-0000-000000000001', 'gbp-audit', 'GBP audit', 'h', "
+                    "CAST(:ids AS jsonb))"
+                ),
+                {"ids": f'["{c}", "{a}", "00000000-0000-0000-0000-0000000000ff"]'},
+            )
+        command.upgrade(cfg, "head")
+        with engine.connect() as conn:
+            tasks = conn.execute(text("SELECT key, name FROM tasks")).all()
+            batches = conn.execute(
+                text("SELECT name, status, position FROM batches ORDER BY position")
+            ).all()
+            bots = conn.execute(
+                text(
+                    "SELECT b.name FROM batch_task_bots x JOIN batch_tasks t ON t.id = "
+                    "x.batch_task_id JOIN batches b ON b.id = t.batch_id ORDER BY b.position"
+                )
+            ).all()
+        command.downgrade(cfg, "0010")
+        with engine.connect() as conn:
+            back = conn.execute(text("SELECT batch_ids FROM agents")).scalar()
+    finally:
+        engine.dispose()
+
+    assert tasks == [("gbp-audit", "GBP audit")]
+    assert batches == [
+        ("Batch 2", "running", 0),
+        ("Batch 0", "running", 1),
+        ("Batch 1", "not_started", 2),
+    ]
+    assert bots == [("Batch 2",), ("Batch 0",)]
+    assert back == [c, a]

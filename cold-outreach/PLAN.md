@@ -9,7 +9,7 @@ This file holds the decisions that apply to the whole system. Each part has its 
 
 | Part | Spec | State |
 |---|---|---|
-| Agent Hub | [hub/SPEC.md](hub/SPEC.md) | Built and installed (steps 1–10); step 11, leads kept in the Hub without Google, done |
+| Agent Hub | [hub/SPEC.md](hub/SPEC.md) | Built and installed (steps 1–11); step 12, tasks and the batch pipeline, done |
 | GBP audit agent | `agents/gbp-audit/SPEC.md` | Decided (section 5), spec written before its build |
 | Website audit agent | `agents/website-audit/SPEC.md` | Decided (section 6), spec written before its build |
 | Social media audit agent | `agents/social-audit/SPEC.md` | Data source not decided |
@@ -90,8 +90,10 @@ This file is the record; where it and an older message disagree, this file wins.
 
 - Work is organised in **batches**: the team makes a batch (a name they choose, **one
   niche**, **one benchmark** of that niche), then adds `.xlsx` files to it in the Hub
-  (**Batches** screen), at any time and also to old batches. Agents work through the batches
-  chosen for them, in order, and wait when nothing is left.
+  (**Batches** screen), at any time and also to old batches. Each batch chooses its
+  **tasks** (GBP Audit, Website Audit, Opportunity Finder, Outreach, …) and one or more agents
+  for each; every business moves on to the next task as soon as the tasks it needs are done
+  for it (hub/SPEC.md section 6.7).
 - **A business is in one batch only**, the one it was first imported into; found again in
   another batch's file, it stays where it is (its new details are added).
 - The file template is the current one: one tab per city, columns `Business name, MAP,
@@ -181,7 +183,8 @@ city or competition**.
 3. Social audit.
 4. Outreach agents.
 
-Each agent runs daily at the time, limit and budget set in the Hub, skips leads audited
+Each agent does one task; the order comes from what each task needs first, set on the Hub's
+Tasks screen. Each agent runs daily at the time, limit and budget set in the Hub, skips leads audited
 within its re-audit window, and stops when its own budget or the Hub's total daily budget is
 used up.
 

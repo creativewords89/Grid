@@ -48,6 +48,8 @@ class Manifest(BaseModel):
     settings: list[Setting] = Field(default_factory=list, max_length=60)
     # Connection groups whose values the agent receives when a run starts.
     connections: list[str] = Field(default_factory=list)
+    # The key of the task it does (SPEC section 6.7); the agent's own key when empty.
+    task: Annotated[str, StringConstraints(pattern=r"^([a-z][a-z0-9-]{1,39})?$")] = ""
     # What the Leads screen calls this agent's result, e.g. "GBP". Defaults to the name.
     result_label: Annotated[str, StringConstraints(strip_whitespace=True, max_length=40)] = ""
     cost_per_item_usd: float = Field(default=0.0, ge=0, le=100)

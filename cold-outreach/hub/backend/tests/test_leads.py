@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.db.models import DoNotContact, Role, User
 from tests.conftest import UserFactory, sign_in
-from tests.hub_data import batch_id
+from tests.hub_data import batch_id, put_bot
 from tests.test_agents import MANIFEST, add_agent, agent_call
 from tests.test_imports import FILE, STANDARD, row, upload, workbook
 
@@ -205,6 +205,7 @@ def test_an_agent_reads_full_rows_and_saves_its_result(client: TestClient, saved
     token = add_agent(client)
     agent_call(client, "PUT", "/manifest", token, MANIFEST)
     batch = batch_id(client)
+    put_bot(client, batch, "gbp-audit")
 
     rows = agent_call(client, "GET", f"/batches/{batch}/leads", token).json()
     multi = rows[0]

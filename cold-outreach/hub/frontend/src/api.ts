@@ -120,7 +120,8 @@ export type Agent = {
   run_time: string;
   time_zone: string;
   daily_budget_usd: string;
-  batches: { id: string; name: string; ready: boolean }[];
+  task: { key: string; name: string } | null;
+  batches: { id: string; name: string; status: BatchStatus; ready: boolean }[];
   missing_connections: string[];
   last_run: Run | null;
   next_run_at: string | null;
@@ -133,7 +134,6 @@ export type AgentSettings = {
   run_time?: string;
   time_zone?: string;
   daily_budget_usd?: string;
-  batch_ids?: string[];
 };
 
 export type ImportCounts = {
@@ -282,7 +282,8 @@ export type LeadPatch = {
   notes?: string;
 };
 
-export function leadQuery(filters: LeadFilters): string {
+/** `?name=value&…` for the filters that are set. */
+export function leadQuery(filters: Record<string, string | number | undefined>): string {
   const params = new URLSearchParams();
   for (const [name, value] of Object.entries(filters)) {
     if (value !== undefined && value !== "") params.set(name, String(value));
@@ -290,6 +291,8 @@ export function leadQuery(filters: LeadFilters): string {
   const query = params.toString();
   return query ? `?${query}` : "";
 }
+
+export type BatchStatus = "not_started" | "running" | "paused";
 
 export type Batch = {
   id: string;
@@ -299,11 +302,83 @@ export type Batch = {
   leads: number;
   top: number;
   files: number;
-  agents: string[];
+  bots: string[];
+  status: BatchStatus;
+  position: number;
+  progress_pct: number | null;
   created_at: string;
   can_edit: boolean;
+  can_run: boolean;
   can_rename: boolean;
   can_delete: boolean;
+};
+
+export type Task = {
+  id: string;
+  key: string;
+  name: string;
+  about: string;
+  needs: { key: string; name: string }[];
+  bots: { key: string; name: string; enabled: boolean }[];
+  batches: string[];
+  can_edit: boolean;
+  can_delete: boolean;
+};
+
+export type TaskIn = { key?: string; name: string; about: string; needs: string[] };
+
+export type Share = "all" | "split";
+
+export type BotProgress = {
+  key: string;
+  name: string;
+  enabled: boolean;
+  connected: boolean;
+  done: number;
+  failed: number;
+  ready: number;
+  waiting: number;
+  average_score: number | null;
+};
+
+export type PipelineTask = {
+  task_id: string;
+  key: string;
+  name: string;
+  needs: string[];
+  share: Share;
+  bots: BotProgress[];
+  can_remove: boolean;
+};
+
+export type Pipeline = {
+  batch: Batch;
+  steps: { step: number; tasks: PipelineTask[] }[];
+  can_start: boolean;
+  start_problem: string | null;
+};
+
+export type Outcome = "done" | "skipped" | "failed" | "not_yet";
+export type Band = "low" | "mid" | "high";
+
+export type BotResults = {
+  bot: string;
+  bot_name: string;
+  outcomes: Record<Outcome, number>;
+  bands: Record<Band, number>;
+  leads: {
+    lead_id: string;
+    business_name: string;
+    city: string;
+    outcome: Outcome;
+    status: string | null;
+    score: number | null;
+    summary: string;
+    at: string | null;
+  }[];
+  total: number;
+  page: number;
+  pages: number;
 };
 
 export type StandardService = { name: string; synonyms: string[]; must_have: boolean };
@@ -517,6 +592,29 @@ export const api = {
   updateBatch: (id: string, patch: { name?: string; benchmark_id?: string }) =>
     request<Batch>("PATCH", `/batches/${id}`, patch),
   deleteBatch: (id: string) => request<void>("DELETE", `/batches/${id}`),
+  orderBatches: (ids: string[]) => request<Batch[]>("PUT", "/batches/order", { ids }),
+  pipeline: (id: string) => request<Pipeline>("GET", `/batches/${id}/pipeline`),
+  startBatch: (id: string) => request<Pipeline>("POST", `/batches/${id}/start`),
+  pauseBatch: (id: string) => request<Pipeline>("POST", `/batches/${id}/pause`),
+  addBatchTask: (id: string, taskId: string, share: Share = "all") =>
+    request<Pipeline>("POST", `/batches/${id}/tasks`, { task_id: taskId, share }),
+  setShare: (id: string, taskId: string, share: Share) =>
+    request<Pipeline>("PATCH", `/batches/${id}/tasks/${taskId}`, { share }),
+  removeBatchTask: (id: string, taskId: string) =>
+    request<Pipeline>("DELETE", `/batches/${id}/tasks/${taskId}`),
+  addBot: (id: string, taskId: string, key: string) =>
+    request<Pipeline>("POST", `/batches/${id}/tasks/${taskId}/bots`, { key }),
+  removeBot: (id: string, taskId: string, key: string) =>
+    request<Pipeline>("DELETE", `/batches/${id}/tasks/${taskId}/bots/${key}`),
+  botResults: (
+    id: string,
+    filters: { bot: string; outcome?: Outcome | ""; band?: Band | ""; page?: number },
+  ) => request<BotResults>("GET", `/batches/${id}/results${leadQuery(filters)}`),
+  tasks: () => request<Task[]>("GET", "/tasks"),
+  createTask: (body: TaskIn) => request<Task>("POST", "/tasks", body),
+  updateTask: (id: string, body: Omit<TaskIn, "key">) =>
+    request<Task>("PATCH", `/tasks/${id}`, body),
+  deleteTask: (id: string) => request<void>("DELETE", `/tasks/${id}`),
   leads: (filters: LeadFilters) => request<LeadPage>("GET", `/leads${leadQuery(filters)}`),
   lead: (id: string) => request<LeadDetail>("GET", `/leads/${id}`),
   updateLead: (id: string, patch: LeadPatch) => request<LeadDetail>("PATCH", `/leads/${id}`, patch),

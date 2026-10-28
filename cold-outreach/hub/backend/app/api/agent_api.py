@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, Up
 from pydantic import BaseModel, Field, StringConstraints, ValidationError
 from sqlalchemy import or_, select
 
+from app import pipeline
 from app.agents import service
 from app.agents.manifest import Manifest
 from app.alerts import service as alerts
@@ -59,6 +60,7 @@ def put_manifest(body: dict[str, Any], agent: CurrentAgent, db: Db) -> dict[str,
             422, "bad_manifest", f"Manifest: {where} {first.get('msg')}".strip()
         ) from None
     agent.manifest = manifest.model_dump(mode="json")
+    pipeline.set_agent_task(db, agent, pipeline.task_for_key(db, manifest.task or agent.key))
     db.commit()
     return {"ok": True, "config": service.config_of(agent)}
 
@@ -69,21 +71,28 @@ class BatchOut(BaseModel):
     niche: str
     benchmark_id: str
     benchmark_version: int
+    share: str  # how the bots of its task share the leads: "all" or "split"
 
 
 def _batches(db: Db, agent: Agent) -> list[BatchOut]:
-    """The agent's batches in its order, without those that have no benchmark yet."""
-    return [
-        BatchOut(
-            id=str(batch.id),
-            name=batch.name,
-            niche=batch.niche,
-            benchmark_id=str(batch.benchmark.id),
-            benchmark_version=batch.benchmark.version,
+    """The running batches that chose this agent, in the running order, without those that
+    have no benchmark yet."""
+    out = []
+    for batch in pipeline.running_batches_for(db, agent):
+        slot = pipeline.Pipeline(db, batch).slot_of(agent)
+        if batch.benchmark is None or slot is None:
+            continue
+        out.append(
+            BatchOut(
+                id=str(batch.id),
+                name=batch.name,
+                niche=batch.niche,
+                benchmark_id=str(batch.benchmark.id),
+                benchmark_version=batch.benchmark.version,
+                share=slot.share,
+            )
         )
-        for batch in service.batches_of(db, agent)
-        if batch.benchmark is not None
-    ]
+    return out
 
 
 class RunOut(BaseModel):
@@ -210,20 +219,31 @@ def lists(agent: CurrentAgent, db: Db) -> list[dict[str, Any]]:
 
 @router.get("/batches", response_model=list[BatchOut])
 def batches(agent: CurrentAgent, db: Db) -> list[BatchOut]:
-    """The batches chosen for this agent, in order (those without a benchmark left out)."""
+    """The running batches that chose this agent, in order (without a benchmark left out)."""
     db.commit()
     return _batches(db, agent)
 
 
 @router.get("/batches/{batch_id}/leads")
 def batch_leads(batch_id: uuid.UUID, agent: CurrentAgent, db: Db) -> list[dict[str, Any]]:
-    """The batch's leads: each row from the lead files and this agent's own last result
-    (None when it hasn't checked the lead yet). Top leads are listed too, so an agent can
-    tell them apart, but they are never audited."""
+    """The batch's leads that are ready for this agent (SPEC section 6.7): each row from the
+    lead files, the results of the tasks it waits for and its own last result (None when it
+    hasn't checked the lead yet). Top leads and leads still waiting are left out."""
+    batch = db.get(Batch, batch_id)
+    flow = pipeline.Pipeline(db, batch) if batch is not None else None
+    if flow is None or flow.slot_of(agent) is None:
+        db.commit()
+        raise ApiError(404, "not_found", "That batch doesn't use this agent.")
+    slot = flow.slot_of(agent)
+    assert slot is not None
+    before = [
+        bot.agent.key
+        for key in slot.task.needs or []
+        if key in flow.by_key
+        for bot in flow.by_key[key].bots
+    ]
+    leads = flow.ready_for(agent)
     db.commit()
-    if db.get(Batch, batch_id) is None:
-        raise ApiError(404, "not_found", "That batch doesn't exist.")
-    leads = db.scalars(select(Lead).where(Lead.batch_id == batch_id).order_by(Lead.lead_id))
     return [
         {
             "lead_id": x.lead_id,
@@ -234,6 +254,9 @@ def batch_leads(batch_id: uuid.UUID, agent: CurrentAgent, db: Db) -> list[dict[s
             "gbp_link": x.gbp_link,
             "emails": x.emails,
             **(x.data or {}),
+            "needed_results": {
+                key: (x.results or {})[key] for key in before if key in (x.results or {})
+            },
             "result": (x.results or {}).get(agent.key),
         }
         for x in leads
@@ -248,6 +271,8 @@ def _lead(db: Db, lead_id: str) -> Lead:
 
 
 class ResultIn(Strict):
+    # done and skipped count as finished; a failed lead is tried again on the next run.
+    outcome: Literal["done", "skipped", "failed"] = "done"
     status: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)]
     score: Annotated[float, Field(ge=0, le=100)] | None = None
     summary: Annotated[str, StringConstraints(max_length=4000)] = ""

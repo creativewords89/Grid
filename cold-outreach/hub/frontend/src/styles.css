@@ -2129,3 +2129,111 @@ textarea {
 .lead-result {
   padding: 0.75rem 1rem;
 }
+
+/* ---- a batch's tasks and bots (SPEC section 6.7) ---- */
+
+.stack-tight {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.small-head {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 0;
+}
+
+.pill-batch-running {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.pill-batch-paused {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.pill-batch-not_started {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.pipeline {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .pipeline {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.library-bot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 14px;
+}
+
+.library-bot[draggable="true"] {
+  cursor: grab;
+}
+
+.library-bot-used {
+  background: var(--info-bg);
+}
+
+.step-tasks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.task-slot-empty {
+  border-style: dashed;
+  border-color: var(--warn);
+}
+
+.bot-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.meter {
+  height: 6px;
+  background: var(--surface-2);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.meter > div {
+  height: 6px;
+  background: var(--brand);
+}
+
+.count-button {
+  font: inherit;
+  color: inherit;
+  background: var(--surface);
+  cursor: pointer;
+  text-align: left;
+}
+
+.count-chosen {
+  outline: 2px solid var(--brand);
+}

@@ -57,9 +57,13 @@ function batch(overrides: Partial<Batch> = {}): Batch {
     leads: 0,
     top: 0,
     files: 0,
-    agents: [],
+    bots: [],
+    status: "not_started",
+    position: 0,
+    progress_pct: null,
     created_at: "2026-10-27T10:00:00Z",
     can_edit: true,
+    can_run: true,
     can_rename: true,
     can_delete: true,
     ...overrides,
@@ -168,6 +172,7 @@ test("add a file to a batch, read the preview, save it", async () => {
   render(<App />);
 
   await userEvent.click(await screen.findByRole("button", { name: "Batch 1" }));
+  await userEvent.click(screen.getByRole("tab", { name: "Files and settings" }));
   const form = await screen.findByRole("form", { name: "Add a lead file" });
   fireEvent.change(within(form).getByLabelText("Excel file"), {
     target: { files: [new File(["xlsx"], "GBP_Data_2.xlsx")] },
@@ -286,6 +291,7 @@ test("a viewer sees batches, files and lists but can't add or switch", async () 
   expect(screen.queryByRole("button", { name: "+ New batch" })).not.toBeInTheDocument();
   expect(screen.getByRole("switch", { name: "Tulsa · Cleaning on or off" })).toBeDisabled();
   await userEvent.click(screen.getByRole("button", { name: "Batch 1" }));
+  await userEvent.click(screen.getByRole("tab", { name: "Files and settings" }));
   expect(await screen.findByText("Saved")).toBeVisible();
   expect(screen.queryByRole("form", { name: "Add a lead file" })).not.toBeInTheDocument();
 });
