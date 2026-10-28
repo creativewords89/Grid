@@ -6,7 +6,6 @@ import {
   type BatchStatus,
   type Benchmark,
   type LeadImport,
-  type LeadList,
   type Pipeline,
 } from "../api";
 import { useAuth } from "../auth";
@@ -17,8 +16,8 @@ import { PipelineTab, ResultsTab } from "./BatchPipeline";
 
 // Batches (SPEC sections 6.4 and 7): make a batch (a name, one niche, one benchmark of that
 // niche), then add Excel files to it at any time. A business stays in the batch it came in
-// with. Each batch chooses its tasks and bots and is started or paused; running batches
-// share their bots in the running order. The lists (City + Niche) follow.
+// with. Each batch chooses its tasks and agents and is started or paused; running batches
+// share their agents in the running order.
 
 const BATCH_STATUS: Record<BatchStatus, string> = {
   not_started: "Not started",
@@ -36,7 +35,6 @@ const STATUS: Record<LeadImport["status"], string> = {
 export function Batches() {
   const { user } = useAuth();
   const [batches, setBatches] = useState<Batch[] | null>(null);
-  const [lists, setLists] = useState<LeadList[]>([]);
   const [open, setOpen] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState("");
@@ -46,10 +44,6 @@ export function Batches() {
       .batches()
       .then(setBatches)
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Not loaded."));
-    api
-      .lists()
-      .then(setLists)
-      .catch(() => setLists([]));
   }, []);
   useEffect(load, [load]);
 
@@ -115,7 +109,7 @@ export function Batches() {
         <div className="card table-card">
           <table className="table">
             <caption className="table-caption">
-              Running batches share their bots in this order: the higher one goes first.
+              Running batches share their agents in this order: the higher one goes first.
             </caption>
             <thead>
               <tr>
@@ -126,7 +120,7 @@ export function Batches() {
                 <th>Benchmark</th>
                 <th>Businesses</th>
                 <th className="hide-narrow">Files</th>
-                <th className="hide-narrow">Bots</th>
+                <th className="hide-narrow">Agents</th>
                 <th className="hide-narrow">Progress</th>
               </tr>
             </thead>
@@ -186,7 +180,6 @@ export function Batches() {
           </table>
         </div>
       )}
-      <Lists lists={lists} staff={staff} onChange={load} />
     </section>
   );
 }
@@ -421,7 +414,7 @@ function BatchView({
       <div className="tabs" role="tablist" aria-label="Batch">
         {(
           [
-            ["tasks", "Tasks and bots"],
+            ["tasks", "Tasks and agents"],
             ["results", "Results"],
             ["files", "Files and settings"],
           ] as const
@@ -795,71 +788,6 @@ function History({
               <td className="hide-narrow">
                 {when(item.created_at)}
                 {item.uploaded_by && ` · ${item.uploaded_by}`}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function Lists({
-  lists,
-  staff,
-  onChange,
-}: {
-  lists: LeadList[];
-  staff: boolean;
-  onChange: () => void;
-}) {
-  const [error, setError] = useState("");
-  if (lists.length === 0) return null;
-
-  async function toggle(item: LeadList, active: boolean) {
-    setError("");
-    try {
-      await api.updateList(item.id, { active });
-      onChange();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Not saved.");
-    }
-  }
-
-  return (
-    <div className="card table-card">
-      {error && <Alert kind="error">{error}</Alert>}
-      <table className="table">
-        <caption className="table-caption">
-          Lists: switch one off and the agents leave its businesses alone
-        </caption>
-        <thead>
-          <tr>
-            <th>City</th>
-            <th>Niche</th>
-            <th>Businesses</th>
-            <th>Top</th>
-            <th>On</th>
-          </tr>
-        </thead>
-        <tbody>
-          {lists.map((item) => (
-            <tr key={item.id} className={item.active ? undefined : "row-muted"}>
-              <td>{item.city}</td>
-              <td>{item.niche}</td>
-              <td>{item.leads}</td>
-              <td>{item.top}</td>
-              <td>
-                <label className="switch">
-                  <input
-                    type="checkbox"
-                    role="switch"
-                    checked={item.active}
-                    disabled={!staff}
-                    aria-label={`${item.city} · ${item.niche} on or off`}
-                    onChange={(e) => void toggle(item, e.target.checked)}
-                  />
-                </label>
               </td>
             </tr>
           ))}

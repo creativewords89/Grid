@@ -265,7 +265,7 @@ test("change a batch's benchmark, and delete an empty batch", async () => {
   expect(await screen.findByText(/No batches yet/)).toBeVisible();
 });
 
-test("a viewer sees batches, files and lists but can't add or switch", async () => {
+test("a viewer sees batches and files but can't add; the lists are on Leads", async () => {
   mockApi({
     "GET /auth/me": as("viewer"),
     "GET /batches": [200, [batch({ leads: 27, can_edit: false, can_rename: false })]],
@@ -289,7 +289,7 @@ test("a viewer sees batches, files and lists but can't add or switch", async () 
 
   expect(await screen.findByText("Cleaning Benchmark 1 (v2)")).toBeVisible();
   expect(screen.queryByRole("button", { name: "+ New batch" })).not.toBeInTheDocument();
-  expect(screen.getByRole("switch", { name: "Tulsa · Cleaning on or off" })).toBeDisabled();
+  expect(screen.queryByRole("switch", { name: "Tulsa · Cleaning on or off" })).toBeNull();
   await userEvent.click(screen.getByRole("button", { name: "Batch 1" }));
   await userEvent.click(screen.getByRole("tab", { name: "Files and settings" }));
   expect(await screen.findByText("Saved")).toBeVisible();

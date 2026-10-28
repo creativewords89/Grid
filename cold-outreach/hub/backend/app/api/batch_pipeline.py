@@ -68,7 +68,7 @@ def _start_problem(db: Session, batch: Batch) -> str | None:
         .join(BatchTask, BatchTask.id == BatchTaskBot.batch_task_id)
         .where(BatchTask.batch_id == batch.id)
     )
-    return None if has_bot else "Add a task with at least one bot first."
+    return None if has_bot else "Add a task with at least one agent first."
 
 
 def pipeline_out(db: Session, me: CurrentUser, batch: Batch) -> PipelineOut:
@@ -288,7 +288,7 @@ class BotIn(Strict):
 def _agent(db: Session, key: str) -> Agent:
     agent = db.scalar(select(Agent).where(Agent.key == key))
     if agent is None:
-        raise ApiError(404, "not_found", "That bot doesn't exist.")
+        raise ApiError(404, "not_found", "That agent doesn't exist.")
     return agent
 
 

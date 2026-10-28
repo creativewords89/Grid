@@ -202,7 +202,7 @@ def delete_task(task_id: uuid.UUID, me: CurrentUser, db: Db) -> None:
     ensure(me, Action.EDIT_TASKS)
     task = get_task(db, task_id)
     if not task_out(db, me, task).can_delete:
-        raise ApiError(409, "in_use", "A bot does this task or a batch uses it.")
+        raise ApiError(409, "in_use", "An agent does this task or a batch uses it.")
     needed_by = [t.name for t in db.scalars(select(Task)) if task.key in (t.needs or [])]
     if needed_by:
         raise ApiError(409, "needed", f"{', '.join(needed_by)} needs this task first.")

@@ -229,10 +229,42 @@ test("the Owner adds an agent and sees its token once", async () => {
   expect(within(tokenDialog).getByRole("textbox", { name: "Agent token" })).toHaveValue(
     "hub_agent_abc123",
   );
+  // The command that starts it on the server, with its token.
+  const demo = within(tokenDialog).getByLabelText(/Demo agent \(pretends to work/);
+  expect(demo).toHaveTextContent("--name web-audit");
+  expect(demo).toHaveTextContent("AGENT_TOKEN=hub_agent_abc123");
+  expect(demo).toHaveTextContent("--network agent-hub");
   expect(calls.find((c) => c.method === "POST")?.body).toEqual({
     key: "web-audit",
     name: "Website audit",
   });
+});
+
+test("each card says where the agent is in its setup", async () => {
+  mockApi({
+    "GET /auth/me": as("admin"),
+    "GET /agents": [
+      200,
+      [
+        agent({ key: "new-one", name: "New one", manifest: null, last_seen_at: null }),
+        agent({ key: "idle", name: "Idle", batches: [] }),
+        agent({
+          key: "ready",
+          name: "Ready",
+          batches: [{ id: "b1", name: "Batch 1", status: "running", ready: true }],
+        }),
+      ],
+    ],
+  });
+  render(<App />);
+
+  const fresh = await screen.findByRole("article", { name: "New one" });
+  expect(within(fresh).getByText(/Setup: Waiting for its first connection/)).toBeVisible();
+  expect(within(fresh).getByText("How to start it")).toBeVisible();
+  const idle = screen.getByRole("article", { name: "Idle" });
+  expect(within(idle).getByText(/Setup: Connected once/)).toBeVisible();
+  const ready = screen.getByRole("article", { name: "Ready" });
+  expect(within(ready).getByText("Setup: Ready: on, and in a running batch.")).toBeVisible();
 });
 
 test("an agent that never connected can't be run yet", async () => {

@@ -9,9 +9,21 @@ import path from "node:path";
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
 const RUN = path.join(HERE, "..", ".run");
-const DEMO_AGENT = path.join(HERE, "..", "..", "..", "agents", "demo", "agent.py");
+const DEMO_AGENT = path.join(
+  HERE,
+  "..",
+  "..",
+  "..",
+  "agents",
+  "demo",
+  "agent.py",
+);
 const API = "http://localhost:8200";
-const OWNER = { name: "Olivia", email: "olivia@example.com", password: "olivia owner passphrase" };
+const OWNER = {
+  name: "Olivia",
+  email: "olivia@example.com",
+  password: "olivia owner passphrase",
+};
 
 test.describe.configure({ mode: "serial" });
 
@@ -29,18 +41,27 @@ test.afterAll(async () => {
 
 test("the first Owner is created with the setup code", async () => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Create the Owner account" })).toBeVisible();
-  await page.getByLabel("Setup code").fill(readFileSync(path.join(RUN, "setup-code"), "utf8"));
+  await expect(
+    page.getByRole("heading", { name: "Create the Owner account" }),
+  ).toBeVisible();
+  await page
+    .getByLabel("Setup code")
+    .fill(readFileSync(path.join(RUN, "setup-code"), "utf8"));
   await page.getByLabel("Your name").fill(OWNER.name);
   await page.getByLabel("Email").fill(OWNER.email);
   await page.getByLabel("Password").fill(OWNER.password);
   await page.getByRole("button", { name: /Create/ }).click();
 
-  await expect(page.getByRole("heading", { name: "Connections" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Connections" }),
+  ).toBeVisible();
 });
 
 test("a benchmark is made for the niche", async () => {
-  await page.getByRole("link", { name: "Benchmarks" }).click();
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Benchmarks" })
+    .click();
   await page.getByRole("button", { name: "+ New benchmark" }).click();
   const form = page.getByRole("form", { name: "Benchmark" });
   await form.getByLabel("Name", { exact: true }).fill("Cleaning Benchmark 1");
@@ -52,18 +73,27 @@ test("a benchmark is made for the niche", async () => {
   await form.getByRole("button", { name: "Save" }).click();
 
   await expect(page.getByText("Saved Cleaning Benchmark 1.")).toBeVisible();
-  await expect(page.getByRole("row", { name: /Cleaning Benchmark 1/ })).toContainText("v1");
+  await expect(
+    page.getByRole("row", { name: /Cleaning Benchmark 1/ }),
+  ).toContainText("v1");
 });
 
 test("a batch is made and a lead file is read, checked and saved in the Hub", async () => {
-  await page.getByRole("link", { name: "Batches" }).click();
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Batches" })
+    .click();
   await page.getByRole("button", { name: "+ New batch" }).click();
   const made = page.getByRole("form", { name: "New batch" });
   await made.getByLabel("Batch name").fill("Texas November");
   await made.getByLabel("Niche (one per batch)").fill("Cleaning");
-  await made.getByLabel("Benchmark").selectOption({ label: "Cleaning Benchmark 1" });
+  await made
+    .getByLabel("Benchmark")
+    .selectOption({ label: "Cleaning Benchmark 1" });
   await made.getByRole("button", { name: "Make the batch" }).click();
-  await expect(page.getByRole("heading", { name: "Texas November" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Texas November" }),
+  ).toBeVisible();
 
   await page
     .getByLabel("Excel file")
@@ -81,26 +111,43 @@ test("a batch is made and a lead file is read, checked and saved in the Hub", as
   await preview.getByRole("button", { name: "Save 4 businesses" }).click();
   await expect(preview.getByText("Saved: 4 new and 0 updated.")).toBeVisible();
   await page.getByRole("button", { name: "All batches" }).click();
-  await expect(page.getByRole("row", { name: /Texas November/ })).toContainText("1 Top");
-  await expect(page.getByRole("switch", { name: "Tulsa · Cleaning on or off" })).toBeChecked();
+  await expect(page.getByRole("row", { name: /Texas November/ })).toContainText(
+    "1 Top",
+  );
 });
 
 test("the leads are on the Leads screen and download as Excel", async () => {
-  await page.getByRole("link", { name: "Leads" }).click();
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Leads" })
+    .click();
   await expect(page.getByText("4 leads")).toBeVisible();
+  // Every field of the file side by side, and the lists below.
+  await expect(
+    page.getByRole("row", {
+      name: /^Lead ID Business name GBP link Address City Website Phone WhatsApp Email Facebook Instagram Reviews Rating Level Notes Batch/,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("switch", { name: "Tulsa · Cleaning on or off" }),
+  ).toBeChecked();
   await page.getByRole("button", { name: "Sparkle Home Cleaning" }).click();
   const dialog = page.getByRole("dialog", { name: "Sparkle Home Cleaning" });
   // The duplicate rows were merged into one lead with both emails; tracking was removed.
   await expect(dialog.getByLabel("Email(s)")).toHaveValue(
     "hello@sparklehome.com, office@sparklehome.com",
   );
-  await expect(dialog.getByLabel("Website")).toHaveValue("https://sparklehome.com/");
+  await expect(dialog.getByLabel("Website")).toHaveValue(
+    "https://sparklehome.com/",
+  );
   await expect(dialog.getByText(/Texas November/)).toBeVisible();
   await dialog.getByRole("button", { name: "Close" }).click();
 
   await page.getByLabel("Website").selectOption("no");
   await expect(page.getByText("1 lead", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Maid Pro Dallas" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Maid Pro Dallas" }),
+  ).toBeVisible();
   const download = page.waitForEvent("download");
   await page.getByRole("link", { name: "Download Excel" }).click();
   const file = await download;
@@ -109,7 +156,10 @@ test("the leads are on the Leads screen and download as Excel", async () => {
 });
 
 test("the demo agent joins, works on the batch and finishes a run", async () => {
-  await page.getByRole("link", { name: "Agents" }).click();
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Agents" })
+    .click();
   await page.getByRole("button", { name: "+ Add agent" }).click();
   await page.getByLabel("Name").fill("Demo agent");
   await page.getByLabel("Key").fill("demo");
@@ -119,13 +169,20 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
   await page.getByRole("button", { name: "Done" }).click();
 
   agent = spawn("python3", [DEMO_AGENT], {
-    env: { ...process.env, HUB_URL: API, AGENT_TOKEN: token, POLL_SECONDS: "1" },
+    env: {
+      ...process.env,
+      HUB_URL: API,
+      AGENT_TOKEN: token,
+      POLL_SECONDS: "1",
+    },
     stdio: "ignore",
   });
   const card = page.getByRole("article", { name: "Demo agent" });
   await expect(async () => {
     await card.getByRole("button", { name: "Refresh" }).click();
-    await expect(card.getByText("Connected", { exact: true })).toBeVisible({ timeout: 1000 });
+    await expect(card.getByText("Connected", { exact: true })).toBeVisible({
+      timeout: 1000,
+    });
   }).toPass({ timeout: 30_000 });
 
   await card.getByRole("button", { name: "Settings" }).click();
@@ -135,17 +192,32 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
   await expect(card.getByText("Settings saved.")).toBeVisible();
   await expect(card.getByText(/Task: Demo/)).toBeVisible();
 
-  // The batch chooses the bot for its task, then starts.
-  await page.getByRole("link", { name: "Batches" }).click();
-  await page.getByRole("button", { name: "Texas November", exact: true }).click();
-  const library = page.getByRole("complementary", { name: "Bot library" });
+  // The batch chooses the agent for its task, then starts; the setup guide shows the way.
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Batches" })
+    .click();
+  await page
+    .getByRole("button", { name: "Texas November", exact: true })
+    .click();
+  const guide = page.getByRole("region", { name: "Setup guide" });
+  await expect(
+    guide.getByText("Only the demo agent is set up", { exact: false }),
+  ).toBeVisible();
+  const library = page.getByRole("complementary", { name: "Agent library" });
   await library.getByRole("button", { name: "Add Demo agent to Demo" }).click();
   const slot = page.getByRole("article", { name: "Demo" });
   await expect(slot.getByText("Demo agent")).toBeVisible();
   await page.getByRole("button", { name: "Start" }).click();
   await expect(page.getByRole("button", { name: "Pause" })).toBeVisible();
+  await expect(
+    guide.getByRole("listitem").filter({ hasText: "Switch it on" }),
+  ).not.toHaveClass("setup-done");
 
-  await page.getByRole("link", { name: "Agents" }).click();
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Agents" })
+    .click();
   await expect(card.getByText(/Works on: Texas November/)).toBeVisible();
   const power = card.getByRole("switch", { name: "Demo agent on or off" });
   await power.click(); // saved on the server first, then shown as on
@@ -161,33 +233,58 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
   await expect(card.getByText(/3 done/)).toBeVisible();
 
   // Its results are on the Leads screen, and can be sorted by.
-  await page.getByRole("link", { name: "Leads" }).click();
-  await page.getByLabel("Sort by").selectOption({ label: "Demo score (best first)" });
-  await expect(page.getByRole("row", { name: /Email Demo$/ })).toBeVisible();
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Leads" })
+    .click();
+  await page
+    .getByLabel("Sort by")
+    .selectOption({ label: "Demo score (best first)" });
+  await expect(page.getByRole("row", { name: /Batch Demo$/ })).toBeVisible();
   const scored = page.getByRole("row", { name: /Sparkle Home Cleaning/ });
   await expect(scored.getByRole("cell").last()).toHaveText(/^\d+$/);
 
-  // And on the batch's Results tab, for that bot.
-  await page.getByRole("link", { name: "Batches" }).click();
-  await page.getByRole("button", { name: "Texas November", exact: true }).click();
+  // And on the batch's Results tab, for that agent; the setup guide is gone.
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Batches" })
+    .click();
+  await page
+    .getByRole("button", { name: "Texas November", exact: true })
+    .click();
+  await expect(page.getByRole("region", { name: "Setup guide" })).toHaveCount(
+    0,
+  );
   await page.getByRole("tab", { name: "Results" }).click();
   await expect(page.getByRole("button", { name: /3\s*Done/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Sparkle Home Cleaning" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Sparkle Home Cleaning" }),
+  ).toBeVisible();
 });
 
 test("the run is on the Runs screen and the changes are in History", async () => {
-  await page.getByRole("link", { name: "Runs" }).click();
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Runs" })
+    .click();
   const row = page.getByRole("row", { name: /Demo agent/ });
   await expect(row.getByText("Finished")).toBeVisible();
   await expect(row.getByText("3 · 0 · 0")).toBeVisible();
   await expect(row.getByText("Run now by Olivia")).toBeVisible();
 
-  await page.getByRole("link", { name: "History" }).click();
-  await expect(page.getByRole("row", { name: /run agents · Demo agent/ })).toBeVisible();
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "History" })
+    .click();
+  await expect(
+    page.getByRole("row", { name: /run agents · Demo agent/ }),
+  ).toBeVisible();
   await expect(
     page.getByRole("row", { name: /confirm imports · cleaning-leads\.xlsx/ }),
   ).toBeVisible();
-  await expect(page.getByRole("row", { name: /create batches · Texas November/ })).toBeVisible();
+  await expect(
+    page.getByRole("row", { name: /create batches · Texas November/ }),
+  ).toBeVisible();
   await expect(
     page.getByRole("row", { name: /create benchmarks · Cleaning Benchmark 1/ }),
   ).toBeVisible();

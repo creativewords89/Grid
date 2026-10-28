@@ -4,7 +4,7 @@ import { useAuth } from "../auth";
 import { Alert, Field } from "../components/ui";
 
 // Tasks (SPEC sections 6.7 and 7): the jobs a batch can have done and what each needs first.
-// Every bot says which task it does; in a batch you choose one or more bots for each task.
+// Every agent says which task it does; in a batch you choose one or more agents for each.
 
 export function Tasks() {
   const { user } = useAuth();
@@ -39,8 +39,8 @@ export function Tasks() {
         <div>
           <h1>Tasks</h1>
           <p className="muted small">
-            The jobs a batch can have done, and what each one needs first. Every bot says which task
-            it does; in a batch you choose the bots for each task.
+            The jobs a batch can have done, and what each one needs first. Every agent says which
+            task it does; in a batch you choose the agents for each task.
           </p>
         </div>
         {staff && editing === null && (
@@ -62,7 +62,7 @@ export function Tasks() {
         />
       )}
       {tasks?.length === 0 && (
-        <p className="muted">No tasks yet. A bot&apos;s task appears when it first connects.</p>
+        <p className="muted">No tasks yet. An agent&apos;s task appears when it first connects.</p>
       )}
       {tasks && tasks.length > 0 && (
         <div className="card table-card">
@@ -71,7 +71,7 @@ export function Tasks() {
               <tr>
                 <th>Task</th>
                 <th>Needs first</th>
-                <th>Bots that do it</th>
+                <th>Agents that do it</th>
                 <th className="hide-narrow">Used by</th>
                 {staff && (
                   <th>
@@ -90,7 +90,7 @@ export function Tasks() {
                   <td>{task.needs.map((n) => n.name).join(", ") || "Lead file"}</td>
                   <td className="small">
                     {task.bots.map((b) => b.name).join(", ") || (
-                      <span className="field-error">No bot yet</span>
+                      <span className="field-error">No agent yet</span>
                     )}
                   </td>
                   <td className="hide-narrow small">{task.batches.join(", ") || "—"}</td>
@@ -185,7 +185,7 @@ function TaskForm({
           <Field
             label="Key"
             placeholder="review-check"
-            hint="Bots name their task with this key in their manifest."
+            hint="Agents name their task with this key in their manifest."
             value={key}
             error={errors.key}
             onChange={(e) => setKey(e.target.value)}

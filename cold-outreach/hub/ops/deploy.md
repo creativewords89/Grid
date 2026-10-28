@@ -173,7 +173,7 @@ to the internet.
 
 3. Back on **Agents**, the card says **Connected** within a minute (its task, "Demo", is
    made on **Tasks**). Open a batch on **Batches**, add the demo agent to its task on the
-   **Tasks and bots** tab and press **Start**; then switch the agent **on** and press
+   **Tasks and agents** tab and press **Start**; then switch the agent **on** and press
    **Run now** to try it. Add `-e AGENT_TASK=gbp-audit` (or another task key) to the
    `docker run` to try several demo agents as the steps of one batch. **Runs** shows how it went. Remove the
    demo agent afterwards with `docker rm -f demo-agent` (and switch it off in the Hub).
