@@ -129,7 +129,7 @@ jobs:
       - name: End-to-end tests
         run: npx playwright test
 
-      - name: Restore test (a backup of the database the tests filled)
+      - name: Restore test (a backup of the database and reports the tests filled)
         run: sh ../ops/restore-test.sh
         env:
           PGHOST: localhost
@@ -137,6 +137,7 @@ jobs:
           PGPASSWORD: hub
           PGDATABASE: hub_e2e
           BACKUP_DIR: ${{ runner.temp }}/backups
+          REPORTS_DIR: ${{ github.workspace }}/cold-outreach/hub/e2e/.run/reports
 
       - name: Keep the report when they fail
         if: failure()

@@ -95,3 +95,27 @@ def test_benchmarks_and_leads_move_into_named_benchmarks_and_batches(
         ("L-000001", "Batch 1 · Cleaning", "Cleaning Benchmark 1"),
         ("L-000002", "Batch 1 · Plumbing", None),
     ]
+
+
+def test_the_google_connection_is_removed(fresh_database_url: str) -> None:
+    """Step 11: leads are kept in the Hub, so the Google values and last test go."""
+    cfg = alembic_config(fresh_database_url)
+    command.upgrade(cfg, "0009")
+    engine = create_engine(fresh_database_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO settings (key, value) VALUES "
+                    '(\'connections\', \'{"google_sheet_url": "x", "smtp_host": "y"}\'), '
+                    "('connection_tests', '{\"google\": {}, \"email\": {}}')"
+                )
+            )
+        command.upgrade(cfg, "head")
+        with engine.connect() as conn:
+            rows = conn.execute(text("SELECT key, value FROM settings")).all()
+        values = {key: value for key, value in rows}
+    finally:
+        engine.dispose()
+
+    assert values == {"connections": {"smtp_host": "y"}, "connection_tests": {"email": {}}}

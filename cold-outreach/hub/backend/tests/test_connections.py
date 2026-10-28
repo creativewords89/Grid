@@ -9,8 +9,6 @@ from typing import Any
 
 import httpx2
 import pytest
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -59,27 +57,6 @@ def fake_web(monkeypatch: pytest.MonkeyPatch) -> FakeWeb:
     return web
 
 
-def _service_account() -> str:
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    pem = key.private_bytes(
-        serialization.Encoding.PEM,
-        serialization.PrivateFormat.PKCS8,
-        serialization.NoEncryption(),
-    ).decode()
-    return json.dumps(
-        {
-            "type": "service_account",
-            "client_email": "hub@project.iam.gserviceaccount.com",
-            "private_key": pem,
-            "token_uri": "https://oauth2.googleapis.com/token",
-        }
-    )
-
-
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit"
-FOLDER_URL = "https://drive.google.com/drive/folders/1FolderIdAbCdEf123456"
-
-
 def _save(client: TestClient, **values: str | None) -> dict[str, Any]:
     response = client.patch("/api/connections", json={"values": values})
     assert response.status_code == 200, response.text
@@ -125,7 +102,6 @@ def test_every_group_is_listed_empty_at_first(client: TestClient, owner: User) -
 
     assert [g["id"] for g in body["groups"]] == [
         "dataforseo",
-        "google",
         "pagespeed",
         "email",
         "telegram",
@@ -147,16 +123,6 @@ def test_secrets_are_encrypted_and_never_returned(
     raw = settings_store.get(db, "connections")
     assert DFS_PASSWORD not in json.dumps(raw)
     assert connections.decrypt(raw["dataforseo_password"]) == DFS_PASSWORD
-
-
-def test_the_key_file_is_write_only_too(client: TestClient, owner: User) -> None:
-    key_file = _service_account()
-
-    body = _save(client, google_service_account=key_file)
-
-    field = _field(body, "google_service_account")
-    assert (field["set"], field["value"], field["kind"]) == (True, None, "json")
-    assert "PRIVATE KEY" not in json.dumps(body)
 
 
 def test_changes_are_in_history_without_values(
@@ -187,11 +153,7 @@ def test_an_empty_value_removes_it(client: TestClient, owner: User) -> None:
         ("smtp_port", "99999", "port number"),
         ("smtp_port", "abc", "port number"),
         ("smtp_from", "not-an-email", "email address"),
-        ("google_sheet_url", "https://example.com/sheet", "Sheet's link"),
-        ("google_drive_folder_url", "https://drive.google.com/", "folder's link"),
-        ("google_service_account", "{not json", "isn't a JSON key file"),
-        ("google_service_account", '{"type": "user"}', "isn't a service account key"),
-        ("google_service_account", '{"type": "service_account"}', "incomplete"),
+        ("google_sheet_url", "https://docs.google.com/spreadsheets/d/x", "can't be set here"),
         ("telegram_chat_id", "my group", "is a number"),
         ("anthropic_api_key", "sk-1", "can't be set here"),
     ],
@@ -274,115 +236,6 @@ def test_dataforseo_wrong_password(client: TestClient, owner: User, fake_web: Fa
         False,
         "DataForSEO refused the login or password.",
     )
-
-
-def _google_routes(fake_web: FakeWeb, *, tabs: list[str], drive_status: int) -> None:
-    fake_web["oauth2.googleapis.com"] = lambda _: httpx2.Response(
-        200, json={"access_token": "ya29.token", "expires_in": 3600}
-    )
-
-    def sheets(request: httpx2.Request) -> httpx2.Response:
-        assert request.headers["authorization"] == "Bearer ya29.token"
-        if "/values/" in request.url.path:
-            return httpx2.Response(200, json={"values": [["Lead ID", "City", "Niche"]]})
-        return httpx2.Response(
-            200,
-            json={
-                "properties": {"title": "Leads Master"},
-                "sheets": [{"properties": {"title": t}} for t in tabs],
-            },
-        )
-
-    def drive(request: httpx2.Request) -> httpx2.Response:
-        if request.method == "POST":
-            if drive_status != 200:
-                return httpx2.Response(
-                    drive_status,
-                    json={
-                        "error": {
-                            "message": "Service Accounts do not have storage quota.",
-                            "errors": [{"reason": "storageQuotaExceeded"}],
-                        }
-                    },
-                )
-            assert json.loads(request.content)["parents"] == ["1FolderIdAbCdEf123456"]
-            return httpx2.Response(200, json={"id": "file-1"})
-        assert request.method == "DELETE"
-        return httpx2.Response(204)
-
-    fake_web["sheets.googleapis.com"] = sheets
-    fake_web["www.googleapis.com"] = drive
-
-
-def test_google_opens_the_sheet_and_writes_to_the_folder(
-    client: TestClient, owner: User, fake_web: FakeWeb
-) -> None:
-    _google_routes(fake_web, tabs=["Leads"], drive_status=200)
-    _save(
-        client,
-        google_service_account=_service_account(),
-        google_sheet_url=SHEET_URL,
-        google_drive_folder_url=FOLDER_URL,
-    )
-
-    result = client.post("/api/connections/google/test").json()
-
-    assert result["ok"] is True, result
-    assert result["message"] == (
-        "Opened “Leads Master”: its Leads tab has 3 columns. The Drive folder can be written to."
-    )
-    token_request = next(r for r in fake_web.seen if r.url.host == "oauth2.googleapis.com")
-    assertion = token_request.content.decode().split("assertion=")[1]
-    assert assertion.count(".") == 2  # a signed JWT
-
-
-def test_the_key_files_token_uri_is_never_used(
-    client: TestClient, owner: User, fake_web: FakeWeb
-) -> None:
-    _google_routes(fake_web, tabs=["Leads"], drive_status=200)
-    key = json.loads(_service_account()) | {"token_uri": "https://collector.example/token"}
-    _save(
-        client,
-        google_service_account=json.dumps(key),
-        google_sheet_url=SHEET_URL,
-        google_drive_folder_url=FOLDER_URL,
-    )
-
-    assert client.post("/api/connections/google/test").json()["ok"] is True
-    hosts = {r.url.host for r in fake_web.seen}
-    assert "oauth2.googleapis.com" in hosts and "collector.example" not in hosts
-
-
-def test_google_without_a_leads_tab_yet(client: TestClient, owner: User, fake_web: FakeWeb) -> None:
-    _google_routes(fake_web, tabs=["Sheet1"], drive_status=200)
-    _save(
-        client,
-        google_service_account=_service_account(),
-        google_sheet_url=SHEET_URL,
-        google_drive_folder_url=FOLDER_URL,
-    )
-
-    result = client.post("/api/connections/google/test").json()
-
-    assert result["ok"] is True
-    assert "no Leads tab yet" in result["message"]
-
-
-def test_google_explains_the_shared_drive_problem(
-    client: TestClient, owner: User, fake_web: FakeWeb
-) -> None:
-    _google_routes(fake_web, tabs=["Leads"], drive_status=403)
-    _save(
-        client,
-        google_service_account=_service_account(),
-        google_sheet_url=SHEET_URL,
-        google_drive_folder_url=FOLDER_URL,
-    )
-
-    result = client.post("/api/connections/google/test").json()
-
-    assert result["ok"] is False
-    assert "Shared Drive" in result["message"]
 
 
 def test_pagespeed_key(client: TestClient, owner: User, fake_web: FakeWeb) -> None:

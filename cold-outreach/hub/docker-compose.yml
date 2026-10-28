@@ -37,6 +37,10 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       JSON_LOGS: "true"
+      REPORTS_DIR: /data/reports
+    volumes:
+      # Files agents save for leads (reports); backed up with the database.
+      - reports:/data/reports
     security_opt: ["no-new-privileges:true"]
     depends_on:
       db:
@@ -66,8 +70,8 @@ services:
       api:
         condition: service_healthy
 
-  # Nightly database backup at BACKUP_TIME (ops/backup.sh); restores run here too
-  # (ops/restore.md).
+  # Nightly backup of the database and the reports at BACKUP_TIME (ops/backup.sh); restores
+  # run here too (ops/restore.md).
   backup:
     build:
       context: .
@@ -81,8 +85,10 @@ services:
       PGPASSWORD: ${POSTGRES_PASSWORD}
       PGDATABASE: ${POSTGRES_DB}
       BACKUP_DIR: /data/backups
+      REPORTS_DIR: /data/reports
     volumes:
       - backups:/data/backups
+      - reports:/data/reports
     depends_on:
       db:
         condition: service_healthy
@@ -110,5 +116,6 @@ networks:
 volumes:
   db_data:
   backups:
+  reports:
   caddy_data:
   caddy_config:

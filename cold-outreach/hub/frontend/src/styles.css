@@ -2096,3 +2096,36 @@ textarea {
 .batch-order li span {
   flex: 1;
 }
+
+.pill-top {
+  margin-left: 0.5rem;
+  background: var(--warning-bg, #fff4e5);
+  color: var(--warning-text, #8a4b00);
+}
+
+.label-spacer {
+  display: block;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.lead-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 0.5rem 1.5rem;
+  margin: 0;
+}
+
+.lead-facts dt {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.lead-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.lead-result {
+  padding: 0.75rem 1rem;
+}

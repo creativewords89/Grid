@@ -275,8 +275,8 @@ class Import(TimestampMixin, Base):
 
 
 class Lead(TimestampMixin, Base):
-    """The Lead ID registry (SPEC section 5): enough to match a business on the next import.
-    The full row lives in the Master Sheet."""
+    """A business (SPEC section 5): the keys that match it on the next import, its row from
+    the lead files (`data`) and what each agent found (`results`, by agent key)."""
 
     __tablename__ = "leads"
 
@@ -294,6 +294,10 @@ class Lead(TimestampMixin, Base):
     name_address: Mapped[str] = mapped_column(String(600), default="", server_default="")
     website_domain: Mapped[str] = mapped_column(String(255), default="", server_default="")
     emails: Mapped[list[str]] = mapped_column(JSONB, default=list, server_default="[]")
+    # address, website, phone, whatsapp, facebook, instagram, reviews, rating, notes
+    data: Mapped[dict[str, str]] = mapped_column(JSONB, default=dict, server_default="{}")
+    # agent key -> {status, score, summary, details, benchmark_id, benchmark_version, at}
+    results: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
     first_import_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("imports.id", ondelete="SET NULL")
     )
@@ -307,6 +311,25 @@ class Lead(TimestampMixin, Base):
         Index("ix_leads_name_address", "name_address"),
         Index("ix_leads_niche_city", "niche", "city"),
         Index("ix_leads_batch_id", "batch_id"),
+    )
+
+
+class LeadFile(Base):
+    """A file an agent saved for a lead, such as its audit report (SPEC section 6.4). The
+    bytes are on disk under REPORTS_DIR; the database knows its name and where it is."""
+
+    __tablename__ = "lead_files"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    lead_id: Mapped[str] = mapped_column(ForeignKey("leads.lead_id", ondelete="CASCADE"))
+    agent_key: Mapped[str] = mapped_column(String(40))
+    name: Mapped[str] = mapped_column(String(120))
+    content_type: Mapped[str] = mapped_column(String(80))
+    size: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("uq_lead_files_lead_agent_name", "lead_id", "agent_key", "name", unique=True),
     )
 
 

@@ -36,8 +36,8 @@ MANIFEST: dict[str, Any] = {
         },
         {"key": "dry_run", "type": "bool", "label": "Dry run", "default": False},
     ],
-    "connections": ["dataforseo", "google"],
-    "sheet_columns": ["GBP Status", "GBP Score"],
+    "connections": ["dataforseo", "pagespeed"],
+    "result_label": "GBP",
     "cost_per_item_usd": 0.01,
 }
 
@@ -173,7 +173,7 @@ def test_the_manifest_builds_the_settings_with_defaults(
         "dry_run": False,
     }
     assert agent["connected"] is True
-    assert agent["missing_connections"] == ["dataforseo", "google"]
+    assert agent["missing_connections"] == ["dataforseo", "pagespeed"]
 
 
 @pytest.mark.parametrize(
@@ -331,13 +331,13 @@ def test_a_whole_run(client: TestClient, agent_token: str, owner: User) -> None:
     assert job["run_id"] == queued["id"]
     assert job["config"]["batch_size"] == 20
     assert job["daily_limit"] == 100
-    # Only what the manifest declared: DataForSEO and Google, never the email password.
+    # Only what the manifest declared: DataForSEO and PageSpeed, never the email password.
     assert job["connections"] == {
         "dataforseo": {
             "dataforseo_login": "me@gridrankers.com",
             "dataforseo_password": "dfs-password-1234",
         },
-        "google": {},
+        "pagespeed": {},
     }
     assert agent_call(client, "GET", "/next-run", agent_token).status_code == 204
 

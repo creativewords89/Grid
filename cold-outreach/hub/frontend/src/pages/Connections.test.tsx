@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, vi } from "vitest";
 import type { ConnectionField, ConnectionGroup, Connections } from "../api";
@@ -43,18 +43,11 @@ function data(dataforseo: Partial<ConnectionGroup> = {}): Connections {
         ...dataforseo,
       },
       {
-        id: "google",
-        name: "Google (Sheets and Drive)",
+        id: "pagespeed",
+        name: "PageSpeed Insights",
         ready: false,
         last_test: null,
-        fields: [
-          field({
-            name: "google_service_account",
-            label: "Service account key (JSON file)",
-            kind: "json",
-            value: null,
-          }),
-        ],
+        fields: [field({ name: "pagespeed_api_key", label: "API key", kind: "secret" })],
       },
     ],
   };
@@ -127,24 +120,12 @@ test("the Test result is shown", async () => {
   expect(await screen.findByText("Connected. Balance: $48.50.")).toBeVisible();
 });
 
-test("the key file is read from disk and sent as text", async () => {
-  const calls = mockApi({
-    "GET /auth/me": signedIn,
-    "GET /connections": [200, data()],
-    "PATCH /connections": [200, data()],
-  });
+test("there is no Google connection: leads are kept in the Hub", async () => {
+  mockApi({ "GET /auth/me": signedIn, "GET /connections": [200, data()] });
   render(<App />);
 
-  const form = await screen.findByRole("form", { name: "Google (Sheets and Drive)" });
-  const input = within(form).getByLabelText("Service account key (JSON file)");
-  const key = '{"type": "service_account"}';
-  fireEvent.change(input, { target: { files: [new File([key], "key.json")] } });
-  expect(await within(form).findByText("Key file ready to save.")).toBeVisible();
-  await userEvent.click(within(form).getByRole("button", { name: "Save" }));
-
-  expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({
-    values: { google_service_account: key },
-  });
+  expect(await screen.findByRole("form", { name: "PageSpeed Insights" })).toBeVisible();
+  expect(screen.queryByText(/Google \(Sheets and Drive\)/)).not.toBeInTheDocument();
 });
 
 test("a field error from the server shows under the field", async () => {

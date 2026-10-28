@@ -25,7 +25,7 @@ router = APIRouter(prefix="/connections", tags=["connections"])
 
 # A service account key file is a few KB; everything else is short.
 Value = Annotated[str, StringConstraints(strip_whitespace=True, max_length=20_000)]
-Group = Literal["dataforseo", "google", "pagespeed", "email", "telegram"]
+Group = Literal["dataforseo", "pagespeed", "email", "telegram"]
 
 
 class FieldOut(BaseModel):
@@ -157,20 +157,6 @@ def _run_test(group: str, values: dict[str, str], me: User, db: Db, mailer: Mail
             values["dataforseo_login"], values["dataforseo_password"]
         )
         return f"Connected. Balance: ${balance:,.2f}."
-
-    if group == "google":
-        token = providers.google_token(values["google_service_account"])
-        sheet = connections.sheet_id(values["google_sheet_url"]) or ""
-        title, tabs = providers.google_sheet_tabs(token, sheet)
-        providers.google_drive_write_test(
-            token, connections.folder_id(values["google_drive_folder_url"]) or ""
-        )
-        if "Leads" in tabs:
-            headers = providers.google_sheet_headers(token, sheet, "Leads")
-            leads = f"its Leads tab has {len(headers)} columns"
-        else:
-            leads = "it has no Leads tab yet (the first import creates it)"
-        return f"Opened “{title}”: {leads}. The Drive folder can be written to."
 
     if group == "pagespeed":
         score = providers.pagespeed_score(values["pagespeed_api_key"])

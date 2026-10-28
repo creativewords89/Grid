@@ -1,7 +1,8 @@
 #!/bin/sh
-# Prove the backups can be restored, without touching the live database: make a backup,
-# restore it into a scratch database, compare every table's row count, then drop the
-# scratch database. Exits non-zero if anything differs.
+# Prove the backups can be restored, without touching the live data: make a backup, restore
+# it into a scratch database (the live reports are left alone), compare every table's row
+# count and the number of report files in the archive, then drop the scratch database.
+# Exits non-zero if anything differs.
 #
 #   docker compose exec backup /ops/restore-test.sh
 #
@@ -34,13 +35,20 @@ counts "$SOURCE" > "$BACKUP_DIR/before.txt"
 
 psql -d "$SOURCE" -qc "drop database if exists \"$SCRATCH\"" >/dev/null
 psql -d "$SOURCE" -qc "create database \"$SCRATCH\"" >/dev/null
-PGDATABASE="$SCRATCH" "$HERE/restore.sh" "$STAMP" --yes >/dev/null
+PGDATABASE="$SCRATCH" SKIP_REPORTS=1 "$HERE/restore.sh" "$STAMP" --yes >/dev/null
 counts "$SCRATCH" > "$BACKUP_DIR/after.txt"
 
 if ! diff "$BACKUP_DIR/before.txt" "$BACKUP_DIR/after.txt" >&2; then
   echo "restore test FAILED: the restored row counts differ (above)" >&2
   exit 1
 fi
+REPORTS_DIR="${REPORTS_DIR:-/data/reports}"
+live=$(find "$REPORTS_DIR" -type f 2>/dev/null | wc -l | tr -d ' ')
+archived=$(tar -tzf "$BACKUP_DIR/reports-$STAMP.tar.gz" | grep -vc '/$' || true)
+if [ "$live" != "$archived" ]; then
+  echo "restore test FAILED: $live report files, but $archived in the archive" >&2
+  exit 1
+fi
 tables=$(wc -l < "$BACKUP_DIR/before.txt" | tr -d ' ')
 rows=$(awk '{ sum += $2 } END { print sum }' "$BACKUP_DIR/before.txt")
-echo "restore test passed: $tables tables and $rows rows came back the same"
+echo "restore test passed: $tables tables, $rows rows and $live report files came back the same"

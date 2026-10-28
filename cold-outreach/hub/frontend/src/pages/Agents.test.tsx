@@ -49,7 +49,7 @@ function agent(overrides: Partial<Agent> = {}): Agent {
         },
       ],
       connections: ["dataforseo"],
-      sheet_columns: [],
+      result_label: "GBP",
       cost_per_item_usd: 0.01,
     },
     config: { batch_size: 20, queue: "standard", dry_run: false },

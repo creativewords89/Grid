@@ -21,7 +21,7 @@ export type LinkResult = { email_sent: boolean; link: string | null };
 export type ConnectionField = {
   name: string;
   label: string;
-  kind: "text" | "secret" | "number" | "json";
+  kind: "text" | "secret" | "number";
   placeholder: string;
   required: boolean;
   set: boolean;
@@ -59,7 +59,7 @@ export type Manifest = {
   description: string;
   settings: ManifestSetting[];
   connections: string[];
-  sheet_columns: string[];
+  result_label: string;
   cost_per_item_usd: number;
 };
 
@@ -150,8 +150,8 @@ export type ImportCounts = {
   invalid_emails: number;
   cities: number;
   new_lists: number;
-  sheet_added?: number;
-  sheet_updated?: number;
+  saved_new?: number;
+  saved_updated?: number;
 };
 
 export type ImportPreview = {
@@ -219,6 +219,77 @@ export type Benchmark = {
 };
 
 export type BenchmarkIn = { name: string; niche?: string; gbp: GbpTargets; website: Standard };
+
+export type LeadResult = {
+  status: string;
+  score: number | null;
+  summary: string;
+  details: Record<string, unknown>;
+  benchmark_id: string | null;
+  benchmark_version: number | null;
+  at: string;
+};
+
+export type Lead = {
+  lead_id: string;
+  batch_id: string | null;
+  batch_name: string | null;
+  niche: string;
+  city: string;
+  business_name: string;
+  level: string;
+  gbp_link: string;
+  emails: string[];
+  data: Record<string, string>;
+  results: Record<string, LeadResult>;
+};
+
+export type LeadFile = {
+  id: string;
+  agent_key: string;
+  name: string;
+  content_type: string;
+  size: number;
+  created_at: string;
+};
+
+export type LeadDetail = Lead & { files: LeadFile[]; can_edit: boolean };
+
+export type LeadPage = {
+  leads: Lead[];
+  total: number;
+  page: number;
+  pages: number;
+  agents: Record<string, string>;
+};
+
+export type LeadFilters = {
+  batch_id?: string;
+  q?: string;
+  city?: string;
+  level?: "" | "top" | "not_top";
+  website?: "" | "yes" | "no";
+  sort?: "lead_id" | "name" | "city" | "newest" | "score";
+  score_of?: string;
+  page?: number;
+};
+
+export type LeadPatch = {
+  email?: string;
+  phone?: string;
+  website?: string;
+  level?: "Top" | "";
+  notes?: string;
+};
+
+export function leadQuery(filters: LeadFilters): string {
+  const params = new URLSearchParams();
+  for (const [name, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== "") params.set(name, String(value));
+  }
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
 
 export type Batch = {
   id: string;
@@ -446,6 +517,10 @@ export const api = {
   updateBatch: (id: string, patch: { name?: string; benchmark_id?: string }) =>
     request<Batch>("PATCH", `/batches/${id}`, patch),
   deleteBatch: (id: string) => request<void>("DELETE", `/batches/${id}`),
+  leads: (filters: LeadFilters) => request<LeadPage>("GET", `/leads${leadQuery(filters)}`),
+  lead: (id: string) => request<LeadDetail>("GET", `/leads/${id}`),
+  updateLead: (id: string, patch: LeadPatch) => request<LeadDetail>("PATCH", `/leads/${id}`, patch),
+  deleteLead: (id: string) => request<void>("DELETE", `/leads/${id}`),
   lists: () => request<LeadList[]>("GET", "/lists"),
   updateList: (id: string, patch: { active?: boolean }) =>
     request<LeadList>("PATCH", `/lists/${id}`, patch),
