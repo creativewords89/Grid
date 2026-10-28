@@ -281,7 +281,7 @@ def test_an_agent_works_through_its_batches_in_order(
                 lead_id="L-000002",
                 batch_id=second["id"],
                 niche="Cleaning",
-                city="Dallas",
+                city="Tulsa",  # a Top chosen: Tulsa is ready in this batch
                 business_name="B",
                 level="Top",
             ),
@@ -358,6 +358,7 @@ def test_agents_read_lists_and_do_not_contact(client: TestClient, owner: User, d
             "city": "Dallas",
             "niche": "Cleaning",
             "active": False,
+            "ready": False,  # no Top chosen in Dallas
             "daily_limit": None,
         }
     ]

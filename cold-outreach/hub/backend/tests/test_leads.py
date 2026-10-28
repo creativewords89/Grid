@@ -44,9 +44,20 @@ def saved(client: TestClient, owner: User) -> None:
     ):
         preview = upload(client, workbook(content), batch=batch)
         assert client.post(f"/api/imports/{preview['id']}/confirm").status_code == 200
-    # Top is chosen in the Hub (Top Shine).
-    marked = client.post("/api/leads/top", json={"lead_ids": ["L-000002"], "top": True})
+    # Top is chosen in the Hub, in a city (Top Shine, Tulsa).
+    marked = mark_top(client, ["L-000002"])
     assert marked.json() == {"changed": 1}
+
+
+def mark_top(
+    client: TestClient,
+    lead_ids: list[str],
+    top: bool = True,
+    city: str = "Tulsa",
+    batch: str = "Batch 1",
+) -> Any:
+    body = {"batch_id": batch_id(client, batch), "city": city, "lead_ids": lead_ids, "top": top}
+    return client.post("/api/leads/top", json=body)
 
 
 def page(client: TestClient, **params: Any) -> dict[str, Any]:
@@ -146,21 +157,21 @@ def test_staff_change_a_lead_and_top_protects_it(
             "email": "Owner@MC.com, kevin@mc.com",
             "phone": "(918) 555-7777",
             "website": "https://mc.com/?utm_source=x",
-            "level": "Top",
             "notes": "Called once",
         },
     ).json()
+    mark_top(client, ["L-000001"])
 
     assert changed["emails"] == ["owner@mc.com", "kevin@mc.com"]
     assert changed["data"]["phone"] == "(918) 555-7777"
     assert changed["data"]["website"] == "https://mc.com/"
-    assert (changed["level"], changed["data"]["notes"]) == ("Top", "Called once")
+    assert (changed["level"], changed["data"]["notes"]) == ("", "Called once")
     blocked = {
         d.value for d in db.scalars(select(DoNotContact).where(DoNotContact.lead_id == "L-000001"))
     }
     assert blocked == {"owner@mc.com", "kevin@mc.com", "9185557777", "https://share.google/mc"}
 
-    client.patch("/api/leads/L-000001", json={"level": ""})
+    mark_top(client, ["L-000001"], top=False)
     db.expire_all()
     assert db.scalars(select(DoNotContact).where(DoNotContact.lead_id == "L-000001")).all() == []
     history = client.get("/api/history", params={"entity": "lead"}).json()["entries"]
@@ -323,9 +334,7 @@ def test_another_leads_file_id_is_not_found(client: TestClient, saved: None, rep
 
 
 def test_many_leads_are_marked_top_and_back(client: TestClient, saved: None, db: Session) -> None:
-    marked = client.post(
-        "/api/leads/top", json={"lead_ids": ["L-000001", "L-000003", "L-000002"], "top": True}
-    )
+    marked = mark_top(client, ["L-000001", "L-000003", "L-000002"])
 
     assert marked.json() == {"changed": 2}  # L-000002 already was
     assert ids(page(client, level="top")) == ["L-000001", "L-000002", "L-000003"]
@@ -336,7 +345,7 @@ def test_many_leads_are_marked_top_and_back(client: TestClient, saved: None, db:
     )
     assert entry is not None and entry.title == "2 leads"
 
-    client.post("/api/leads/top", json={"lead_ids": ["L-000001"], "top": False})
+    mark_top(client, ["L-000001"], top=False)
     assert "L-000001" not in ids(page(client, level="top"))
     assert "L-000001" not in set(db.scalars(select(DoNotContact.lead_id)))
 
@@ -344,13 +353,36 @@ def test_many_leads_are_marked_top_and_back(client: TestClient, saved: None, db:
 def test_top_needs_staff_and_at_most_500(
     client: TestClient, saved: None, make_user: UserFactory
 ) -> None:
-    too_many = client.post("/api/leads/top", json={"lead_ids": ["L-1"] * 501, "top": True})
+    too_many = mark_top(client, ["L-1"] * 501)
     assert too_many.status_code == 422
     client.cookies.clear()
     sign_in(client, make_user(Role.VIEWER).email)
 
-    refused = client.post("/api/leads/top", json={"lead_ids": ["L-000001"], "top": True})
+    refused = mark_top(client, ["L-000001"])
     assert refused.status_code == 403
+
+
+def test_top_only_in_one_city_of_the_batch(client: TestClient, saved: None) -> None:
+    """Step 19: Top is chosen in a city opened from the Cities tab, never anywhere else."""
+    for lead_ids, city, batch in (
+        (["L-000001", "L-000004"], "Tulsa", "Batch 1"),  # L-000004 is in Dallas
+        (["L-000005"], "Austin", "Batch 1"),  # Austin's lead is in Batch 2
+        (["L-000001"], "Tulsa", "Batch 2"),
+        (["L-000001", "L-999999"], "Tulsa", "Batch 1"),  # no such lead
+    ):
+        refused = mark_top(client, lead_ids, city=city, batch=batch)
+        assert refused.status_code == 422, (lead_ids, city, batch)
+    assert ids(page(client, level="top")) == ["L-000002"]  # nothing changed
+
+    assert mark_top(client, ["L-000004"], city="dallas").json() == {"changed": 1}
+    assert mark_top(client, ["L-000001"], city="Tulsa").json() == {"changed": 1}
+
+
+def test_the_lead_window_does_not_change_top(client: TestClient, saved: None) -> None:
+    refused = client.patch("/api/leads/L-000002", json={"level": ""})
+
+    assert refused.status_code == 422
+    assert client.get("/api/leads/L-000002").json()["level"] == "Top"
 
 
 def test_sort_by_rating_and_reviews_with_odd_values(

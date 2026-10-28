@@ -194,7 +194,13 @@ test("the leads are in their batch and download as Excel", async () => {
   expect(file.suggestedFilename()).toMatch(/^leads-\d{4}-\d{2}-\d{2}\.xlsx$/);
   await page.getByLabel("Website").selectOption("");
 
-  // Top is chosen in the Hub: tick it, Mark as Top.
+  // Top is chosen in a city, not on the Leads tab: open Dallas, tick it, Mark as Top.
+  await expect(
+    page.getByRole("checkbox", { name: "Choose Big Shine Co" }),
+  ).toHaveCount(0);
+  await page.getByRole("tab", { name: "Cities", exact: true }).click();
+  await page.getByRole("tab", { name: /Small cities/ }).click();
+  await page.getByRole("button", { name: "Dallas", exact: true }).click();
   await page.getByRole("checkbox", { name: "Choose Big Shine Co" }).click();
   await page.getByRole("button", { name: "Mark as Top" }).click();
   await expect(
@@ -203,6 +209,14 @@ test("the leads are in their batch and download as Excel", async () => {
   await expect(
     page.getByRole("row", { name: /Big Shine Co/ }).locator(".pill-top"),
   ).toBeVisible();
+  // With a Top chosen Dallas is ready; Tulsa, without one, is not.
+  await page.getByRole("button", { name: "← Back to Cities" }).click();
+  await expect(page.getByRole("row", { name: /Dallas/ })).toContainText(
+    "Ready",
+  );
+  await expect(page.getByRole("row", { name: /Tulsa/ })).toContainText(
+    "Not ready",
+  );
 });
 
 test("the demo agent joins, works on the batch and finishes a run", async () => {
@@ -290,8 +304,9 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
     await card.getByRole("button", { name: "Refresh" }).click();
     await expect(card.getByText("Finished")).toBeVisible({ timeout: 1000 });
   }).toPass({ timeout: 45_000 });
-  // Three leads audited; the Top one is never handed out.
-  await expect(card.getByText(/3 done/)).toBeVisible();
+  // Dallas's two other leads audited; the Top one is never handed out, and Tulsa has no
+  // Top chosen yet, so it is not ready and left alone.
+  await expect(card.getByText(/2 done/)).toBeVisible();
 
   // Its results are on the batch's Leads tab, and can be sorted by.
   await page
@@ -312,7 +327,7 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
   // And on the batch's Results tab, for that agent.
   await page.getByRole("tab", { name: "Tasks", exact: true }).click();
   await page.getByRole("tab", { name: "Results" }).click();
-  await expect(page.getByRole("button", { name: /3\s*Done/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /2\s*Done/ })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Sparkle Home Cleaning" }),
   ).toBeVisible();
@@ -325,7 +340,7 @@ test("the run is on the Runs screen and the changes are in History", async () =>
     .click();
   const row = page.getByRole("row", { name: /Demo agent/ });
   await expect(row.getByText("Finished")).toBeVisible();
-  await expect(row.getByText("3 · 0 · 0")).toBeVisible();
+  await expect(row.getByText("2 · 0 · 0")).toBeVisible();
   await expect(row.getByText("Run now by Olivia")).toBeVisible();
 
   await page

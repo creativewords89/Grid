@@ -217,7 +217,10 @@ def leads(client: TestClient, **params: Any) -> dict[str, dict[str, Any]]:
 
 
 def mark_top(client: TestClient, *lead_ids: str, top: bool = True) -> None:
-    response = client.post("/api/leads/top", json={"lead_ids": list(lead_ids), "top": top})
+    """Marks leads Top in their city, as the Cities tab does (all in one city)."""
+    first = client.get(f"/api/leads/{lead_ids[0]}").json()
+    body = {"batch_id": first["batch_id"], "city": first["city"], "lead_ids": list(lead_ids)}
+    response = client.post("/api/leads/top", json={**body, "top": top})
     assert response.status_code == 200, response.text
 
 

@@ -94,7 +94,7 @@ cold-outreach/
 | See Overview, Runs, Agents, Batches, Benchmarks, Leads; download leads as Excel | ✔ | ✔ | ✔ |
 | Make, rename or delete a batch; add and confirm its files | ✔ | ✔ | ✘ |
 | Choose a batch's tasks and agents, start or pause it, change the batches' running order | ✔ | ✔ | ✘ |
-| Change a lead's email, phone, website, Top mark or notes; delete a lead | ✔ | ✔ | ✘ |
+| Change a lead's email, phone, website or notes; mark Top in a city; delete a lead | ✔ | ✔ | ✘ |
 | Switch an agent on/off, press Run now or Stop | ✔ | ✔ | ✘ |
 | Change an agent's batches, limit, run time, budget and settings | ✔ | ✔ | ✘ |
 | Make, change or delete a benchmark | ✔ | ✔ | ✘ |
@@ -220,8 +220,8 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
     same name from the same agent replaces it).
   - Reference data: `GET /batches` (as in `next-run`), `GET /benchmarks/{id}` (the
     GBP numbers, the Website Standard and the `version`), `GET /lists` (each batch's cities:
-    batch id, city, niche, on or off, limit; the Hub never hands out the leads of a city
-    switched off) and `GET /do-not-contact/check?email=&phone=&gbp=&domain=` (`blocked` and
+    batch id, city, niche, on or off, ready, limit; the Hub never hands out the leads of a
+    city switched off or not ready) and `GET /do-not-contact/check?email=&phone=&gbp=&domain=` (`blocked` and
     why).
 - **Batches and benchmark changes:** an agent works through its batches in order, the first
   until nothing is ready for it, then the next; with nothing left it finishes the run at once
@@ -329,8 +329,17 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    name opens the batch's Leads tab for that city, with a bar saying so, **← Back to
    Cities** (to the same tab, page and search) and **Show all leads**. (Step 15 moved the old City + Niche lists
    into each batch that has leads there, keeping on or off.)
+   **Ready and Not ready** (step 20): a city is **Ready** once at least one Top is chosen in
+   it in that batch, and **Not ready** until then; taking its last Top off makes it Not ready
+   again. The server works this out from the Top leads (nothing to store). Agents only get
+   the leads of a city that is Ready **and** switched on; the switch stays for pausing a
+   city. The tabs are **Ready**, **Not ready** and **Small cities (under 10)**, each with its
+   count; cities with 10 or more businesses are on Ready or Not ready, and the Small cities
+   tab says Ready or Not ready for each. Marking a Top in a Not ready city moves it to Ready
+   (the tabs load again on **← Back to Cities**). All on / All off works on the tab shown.
    **Small cities:** a city with **fewer than 10 businesses** in the batch is switched off by
-   the Hub and listed apart, on the **Small cities (under 10)** tab next to **Cities (10+)**.
+   the Hub and listed apart, on the **Small cities (under 10)** tab. Unmuted by hand, it
+   still needs a Top to be worked on.
    The Hub decides this again after every saved or deleted file (a small city that grows to 10
    is switched on), but never for a city a person switched on or off by hand (`set_by_hand`):
    an Owner or Admin can unmute a small city one by one. All on / All off works on the tab
@@ -340,9 +349,11 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 9. **A batch's Leads tab** (everyone): 100 leads a page; a search (name, Lead ID, city,
    email, phone, website, GBP link), city, Top and website; sort by Lead ID, newest,
    name, city, rating or reviews (highest first) or an agent's score (best first).
-   **Choosing Top:** Owners and Admins tick leads (a box on each row, and one for the whole
-   page) and press **Mark as Top** or **Remove Top** (at most 500 at a time; one History
-   entry with the count). From then on agents don't get them (section 6.7); results agents
+   The Leads tab only **shows** Top (its column and filter); Top is chosen in a city.
+   **Choosing Top** (step 19): on the **Cities** tab, open a city; on its leads Owners and
+   Admins tick leads (a box on each row, and one for the whole page) and press **Mark as
+   Top** or **Remove Top** (at most 500 at a time; one History entry with the count). The
+   server refuses a request whose leads are not all in that city of that batch. From then on agents don't get them (section 6.7); results agents
    saved before stay. The table shows **every field of the lead
    file side by side**, like the Excel file: Lead ID, Business name, GBP link, Address, City,
    Website, Phone, WhatsApp, Email(s), Facebook, Instagram, Reviews, Rating, Level, Notes,
@@ -354,9 +365,10 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    including each agent's status, score, summary and when; every text cell is stored as text,
    so a value starting with `=` never runs as a formula.
 10. **One lead** shows its row, each agent's result and the files agents saved (always
-   downloaded, never shown in the page). Owners and Admins change its email(s), phone, website,
-   Top mark and notes (in History, with the old and new value; Top keeps its email, phone and
-   GBP link on the do-not-contact list, removing Top takes them off), or delete it (its files
+   downloaded, never shown in the page). Owners and Admins change its email(s), phone, website
+   and notes (in History, with the old and new value), or delete it. It shows whether it is
+   Top but cannot change it (step 19); Top keeps its email, phone and GBP link on the
+   do-not-contact list, removing Top takes them off (its files
    go too; its do-not-contact entries stay, so a Top business imported again is still never
    contacted).
 11. **Deleting a file** (Owners and Admins), from the batch's past files, **only while the
@@ -443,7 +455,8 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
   it needs is done for that lead, and (for `split`) the lead is the agent's. **Finished** means
   the agent's result has outcome `done` or `skipped` and was made against the batch's current
   benchmark version; a `failed` result is tried again on the next run. Top leads are never
-  handed to an agent. So the Opportunity Finder starts on the first business both audits
+  handed to an agent, and neither are the leads of a city that is **not ready** (no Top
+  chosen in it in that batch, step 20). So the Opportunity Finder starts on the first business both audits
   finished while the audits go on with the rest.
 - **Start and Pause:** a new batch is **not started**. Owners and Admins **Start** it once it
   has a benchmark and at least one task with an agent; a running batch can be **Paused**, which
@@ -662,3 +675,18 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     each job's needs into the batches that use it. **Tests:** adding, renaming and changing
     a task's needs in one batch without touching another, circles and missing needs refused,
     readiness from the batch's needs, the migration, rights, e2e.
+19. **Top chosen only in a city** (asked for after step 18): the batch's Leads tab shows Top
+    but has no boxes or Mark as Top; a city opened from the Cities tab has them; the lead
+    window no longer changes Top. `POST /leads/top` takes the batch and the city, and every
+    lead must be in that city of that batch; `PATCH /leads/{id}` no longer takes `level`.
+    **Tests:** marking in a city, leads of another city or batch refused, the lead window
+    refused, rights, the Leads tab without boxes, the city with them.
+20. **Ready and Not ready cities** (asked for after step 19): the Cities tab's tabs become
+    Ready, Not ready and Small cities (under 10); a city is Ready once a Top is chosen in it
+    in that batch and agents only get the leads of a Ready city that is switched on; taking
+    the last Top off makes it Not ready; an unmuted small city needs a Top too. No migration:
+    readiness is worked out from the Top leads, so cities of running batches without a Top
+    stop being worked on. `GET /batches/{id}/cities` and the agents' `GET /lists` say
+    `ready`; All on / All off takes the tab (`small`, `ready`). **Tests:** not ready until a
+    Top, ready after, not ready again, a small city unmuted without a Top, All off on one
+    tab only, a ready city switched off, the tabs and their counts, e2e.
