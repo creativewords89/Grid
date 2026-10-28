@@ -408,7 +408,7 @@ test("the preview shows the file tab by tab with every column", async () => {
 
 // --- step 15: leads and cities in the batch, deleting files, finding a business --------------
 
-function city(id: string, name: string, active = true, leads = 27) {
+function city(id: string, name: string, active = true, leads = 27, top = 1) {
   return {
     id,
     batch_id: "b1",
@@ -419,7 +419,8 @@ function city(id: string, name: string, active = true, leads = 27) {
     small: leads < 10,
     daily_limit: null,
     leads,
-    top: 1,
+    top,
+    ready: top > 0,
   };
 }
 
@@ -455,7 +456,7 @@ test("the old leads address opens the batch's Leads tab", async () => {
   ).toHaveAttribute("aria-current", "page");
 });
 
-test("a batch's cities: small ones on their own tab, switch one, all off, open a city", async () => {
+test("a batch's cities: Ready, Not ready and small ones; switch one, all off, open a city", async () => {
   window.history.pushState(null, "", "/batches?batch=b1&tab=cities");
   const calls = mockApi({
     "GET /auth/me": as("admin"),
@@ -464,7 +465,7 @@ test("a batch's cities: small ones on their own tab, switch one, all off, open a
     "GET /batches/b1/pipeline": [200, emptyPipeline],
     "GET /batches/b1/cities": [
       200,
-      [city("c1", "Akron", false, 4), city("c2", "Tulsa"), city("c3", "Dallas")],
+      [city("c1", "Akron", false, 4, 0), city("c2", "Tulsa"), city("c3", "Dallas", true, 30, 0)],
     ],
     "PATCH /lists/c1": [200, city("c1", "Akron", true, 4)],
     "PATCH /lists/c2": [200, city("c2", "Tulsa", false)],
@@ -476,23 +477,35 @@ test("a batch's cities: small ones on their own tab, switch one, all off, open a
   });
   render(<App />);
 
-  expect(await screen.findByRole("tab", { name: /Cities \(10\+\) \(2\)/ })).toBeVisible();
-  expect(screen.getByText(/2 cities · 2 on · 0 off/)).toBeVisible();
+  // Ready: a Top is chosen in it.
+  expect(await screen.findByRole("tab", { name: /^Ready \(1\)/ })).toBeVisible();
+  expect(screen.getByText(/1 cities · 1 on · 0 off/)).toBeVisible();
   expect(screen.queryByText("Akron")).not.toBeInTheDocument();
-  await userEvent.type(screen.getByLabelText("Find a city"), "tul");
   expect(screen.queryByText("Dallas")).not.toBeInTheDocument();
+  await userEvent.type(screen.getByLabelText("Find a city"), "xyz");
+  expect(screen.queryByText("Tulsa")).not.toBeInTheDocument();
+  await userEvent.clear(screen.getByLabelText("Find a city"));
   await userEvent.click(screen.getByRole("switch", { name: "Tulsa on or off" }));
   await userEvent.click(screen.getByRole("button", { name: "All off" }));
-  expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ active: false, small: false });
+  expect(calls.find((c) => c.method === "PUT")?.body).toEqual({
+    active: false,
+    small: false,
+    ready: true,
+  });
 
-  // The small cities, muted by the Hub: unmute one by hand.
-  await userEvent.clear(screen.getByLabelText("Find a city"));
+  // Not ready: no Top chosen yet, agents leave it alone.
+  await userEvent.click(screen.getByRole("tab", { name: /^Not ready \(1\)/ }));
+  expect(screen.getByText("Dallas")).toBeVisible();
+  expect(screen.getByText(/No Top chosen yet/)).toBeVisible();
+
+  // The small cities, muted by the Hub: unmute one by hand; it still needs a Top.
   await userEvent.click(screen.getByRole("tab", { name: /Small cities \(under 10\) \(1\)/ }));
   expect(screen.getByText(/1 cities · 0 on · 1 off/)).toBeVisible();
+  expect(screen.getByRole("row", { name: /Akron/ })).toHaveTextContent("Not ready");
   await userEvent.click(screen.getByRole("switch", { name: "Akron on or off" }));
   expect(calls.find((c) => c.path === "/lists/c1")?.body).toEqual({ active: true });
 
-  await userEvent.click(screen.getByRole("tab", { name: /Cities \(10\+\)/ }));
+  await userEvent.click(screen.getByRole("tab", { name: /^Ready/ }));
   await userEvent.click(screen.getByRole("button", { name: "Tulsa" }));
   expect(await screen.findByRole("tab", { name: "Leads" })).toHaveAttribute(
     "aria-selected",
@@ -503,8 +516,11 @@ test("a batch's cities: small ones on their own tab, switch one, all off, open a
   // Back to Cities returns to the same tab of cities; Show all leads drops the city.
   const bar = screen.getByRole("region", { name: "Leads of one city" });
   expect(bar).toHaveTextContent("Leads in Tulsa");
+  const loads = calls.filter((c) => c.path === "/batches/b1/cities").length;
   await userEvent.click(within(bar).getByRole("button", { name: "← Back to Cities" }));
   expect(screen.getByRole("tab", { name: "Cities" })).toHaveAttribute("aria-selected", "true");
+  // Loaded again: a Top marked in the city moves it to Ready.
+  expect(calls.filter((c) => c.path === "/batches/b1/cities").length).toBe(loads + 1);
   expect(screen.getByRole("switch", { name: "Tulsa on or off" })).toBeVisible();
   await userEvent.click(screen.getByRole("button", { name: "Tulsa" }));
   await userEvent.click(

@@ -220,6 +220,7 @@ export type LeadList = {
   daily_limit: number | null;
   leads: number;
   top: number;
+  ready: boolean; // a Top chosen: agents may work on it (step 20)
 };
 
 export type GbpTargets = {
@@ -664,8 +665,8 @@ export const api = {
       top,
     }),
   batchCities: (batchId: string) => request<LeadList[]>("GET", `/batches/${batchId}/cities`),
-  switchAllCities: (batchId: string, active: boolean, small?: boolean) =>
-    request<LeadList[]>("PUT", `/batches/${batchId}/cities`, { active, small }),
+  switchAllCities: (batchId: string, active: boolean, small?: boolean, ready?: boolean) =>
+    request<LeadList[]>("PUT", `/batches/${batchId}/cities`, { active, small, ready }),
   importDeletion: (id: string) =>
     request<{ leads_going: number; leads_staying: number; batch_running: boolean }>(
       "GET",

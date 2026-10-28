@@ -210,14 +210,22 @@ def finish(run_id: str, body: FinishIn, agent: CurrentAgent, db: Db) -> None:
 
 @router.get("/lists")
 def lists(agent: CurrentAgent, db: Db) -> list[dict[str, Any]]:
-    """Each batch's cities. The Hub never hands out the leads of a city switched off."""
+    """Each batch's cities. The Hub never hands out the leads of a city switched off or
+    not ready (no Top chosen yet, SPEC step 20)."""
     db.commit()  # records last_seen_at
+    ready = {
+        (batch_id, city.lower())
+        for batch_id, city in db.execute(
+            select(Lead.batch_id, Lead.city).where(Lead.level == "Top").distinct()
+        )
+    }
     return [
         {
             "batch_id": str(x.batch_id),
             "city": x.city,
             "niche": x.niche,
             "active": x.active,
+            "ready": (x.batch_id, x.city.lower()) in ready,
             "daily_limit": x.daily_limit,
         }
         for x in db.scalars(select(LeadList).order_by(LeadList.batch_id, LeadList.city))

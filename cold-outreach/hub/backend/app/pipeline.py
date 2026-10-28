@@ -181,9 +181,13 @@ class Pipeline:
                 self.keys[agent_id] = agent.key
 
     def leads(self) -> list[Lead]:
-        """The batch's leads agents may work on: not Top, and in a city switched on."""
+        """The batch's leads agents may work on: not Top, in a city switched on, and in a
+        ready city (one with a Top chosen, SPEC step 20)."""
         off = select(func.lower(LeadList.city)).where(
             LeadList.batch_id == self.batch.id, LeadList.active.is_(False)
+        )
+        ready = select(func.lower(Lead.city)).where(
+            Lead.batch_id == self.batch.id, Lead.level == "Top"
         )
         return list(
             self.db.scalars(
@@ -192,6 +196,7 @@ class Pipeline:
                     Lead.batch_id == self.batch.id,
                     Lead.level != "Top",
                     func.lower(Lead.city).not_in(off),
+                    func.lower(Lead.city).in_(ready),
                 )
                 .order_by(Lead.lead_id)
             )

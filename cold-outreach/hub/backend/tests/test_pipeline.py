@@ -52,7 +52,20 @@ def tasks_of(client: TestClient, batch: str) -> list[tuple[int, str, list[str]]]
     ]
 
 
-def leads(db: Session, batch: str, count: int, top: int = 0) -> None:
+def leads(db: Session, batch: str, count: int, top: int = 0, ready: bool = True) -> None:
+    """`count` leads in Tulsa, then `top` Top ones. Ready: one more Top lead (its id ends in
+    T) so Tulsa is a ready city of the batch (SPEC step 20)."""
+    if ready and not top:
+        db.add(
+            Lead(
+                lead_id=f"L-{batch[-5:]}T",
+                batch_id=batch,
+                niche="Cleaning",
+                city="Tulsa",
+                business_name="Top business",
+                level="Top",
+            )
+        )
     db.add_all(
         Lead(
             lead_id=f"L-{n:06d}",
@@ -153,6 +166,16 @@ def test_needs_differ_from_batch_to_batch(client: TestClient, owner: User, db: S
     leads(db, first, 1)
     db.add(
         Lead(lead_id="L-000009", batch_id=second, niche="Cleaning", city="Tulsa", business_name="B")
+    )
+    db.add(  # a Top chosen: Tulsa is ready in Batch 2 too
+        Lead(
+            lead_id="L-000010",
+            batch_id=second,
+            niche="Cleaning",
+            city="Tulsa",
+            business_name="T",
+            level="Top",
+        )
     )
     db.commit()
     for batch in (first, second):
@@ -372,6 +395,15 @@ def test_a_city_switched_off_in_a_batch_is_left_alone_there(
     lead.city = "Dallas"
     db.add_all(
         [
+            # A Top chosen: Dallas is ready, so only its switch keeps it out.
+            Lead(
+                lead_id="L-000099",
+                batch_id=batch,
+                niche="Cleaning",
+                city="Dallas",
+                business_name="Top Dallas",
+                level="Top",
+            ),
             LeadList(batch_id=batch, city="Tulsa", niche="Cleaning"),
             LeadList(batch_id=batch, city="dallas", niche="Cleaning", active=False),
         ]
@@ -380,6 +412,48 @@ def test_a_city_switched_off_in_a_batch_is_left_alone_there(
     put_bot(client, batch, "gbp-1", "gbp-audit")
 
     assert ready(client, token, batch) == ["L-000001"]
+
+
+def test_only_ready_cities_are_handed_out(client: TestClient, owner: User, db: Session) -> None:
+    """SPEC step 20: a city is ready once a Top is chosen in it; until then, and again when
+    its last Top is taken off, agents don't get its leads, even if it is switched on by
+    hand (a small city unmuted)."""
+    from app.db.models import LeadList
+
+    token = bot(client, "gbp-1", "gbp-audit")
+    batch = make_batch(client)["id"]
+    leads(db, batch, 3, ready=False)
+    db.add(LeadList(batch_id=batch, city="Tulsa", niche="Cleaning", set_by_hand=True))
+    db.commit()
+    put_bot(client, batch, "gbp-1", "gbp-audit")
+
+    def mark(lead_ids: list[str], top: bool) -> None:
+        body = {"batch_id": batch, "city": "Tulsa", "lead_ids": lead_ids, "top": top}
+        assert client.post("/api/leads/top", json=body).status_code == 200
+
+    def city() -> dict[str, Any]:
+        found: dict[str, Any] = client.get(f"/api/batches/{batch}/cities").json()[0]
+        return found
+
+    assert (city()["ready"], city()["active"]) == (False, True)
+    assert ready(client, token, batch) == []
+    assert agent_call(client, "GET", "/lists", token).json()[0]["ready"] is False
+
+    mark(["L-000003"], True)
+    assert (city()["ready"], city()["top"]) == (True, 1)
+    assert ready(client, token, batch) == ["L-000001", "L-000002"]
+    assert agent_call(client, "GET", "/lists", token).json()[0]["ready"] is True
+
+    mark(["L-000003"], False)
+    assert city()["ready"] is False
+    assert ready(client, token, batch) == []
+
+    # All off on one tab leaves the other tabs' cities alone.
+    url = f"/api/batches/{batch}/cities"
+    client.put(url, json={"active": False, "small": True, "ready": True})
+    assert city()["active"] is True
+    client.put(url, json={"active": False, "small": True, "ready": False})
+    assert city()["active"] is False
 
 
 def test_leads_marked_top_in_the_hub_are_not_handed_out(

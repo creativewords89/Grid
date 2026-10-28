@@ -520,6 +520,7 @@ function BatchView({
           <BatchCities
             batchId={batch.id}
             staff={staff}
+            shown={tab === "cities"}
             onOpenCity={(name) => {
               setCity(name);
               setTab("leads");

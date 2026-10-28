@@ -243,6 +243,7 @@ class ListOut(BaseModel):
     daily_limit: int | None
     leads: int
     top: int
+    ready: bool  # a Top chosen: agents may work on it (SPEC step 20); Not ready otherwise
 
 
 def _cities(db: Session, batch_id: uuid.UUID) -> list[ListOut]:
@@ -271,6 +272,7 @@ def _cities(db: Session, batch_id: uuid.UUID) -> list[ListOut]:
                 daily_limit=item.daily_limit,
                 leads=total,
                 top=top,
+                ready=top > 0,
             )
         )
     return out
@@ -285,20 +287,24 @@ def batch_cities(batch_id: uuid.UUID, me: CurrentUser, db: Db) -> list[ListOut]:
 class AllCitiesIn(Strict):
     active: bool
     small: bool | None = None  # only the small cities (True), only the others (False)
+    ready: bool | None = None  # and only the ready ones (True) or not ready (False)
 
 
 @router.put("/batches/{batch_id}/cities", response_model=list[ListOut])
 def switch_all_cities(
     batch_id: uuid.UUID, body: AllCitiesIn, me: CurrentUser, db: Db
 ) -> list[ListOut]:
-    """All on or all off (on the tab shown: small cities or the others). They count as
-    switched by hand from then on."""
+    """All on or all off (on the tab shown: Ready, Not ready or Small cities). They count
+    as switched by hand from then on."""
     ensure(me, Action.OPERATE_AGENTS)
     batch = get_batch(db, batch_id)
-    small = {c.id for c in _cities(db, batch.id) if c.small}
+    shown = {c.id: c for c in _cities(db, batch.id)}
     changed = 0
     for item in db.scalars(select(LeadList).where(LeadList.batch_id == batch.id)):
-        if body.small is not None and (item.id in small) != body.small:
+        city = shown[item.id]
+        if body.small is not None and city.small != body.small:
+            continue
+        if body.ready is not None and city.ready != body.ready:
             continue
         item.set_by_hand = True
         if item.active != body.active:
