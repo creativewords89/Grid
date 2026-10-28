@@ -170,7 +170,7 @@ test("the leads are in their batch and download as Excel", async () => {
     "aria-selected",
     "true",
   );
-  await page.getByRole("tab", { name: "Leads" }).click();
+  await page.getByRole("tab", { name: "Lead files" }).click();
   await expect(page.getByText("4 leads")).toBeVisible();
   // Every field of the file side by side.
   await expect(
@@ -323,7 +323,7 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
   await page
     .getByRole("button", { name: "Texas November", exact: true })
     .click();
-  await page.getByRole("tab", { name: "Leads" }).click();
+  await page.getByRole("tab", { name: "Lead files" }).click();
   await page
     .getByLabel("Sort by")
     .selectOption({ label: "Demo score (best first)" });

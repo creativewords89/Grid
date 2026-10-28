@@ -172,7 +172,8 @@ test("add a file to a batch, read the preview, save it", async () => {
   render(<App />);
 
   await userEvent.click(await screen.findByRole("button", { name: "Batch 1" }));
-  await userEvent.click(screen.getByRole("tab", { name: "Files and settings" }));
+  await userEvent.click(screen.getByRole("tab", { name: "Lead files" }));
+  await userEvent.click(screen.getByRole("tab", { name: "Files" }));
   const form = await screen.findByRole("form", { name: "Add a lead file" });
   fireEvent.change(within(form).getByLabelText("Excel file"), {
     target: { files: [new File(["xlsx"], "GBP_Data_2.xlsx")] },
@@ -252,6 +253,7 @@ test("change a batch's benchmark, and delete an empty batch", async () => {
   render(<App />);
 
   await userEvent.click(await screen.findByRole("button", { name: "Batch 1" }));
+  await userEvent.click(screen.getByRole("tab", { name: "Settings" }));
   const settings = await screen.findByRole("generic", { name: "Batch settings" });
   await userEvent.selectOptions(
     await within(settings).findByLabelText("Benchmark"),
@@ -291,7 +293,8 @@ test("a viewer sees batches and files but can't add; the lists are on Leads", as
   expect(screen.queryByRole("button", { name: "+ New batch" })).not.toBeInTheDocument();
   expect(screen.queryByRole("switch", { name: "Tulsa · Cleaning on or off" })).toBeNull();
   await userEvent.click(screen.getByRole("button", { name: "Batch 1" }));
-  await userEvent.click(screen.getByRole("tab", { name: "Files and settings" }));
+  await userEvent.click(screen.getByRole("tab", { name: "Lead files" }));
+  await userEvent.click(screen.getByRole("tab", { name: "Files" }));
   expect(await screen.findByText("Saved")).toBeVisible();
   expect(screen.queryByRole("form", { name: "Add a lead file" })).not.toBeInTheDocument();
 });
@@ -461,6 +464,7 @@ test("the old leads address opens the batch's Leads tab", async () => {
     "aria-selected",
     "true",
   );
+  expect(screen.getByRole("tab", { name: "Lead files" })).toHaveAttribute("aria-selected", "true");
   expect(await screen.findByText("No leads match.")).toBeVisible();
   expect(window.location.pathname + window.location.search).toBe("/batches?batch=b1&tab=leads");
   expect(
@@ -538,10 +542,10 @@ test("a batch's cities: Ready, Not ready and small ones; switch one, all off, op
 
   await userEvent.click(screen.getByRole("tab", { name: /^Ready/ }));
   await userEvent.click(screen.getByRole("button", { name: "Tulsa" }));
-  expect(await screen.findByRole("tab", { name: "Leads" })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
+  // A city's leads belong to Cities: that tab stays chosen, without Lead files' views.
+  expect(await screen.findByRole("region", { name: "Leads of one city" })).toBeVisible();
+  expect(screen.getByRole("tab", { name: "Cities" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.queryByRole("tablist", { name: "Lead files" })).not.toBeInTheDocument();
   expect(calls.some((c) => c.path === "/leads?batch_id=b1&city=Tulsa")).toBe(true);
 
   // Back to Cities returns to the same tab of cities; Show all leads drops the city.
