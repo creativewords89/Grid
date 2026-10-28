@@ -18,8 +18,6 @@ SPEC_TABLE: dict[Action, tuple[bool, bool, bool]] = {
     Action.IMPORT_LEADS: (Y, Y, N),
     # Choose a batch's tasks and bots, start or pause it, change the batches' running order
     Action.RUN_BATCHES: (Y, Y, N),
-    # Make, change or delete a task
-    Action.EDIT_TASKS: (Y, Y, N),
     # Change a lead's email, phone, website, Top mark or notes; delete a lead
     Action.EDIT_LEADS: (Y, Y, N),
     # Switch an agent on/off, press Run now or Stop

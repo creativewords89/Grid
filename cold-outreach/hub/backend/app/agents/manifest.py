@@ -50,6 +50,8 @@ class Manifest(BaseModel):
     connections: list[str] = Field(default_factory=list)
     # The key of the task it does (SPEC section 6.7); the agent's own key when empty.
     task: Annotated[str, StringConstraints(pattern=r"^([a-z][a-z0-9-]{1,39})?$")] = ""
+    # The job's name shown in the Hub, e.g. "GBP Audit"; made from the key when empty.
+    task_name: Annotated[str, StringConstraints(strip_whitespace=True, max_length=80)] = ""
     # What the Leads screen calls this agent's result, e.g. "GBP". Defaults to the name.
     result_label: Annotated[str, StringConstraints(strip_whitespace=True, max_length=40)] = ""
     cost_per_item_usd: float = Field(default=0.0, ge=0, le=100)

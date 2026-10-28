@@ -75,6 +75,7 @@ class BatchRef(BaseModel):
     name: str
     status: str  # not_started, running or paused
     ready: bool  # has a benchmark: agents skip a batch without one
+    task_name: str  # the batch's task it is on
 
 
 class TaskRef(BaseModel):
@@ -120,8 +121,14 @@ def _out(db: Session, agent: Agent) -> AgentOut:
         daily_budget_usd=agent.daily_budget_usd,
         task=TaskRef(key=task.key, name=task.name) if task else None,
         batches=[
-            BatchRef(id=b.id, name=b.name, status=b.status, ready=b.benchmark_id is not None)
-            for b in pipeline.batches_using(db, agent)
+            BatchRef(
+                id=b.id,
+                name=b.name,
+                status=b.status,
+                ready=b.benchmark_id is not None,
+                task_name=task_name,
+            )
+            for b, task_name in pipeline.tasks_using(db, agent)
         ],
         missing_connections=service.missing_connections(agent, connections.current()),
         last_run=RunOut.of(last) if last else None,

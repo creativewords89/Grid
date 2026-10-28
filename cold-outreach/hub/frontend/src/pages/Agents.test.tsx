@@ -109,7 +109,7 @@ test("a card shows the agent, its connection and its last run", async () => {
   expect(within(card).getByText(/Needs these connections first: DataForSEO/)).toBeVisible();
   expect(within(card).getByText(/98 done, 2 failed/)).toHaveTextContent("$0.98");
   expect(within(card).getByText(/Spent today: \$0.40 of \$5.00/)).toBeVisible();
-  expect(within(card).getByText(/No running batch uses it/)).toBeVisible();
+  expect(within(card).getByText(/No batch yet/)).toBeVisible();
   // A Viewer looks but can't change anything.
   expect(within(card).getByRole("switch")).toBeDisabled();
   expect(within(card).queryByRole("button", { name: "Run now" })).not.toBeInTheDocument();
@@ -147,8 +147,8 @@ test("the settings form is built from the manifest and sends typed values", asyn
       [
         agent({
           batches: [
-            { id: "b2", name: "Batch 2", status: "running", ready: true },
-            { id: "b1", name: "Batch 1", status: "paused", ready: true },
+            { id: "b2", name: "Batch 2", status: "running", ready: true, task_name: "GBP Audit" },
+            { id: "b1", name: "Batch 1", status: "paused", ready: true, task_name: "Profiles" },
           ],
         }),
       ],
@@ -158,8 +158,11 @@ test("the settings form is built from the manifest and sends typed values", asyn
   render(<App />);
 
   const card = await screen.findByRole("article", { name: "GBP audit" });
-  // Its task, and only the running batches that use it.
-  expect(within(card).getByText(/Task: GBP Audit/)).toHaveTextContent(/Works on: Batch 2$/);
+  // Its job, and the batches and tasks it is on, running ones first.
+  expect(within(card).getByText(/Does:/).parentElement).toHaveTextContent("Does: GBP Audit");
+  expect(within(card).getByText(/Used in:/).parentElement).toHaveTextContent(
+    "Used in: Batch 2 · GBP Audit, Batch 1 · Profiles (paused)",
+  );
   await userEvent.click(within(card).getByRole("button", { name: "Settings" }));
   const dialog = screen.getByRole("dialog", { name: "GBP audit settings" });
   const batch = within(dialog).getByLabelText("Batch size");
@@ -251,7 +254,9 @@ test("each card says where the agent is in its setup", async () => {
         agent({
           key: "ready",
           name: "Ready",
-          batches: [{ id: "b1", name: "Batch 1", status: "running", ready: true }],
+          batches: [
+            { id: "b1", name: "Batch 1", status: "running", ready: true, task_name: "GBP Audit" },
+          ],
         }),
       ],
     ],

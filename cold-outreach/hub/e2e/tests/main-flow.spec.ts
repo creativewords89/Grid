@@ -240,7 +240,9 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
   await page.getByLabel("Seconds per item").fill("0.2");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(card.getByText("Settings saved.")).toBeVisible();
-  await expect(card.getByText(/Task: Demo/)).toBeVisible();
+  await expect(card.getByText("Does:").locator("..")).toContainText(
+    "Does: Demo",
+  );
 
   // The batch chooses the agent for its task, then starts; the setup guide shows the way.
   await page
@@ -254,9 +256,23 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
   await expect(
     guide.getByText("Only the demo agent is set up", { exact: false }),
   ).toBeVisible();
-  const library = page.getByRole("complementary", { name: "Agent library" });
-  await library.getByRole("button", { name: "Add Demo agent to Demo" }).click();
-  const slot = page.getByRole("article", { name: "Demo" });
+  // The task is made in the batch: its job, its name, then its agent.
+  await expect(
+    page
+      .getByRole("complementary", { name: "Agent library" })
+      .getByText("Demo agent"),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "+ Add a task" }).click();
+  const form = page.getByRole("form", { name: "Add a task" });
+  await form
+    .getByLabel("Job (what your agents do)")
+    .selectOption({ label: "Demo (1 agent)" });
+  await form.getByLabel("Name").fill("Pretend audit");
+  await form.getByRole("button", { name: "Add task" }).click();
+  const slot = page.getByRole("article", { name: "Pretend audit" });
+  await slot
+    .getByLabel("Add another agent to Pretend audit")
+    .selectOption({ label: "Demo agent" });
   await expect(slot.getByText("Demo agent")).toBeVisible();
   await page.getByRole("button", { name: "Start" }).click();
   await expect(page.getByRole("button", { name: "Pause" })).toBeVisible();
@@ -268,7 +284,9 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
     .getByRole("navigation", { name: "Main" })
     .getByRole("link", { name: "Agents" })
     .click();
-  await expect(card.getByText(/Works on: Texas November/)).toBeVisible();
+  await expect(card.getByText("Used in:").locator("..")).toContainText(
+    "Used in: Texas November · Pretend audit",
+  );
   const power = card.getByRole("switch", { name: "Demo agent on or off" });
   await power.click(); // saved on the server first, then shown as on
   await expect(power).toBeChecked();
@@ -299,7 +317,7 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
   await expect(scored.getByRole("cell").last()).toHaveText(/^\d+$/);
 
   // And on the batch's Results tab, for that agent; the setup guide is gone.
-  await page.getByRole("tab", { name: "Tasks and agents" }).click();
+  await page.getByRole("tab", { name: "Tasks", exact: true }).click();
   await expect(page.getByRole("region", { name: "Setup guide" })).toHaveCount(
     0,
   );

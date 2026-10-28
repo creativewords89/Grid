@@ -13,7 +13,6 @@ import { Profile } from "./pages/Profile";
 import { Runs } from "./pages/Runs";
 import { SetPassword } from "./pages/SetPassword";
 import { SignIn } from "./pages/SignIn";
-import { Tasks } from "./pages/Tasks";
 import { Users } from "./pages/Users";
 import { usePath } from "./router";
 import { Shell } from "./Shell";
@@ -47,7 +46,6 @@ function Routes() {
   // A batch's leads are in the batch: /leads?batch=<id> opens its Leads tab.
   else if (path === "/batches" || path === "/import" || path === "/leads") page = <Batches />;
   else if (path === "/benchmarks") page = <Benchmarks />;
-  else if (path === "/tasks") page = <Tasks />;
   else if (path === "/profile") page = <Profile />;
   else page = <Overview />;
   return <Shell path={path}>{page}</Shell>;

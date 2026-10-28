@@ -273,3 +273,63 @@ def test_small_cities_are_muted_unless_switched_off_by_hand(fresh_database_url: 
         engine.dispose()
 
     assert rows == [("Big", True, False), ("Off", False, True), ("Small", False, False)]
+
+
+def test_each_jobs_needs_move_into_the_batches_that_use_it(fresh_database_url: str) -> None:
+    """Step 18: a batch's task gets its job's name and the needs of it this batch has."""
+    cfg = alembic_config(fresh_database_url)
+    command.upgrade(cfg, "0014")
+    engine = create_engine(fresh_database_url)
+    one, two = "00000000-0000-0000-0000-00000000000a", "00000000-0000-0000-0000-00000000000b"
+    gbp, web, opp = (
+        "00000000-0000-0000-0000-000000000001",
+        "00000000-0000-0000-0000-000000000002",
+        "00000000-0000-0000-0000-000000000003",
+    )
+    try:
+        with engine.begin() as conn:
+            for batch, name in ((one, "One"), (two, "Two")):
+                conn.execute(
+                    text("INSERT INTO batches (id, name, niche) VALUES (:id, :n, 'Cleaning')"),
+                    {"id": batch, "n": name},
+                )
+            for task, key, name, needs in (
+                (gbp, "gbp-audit", "GBP Audit", "[]"),
+                (web, "website-audit", "Website Audit", "[]"),
+                (opp, "opportunity", "Opportunity Finder", '["gbp-audit", "website-audit"]'),
+            ):
+                conn.execute(
+                    text(
+                        "INSERT INTO tasks (id, key, name, needs) "
+                        "VALUES (:id, :key, :name, CAST(:needs AS jsonb))"
+                    ),
+                    {"id": task, "key": key, "name": name, "needs": needs},
+                )
+            for n, (batch, task) in enumerate(
+                ((one, gbp), (one, web), (one, opp), (two, gbp), (two, opp))
+            ):
+                conn.execute(
+                    text("INSERT INTO batch_tasks (id, batch_id, task_id) VALUES (:id, :b, :t)"),
+                    {"id": f"00000000-0000-0000-0000-0000000001{n:02d}", "b": batch, "t": task},
+                )
+        command.upgrade(cfg, "0015")
+        with engine.connect() as conn:
+            moved = conn.execute(
+                text(
+                    "SELECT b.name, t.name, t.needs FROM batch_tasks t "
+                    "JOIN batches b ON b.id = t.batch_id ORDER BY b.name, t.name"
+                )
+            ).all()
+            columns = {c["name"] for c in inspect(conn).get_columns("tasks")}
+        command.downgrade(cfg, "0014")
+    finally:
+        engine.dispose()
+
+    assert moved == [
+        ("One", "GBP Audit", []),
+        ("One", "Opportunity Finder", ["gbp-audit", "website-audit"]),
+        ("One", "Website Audit", []),
+        ("Two", "GBP Audit", []),
+        ("Two", "Opportunity Finder", ["gbp-audit"]),  # Two has no Website Audit
+    ]
+    assert "needs" not in columns and "about" not in columns

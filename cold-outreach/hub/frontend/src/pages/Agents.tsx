@@ -192,15 +192,25 @@ function AgentCard({
         </span>
       </p>
       <p className="small">
-        Task: {agent.task ? agent.task.name : "named when it first connects"} ·{" "}
-        {running.length > 0 ? (
-          <>
-            Works on: {running.map((b) => b.name + (b.ready ? "" : " (no benchmark)")).join(" → ")}
-          </>
+        <strong>Does:</strong>{" "}
+        {agent.task ? agent.task.name : "its job is known once it first connects"}
+      </p>
+      <p className="small">
+        <strong>Used in:</strong>{" "}
+        {agent.batches.length > 0 ? (
+          [...running, ...agent.batches.filter((b) => b.status !== "running")]
+            .map(
+              (b) =>
+                `${b.name} · ${b.task_name}${b.status === "running" ? "" : ` (${b.status.replace("_", " ")})`}${b.ready ? "" : " (no benchmark)"}`,
+            )
+            .join(", ")
         ) : (
           <span className="field-error">
-            No running batch uses it: add it to a batch&apos;s task and start the batch.
+            No batch yet: add it to a task in a batch&apos;s Tasks tab.
           </span>
+        )}
+        {agent.batches.length > 0 && running.length === 0 && (
+          <span className="field-error"> · none of them is running</span>
         )}
       </p>
       <p className="small">

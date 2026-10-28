@@ -37,11 +37,17 @@ class BotProgress(BaseModel):
     average_score: float | None
 
 
-class SlotOut(BaseModel):
-    task_id: uuid.UUID
-    key: str
+class NeedRef(BaseModel):
+    task_id: uuid.UUID  # the job of the task it waits for
     name: str
-    needs: list[str]  # names of the tasks it waits for
+
+
+class SlotOut(BaseModel):
+    task_id: uuid.UUID  # its job
+    key: str  # its job's key
+    job: str  # its job's name
+    name: str  # the task's name in this batch
+    needs: list[NeedRef]  # the tasks of this batch it waits for
     share: str
     bots: list[BotProgress]
     can_remove: bool  # no other task in the batch needs it
@@ -74,8 +80,8 @@ def _start_problem(db: Session, batch: Batch) -> str | None:
 def pipeline_out(db: Session, me: CurrentUser, batch: Batch) -> PipelineOut:
     flow = pipeline.Pipeline(db, batch)
     counts = flow.progress()
-    order = pipeline.steps([slot.task for slot in flow.slots])
-    names = {slot.task.key: slot.task.name for slot in flow.slots}
+    order = pipeline.steps(flow.slots)
+    names = {slot.task.key: (slot.task.id, slot.name or slot.task.name) for slot in flow.slots}
     seen_after = now().timestamp() - CONNECTED_WITHIN_SECONDS
     by_step: dict[int, list[SlotOut]] = {}
     for slot in flow.slots:
@@ -98,13 +104,18 @@ def pipeline_out(db: Session, me: CurrentUser, batch: Batch) -> PipelineOut:
                     average_score=count.average,
                 )
             )
-        needed = any(slot.task.key in (other.task.needs or []) for other in flow.slots)
+        needed = any(slot.task.key in (other.needs or []) for other in flow.slots)
         by_step.setdefault(order[slot.task.key], []).append(
             SlotOut(
                 task_id=slot.task.id,
                 key=slot.task.key,
-                name=slot.task.name,
-                needs=[names[k] for k in slot.task.needs or [] if k in names],
+                job=slot.task.name,
+                name=slot.name or slot.task.name,
+                needs=[
+                    NeedRef(task_id=names[k][0], name=names[k][1])
+                    for k in slot.needs or []
+                    if k in names
+                ],
                 share=slot.share,
                 bots=bots,
                 can_remove=not needed,
@@ -183,43 +194,57 @@ def _slot(db: Session, batch: Batch, task: Task) -> BatchTask:
     return slot
 
 
-def _batch_task_keys(db: Session, batch: Batch) -> set[str]:
-    return set(
-        db.scalars(
-            select(Task.key)
-            .join(BatchTask, BatchTask.task_id == Task.id)
-            .where(BatchTask.batch_id == batch.id)
-        )
-    )
-
-
 Share = Literal["all", "split"]
+TaskName = Annotated[str, Field(max_length=80)]
+Needs = Annotated[list[uuid.UUID], Field(max_length=50)]
+
+
+def _needs(
+    db: Session, batch: Batch, slot_key: str, needs: list[uuid.UUID], name: str
+) -> list[str]:
+    """What a task needs first, as job keys: tasks of this batch, not itself, no circle."""
+    slots = pipeline.slots_of(db, batch)
+    by_id = {slot.task_id: slot.task.key for slot in slots}
+    if len(set(needs)) != len(needs) or any(n not in by_id for n in needs):
+        raise ApiError(
+            422,
+            "invalid",
+            "Choose tasks this batch already has.",
+            {"needs": "Not a task of this batch."},
+        )
+    keys = [by_id[n] for n in needs]
+    if slot_key in keys or pipeline.creates_circle(slots, slot_key, keys):
+        raise ApiError(
+            422,
+            "circle",
+            f"{name} can't wait for itself, also not through other tasks.",
+            {"needs": "Makes a circle."},
+        )
+    return keys
+
+
+def _clean_name(typed: str | None, fallback: str) -> str:
+    return " ".join((typed or "").split())[:80] or fallback
 
 
 class SlotIn(Strict):
-    task_id: uuid.UUID
+    task_id: uuid.UUID  # the job
+    name: TaskName | None = None  # the job's name when left out
+    needs: Needs = Field(default_factory=list)  # tasks (by job) of this batch it waits for
     share: Share = "all"
 
 
 @router.post("/batches/{batch_id}/tasks", response_model=PipelineOut, status_code=201)
 def add_task(batch_id: uuid.UUID, body: SlotIn, me: CurrentUser, db: Db) -> PipelineOut:
-    """Add a task; the tasks it needs must be in the batch already."""
+    """Add a task of a job, with its name and what it needs first in this batch."""
     ensure(me, Action.RUN_BATCHES)
     batch = get_batch(db, batch_id)
     task = get_task(db, body.task_id)
-    present = _batch_task_keys(db, batch)
-    if task.key in present:
-        raise ApiError(409, "already_added", f"{batch.name} already has {task.name}.")
-    missing = [key for key in task.needs or [] if key not in present]
-    if missing:
-        names = {t.key: t.name for t in db.scalars(select(Task).where(Task.key.in_(missing)))}
-        raise ApiError(
-            409,
-            "needs_missing",
-            f"{task.name} needs {', '.join(names.get(k, k) for k in missing)} first. "
-            "Add it to the batch before this task.",
-        )
-    db.add(BatchTask(batch_id=batch.id, task_id=task.id, share=body.share))
+    if any(slot.task_id == task.id for slot in pipeline.slots_of(db, batch)):
+        raise ApiError(409, "already_added", f"{batch.name} already has a {task.name} task.")
+    name = _clean_name(body.name, task.name)
+    needs = _needs(db, batch, task.key, body.needs, name)
+    db.add(BatchTask(batch_id=batch.id, task_id=task.id, name=name, needs=needs, share=body.share))
     audit.record(
         db,
         me,
@@ -227,29 +252,48 @@ def add_task(batch_id: uuid.UUID, body: SlotIn, me: CurrentUser, db: Db) -> Pipe
         "batch",
         batch.id,
         batch.name,
-        [{"field": "task", "from": None, "to": task.name}],
+        [{"field": "task", "from": None, "to": name}],
     )
     db.commit()
     return pipeline_out(db, me, batch)
 
 
 class SlotPatch(Strict):
-    share: Share
+    share: Share | None = None
+    name: TaskName | None = None
+    needs: Needs | None = None
 
 
 @router.patch("/batches/{batch_id}/tasks/{task_id}", response_model=PipelineOut)
-def change_share(
+def change_task(
     batch_id: uuid.UUID, task_id: uuid.UUID, body: SlotPatch, me: CurrentUser, db: Db
 ) -> PipelineOut:
+    """Change a task's name, what it needs first, or how its agents share the work."""
     ensure(me, Action.RUN_BATCHES)
     batch = get_batch(db, batch_id)
     task = get_task(db, task_id)
     slot = _slot(db, batch, task)
-    if slot.share != body.share:
-        changes = [{"field": f"{task.name} share", "from": slot.share, "to": body.share}]
+    names = {s.task.key: s.name or s.task.name for s in pipeline.slots_of(db, batch)}
+    before = {
+        "name": slot.name,
+        "needs": [names.get(k, k) for k in slot.needs or []],
+        "share": slot.share,
+    }
+    if body.name is not None:
+        slot.name = _clean_name(body.name, task.name)
+    if body.needs is not None:
+        slot.needs = _needs(db, batch, task.key, body.needs, slot.name or task.name)
+    if body.share is not None:
         slot.share = ShareMode(body.share)
+    after = {
+        "name": slot.name,
+        "needs": [names.get(k, k) for k in slot.needs or []],
+        "share": slot.share,
+    }
+    changes = audit.diff(before, after)
+    if changes:
         audit.record(db, me, "edit", "batch", batch.id, batch.name, changes)
-        db.commit()
+    db.commit()
     return pipeline_out(db, me, batch)
 
 
@@ -260,13 +304,14 @@ def remove_task(batch_id: uuid.UUID, task_id: uuid.UUID, me: CurrentUser, db: Db
     batch = get_batch(db, batch_id)
     task = get_task(db, task_id)
     slot = _slot(db, batch, task)
+    name = slot.name or task.name
     needed_by = [
-        other.task.name
+        other.name or other.task.name
         for other in pipeline.slots_of(db, batch)
-        if task.key in (other.task.needs or [])
+        if task.key in (other.needs or [])
     ]
     if needed_by:
-        raise ApiError(409, "needed", f"{', '.join(needed_by)} needs {task.name}. Remove it first.")
+        raise ApiError(409, "needed", f"{', '.join(needed_by)} needs {name}. Remove it first.")
     db.delete(slot)
     audit.record(
         db,
@@ -275,7 +320,7 @@ def remove_task(batch_id: uuid.UUID, task_id: uuid.UUID, me: CurrentUser, db: Db
         "batch",
         batch.id,
         batch.name,
-        [{"field": "task", "from": task.name, "to": None}],
+        [{"field": "task", "from": name, "to": None}],
     )
     db.commit()
     return pipeline_out(db, me, batch)

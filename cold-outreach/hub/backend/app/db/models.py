@@ -432,16 +432,14 @@ class Batch(TimestampMixin, Base):
 
 
 class Task(TimestampMixin, Base):
-    """A job a batch can have done, such as GBP Audit (SPEC section 6.7). Each agent does
-    one task; `needs` are the keys of the tasks it waits for."""
+    """A job agents do, such as GBP Audit (SPEC section 6.7), made from their manifests.
+    A batch's tasks name a job each; what a task needs first belongs to the batch."""
 
     __tablename__ = "tasks"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
     key: Mapped[str] = mapped_column(String(40), unique=True)
     name: Mapped[str] = mapped_column(String(80))
-    about: Mapped[str] = mapped_column(String(300), default="", server_default="")
-    needs: Mapped[list[str]] = mapped_column(JSONB, default=list, server_default="[]")
 
 
 class ShareMode(enum.StrEnum):
@@ -457,6 +455,9 @@ class BatchTask(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
     batch_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("batches.id", ondelete="CASCADE"))
     task_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tasks.id", ondelete="RESTRICT"))
+    name: Mapped[str] = mapped_column(String(80), default="", server_default="")
+    # The jobs (task keys) of this batch's tasks it waits for.
+    needs: Mapped[list[str]] = mapped_column(JSONB, default=list, server_default="[]")
     share: Mapped[str] = mapped_column(String(10), default=ShareMode.ALL, server_default="all")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
