@@ -966,6 +966,8 @@ export const api = {
     request<ThreadDetail>("PATCH", `/thread-messages/${messageId}`, { body }),
   markPosted: (messageId: string, url?: string) =>
     request<ThreadDetail>("POST", `/thread-messages/${messageId}/posted`, url ? { url } : {}),
+  renameThread: (id: string, title: string) =>
+    request<ThreadDetail>("PATCH", `/threads/${encodeURIComponent(id)}`, { title }),
   closeThread: (id: string) =>
     request<ThreadDetail>("POST", `/threads/${encodeURIComponent(id)}/close`),
   reopenThread: (id: string) =>

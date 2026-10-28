@@ -234,6 +234,7 @@ def draft_message(
     thread: str,
     instruction: str | None,
     voice: str = "",
+    want_title: bool = False,
 ) -> str:
     lines = [f"Platform: {platform}", f"Style: {style or 'helpful and plain'}"]
     if community:
@@ -245,9 +246,32 @@ def draft_message(
     ask = 'Draft our reply to the message marked answer_this="true".'
     if instruction:
         ask += f"\nExtra instruction from the team member: {instruction}"
+    if want_title:
+        ask += f"\n{TITLE_ASK}"
     if voice:
         return f"{head}\n\n{voice}\n\n{docs}\n\n{thread}\n\n{ask}"
     return f"{head}\n\n{docs}\n\n{thread}\n\n{ask}"
+
+
+TITLE_ASK = (
+    "After the reply, on its own last line, add a short title for this conversation for "
+    "our team's list: 3 to 6 plain words naming what they asked, no quotes or emojis, as "
+    "<short_title>…</short_title>. It is never posted."
+)
+_SHORT_TITLE = re.compile(r"<short_title>(.*?)</short_title>", re.DOTALL)
+SHORT_TITLE_MAX = 60
+
+
+def split_title(text: str) -> tuple[str, str | None]:
+    """A draft's text without its <short_title> line, and the title if it's usable."""
+    match = _SHORT_TITLE.search(text)
+    rest = _SHORT_TITLE.sub("", text).replace("<short_title>", "").strip()
+    if match is None:
+        return rest, None
+    title = re.sub(r"\s+", " ", match.group(1)).strip().strip("\"'“”.")
+    if not title or len(title) > SHORT_TITLE_MAX:
+        return rest, None
+    return rest, title
 
 
 def check_message(items: list[ContextItem], question: str, answer: str) -> str:

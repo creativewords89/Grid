@@ -764,6 +764,8 @@ class Thread(TimestampMixin, Base):
     platform_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("platforms.id"))
     community: Mapped[str | None] = mapped_column(String(200))
     title: Mapped[str] = mapped_column(String(300))
+    # True while the title is a stand-in: the next draft writes a short one (SPEC 6.10).
+    title_auto: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     original_url: Mapped[str] = mapped_column(Text)  # empty for Facebook (found by name)
     # Who asked: a Facebook name ("Dan Miller", "Anonymous member") or a Reddit username.
     person: Mapped[str | None] = mapped_column(String(120))

@@ -1838,6 +1838,11 @@ details.original summary {
 .mk-item-title {
   font-size: 14px;
   overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
 }
 
 .mk-item-when {
@@ -2062,7 +2067,30 @@ details.original summary {
 }
 
 .mk-thread-head .mk-title {
-  font-size: 19px;
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+
+.mk-title-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mk-rename {
+  font-size: 16px;
+  padding: 2px 6px;
+}
+
+.mk-rename-form {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.mk-rename-form .input {
+  min-width: 0;
+  width: 22rem;
+  max-width: 100%;
 }
 
 .mk-thread-info {

@@ -19,7 +19,13 @@ from app import audit, settings_store
 from app.ai import usage as usage_log
 from app.ai.usage import Usage
 from app.answering.claude_answer import Answerer
-from app.answering.prompts import ForumMessage, draft_message, thread_block
+from app.answering.prompts import (
+    SHORT_TITLE_MAX,
+    ForumMessage,
+    draft_message,
+    split_title,
+    thread_block,
+)
 from app.answering.retrieval import retrieve
 from app.answering.service import score_answer
 from app.auth.tokens import now
@@ -250,8 +256,27 @@ def _question(question: str) -> str:
 
 
 def _title(text: str) -> str:
+    """A stand-in title until a draft writes a short one: the first sentence, cut at a word."""
     line = re.sub(r"\s+", " ", text).strip()
-    return line if len(line) <= 120 else line[:119] + "…"
+    first = re.split(r"(?<=[.?!])\s", line, maxsplit=1)[0]
+    if len(first) <= SHORT_TITLE_MAX:
+        return first
+    cut = first[: SHORT_TITLE_MAX - 1].rsplit(" ", 1)[0] or first[: SHORT_TITLE_MAX - 1]
+    return cut.rstrip(",;:-") + "…"
+
+
+def rename(db: Session, thread: Thread, by: User, title: str) -> None:
+    title = re.sub(r"\s+", " ", title).strip()
+    if not title or len(title) > SHORT_TITLE_MAX:
+        raise MarketingError(
+            422, "invalid", f"Give the conversation a title of up to {SHORT_TITLE_MAX} characters."
+        )
+    if title == thread.title and not thread.title_auto:
+        return
+    changes = [{"field": "title", "from": thread.title, "to": title}]
+    thread.title = title
+    thread.title_auto = False
+    audit.record(db, by, "rename", "thread", thread.id, title, changes)
 
 
 def create_thread(
@@ -271,6 +296,7 @@ def create_thread(
             {"thread_id": resolved.thread.id},
         )
     question = _question(question)
+    given = re.sub(r"\s+", " ", title or "").strip()
     parsed = resolved.parsed
     platform = platform_of(db, parsed.platform)
     person = clean_name(author_name or "") or None
@@ -278,7 +304,9 @@ def create_thread(
         id=parsed.thread_id,
         platform_id=platform.id,
         community=parsed.community,
-        title=(title or "").strip()[:300] or _title(question),
+        # A post's own title is kept when it's short; otherwise the first draft writes one.
+        title=given if given and len(given) <= SHORT_TITLE_MAX else _title(given or question),
+        title_auto=not given or len(given) > SHORT_TITLE_MAX,
         original_url=parsed.clean_url or url.strip(),
         person=person,
         status=ThreadStatus.WAITING_FOR_US,
@@ -476,16 +504,21 @@ def draft(
         items=found.items,
         thread=thread_block(forum, refs[target.id]),
         instruction=(instruction or "").strip()[:500] or None,
+        want_title=thread.title_auto,
     )
     completion = answerer.draft(prompt)
     spent = Usage()
     spent.add(completion.model, completion.input_tokens, completion.output_tokens)
-    refused = completion.stop_reason == "refusal" or not completion.text.strip()
+    body, short_title = split_title(completion.text)
+    refused = completion.stop_reason == "refusal" or not body
     text = (
         "I can't draft a reply to this one. Please write it yourself or ask the team."
         if refused
-        else with_disclosure(completion.text.strip(), platform.disclosure_line)
+        else with_disclosure(body, platform.disclosure_line)
     )
+    if thread.title_auto and short_title and not refused:
+        thread.title = short_title
+        thread.title_auto = False
     answer = Answer(
         kind=AnswerKind.MARKETING,
         asked_by=by.id,
@@ -576,9 +609,10 @@ def preview_draft(
     spent = Usage()
     spent.add(completion.model, completion.input_tokens, completion.output_tokens)
     usage_log.record(db, by.id, UsageKind.DRAFT, spent)
-    if completion.stop_reason == "refusal" or not completion.text.strip():
+    body, _ = split_title(completion.text)
+    if completion.stop_reason == "refusal" or not body:
         raise MarketingError(502, "no_draft", "No draft could be written for this question.")
-    text = with_disclosure(completion.text.strip(), platform.disclosure_line)
+    text = with_disclosure(body, platform.disclosure_line)
     return Preview(
         text=text,
         examples=picked.examples,

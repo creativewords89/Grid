@@ -12,8 +12,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.answering.prompts import split_title
 from app.auth.tokens import now
 from app.db.models import (
+    AuditEntry,
     Community,
     DraftState,
     MessageAuthor,
@@ -174,7 +176,8 @@ def test_creating_and_finding_a_thread_again(client: TestClient, db: Session, sa
         "waiting_for_us",
         "r/localseo",
     )
-    assert created["title"] == QUESTION
+    # A stand-in until the first draft writes a short title.
+    assert created["title"] == "How long does Google Business Profile verification take…"
     [first] = created["messages"]
     assert (first["author"], first["author_name"], first["body"]) == (
         "them",
@@ -387,6 +390,135 @@ def test_a_refused_draft_says_so(client: TestClient, answerer: FakeAnswerer) -> 
     draft = ours(drafted(client, new_thread(client)))
     assert draft["body"].startswith("I can't draft a reply to this one.")
     assert draft["state"] == "in_review"  # refused: score 0, a person decides
+
+
+# --- short titles ----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("text", "body", "title"),
+    [
+        ("Hi.\n<short_title>GBP verification time</short_title>", "Hi.", "GBP verification time"),
+        (
+            'Hi.\n<short_title> "Grid  check\nfor SABs." </short_title>',
+            "Hi.",
+            "Grid check for SABs",
+        ),
+        ("Hi.", "Hi.", None),
+        ("Hi.\n<short_title></short_title>", "Hi.", None),
+        (f"Hi.\n<short_title>{'x' * 61}</short_title>", "Hi.", None),
+        ("Hi.\n<short_title>cut off", "Hi.\ncut off", None),
+    ],
+)
+def test_a_drafts_short_title_is_split_off(text: str, body: str, title: str | None) -> None:
+    assert split_title(text) == (body, title)
+
+
+@pytest.mark.parametrize(
+    ("question", "title"),
+    [
+        ("Do reviews help?  I mean a lot.", "Do reviews help?"),
+        ("Short one", "Short one"),
+        ("word " * 30, "word word word word word word word word word word word…"),
+    ],
+)
+def test_the_stand_in_title_is_the_first_sentence_cut_short(question: str, title: str) -> None:
+    assert service._title(question) == title
+
+
+def test_the_first_draft_writes_a_short_title(
+    client: TestClient, db: Session, answerer: FakeAnswerer
+) -> None:
+    answerer.draft_reply = (
+        "Usually 1-2 weeks.\n<short_title>GBP verification for dentists</short_title>"
+    )
+    thread = new_thread(client)
+
+    after = drafted(client, thread)
+
+    assert after["title"] == "GBP verification for dentists"
+    assert ours(after)["body"] == "Usually 1-2 weeks."  # the title is never posted
+    assert "<short_title>" in answerer.drafts[0]
+    listed = client.get("/api/threads").json()["items"]
+    assert listed[0]["title"] == "GBP verification for dentists"
+
+    # Later drafts don't ask again, and a stray title is still kept out of the reply.
+    answerer.draft_reply = "Still 1-2 weeks.\n<short_title>Something else</short_title>"
+    again = drafted(client, after, instruction="shorter")
+    assert again["title"] == "GBP verification for dentists"
+    assert ours(again)["body"] == "Still 1-2 weeks."
+    assert "<short_title>" not in answerer.drafts[1]
+
+
+def test_a_refused_draft_keeps_the_stand_in_title(
+    client: TestClient, answerer: FakeAnswerer
+) -> None:
+    answerer.draft_stop = "refusal"
+    thread = new_thread(client)
+    after = drafted(client, thread)
+    assert after["title"] == thread["title"]
+
+    answerer.draft_stop = "end_turn"
+    answerer.draft_reply = "1-2 weeks.\n<short_title>Verification time</short_title>"
+    assert drafted(client, after)["title"] == "Verification time"  # asked again
+
+
+def test_a_short_title_given_with_the_post_is_kept(
+    client: TestClient, answerer: FakeAnswerer
+) -> None:
+    thread = new_thread(client, title="Verification for dentists")
+    after = drafted(client, thread)
+    assert after["title"] == "Verification for dentists"
+    assert "<short_title>" not in answerer.drafts[0]
+
+    long = "A very long Reddit title that goes on and on about verification times"
+    other = new_thread(client, url="https://www.reddit.com/r/localseo/comments/9zz/x/", title=long)
+    assert other["title"] == "A very long Reddit title that goes on and on about…"
+    drafted(client, other)
+    assert "<short_title>" in answerer.drafts[1]
+
+
+def test_renaming_a_conversation(
+    client: TestClient, db: Session, answerer: FakeAnswerer, sara: User
+) -> None:
+    thread = new_thread(client)
+
+    response = client.patch(f"/api/threads/{thread['id']}", json={"title": "  Dentist   GBP  "})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["title"] == "Dentist GBP"
+    entry = db.scalars(select(AuditEntry).where(AuditEntry.action == "rename")).one()
+    assert entry.actor_id == sara.id
+    assert entry.changes == [{"field": "title", "from": thread["title"], "to": "Dentist GBP"}]
+    # A name someone chose isn't replaced by the AI.
+    answerer.draft_reply = "1-2 weeks.\n<short_title>Verification time</short_title>"
+    assert drafted(client, response.json())["title"] == "Dentist GBP"
+    assert "<short_title>" not in answerer.drafts[0]
+
+    for bad in ("   ", "x" * 61):
+        refused = client.patch(f"/api/threads/{thread['id']}", json={"title": bad})
+        assert refused.status_code == 422
+    assert client.patch("/api/threads/reddit:nope", json={"title": "Hi"}).status_code == 404
+
+
+@pytest.mark.parametrize("role", [Role.USER, Role.REVIEWER, Role.OWNER])
+def test_everyone_who_works_threads_can_rename(
+    client: TestClient,
+    web: Callable[[User], TestClient],
+    make_user: UserFactory,
+    role: Role,
+) -> None:
+    thread = new_thread(client)
+    other = web(make_user(role))
+    response = other.patch(f"/api/threads/{thread['id']}", json={"title": "Renamed"})
+    assert response.status_code == 200
+    assert web(make_user(role)).patch("/api/threads/x", json={}).status_code == 422
+
+
+def test_renaming_needs_a_session(ask_client: Callable[[], TestClient], client: TestClient) -> None:
+    thread = new_thread(client)
+    response = ask_client().patch(f"/api/threads/{thread['id']}", json={"title": "Hi"})
+    assert response.status_code == 401
 
 
 # --- reviewing drafts ------------------------------------------------------------------------
