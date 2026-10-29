@@ -423,6 +423,7 @@ export type BatchStatus = "not_started" | "running" | "paused";
 /** A lead file handed in on the Files screen (step 31). */
 export type HandedInFile = {
   id: string;
+  batch_label: string; // the batch it is for: its niche and number, "Cleaning 01" (step 38)
   number: number; // its businesses' File IDs are F<number>-0001… (step 35)
   file_name: string;
   niche: string;
@@ -951,6 +952,12 @@ export const api = {
   renameNiche: (id: string, name: string) => request<NicheRow>("PATCH", `/niches/${id}`, { name }),
   deleteNiche: (id: string) => request<void>("DELETE", `/niches/${id}`),
   deleteFile: (id: string) => request<void>("DELETE", `/submissions/${id}`),
+  addToItsBatch: (id: string, benchmarkId?: string) =>
+    request<HandedInFile>(
+      "POST",
+      `/submissions/${id}/add`,
+      benchmarkId ? { benchmark_id: benchmarkId } : {},
+    ),
   sendToReview: (id: string) => request<HandedInFile>("POST", `/submissions/${id}/send`),
   reopenFile: (id: string) => request<HandedInFile>("POST", `/submissions/${id}/reopen`),
   // Top Review (step 32).

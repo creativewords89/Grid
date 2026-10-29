@@ -979,3 +979,17 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     or a whole new Excel file (no File ID column: the Hub says it will replace the whole
     file as the next version, and does once confirmed). It is offered while the file is
     checking, couldn't be read, has errors or is in its Final check.
+38. **Batch names and Files as a table** (asked for after step 37): each file handed in is
+    for the batch named after its niche and a number, **Cleaning 01**, Cleaning 02…
+    (`submissions.batch_name`; counted per niche in `niches.files`, so a number is never
+    given twice, even after a file is deleted; renaming a niche renames them). When it is
+    ready, an Owner or Admin presses **Add to Cleaning 01**: the file goes to the batch of
+    that name, made then if there is none, with the niche's benchmark (several: the Hub asks
+    which; none: make one on Benchmarks first); dragging onto another batch stays. Only a
+    ready file is added (a file in its Final check no longer can). **Files** is one table,
+    **Batch name · File · Handed in by · Stage · Status · Next step** (Collectors don't see
+    Handed in by), under tabs **All · Checking · Fix errors · Final check · Top Review ·
+    Ready · In a batch**, each with the number of its files when it has any. The niche is
+    no longer chosen above the drop zone: dropping (or choosing) a file asks **Which niche is
+    this file for?**, and it is uploaded only once one is chosen. Only Owners and Admins see
+    **Niches** (rename, delete). Migration `0026` names the files already handed in.
