@@ -10,9 +10,11 @@ from openpyxl import load_workbook
 
 from app.db.models import Role
 from app.imports import submissions
-from tests.conftest import Person
+from tests.conftest import Person, run_file_checker
 from tests.hub_data import batch_id, make_batch
 from tests.test_imports import STANDARD, row, workbook
+
+pytestmark = pytest.mark.usefixtures("files_checked")
 
 GOOD = {
     "Tulsa": [
@@ -98,14 +100,20 @@ def hand_in(
         "/api/submissions", files={"file": (name, workbook(tabs))}, data={"niche": niche}
     )
     assert response.status_code == 201, response.text
-    body: dict[str, Any] = response.json()
+    assert response.json()["status"] == "checking"
+    run_file_checker()
+    body: dict[str, Any] = client.get(f"/api/submissions/{response.json()['id']}").json()
     return body
 
 
 def revise(client: TestClient, file_id: str, tabs: dict[str, Any]) -> Any:
-    return client.post(
+    response = client.post(
         f"/api/submissions/{file_id}/version", files={"file": ("tulsa-v2.xlsx", workbook(tabs))}
     )
+    if response.status_code != 200:
+        return response
+    run_file_checker()
+    return client.get(f"/api/submissions/{file_id}")
 
 
 def use(client: TestClient, file_id: str, batch: str = "Batch 01") -> Any:
@@ -169,7 +177,13 @@ def test_handing_in_needs_a_known_niche_and_an_excel_file(
     junk = cal.post(
         "/api/submissions", files={"file": ("a.xlsx", b"x")}, data={"niche": "cleaning"}
     )
-    assert junk.status_code == 422 and junk.json()["error"]["code"] == "unreadable"
+    # Taken at once and checked in the background: it fails there, and says why.
+    assert junk.status_code == 201 and junk.json()["status"] == "checking"
+    assert run_file_checker() == 1
+    failed = cal.get(f"/api/submissions/{junk.json()['id']}").json()
+    assert failed["status"] == "failed" and "isn't an Excel file" in failed["error"]
+    assert cal.get(f"/api/submissions/{junk.json()['id']}/marked.xlsx").status_code == 409
+    assert revise(cal, junk.json()["id"], GOOD).json()["status"] == "ready"
     assert hand_in(cal, GOOD, niche="cleaning")["niche"] == "Cleaning"
 
 

@@ -14,6 +14,8 @@ from tests.hub_data import batch_id
 from tests.test_imports import STANDARD, row
 from tests.test_submissions import BAD_ROW, hand_in, revise, use
 
+pytestmark = pytest.mark.usefixtures("files_checked")
+
 
 def tulsa(count: int) -> list[list[Any]]:
     return [

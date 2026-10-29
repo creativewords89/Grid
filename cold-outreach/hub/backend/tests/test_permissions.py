@@ -46,6 +46,10 @@ SPEC_TABLE: dict[Action, tuple[bool, bool, bool, bool, bool]] = {
     Action.USE_FILES: (Y, Y, N, N, N),
     # Top Review (step 32): choose each city's Top businesses in a file before it is used
     Action.REVIEW_TOPS: (Y, Y, N, N, Y),
+    # Add a niche (step 33)
+    Action.ADD_NICHES: (Y, Y, N, Y, N),
+    # Rename or delete a niche
+    Action.MANAGE_NICHES: (Y, Y, N, N, N),
 }
 ROLES = (Role.OWNER, Role.ADMIN, Role.VIEWER, Role.COLLECTOR, Role.REVIEWER)
 

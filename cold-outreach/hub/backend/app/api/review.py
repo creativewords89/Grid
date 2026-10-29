@@ -15,12 +15,13 @@ from sqlalchemy.orm import Session
 
 from app import audit
 from app.api.schemas import Strict
-from app.api.submissions import cities, lock_if_topped, status_of
+from app.api.submissions import status_of
 from app.auth.deps import CurrentUser, Db
 from app.db.models import Submission
 from app.errors import ApiError
 from app.imports import check, reader
 from app.imports import submissions as files
+from app.imports.submissions import cities, lock_if_topped
 from app.permissions import Action, ensure
 
 router = APIRouter(tags=["review"])
@@ -86,7 +87,7 @@ def _open(db: Session, file_id: uuid.UUID, lock: bool = False) -> Submission:
     """A file open for Top Review; a done one is locked."""
     query = select(Submission).where(Submission.id == file_id)
     sub = db.scalar(query.with_for_update() if lock else query)
-    if sub is None or status_of(sub) == "errors":
+    if sub is None or status_of(sub) in ("checking", "failed", "errors"):
         raise ApiError(404, "not_found", "That file doesn't exist.")
     if status_of(sub) != "needs_top":
         raise ApiError(409, "locked", "Every city of this file has a Top: it is done and locked.")
@@ -107,7 +108,7 @@ def review_files(me: CurrentUser, db: Db) -> list[ReviewFile]:
     found = [
         _file(sub)
         for sub in db.scalars(select(Submission).order_by(Submission.created_at.desc()).limit(500))
-        if status_of(sub) != "errors"
+        if status_of(sub) not in ("checking", "failed", "errors")
     ]
     db.commit()  # the cities of files handed in before step 32 were read just now
     return sorted(found, key=lambda f: f.state != "needs_top")
