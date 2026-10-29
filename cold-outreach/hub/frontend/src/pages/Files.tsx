@@ -275,14 +275,14 @@ function HandIn({ onDone }: { onDone: (item: HandedInFileDetail) => void }) {
 const NEW_NICHE_OPTION = NEW_NICHE;
 
 /** After a file is dropped: its niche, then the upload (step 38). No niche, no upload. */
-/** An Owner or Admin moves a file to another niche (step 42): also in Top Review, until a
- * city of it is in a batch. Its cities then go to the new niche's batch. */
+/** An Owner or Admin moves a file to another niche (step 42), also in Top Review: its cities
+ * go to the new niche's batch from then on; a city already in a batch stays there. */
 function ChangeNiche({
   item,
   onClose,
   onDone,
 }: {
-  item: HandedInFileDetail;
+  item: HandedInFile;
   onClose: () => void;
   onDone: (item: HandedInFileDetail) => void;
 }) {
@@ -318,6 +318,8 @@ function ChangeNiche({
           {sent
             ? "It is in Top Review: its cities go to the new niche's batch, and its Tops stay (a city the new niche already has is muted)."
             : "It is checked again for the new niche."}
+          {item.cities_in_batch > 0 &&
+            ` ${item.cities_in_batch} ${item.cities_in_batch === 1 ? "city is" : "cities are"} already in ${item.batch_name}: ${item.cities_in_batch === 1 ? "it stays" : "they stay"} there, with ${item.cities_in_batch === 1 ? "its" : "their"} leads and results.`}
         </p>
         <label className="field">
           <span>New niche</span>
@@ -704,6 +706,7 @@ function FileRow({
   onError: (text: string) => void;
 }) {
   const [fixing, setFixing] = useState(false);
+  const [nicheOpen, setNicheOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const mayChange = item.mine || staff;
   const stage = STAGES[stageOf(item.status)];
@@ -808,10 +811,25 @@ function FileRow({
           {item.status === "top_review" && (
             <span className="small muted">Waiting for Top Review</span>
           )}
+          {staff && item.status !== "checking" && (
+            <button className="button button-small" onClick={() => setNicheOpen(true)}>
+              Change niche
+            </button>
+          )}
           <button className="button button-small" onClick={onOpen}>
             Open
           </button>
         </div>
+        {nicheOpen && (
+          <ChangeNiche
+            item={item}
+            onClose={() => setNicheOpen(false)}
+            onDone={() => {
+              setNicheOpen(false);
+              onChanged();
+            }}
+          />
+        )}
         {fixing && (
           <FileFixDialog
             id={item.id}
@@ -973,7 +991,7 @@ function FileView({
               {item.niche} · version {item.version} · {item.businesses.toLocaleString()} businesses
               {item.uploaded_by && ` · handed in by ${item.uploaded_by}`}
             </span>
-            {staff && item.status !== "checking" && item.cities_in_batch === 0 && (
+            {staff && item.status !== "checking" && (
               <button className="link-button small" onClick={() => setNicheOpen(true)}>
                 Change niche
               </button>

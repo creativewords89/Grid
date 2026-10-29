@@ -531,3 +531,28 @@ test("a collector can't change a file's niche", async () => {
   expect(await screen.findByRole("heading", { name: "tulsa.xlsx" })).toBeVisible();
   expect(screen.queryByRole("button", { name: "Change niche" })).toBeNull();
 });
+
+test("a file with a city already in its batch still changes niche, from its row", async () => {
+  const partly = file({ status: "top_review", errors: 0, cities_going: 152, cities_in_batch: 1 });
+  const calls = mockApi({
+    "GET /auth/me": me(owner),
+    "GET /submissions": [200, [partly]],
+    "GET /submissions/niches": [200, ["Cleaning", "Construction"]],
+    "PATCH /submissions/f1/niche": [200, { ...detail, ...partly, niche: "Construction" }],
+  });
+  render(<App />);
+
+  const row = await screen.findByRole("row", { name: /tulsa\.xlsx/ });
+  await userEvent.click(within(row).getByRole("button", { name: "Change niche" }));
+  const dialog = screen.getByRole("dialog", { name: "Change the niche" });
+  expect(dialog).toHaveTextContent(
+    "1 city is already in Cleaning: it stays there, with its leads and results.",
+  );
+  const select = within(dialog).getByLabelText("New niche");
+  await within(select).findByRole("option", { name: "Construction" });
+  await userEvent.selectOptions(select, "Construction");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Move to Construction" }));
+  expect(calls.find((c) => c.path === "/submissions/f1/niche")?.body).toEqual({
+    niche: "Construction",
+  });
+});
