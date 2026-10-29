@@ -364,6 +364,9 @@ class FileCity(Base):
     muted: Mapped[str] = mapped_column(String(300), default="", server_default="")
     # Its Top businesses, by the first row of each ("Tulsa row 14").
     tops: Mapped[list[str]] = mapped_column(JSONB, default=list, server_default="[]")
+    # Its businesses as Top Review shows them (step 41): made once, when the file is sent on,
+    # so Top Review never reads the file or its businesses again.
+    items: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, server_default="[]")
     # Ready since (it has a Top): it goes on to the batch an hour later.
     topped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # In the batch: when, and the import that saved its businesses there.

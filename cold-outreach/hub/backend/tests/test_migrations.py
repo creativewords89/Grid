@@ -396,3 +396,50 @@ def test_old_batches_go_and_tops_move_to_the_files_cities(fresh_database_url: st
     assert tuple(left) == (0, 0)
     assert state == "checking"
     assert back == {"dallas": [], "tulsa": ["Tulsa row 2"]}
+
+
+def test_cities_of_files_sent_on_get_their_businesses(fresh_database_url: str) -> None:
+    """Step 41: the cities of files already in Top Review keep their businesses; no file is
+    checked again."""
+    cfg = alembic_config(fresh_database_url)
+    command.upgrade(cfg, "0028")
+    engine = create_engine(fresh_database_url)
+    sub = "00000000-0000-0000-0000-0000000000a1"
+    leads = (
+        '[{"rows": ["Tulsa row 2"], "values": {"city": "Tulsa", "business_name": "A"}},'
+        ' {"rows": ["Dallas row 2"], "values": {"city": "Dallas", "business_name": "B"}}]'
+    )
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO submissions (id, number, file_name, niche, content, sha256,"
+                    " state, sent_at, leads) VALUES (:id, 1, 'a.xlsx', 'Cleaning', 'x', 'h',"
+                    " 'checked', now(), CAST(:leads AS jsonb))"
+                ),
+                {"id": sub, "leads": leads},
+            )
+            conn.execute(
+                text(
+                    "INSERT INTO file_cities (id, submission_id, key, name) VALUES"
+                    " (gen_random_uuid(), :id, 'tulsa', 'Tulsa')"
+                ),
+                {"id": sub},
+            )
+        command.upgrade(cfg, "0029")
+        with engine.connect() as conn:
+            items = conn.execute(text("SELECT items FROM file_cities")).scalar()
+            state = conn.execute(text("SELECT state FROM submissions")).scalar()
+        command.downgrade(cfg, "0028")
+    finally:
+        engine.dispose()
+
+    assert items == [
+        {
+            "key": "Tulsa row 2",
+            "rows": ["Tulsa row 2"],
+            "values": {"city": "Tulsa", "business_name": "A"},
+            "extra": {},
+        }
+    ]
+    assert state == "checked"

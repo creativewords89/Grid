@@ -544,13 +544,30 @@ export type ReviewCity = {
   file_id: string;
   file_name: string;
   columns: { key: string; label: string }[];
-  businesses: {
-    key: string;
-    rows: string[];
-    values: Record<string, string>;
-    extra: Record<string, string>;
-    top: boolean;
-  }[];
+  businesses: ReviewBusiness[];
+  benchmark: BenchmarkHint | null; // ⭐ for the businesses that meet it (step 41)
+};
+
+/** A business of a city in Top Review (step 41): most reviews first. */
+export type ReviewBusiness = {
+  key: string;
+  rows: string[];
+  values: Record<string, string>;
+  extra: Record<string, string>;
+  top: boolean;
+  likely: boolean; // meets the niche's benchmark: a likely Top
+};
+
+export type BenchmarkHint = { name: string; reviews: number | null; rating: number | null };
+
+/** The cities under 10 on one page, to tick and save at once (step 41). */
+export type SmallPage = {
+  total: number;
+  page: number;
+  pages: number;
+  columns: { key: string; label: string }[];
+  benchmark: BenchmarkHint | null;
+  cities: (ReviewRow & { businesses_list: ReviewBusiness[] })[];
 };
 
 export type FileProblem = {
@@ -992,6 +1009,9 @@ export const api = {
   reviewCities: (show: ReviewShown) => request<ReviewList>("GET", `/review/cities?show=${show}`),
   reviewCity: (id: string, city: string) =>
     request<ReviewCity>("GET", `/review/files/${id}/cities/${encodeURIComponent(city)}`),
+  smallCities: (page: number) => request<SmallPage>("GET", `/review/small?page=${page}`),
+  saveManyTops: (cities: { file_id: string; city: string; tops: string[] }[]) =>
+    request<{ saved: number }>("PUT", "/review/tops", { cities }),
   saveTops: (id: string, city: string, tops: string[]) =>
     request<ReviewRow>("PUT", `/review/files/${id}/cities/${encodeURIComponent(city)}`, {
       tops,

@@ -15,7 +15,7 @@ from app import audit
 from app.auth.tokens import now
 from app.db.models import Batch, Benchmark, FileCity, Lead, LeadList, Submission, User
 from app.errors import ApiError
-from app.imports import reader, service
+from app.imports import check, reader, service
 from app.imports import submissions as files
 
 log = logging.getLogger("file_cities")
@@ -240,3 +240,30 @@ def move_due(db: Session) -> int:
         except ApiError as error:
             log.warning("city %s of file %s didn't move: %s", city.name, city.file.id, error)
     return moved
+
+
+def unmute_sent(db: Session, sub: Submission, city: FileCity) -> None:
+    """Unmute a city of a file already sent on to Top Review (step 41): the file isn't
+    checked again, only the city's businesses are, here and now. With an error among them
+    it stays muted (it would have held the file back)."""
+    against = others(db, sub)
+    bad = 0
+    leads = []
+    for lead in sub.leads:
+        if files.city_key(lead["values"].get("city", "")) == city.key:
+            found = check.check_lead(lead["values"])
+            if len(lead.get("rows", [])) > 1 or against.same(lead["values"]):
+                found.append(check.issue("SAME_ELSEWHERE", "business_name"))
+            bad += bool(found)
+            lead = {k: v for k, v in lead.items() if k != "muted"}
+        leads.append(lead)
+    if bad:
+        raise ApiError(
+            409,
+            "city_errors",
+            f"{bad} {'business' if bad == 1 else 'businesses'} of {city.name} have errors: "
+            "a city of a file sent on to Top Review is unmuted only without errors.",
+        )
+    sub.leads = leads
+    city.muted = ""
+    city.items = files.city_businesses(leads, city.key)

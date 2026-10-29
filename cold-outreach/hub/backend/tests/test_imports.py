@@ -60,8 +60,8 @@ def row(
         "Facebook": "",
         "Instagram": "",
         "Email": email,
-        "Reviews": 12,
-        "Average": 4.5,
+        "Reviews": extra.get("reviews", 12),
+        "Average": extra.get("rating", 4.5),
     }
     return [values[h] for h in STANDARD]
 
