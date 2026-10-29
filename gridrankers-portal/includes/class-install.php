@@ -44,7 +44,7 @@ class GRP_Install {
  * Schema 23 adds `carried` to meeting tasks: one moved into the next cycle, or a catch-up task made from an unfinished monthly task (6.11).
  * Schema 22 adds `handins` (files and links handed in on a step's checklist, 6.16) to meeting tasks and cycle records.
  * Schema 24 adds the time tracker (6.21): `grp_time_entries`, `grp_devices` and members' `work_start`.
- * Schema 25 adds the link to the main portal (6.22): `main_synced_at` and `main_error` on time entries.
+ * Schema 25 adds the link to the main portal (6.22): `main_synced_at`, `main_sent` and `main_error` on time entries.
 	 *
 	 * @var string[]
 	 */
@@ -811,6 +811,7 @@ class GRP_Install {
 				flags json NULL,
 				synced_at datetime NULL,
 				main_synced_at datetime NULL,
+				main_sent char(32) NULL,
 				main_error varchar(255) NULL,
 				edited_by varchar(64) NULL,
 				deleted_at datetime NULL,

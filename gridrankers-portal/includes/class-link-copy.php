@@ -177,6 +177,8 @@ class GRP_Link_Copy {
 		}
 		$summary = self::apply( $data );
 		GRP_Link::copied( null );
+		// Then the hours not on the main portal yet.
+		$summary['hours'] = GRP_Link_Hours::push();
 
 		return $summary;
 	}

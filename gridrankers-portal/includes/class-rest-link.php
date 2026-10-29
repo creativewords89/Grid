@@ -54,6 +54,15 @@ class GRP_REST_Link {
 		);
 		register_rest_route(
 			GRP_REST_Auth::REST_NAMESPACE,
+			'/link/time-entries',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( __CLASS__, 'time_entries' ),
+				'permission_callback' => array( 'GRP_Link', 'request_ok' ),
+			)
+		);
+		register_rest_route(
+			GRP_REST_Auth::REST_NAMESPACE,
 			'/link/people',
 			array(
 				'methods'             => WP_REST_Server::READABLE,
@@ -79,6 +88,22 @@ class GRP_REST_Link {
 		}
 
 		return rest_ensure_response( array( 'member_id' => (string) $member['id'] ) );
+	}
+
+	/**
+	 * POST /link/time-entries `{entries: [..≤200]}`: hours from the tracker portal, an answer per entry.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function time_entries( WP_REST_Request $request ) {
+		$entries = $request['entries'];
+		if ( ! is_array( $entries ) || count( $entries ) > GRP_Link_Hours::BATCH ) {
+			/* translators: %d: most entries. */
+			return new WP_Error( 'grp_invalid', sprintf( __( 'Send 1 to %d entries at a time.', 'gridrankers-portal' ), GRP_Link_Hours::BATCH ), array( 'status' => 400 ) );
+		}
+
+		return rest_ensure_response( array( 'results' => GRP_Link_Hours::receive( $entries ) ) );
 	}
 
 	/**
