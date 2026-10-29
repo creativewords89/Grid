@@ -24,7 +24,7 @@ YELLOW = PatternFill("solid", fgColor="FFF1B8")
 MAX_ROWS = 50_000
 
 
-def _tab_name(city: str, taken: set[str]) -> str:
+def tab_name(city: str, taken: set[str]) -> str:
     """A city as an Excel tab name: at most 31 characters, none of []:*?/\\, unique."""
     base = re.sub(r"[\[\]:*?/\\]", " ", city).strip()[:31] or "No city"
     name, n = base, 1
@@ -44,7 +44,7 @@ def build(leads: list[Lead]) -> bytes:
         by_city.setdefault(lead.city, []).append(lead)
     taken: set[str] = set()
     for city in sorted(by_city, key=str.lower):
-        sheet = book.create_sheet(_tab_name(city, taken))
+        sheet = book.create_sheet(tab_name(city, taken))
         sheet.append(HEADER)
         for cell in sheet[1]:
             cell.font = Font(bold=True)
@@ -100,7 +100,7 @@ class FixFileError(ValueError):
     pass
 
 
-def _field_of(header: str) -> str | None:
+def field_of(header: str) -> str | None:
     text = reader.clean(header).lower()
     for key, label in LABELS.items():
         if text == label.lower():
@@ -128,7 +128,7 @@ def read(content: bytes) -> list[FixRow]:
         id_at = [h.lower() for h in header].index("lead id")
         columns: dict[int, str] = {}
         for index, name in enumerate(header):
-            target = _field_of(name) if index != id_at else None
+            target = field_of(name) if index != id_at else None
             if target and target not in columns.values():
                 columns[index] = target
         for line, raw in enumerate(cells[1:], start=2):
