@@ -3,248 +3,187 @@ import {
   api,
   ApiError,
   type ReviewCity,
-  type ReviewCityState,
-  type ReviewFile,
-  type ReviewFileDetail,
+  type ReviewList,
+  type ReviewRow,
+  type ReviewShown,
 } from "../api";
 import { Alert } from "../components/ui";
-import { day } from "../format";
 
-/** Top Review (step 32): once a file handed in on Files has no error, Reviewers choose each
- * city's Top businesses in it, one city at a time. Cities under 10 businesses are off. When
- * every city that is on has a Top the file is ready and locked. */
+/** Top Review (steps 32 and 39): once a file handed in on Files is past its Final check
+ * without errors, Reviewers choose the Top businesses of each of its cities, one city at a
+ * time. A city with a Top is ready: it goes on to its niche's batch an hour later, or at once
+ * with Send to batch now. Cities under 10 businesses stay out unless they get a Top. */
 
-const CITY_STATE: Record<ReviewCityState, [string, string]> = {
-  ready: ["badge-ok", "Ready"],
-  needs_top: ["badge-warning", "Needs a Top"],
-  off: ["badge", "Off · under 10"],
-};
+const LISTS: [ReviewShown, string, string][] = [
+  ["needs_top", "Not ready", "Cities of 10 businesses or more without a Top yet."],
+  ["ready", "Ready", "A Top is chosen: each goes on to its batch an hour later, or now."],
+  ["small", "Cities under 10", "They stay out of the batch unless you choose a Top."],
+];
 
 function message(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
 }
 
+function minutesLeft(until: string): string {
+  const left = Math.ceil((new Date(until).getTime() - Date.now()) / 60_000);
+  return left <= 0 ? "any moment" : `${left} min`;
+}
+
 export function Review() {
-  const [files, setFiles] = useState<ReviewFile[] | null>(null);
-  const [open, setOpen] = useState<string | null>(null);
-  const [city, setCity] = useState<string | null>(null);
+  const [show, setShow] = useState<ReviewShown>("needs_top");
+  const [list, setList] = useState<ReviewList | null>(null);
+  const [open, setOpen] = useState<ReviewRow | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
     api
-      .reviewFiles()
-      .then(setFiles)
+      .reviewCities(show)
+      .then(setList)
       .catch((err: unknown) => setError(message(err, "Not loaded.")));
-  }, []);
+  }, [show]);
   useEffect(load, [load]);
 
-  // Stable, so the views don't load again when this screen changes.
   const back = useCallback(
     (text = "") => {
       setOpen(null);
-      setCity(null);
       setNotice(text);
       load();
     },
     [load],
   );
 
+  async function sendNow(row: ReviewRow) {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await api.sendCities(row.file_id, row.key);
+      setNotice(`${row.name} is in its batch.`);
+      load();
+    } catch (err) {
+      setError(message(err, "Not sent."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="page page-wide">
       {error && <Alert kind="error">{error}</Alert>}
       {notice && <Alert kind="success">{notice}</Alert>}
-      {open && city ? (
+      {open ? (
         <CityView
-          fileId={open}
-          cityKey={city}
-          onBack={() => {
-            setCity(null);
-            setNotice("");
-          }}
-          onSaved={(detail, name) => {
-            if (detail.state === "done") {
-              back(`Every city has a Top: ${detail.file_name} is ready and locked.`);
-            } else {
-              setCity(null);
-              setNotice(`Saved the Top of ${name}.`);
-            }
-          }}
-          onLocked={back}
-        />
-      ) : open ? (
-        <FileView
-          fileId={open}
+          fileId={open.file_id}
+          cityKey={open.key}
           onBack={() => back()}
-          onCity={(key) => {
-            setNotice("");
-            setCity(key);
-          }}
-          onLocked={back}
+          onSaved={(row) =>
+            back(
+              row.state === "ready"
+                ? `Saved the Top of ${row.name}: it goes on to its batch in ${
+                    row.moves_at ? minutesLeft(row.moves_at) : "an hour"
+                  }.`
+                : `Saved ${row.name}: no Top, so it isn't ready.`,
+            )
+          }
         />
       ) : (
-        <FileList
-          files={files}
-          onOpen={(id) => {
-            setNotice("");
-            setOpen(id);
-          }}
-        />
-      )}
-    </section>
-  );
-}
-
-function FileList({ files, onOpen }: { files: ReviewFile[] | null; onOpen: (id: string) => void }) {
-  const waiting = (files ?? []).filter((f) => f.state === "needs_top");
-  const done = (files ?? []).filter((f) => f.state === "done");
-  return (
-    <>
-      <div className="page-head">
-        <div className="stack-tight">
-          <h1>Top Review</h1>
-          <p className="muted">
-            Choose the Top businesses of each city in these files. A city with fewer than 10
-            businesses is off and needs none. When every city has a Top the file is done and locked.
-          </p>
-        </div>
-      </div>
-      <div className="card table-card stack-tight">
-        <h2>Waiting for Top</h2>
-        {files === null ? (
-          <p className="muted">Loading…</p>
-        ) : waiting.length === 0 ? (
-          <p className="muted">No file is waiting.</p>
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>File</th>
-                <th>Niche</th>
-                <th className="num">Businesses</th>
-                <th>Cities with a Top</th>
-                <th className="hide-narrow">Handed in</th>
-              </tr>
-            </thead>
-            <tbody>
-              {waiting.map((f) => (
-                <tr key={f.id}>
-                  <td>
-                    <button className="link-button cell-strong" onClick={() => onOpen(f.id)}>
-                      {f.file_name}
-                    </button>
-                  </td>
-                  <td>{f.niche}</td>
-                  <td className="num">{f.businesses.toLocaleString()}</td>
-                  <td>
-                    {f.cities_topped} of {f.cities_on}
-                  </td>
-                  <td className="hide-narrow small">{day(f.created_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-      {done.length > 0 && (
-        <div className="card stack-tight">
-          <h2>Done</h2>
-          <ul className="stack-tight plain">
-            {done.map((f) => (
-              <li key={f.id}>
-                {f.file_name} <span className="badge badge-ok">Done ✓</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </>
-  );
-}
-
-function FileView({
-  fileId,
-  onBack,
-  onCity,
-  onLocked,
-}: {
-  fileId: string;
-  onBack: () => void;
-  onCity: (key: string) => void;
-  onLocked: (text: string) => void;
-}) {
-  const [file, setFile] = useState<ReviewFileDetail | null>(null);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    api
-      .reviewFile(fileId)
-      .then(setFile)
-      .catch((err: unknown) => {
-        if (err instanceof ApiError && err.code === "locked") onLocked(err.message);
-        else setError(message(err, "Not loaded."));
-      });
-  }, [fileId, onLocked]);
-
-  return (
-    <>
-      <div className="small muted">
-        <a
-          href="/review"
-          onClick={(e) => {
-            e.preventDefault();
-            onBack();
-          }}
-        >
-          Top Review
-        </a>{" "}
-        / {file?.file_name}
-      </div>
-      {error && <Alert kind="error">{error}</Alert>}
-      {file && (
         <>
-          <h1>{file.file_name}</h1>
-          <p className="muted">
-            {file.niche} · {file.businesses.toLocaleString()} businesses · {file.cities_topped} of{" "}
-            {file.cities_on} {file.cities_on === 1 ? "city has" : "cities have"} a Top
-          </p>
+          <div className="page-head">
+            <div className="stack-tight">
+              <h1>Top Review</h1>
+              <p className="muted">
+                Choose the Top businesses of each city. A city with a Top goes on to its niche's
+                batch an hour later, or now with Send to batch now.
+              </p>
+            </div>
+          </div>
+          <nav className="files-tabs" aria-label="Cities">
+            {LISTS.map(([key, label]) => (
+              <button
+                key={key}
+                className={show === key ? "on" : undefined}
+                aria-pressed={show === key}
+                onClick={() => {
+                  setNotice("");
+                  setShow(key);
+                }}
+              >
+                {label}
+                {(list?.counts[key] ?? 0) > 0 && (
+                  <span className="files-tab-count">{list?.counts[key]}</span>
+                )}
+              </button>
+            ))}
+          </nav>
+          <p className="small muted">{LISTS.find(([key]) => key === show)?.[2]}</p>
           <div className="card table-card">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>City</th>
-                  <th className="num">Businesses</th>
-                  <th className="num">Top</th>
-                  <th>State</th>
-                </tr>
-              </thead>
-              <tbody>
-                {file.cities.map((c) => (
-                  <tr key={c.key} className={c.state === "off" ? "row-muted" : undefined}>
-                    <td>
-                      {c.state === "off" ? (
-                        c.name
-                      ) : (
-                        <button className="link-button cell-strong" onClick={() => onCity(c.key)}>
-                          {c.name}
-                        </button>
-                      )}
-                    </td>
-                    <td className="num">{c.businesses.toLocaleString()}</td>
-                    <td className="num">{c.state === "off" ? "—" : c.tops}</td>
-                    <td>
-                      <span className={`badge ${CITY_STATE[c.state][0]}`}>
-                        {CITY_STATE[c.state][1]}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {list === null ? (
+              <p className="muted files-empty">Loading…</p>
+            ) : list.cities.length === 0 ? (
+              <p className="muted files-empty">No city here.</p>
+            ) : (
+              <div className="table-scroll">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>City</th>
+                      <th>File</th>
+                      <th>Niche</th>
+                      <th className="num">Businesses</th>
+                      <th className="num">Top</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {list.cities.map((row) => (
+                      <tr key={`${row.file_id}-${row.key}`}>
+                        <td>
+                          <button
+                            className="link-button cell-strong"
+                            onClick={() => {
+                              setNotice("");
+                              setOpen(row);
+                            }}
+                          >
+                            {row.name}
+                          </button>
+                        </td>
+                        <td className="small">
+                          {row.file_name} <span className="muted">· F{row.number}</span>
+                        </td>
+                        <td>{row.niche}</td>
+                        <td className="num">{row.businesses.toLocaleString()}</td>
+                        <td className="num">{row.tops > 0 ? row.tops : "—"}</td>
+                        <td>
+                          {row.state === "ready" && (
+                            <div className="file-row-actions">
+                              {row.moves_at && (
+                                <span className="small muted">
+                                  Goes on in {minutesLeft(row.moves_at)}
+                                </span>
+                              )}
+                              <button
+                                className="button button-small button-primary"
+                                disabled={busy}
+                                onClick={() => void sendNow(row)}
+                              >
+                                Send to batch now
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </>
       )}
-    </>
+    </section>
   );
 }
 
@@ -253,13 +192,11 @@ function CityView({
   cityKey,
   onBack,
   onSaved,
-  onLocked,
 }: {
   fileId: string;
   cityKey: string;
   onBack: () => void;
-  onSaved: (file: ReviewFileDetail, city: string) => void;
-  onLocked: (text: string) => void;
+  onSaved: (row: ReviewRow) => void;
 }) {
   const [city, setCity] = useState<ReviewCity | null>(null);
   const [chosen, setChosen] = useState<Set<string>>(new Set());
@@ -273,11 +210,8 @@ function CityView({
         setCity(found);
         setChosen(new Set(found.businesses.filter((b) => b.top).map((b) => b.key)));
       })
-      .catch((err: unknown) => {
-        if (err instanceof ApiError && err.code === "locked") onLocked(err.message);
-        else setError(message(err, "Not loaded."));
-      });
-  }, [fileId, cityKey, onLocked]);
+      .catch((err: unknown) => setError(message(err, "Not loaded.")));
+  }, [fileId, cityKey]);
 
   function toggle(key: string) {
     const next = new Set(chosen);
@@ -291,10 +225,9 @@ function CityView({
     setBusy(true);
     setError("");
     try {
-      onSaved(await api.saveTops(fileId, cityKey, [...chosen]), city.name);
+      onSaved(await api.saveTops(fileId, cityKey, [...chosen]));
     } catch (err) {
-      if (err instanceof ApiError && err.code === "locked") onLocked(err.message);
-      else setError(message(err, "Not saved."));
+      setError(message(err, "Not saved."));
       setBusy(false);
     }
   }
@@ -312,7 +245,7 @@ function CityView({
             onBack();
           }}
         >
-          Back to the cities
+          Back to Top Review
         </a>
       </div>
       {error && <Alert kind="error">{error}</Alert>}
@@ -322,7 +255,8 @@ function CityView({
             <div className="stack-tight">
               <h1>{city.name}</h1>
               <p className="muted">
-                {city.businesses.length} businesses · tick the Top ones, then save.
+                {city.file_name} · {city.businesses.length} businesses · tick the Top ones, then
+                save.
               </p>
             </div>
             <div className="row">
@@ -333,7 +267,7 @@ function CityView({
             </div>
           </div>
           {chosen.size === 0 && (
-            <p className="small muted">No Top chosen: this city stays Needs a Top.</p>
+            <p className="small muted">No Top chosen: this city isn't ready.</p>
           )}
           <div className="card table-card">
             <div className="table-scroll">

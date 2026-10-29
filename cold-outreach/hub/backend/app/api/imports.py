@@ -23,6 +23,7 @@ from app.auth.deps import CurrentUser, Db
 from app.config import get_settings
 from app.db.models import (
     BatchStatus,
+    FileCity,
     Import,
     ImportStatus,
     Lead,
@@ -327,6 +328,10 @@ def delete_import(import_id: uuid.UUID, me: CurrentUser, db: Db) -> None:
         imp.file_name,
         [{"field": "leads deleted", "from": what.leads_going, "to": 0}],
     )
+    # A file's city that came in with it is out of the batch again: muted (step 39).
+    for city in db.scalars(select(FileCity).where(FileCity.import_id == imp.id)):
+        city.moved_at, city.import_id = None, None
+        city.muted = "Taken out of the batch: an Owner or Admin can unmute it."
     db.delete(imp)
     db.commit()
     for lead_id, file_id in stored:

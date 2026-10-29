@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, vi } from "vitest";
 import { App } from "../App";
-import type { HandedInFile, HandedInFileDetail } from "../api";
+import type { FileCity, HandedInFile, HandedInFileDetail } from "../api";
 import { makeUser, mockApi } from "../test/mockApi";
 
 const collector = makeUser({ id: "c1", name: "Cal", role: "collector" });
@@ -12,10 +12,10 @@ const me = (user: typeof owner) => [200, { user, csrf_token: "t" }] as [number, 
 function file(overrides: Partial<HandedInFile> = {}): HandedInFile {
   return {
     id: "f1",
-    batch_label: "Cleaning 01",
     number: 12,
     file_name: "tulsa.xlsx",
     niche: "Cleaning",
+    batch_name: "Cleaning",
     version: 1,
     businesses: 120,
     errors: 2,
@@ -25,13 +25,15 @@ function file(overrides: Partial<HandedInFile> = {}): HandedInFile {
     mine: true,
     created_at: "2026-10-29T10:00:00Z",
     updated_at: "2026-10-29T10:00:00Z",
-    batch: null,
     same_as: null,
-    cities_on: 1,
-    cities_topped: 0,
+    cities_going: 1,
+    cities_in_batch: 0,
+    cities_ready: 0,
+    cities_muted: 0,
     progress: 100,
     error: null,
     sends_at: null,
+    can_send_cities: false,
     ...overrides,
   };
 }
@@ -51,26 +53,22 @@ const detail: HandedInFileDetail = {
       value: "call us",
     },
   ],
+  cities: [],
 };
 
-const batch = {
-  id: "b1",
-  name: "Batch 01",
-  niche: "Cleaning",
-  benchmark: null,
-  leads: 0,
-  top: 0,
-  files: 0,
-  bots: [],
-  status: "not_started",
-  position: 0,
-  progress_pct: null,
-  created_at: "2026-10-01T10:00:00Z",
-  can_edit: true,
-  can_run: true,
-  can_rename: true,
-  can_delete: true,
-};
+function city(overrides: Partial<FileCity> = {}): FileCity {
+  return {
+    key: "tulsa",
+    name: "Tulsa",
+    businesses: 12,
+    state: "needs_top",
+    tops: 0,
+    muted: "",
+    moves_at: null,
+    moved_at: null,
+    ...overrides,
+  };
+}
 
 beforeEach(() => window.history.pushState(null, "", "/files"));
 afterEach(() => vi.unstubAllGlobals());
@@ -229,23 +227,32 @@ test("a file opens to its businesses, the wrong cells marked", async () => {
   ).toBe(true);
 });
 
-test("a used file says where, and can't be changed", async () => {
-  const used = file({
-    status: "used",
-    errors: 0,
-    batch: { batch_id: "b1", batch_name: "Batch 01", import_id: "i1", at: null, by: "Olivia" },
-  });
+test("a file in the batch shows its cities, and can't be changed", async () => {
+  const done = file({ status: "in_batch", errors: 0, warnings: 0, cities_in_batch: 1 });
   mockApi({
     "GET /auth/me": me(collector),
-    "GET /submissions": [200, [used]],
+    "GET /submissions": [200, [done]],
     "GET /submissions/niches": [200, ["Cleaning"]],
-    "GET /submissions/f1": [200, { ...detail, ...used, problems: [] }],
+    "GET /submissions/f1": [
+      200,
+      {
+        ...detail,
+        ...done,
+        problems: [],
+        cities: [
+          city({ state: "in_batch", tops: 2, moved_at: "2026-10-29T12:00:00Z" }),
+          city({ key: "waco", name: "Waco", businesses: 3, state: "small" }),
+        ],
+      },
+    ],
     "GET /submissions/f1/leads?page=1&sort=row": [200, leads],
   });
   render(<App />);
 
-  expect(await screen.findByText("Batch 01")).toBeVisible();
-  expect(screen.getByText(/Used in/)).toBeVisible();
+  const row = await screen.findByRole("row", { name: /tulsa\.xlsx/ });
+  expect(within(row).getByText("Cleaning")).toBeVisible();
+  expect(within(row).getByText(/1 of 1/)).toBeVisible();
+  expect(within(row).getByText(/city in the batch/)).toBeVisible();
   expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual([
     "Batch name",
     "File",
@@ -256,34 +263,62 @@ test("a used file says where, and can't be changed", async () => {
   ]); // a Collector's own files: no Handed in by
   await userEvent.click(screen.getByRole("button", { name: "tulsa.xlsx" }));
   expect(await screen.findByRole("heading", { name: "tulsa.xlsx" })).toBeVisible();
+  const cities = screen.getByRole("table", { name: /Cities/ });
+  expect(within(cities).getByRole("row", { name: /Tulsa/ })).toHaveTextContent("In the batch");
+  expect(within(cities).getByRole("row", { name: /Waco/ })).toHaveTextContent("Under 10");
   expect(screen.queryByRole("button", { name: /Upload fixes/ })).toBeNull();
   expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
 });
 
-test("an owner adds a ready file to a batch of its niche", async () => {
-  const ready = file({ status: "ready", errors: 0, warnings: 0 });
+test("ready cities go to the batch now; an owner unmutes a muted city", async () => {
+  const reviewing = file({
+    status: "top_review",
+    errors: 0,
+    warnings: 0,
+    cities_going: 2,
+    cities_ready: 1,
+    cities_muted: 1,
+    can_send_cities: true,
+  });
+  const cities = [
+    city({ state: "ready", tops: 1, moves_at: new Date(Date.now() + 30 * 60_000).toISOString() }),
+    city({
+      key: "dallas",
+      name: "Dallas",
+      state: "muted",
+      muted: "Dallas is already in file F3 (dallas.xlsx), handed in earlier",
+    }),
+  ];
+  const full = { ...detail, ...reviewing, problems: [], cities };
   const calls = mockApi({
     "GET /auth/me": me(owner),
-    "GET /submissions": [200, [ready]],
+    "GET /submissions": [200, [reviewing]],
     "GET /submissions/niches": [200, ["Cleaning"]],
-    "GET /batches": [200, [batch, { ...batch, id: "b2", name: "Roofs 01", niche: "Roofing" }]],
-    "GET /submissions/f1": [200, { ...detail, ...ready, problems: [] }],
+    "GET /submissions/f1": [200, full],
     "GET /submissions/f1/leads?page=1&sort=row": [200, leads],
-    "POST /submissions/f1/use": [200, { ...ready, status: "adding" }],
+    "POST /submissions/f1/to-batch": [200, full],
+    "POST /submissions/f1/cities/dallas/unmute": [200, { ...full, status: "checking" }],
   });
   render(<App />);
 
-  // No drag-and-drop panel any more: a file goes to another batch from its own page.
-  expect(await screen.findByRole("button", { name: "Niches" })).toBeVisible();
-  await userEvent.click(await screen.findByRole("button", { name: "tulsa.xlsx" }));
-  expect(screen.queryByRole("complementary", { name: "Batches" })).toBeNull();
-  const select = await screen.findByLabelText("Add to batch");
-  expect(within(select).queryByRole("option", { name: "Roofs 01" })).toBeNull();
-  await userEvent.selectOptions(select, "b1");
-  await userEvent.click(screen.getByRole("button", { name: "Add to batch" }));
+  const row = await screen.findByRole("row", { name: /tulsa\.xlsx/ });
+  expect(within(row).getByText("Cal")).toBeVisible(); // who handed it in
+  expect(within(row).getByText("1 city ready")).toBeVisible();
+  await userEvent.click(
+    within(row).getByRole("button", { name: "Send ready cities to Cleaning now" }),
+  );
+  expect(calls.find((c) => c.path === "/submissions/f1/to-batch")?.body).toEqual({});
 
-  expect(calls.find((c) => c.path === "/submissions/f1/use")?.body).toEqual({ batch_id: "b1" });
-  expect(window.location.search).toBe("?batch=b1&tab=files");
+  await userEvent.click(within(row).getByRole("button", { name: "Open" }));
+  const table = await screen.findByRole("table", { name: /Cities/ });
+  expect(within(table).getByText(/Goes on in (29|30) min/)).toBeVisible();
+  expect(within(table).getByText(/already in file F3/)).toBeVisible();
+  await userEvent.click(within(table).getByRole("button", { name: "Send to batch now" }));
+  expect(calls.filter((c) => c.path === "/submissions/f1/to-batch").at(-1)?.body).toEqual({
+    city: "tulsa",
+  });
+  await userEvent.click(within(table).getByRole("button", { name: "Unmute" }));
+  expect(calls.some((c) => c.path === "/submissions/f1/cities/dallas/unmute")).toBe(true);
 });
 
 test("fixes come back from Excel: shown first, then saved", async () => {
@@ -350,14 +385,14 @@ test("a file without errors waits in its Final check, and can be sent on now", a
     "GET /submissions": () => [200, listed],
     "GET /submissions/niches": [200, ["Cleaning"]],
     "POST /submissions/f1/send": () => {
-      listed = [{ ...waiting, status: "needs_top", sends_at: null }, listed[1]!];
+      listed = [{ ...waiting, status: "top_review", sends_at: null }, listed[1]!];
       return [200, listed[0]];
     },
   });
   render(<App />);
 
   const card = await screen.findByRole("row", { name: /tulsa\.xlsx/ });
-  expect(within(card).getByText("Cleaning 01")).toBeVisible();
+  expect(within(card).getByText("Cleaning")).toBeVisible();
   expect(within(card).getByText(/No errors · 4[12] min left/)).toBeVisible();
   // The stages count the files; one shows just the files at that stage.
   const stages = screen.getByRole("navigation", { name: "Stages" });
@@ -408,61 +443,4 @@ test("a whole new file through Upload fixes replaces the file once confirmed", a
   expect(screen.queryByRole("dialog", { name: "Upload fixes" })).toBeNull();
   const sent = calls.filter((c) => c.path === "/submissions/f1/fixes").map((c) => c.body);
   expect(sent.map((b) => (b as { confirm: string }).confirm)).toEqual(["false", "true"]);
-});
-
-test("an owner adds a ready file to its batch, choosing the benchmark of a new one", async () => {
-  const ready = file({ status: "ready", errors: 0, warnings: 0 });
-  let tries = 0;
-  const calls = mockApi({
-    "GET /auth/me": me(owner),
-    "GET /submissions": [200, [ready]],
-    "GET /submissions/niches": [200, ["Cleaning"]],
-    "GET /batches": [200, []],
-    "POST /submissions/f1/add": () => {
-      tries += 1;
-      return tries === 1
-        ? [
-            409,
-            {
-              error: {
-                code: "choose_benchmark",
-                message: "Choose the benchmark of Cleaning 01.",
-                details: {
-                  benchmarks: [
-                    { id: "k1", name: "Cleaning Benchmark 1" },
-                    { id: "k2", name: "Cleaning Benchmark 2" },
-                  ],
-                },
-              },
-            },
-          ]
-        : [
-            200,
-            {
-              ...ready,
-              status: "adding",
-              batch: {
-                batch_id: "b9",
-                batch_name: "Cleaning 01",
-                import_id: "i1",
-                at: null,
-                by: "Olivia",
-              },
-            },
-          ];
-    },
-  });
-  render(<App />);
-
-  const row = await screen.findByRole("row", { name: /tulsa\.xlsx/ });
-  expect(within(row).getByText("Cal")).toBeVisible(); // who handed it in
-  await userEvent.click(within(row).getByRole("button", { name: "Add to Cleaning 01" }));
-  const dialog = await screen.findByRole("dialog", { name: "Make Cleaning 01" });
-  await userEvent.selectOptions(within(dialog).getByLabelText("Benchmark"), "k2");
-  await userEvent.click(
-    within(dialog).getByRole("button", { name: "Make Cleaning 01 and add the file" }),
-  );
-  const sent = calls.filter((c) => c.path === "/submissions/f1/add").map((c) => c.body);
-  expect(sent).toEqual([{}, { benchmark_id: "k2" }]);
-  expect(window.location.search).toBe("?batch=b9&tab=files");
 });

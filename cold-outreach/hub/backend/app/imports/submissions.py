@@ -22,7 +22,6 @@ from openpyxl.utils.exceptions import InvalidFileException
 from app.auth.tokens import now
 from app.db.models import Submission
 from app.imports import check, fixes, reader
-from app.imports.service import SMALL_CITY
 from app.leads.edit import FIELDS as EDIT_FIELDS
 
 REPORT_TAB = "Lead Check"  # the tab the marked file opens on; taken out again on upload
@@ -62,40 +61,63 @@ def _where(lead: reader.Lead, field_name: str, rows: dict[str, reader.SheetRow])
 TABLE_FIELDS = (*check.STANDARD, "notes")
 
 
+@dataclass
+class Others:
+    """What the file is checked against (step 39), read from the database before: the
+    cities another file of its niche (handed in earlier) or its batch already has, each with
+    why this file's is muted, and the businesses already handed in or in a batch."""
+
+    cities: dict[str, str] = field(default_factory=dict)  # city (lower case) -> why muted
+    # The values of a business -> where the same business already is, or None.
+    same: Callable[[dict[str, str]], str | None] = lambda _values: None
+
+
 def run(
     content: bytes,
     niche: str,
     progress: Callable[[int], None] | None = None,
     number: int = 0,
+    others: Others | None = None,
 ) -> Checked:
     """Lead Check on a file: every problem with its tab, row, column and value. A business
-    given on several rows is checked once, as it will be saved. `progress` is told how far
-    it is, in percent: reading the tabs is the first 60, checking the businesses the rest.
-    Each business gets its File ID (step 35): the one in the file if the Hub made it, else
-    the next of the file `number`."""
+    given on several rows is checked once, as it will be saved, and is an error (step 39), as
+    is a business already handed in (`others`). A muted city's businesses aren't checked.
+    `progress` is told how far it is, in percent: reading the tabs is the first 60, checking
+    the businesses the rest. Each business gets its File ID (step 35): the one in the file if
+    the Hub made it, else the next of the file `number`."""
 
     def tell(percent: float) -> None:
         if progress is not None:
             progress(min(99, int(percent)))
 
+    others = others or Others()
     report = reader.read(content, niche, lambda share: tell(share * 60))
+    found_cities = _cities(report, others.cities)
+    muted = {key for key, item in found_cities.items() if item["muted"]}
+    rows = {f"{row.tab} row {row.line}": row for row in report.sheet}
+    # A tab whose businesses are all in muted cities isn't checked either.
+    live_tabs = {
+        rows[lead.rows[0]].tab
+        for lead in report.leads
+        if lead.rows[0] in rows and city_key(lead.values.get("city", "")) not in muted
+    }
     tabs: dict[str, dict[str, Any]] = {}
     problems: list[dict[str, Any]] = []
     for name in report.tab_names:
         layout = report.tab_columns.get(name)
         columns = (
             check.check_tab(layout["fields"], layout["duplicates"], layout["city_not_tab"])
-            if layout
+            if layout and (name in live_tabs or not muted)
             else []
         )
         tabs[name] = {"errors": 0, "warnings": 0, "columns": [i.as_dict() for i in columns]}
-    rows = {f"{row.tab} row {row.line}": row for row in report.sheet}
     order = {name: index for index, name in enumerate(report.tab_names)}
     leads: list[dict[str, Any]] = []
     for index, lead in enumerate(report.leads):
         if index % 200 == 0:
             tell(60 + 40 * index / max(1, len(report.leads)))
-        found = check.check_lead(lead.values)
+        is_muted = city_key(lead.values.get("city", "")) in muted
+        found = [] if is_muted else check.check_lead(lead.values) + _same(lead, others)
         first = rows.get(lead.rows[0])
         leads.append(
             {
@@ -107,6 +129,7 @@ def run(
                 "issues": [i.as_dict() for i in found],
                 "id": lead.values.get("file_id", ""),
             }
+            | ({"muted": True} if is_muted else {})
         )
         for item in found:
             row = _where(lead, item.field, rows)
@@ -135,10 +158,33 @@ def run(
     return Checked(
         businesses=len(report.leads),
         fingerprint=_fingerprint(report),
-        check={"errors": errors, "warnings": warnings, "tabs": tabs, "cities": _cities(report)},
+        check={"errors": errors, "warnings": warnings, "tabs": tabs, "cities": found_cities},
         problems=problems,
         leads=leads,
     )
+
+
+def _same(lead: reader.Lead, others: Others) -> list[check.Issue]:
+    """The same business twice (step 39): on several rows of the file, or handed in before."""
+    found = []
+    if len(lead.rows) > 1:
+        severity, message = check.CODES["SAME_IN_FILE"]
+        where = ", ".join(lead.rows)
+        found.append(
+            check.Issue(
+                "SAME_IN_FILE",
+                "business_name",
+                severity,
+                f"{message} ({where}): Upload fixes keeps it once",
+            )
+        )
+    elsewhere = others.same(lead.values)
+    if elsewhere:
+        severity, message = check.CODES["SAME_ELSEWHERE"]
+        found.append(
+            check.Issue("SAME_ELSEWHERE", "business_name", severity, f"{message}: {elsewhere}")
+        )
+    return found
 
 
 # --- Top Review (step 32) -------------------------------------------------------------------
@@ -148,50 +194,25 @@ def city_key(city: str) -> str:
     return city.strip().lower()
 
 
-def _cities(report: reader.Report) -> dict[str, dict[str, Any]]:
-    """Each city of the file (lower case) -> its name and how many businesses it has."""
+def _cities(report: reader.Report, muted: dict[str, str]) -> dict[str, dict[str, Any]]:
+    """Each city of the file (lower case) -> its name, how many businesses it has, and why
+    it is muted (empty when it isn't)."""
     found: dict[str, dict[str, Any]] = {}
     for lead in report.leads:
         city = lead.values.get("city", "")
-        item = found.setdefault(city_key(city), {"name": city, "businesses": 0})
+        key = city_key(city)
+        item = found.setdefault(key, {"name": city, "businesses": 0, "muted": muted.get(key, "")})
         item["businesses"] += 1
     return found
 
 
-def cities_on(cities: dict[str, dict[str, Any]]) -> list[str]:
-    """The cities that need a Top: those with fewer than 10 businesses are off, as in a
-    batch (SPEC section 6.4 item 8)."""
-    return [key for key, item in cities.items() if item["businesses"] >= SMALL_CITY]
-
-
-def all_topped(cities: dict[str, dict[str, Any]], tops: dict[str, list[str]]) -> bool:
-    return all(tops.get(key) for key in cities_on(cities))
-
-
-def cities(sub: Submission) -> dict[str, dict[str, Any]]:
-    """A checked file's cities (each with its name and businesses)."""
-    found: dict[str, dict[str, Any]] = sub.check.get("cities", {})
-    return found
-
-
 FINAL_CHECK = timedelta(hours=1)  # a file without errors waits this long before Top Review
+READY_WAIT = timedelta(hours=1)  # a city with a Top waits this long before its batch
 
 
 def send_on(sub: Submission) -> None:
     """The Final check is over (step 36): the file goes on to Top Review."""
     sub.sent_at = now()
-    lock_if_topped(sub)
-
-
-def lock_if_topped(sub: Submission) -> None:
-    """A checked file sent on to Top Review, without errors, whose every city that is on has
-    a Top is ready, and locked for Top Review."""
-    if sub.state != "checked" or sub.check.get("errors") or sub.topped_at is not None:
-        return
-    if sub.sent_at is None:
-        return
-    if all_topped(cities(sub), sub.tops):
-        sub.topped_at = now()
 
 
 def city_businesses(content: bytes, niche: str, key: str) -> list[dict[str, Any]]:

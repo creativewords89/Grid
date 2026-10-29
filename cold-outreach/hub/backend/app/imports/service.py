@@ -8,6 +8,7 @@ saves each lead's row, and updates the lists and the do-not-contact list, in one
 transaction.
 """
 
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -154,19 +155,32 @@ def _sheet(report: reader.Report, rows: list[dict[str, Any]], batch: Batch) -> d
 
 def preview(
     db: Session,
-    user: User,
+    user: User | None,
     file_name: str,
     content: bytes,
     batch: Batch,
     chosen_tops: set[str] | None = None,
+    city: str | None = None,
+    uploaded_by: uuid.UUID | None = None,
 ) -> Import:
     """`chosen_tops`: the businesses chosen Top in Top Review (step 32), by the first row each is
-    on; they are saved as Top."""
+    on; they are saved as Top. `city` (lower case): only that city's businesses of the file
+    (a file's city going on to its batch, step 39)."""
     niche = batch.niche
     try:
         report = reader.read(content, niche)
     except reader.ReadError as error:
         raise ApiError(422, "unreadable", str(error), {"file": str(error)}) from None
+    if city is not None:
+        report.leads = [
+            lead
+            for lead in report.leads
+            if lead.values.get("city", "").strip().lower() == city.strip().lower()
+        ]
+        kept = {where for lead in report.leads for where in lead.rows}
+        report.sheet = [r for r in report.sheet if f"{r.tab} row {r.line}" in kept]
+        report.tab_names = [n for n in report.tab_names if any(r.tab == n for r in report.sheet)]
+        report.merged_rows = [rows for rows in report.merged_rows if rows[0] in kept]
     registry = Registry.load(db)
     batch_names = {b.id: b.name for b in db.scalars(select(Batch))}
     rows = [_lead_row(lead) for lead in report.leads]
@@ -220,7 +234,7 @@ def preview(
         file_name=file_name[:255],
         niche=niche,
         batch_id=batch.id,
-        uploaded_by=user.id,
+        uploaded_by=user.id if user is not None else uploaded_by,
         status=ImportStatus.PREVIEW,
         counts=counts,
         preview={
@@ -342,7 +356,7 @@ def sync_do_not_contact(db: Session, lead: Lead) -> None:
             db.add(DoNotContact(kind=kind, value=value, reason="top", lead_id=lead.lead_id))
 
 
-def confirm(db: Session, imp: Import, user: User) -> Import:
+def confirm(db: Session, imp: Import, user: User | None) -> Import:
     if imp.status != ImportStatus.PREVIEW:
         raise ApiError(409, "not_preview", f"This import is {imp.status.value}.")
     # One import at a time: Lead IDs are numbered from the highest one saved.

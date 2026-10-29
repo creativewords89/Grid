@@ -2,9 +2,10 @@ import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-// The Hub's main flow on a brand-new install (SPEC section 12, steps 9 to 11): create the
-// Owner → a benchmark → a batch and its file → the leads, in the Hub and as Excel → the demo
-// agent works on the batch and saves its results → the batch's Leads, Runs and History.
+// The Hub's main flow on a brand-new install (SPEC section 12, steps 9 to 11 and 39): create
+// the Owner → a benchmark → a Collector hands in a file and fixes it → a Reviewer gives a
+// city its Top and sends it to the niche's batch → the leads, in the Hub and as Excel → the
+// demo agent works on the batch and saves its results → the batch's Leads, Runs and History.
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
 const RUN = path.join(HERE, "..", ".run");
@@ -17,6 +18,7 @@ const OWNER = {
 test.describe.configure({ mode: "serial" });
 
 let page: Page;
+let rita: Page; // the Reviewer
 
 test.beforeAll(async ({ browser }) => {
   page = await browser.newPage();
@@ -24,7 +26,31 @@ test.beforeAll(async ({ browser }) => {
 
 test.afterAll(async () => {
   await page.close();
+  await rita?.close();
 });
+
+/** The Owner invites someone; email isn't set up, so the link is copied. */
+async function invite(
+  name: string,
+  email: string,
+  role: string,
+): Promise<string> {
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Users" })
+    .click();
+  await page.getByRole("button", { name: "+ Invite" }).click();
+  const dialog = page.getByRole("dialog", { name: "Invite someone" });
+  await dialog.getByLabel("Name").fill(name);
+  await dialog.getByLabel("Email").fill(email);
+  await dialog.getByLabel("Role").selectOption(role);
+  await dialog.getByRole("button", { name: "Send invite" }).click();
+  // Wait for this person's link, not one shown before.
+  await expect(page.getByText(`send it to ${name} yourself`)).toBeVisible();
+  const link = await page.getByRole("textbox", { name: "Link" }).inputValue();
+  await page.keyboard.press("Escape");
+  return new URL(link).pathname + new URL(link).hash;
+}
 
 test("the first Owner is created with the setup code", async () => {
   await page.goto("/");
@@ -65,66 +91,103 @@ test("a benchmark is made for the niche", async () => {
   ).toContainText("v1");
 });
 
-test("a batch is made and a lead file is read, checked and saved in the Hub", async () => {
+test("a Collector hands in a file, fixes it and sends it on to Top Review", async ({
+  browser,
+}) => {
+  const link = await invite("Cal", "cal@example.com", "collector");
+  const cal = await browser.newPage();
+  await cal.goto(link);
+  await cal.getByLabel("New password").fill("cal collector passphrase");
+  await cal.getByLabel("Repeat password").fill("cal collector passphrase");
+  await cal.getByRole("button", { name: "Set password and sign in" }).click();
+  const nav = cal.getByRole("navigation", { name: "Main" });
+  await expect(nav.getByRole("link")).toHaveText(["Files"]);
+  await cal
+    .getByLabel(/Excel file/)
+    .setInputFiles(path.join(HERE, "..", "fixtures", "cleaning-leads.xlsx"));
+  // The niche is asked for once the file is chosen (step 38).
+  const ask = cal.getByRole("dialog", {
+    name: "Which niche is this file for?",
+  });
+  await ask.getByLabel("Niche").selectOption("Cleaning");
+  await ask.getByRole("button", { name: "Upload and check" }).click();
+  await expect(cal.getByText(/is uploaded and being checked/)).toBeVisible();
+  // Checked on the server (step 33), even after a reload: Sparkle is on two rows, an error.
+  await cal.reload();
+  const mine = cal.getByRole("row", { name: /cleaning-leads\.xlsx/ });
+  await expect(mine).toContainText("1 error to fix");
+  await mine.getByRole("button", { name: "cleaning-leads.xlsx" }).click();
+  const businesses = cal.getByRole("region", {
+    name: "Businesses in this file",
+  });
+  await expect(
+    businesses.getByText("Sparkle Home Cleaning").first(),
+  ).toBeVisible();
+  // The problems out, and back in: the business is kept once.
+  const downloaded = cal.waitForEvent("download");
+  await cal.getByRole("button", { name: /Download problems to fix/ }).click();
+  const fix = await downloaded;
+  expect(fix.suggestedFilename()).toBe("cleaning-leads-v1-to-fix.xlsx");
+  const saved = path.join(RUN, "cleaning-leads-to-fix.xlsx");
+  await fix.saveAs(saved);
+  await cal.getByRole("button", { name: /Upload fixes/ }).click();
+  const dialog = cal.getByRole("dialog", { name: "Upload fixes" });
+  await dialog.getByLabel(/Fixed file/).setInputFiles(saved);
+  await dialog.getByRole("button", { name: "Check the file" }).click();
+  await dialog.getByRole("button", { name: "Save 1 change" }).click();
+  await expect(cal.getByText(/No errors\. Final check/)).toBeVisible({
+    timeout: 20_000,
+  });
+  await cal.getByRole("button", { name: "Send to Top Review now" }).click();
+  // Both cities are under 10 businesses: none goes on unless it is given a Top.
+  await expect(cal.getByText(/no city has 10 businesses/)).toBeVisible();
+  await expect(cal.getByRole("button", { name: /Upload fixes/ })).toHaveCount(
+    0,
+  );
+  await cal.close();
+});
+
+test("a Reviewer gives a city its Top and sends it to the niche's batch now", async ({
+  browser,
+}) => {
+  const link = await invite("Rita", "rita@example.com", "reviewer");
+  rita = await browser.newPage();
+  await rita.goto(link);
+  await rita.getByLabel("New password").fill("rita reviewer passphrase");
+  await rita.getByLabel("Repeat password").fill("rita reviewer passphrase");
+  await rita.getByRole("button", { name: "Set password and sign in" }).click();
+  await expect(
+    rita.getByRole("navigation", { name: "Main" }).getByRole("link"),
+  ).toHaveText(["Top Review"]);
+  const lists = rita.getByRole("navigation", { name: "Cities" });
+  await lists.getByRole("button", { name: /Cities under 10/ }).click();
+  await rita.getByRole("button", { name: "Dallas" }).click();
+  await rita.getByRole("checkbox", { name: "Top: Big Shine Co" }).check();
+  await rita.getByRole("button", { name: "Save the Top of Dallas" }).click();
+  await expect(
+    rita.getByText(
+      /Saved the Top of Dallas: it goes on to its batch in (59|60) min/,
+    ),
+  ).toBeVisible();
+  await rita
+    .getByRole("navigation", { name: "Cities" })
+    .getByRole("button", { name: /^Ready/ })
+    .click();
+  const dallas = rita.getByRole("row", { name: /Dallas/ });
+  await dallas.getByRole("button", { name: "Send to batch now" }).click();
+  await expect(rita.getByText("Dallas is in its batch.")).toBeVisible();
+
+  // The niche's batch is made, named after it, with its benchmark.
   await page
     .getByRole("navigation", { name: "Main" })
     .getByRole("link", { name: "Batches" })
     .click();
-  await page.getByRole("button", { name: "+ New batch" }).click();
-  const made = page.getByRole("form", { name: "New batch" });
-  await made.getByLabel("Batch name").fill("Texas November");
-  await made.getByLabel("Niche (one per batch)").fill("Cleaning");
-  await made
-    .getByLabel("Benchmark")
-    .selectOption({ label: "Cleaning Benchmark 1" });
-  await made.getByRole("button", { name: "Make the batch" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Texas November" }),
-  ).toBeVisible();
-
-  await page
-    .getByLabel("Excel file")
-    .setInputFiles(path.join(HERE, "..", "fixtures", "cleaning-leads.xlsx"));
-  await page.getByRole("button", { name: "Read the file" }).click();
-
-  const preview = page.getByRole("article", { name: "Preview" });
-  const count = (label: string) =>
-    preview.locator(".count", { has: page.getByText(label, { exact: true }) });
-  await expect(count("businesses")).toContainText("4");
-  await expect(count("duplicates merged")).toContainText("1");
-  await expect(count("already Top (never contacted)")).toContainText("0");
-  await expect(preview.getByText(/Top is chosen in the Hub/)).toBeVisible();
-  await expect(count("cities")).toContainText("2");
-  // The file itself, tab by tab, with every column.
-  const file = preview.getByRole("region", { name: "The file, tab by tab" });
-  await expect(file.getByRole("tab", { name: /All tabs \(5\)/ })).toBeVisible();
-  await expect(file.getByRole("row").first()).toContainText("Business name");
-  await expect(file.getByText("Sparkle Home Cleaning").first()).toBeVisible();
-  // Lead Check runs on the file before it is saved (step 26): this one has no errors.
-  await expect(
-    preview.getByRole("region", { name: "Lead Check" }),
-  ).toContainText("🔴 0 errors");
-
-  await preview.getByRole("button", { name: "Save 4 businesses" }).click();
-  await expect(preview.getByText("Saved: 4 new and 0 updated.")).toBeVisible();
-  await expect(
-    page.getByRole("button", {
-      name: "Lead Check report of cleaning-leads.xlsx",
-    }),
-  ).toHaveText("✅ Clear");
-  await expect(
-    preview
-      .getByRole("region", { name: "The file, tab by tab" })
-      .getByText("L-000001")
-      .first(),
-  ).toBeVisible();
-  await page.getByRole("main").getByRole("link", { name: "Batches" }).click();
-  await expect(page.getByRole("row", { name: /Texas November/ })).toContainText(
-    "4",
-  );
+  const batch = page.getByRole("row", { name: /Cleaning Benchmark 1/ });
+  await expect(batch).toContainText("Cleaning");
+  await expect(batch).toContainText("3 · 1 Top");
 });
 
-test("the leads are in their batch and download as Excel", async () => {
+test("the leads are in the niche's batch and download as Excel", async () => {
   await page
     .getByRole("navigation", { name: "Main" })
     .getByRole("link", { name: "Batches" })
@@ -135,39 +198,38 @@ test("the leads are in their batch and download as Excel", async () => {
   await find.getByRole("button", { name: "Find" }).click();
   await expect(page.getByText("1 found")).toBeVisible();
   await page
-    .getByRole("button", { name: "Texas November", exact: true })
+    .getByRole("button", { name: "Cleaning", exact: true })
     .first()
     .click();
-  // Both cities have fewer than 10 businesses: muted by the Hub, on their own tab.
-  await page.getByRole("tab", { name: "Cities", exact: true }).click();
+  // It opens on its cities: Dallas has fewer than 10 businesses, muted, on its own tab.
   await page
-    .getByRole("tab", { name: /Small cities \(under 10\) \(2\)/ })
+    .getByRole("tab", { name: /Small cities \(under 10\) \(1\)/ })
     .click();
   await expect(
-    page.getByRole("switch", { name: "Tulsa on or off" }),
+    page.getByRole("switch", { name: "Dallas on or off" }),
   ).not.toBeChecked();
   // Each city says the file it came with; the latest file's cities are New.
-  await expect(page.getByRole("row", { name: /Tulsa/ })).toContainText(
-    "cleaning-leads.xlsx",
+  await expect(page.getByRole("row", { name: /Dallas/ })).toContainText(
+    "cleaning-leads.xlsx · Dallas",
   );
   await expect(
-    page.getByRole("row", { name: /Tulsa/ }).locator(".pill-active"),
+    page.getByRole("row", { name: /Dallas/ }).locator(".pill-active"),
   ).toHaveText("New");
   // Unmuted by hand, so the demo agent can work on them.
   await page.getByRole("button", { name: "All on" }).click();
   await expect(
-    page.getByRole("switch", { name: "Tulsa on or off" }),
+    page.getByRole("switch", { name: "Dallas on or off" }),
   ).toBeChecked();
   // A city's leads, and back to the cities.
-  await page.getByRole("button", { name: "Tulsa", exact: true }).click();
-  await expect(page.getByText("1 lead", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Dallas", exact: true }).click();
+  await expect(page.getByText("3 leads", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "← Back to Cities" }).click();
   await expect(page.getByRole("tab", { name: /Small cities/ })).toHaveAttribute(
     "aria-selected",
     "true",
   );
   await page.getByRole("tab", { name: "Lead files" }).click();
-  await expect(page.getByText("4 leads")).toBeVisible();
+  await expect(page.getByText("3 leads")).toBeVisible();
   // Every field of the file side by side.
   await expect(
     page.getByRole("row", {
@@ -183,7 +245,7 @@ test("the leads are in their batch and download as Excel", async () => {
   await expect(dialog.getByLabel("Website")).toHaveValue(
     "https://sparklehome.com/",
   );
-  await expect(dialog.getByText(/Texas November/)).toBeVisible();
+  await expect(dialog.getByText(/Cleaning/).first()).toBeVisible();
   await dialog.getByRole("button", { name: "Close" }).click();
 
   await page.getByLabel("Website").selectOption("no");
@@ -198,28 +260,14 @@ test("the leads are in their batch and download as Excel", async () => {
   expect(file.suggestedFilename()).toMatch(/^leads-\d{4}-\d{2}-\d{2}\.xlsx$/);
   await page.getByLabel("Website").selectOption("");
 
-  // Top is chosen in a city, not on the Leads tab: open Dallas, tick it, Mark as Top.
-  await expect(
-    page.getByRole("checkbox", { name: "Choose Big Shine Co" }),
-  ).toHaveCount(0);
-  await page.getByRole("tab", { name: "Cities", exact: true }).click();
-  await page.getByRole("tab", { name: /Small cities/ }).click();
-  await page.getByRole("button", { name: "Dallas", exact: true }).click();
-  await page.getByRole("checkbox", { name: "Choose Big Shine Co" }).click();
-  await page.getByRole("button", { name: "Mark as Top" }).click();
-  await expect(
-    page.getByText("1 lead marked as Top: agents leave them alone."),
-  ).toBeVisible();
+  // Its Top came from Top Review; with a Top Dallas is ready for the agents.
   await expect(
     page.getByRole("row", { name: /Big Shine Co/ }).locator(".pill-top"),
   ).toBeVisible();
-  // With a Top chosen Dallas is ready; Tulsa, without one, is not.
-  await page.getByRole("button", { name: "← Back to Cities" }).click();
+  await page.getByRole("tab", { name: "Cities", exact: true }).click();
+  await page.getByRole("tab", { name: /Small cities/ }).click();
   await expect(page.getByRole("row", { name: /Dallas/ })).toContainText(
     "Ready",
-  );
-  await expect(page.getByRole("row", { name: /Tulsa/ })).toContainText(
-    "Not ready",
   );
 });
 
@@ -259,9 +307,8 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
     .getByRole("navigation", { name: "Main" })
     .getByRole("link", { name: "Batches" })
     .click();
-  await page
-    .getByRole("button", { name: "Texas November", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Cleaning", exact: true }).click();
+  await page.getByRole("tab", { name: "Tasks", exact: true }).click();
   // The batch starts from the standard steps, then the agent goes on its job's task.
   await expect(
     page.getByRole("region", { name: "Agent library" }).getByText("Demo agent"),
@@ -283,7 +330,7 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
     .getByRole("link", { name: "Agents" })
     .click();
   await expect(card.getByText("Used in:").locator("..")).toContainText(
-    "Used in: Texas November · GBP Audit",
+    "Used in: Cleaning · GBP Audit",
   );
   const power = card.getByRole("switch", { name: "Demo agent on or off" });
   await power.click(); // saved on the server first, then shown as on
@@ -295,8 +342,7 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
     await card.getByRole("button", { name: "Refresh" }).click();
     await expect(card.getByText("Finished")).toBeVisible({ timeout: 1000 });
   }).toPass({ timeout: 45_000 });
-  // Dallas's two other leads audited; the Top one is never handed out, and Tulsa has no
-  // Top chosen yet, so it is not ready and left alone.
+  // Dallas's two other leads audited; the Top one is never handed out.
   await expect(card.getByText(/2 done/)).toBeVisible();
 
   // Its results are on the batch's Leads tab, and can be sorted by.
@@ -304,9 +350,7 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
     .getByRole("navigation", { name: "Main" })
     .getByRole("link", { name: "Batches" })
     .click();
-  await page
-    .getByRole("button", { name: "Texas November", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Cleaning", exact: true }).click();
   await page.getByRole("tab", { name: "Lead files" }).click();
   await page
     .getByLabel("Sort by")
@@ -342,106 +386,19 @@ test("the run is on the Runs screen and the changes are in History", async () =>
     page.getByRole("row", { name: /run agents · Demo agent/ }),
   ).toBeVisible();
   await expect(
-    page.getByRole("row", { name: /confirm imports · cleaning-leads\.xlsx/ }),
+    page.getByRole("row", {
+      name: /send to batch file · cleaning-leads\.xlsx · Dallas/,
+    }),
   ).toBeVisible();
   await expect(
-    page.getByRole("row", { name: /create batches · Texas November/ }),
+    page.getByRole("row", { name: /create batches · Cleaning$/ }),
   ).toBeVisible();
   await expect(
     page.getByRole("row", { name: /create benchmarks · Cleaning Benchmark 1/ }),
   ).toBeVisible();
 });
 
-test("a Collector hands in a file and the Owner adds it to a batch, once", async ({
-  browser,
-}) => {
-  // The Owner invites the external team's Collector (email isn't set up: a link to copy).
-  await page
-    .getByRole("navigation", { name: "Main" })
-    .getByRole("link", { name: "Users" })
-    .click();
-  await page.getByRole("button", { name: "+ Invite" }).click();
-  const invite = page.getByRole("dialog", { name: "Invite someone" });
-  await invite.getByLabel("Name").fill("Cal");
-  await invite.getByLabel("Email").fill("cal@example.com");
-  await invite.getByLabel("Role").selectOption("collector");
-  await invite.getByRole("button", { name: "Send invite" }).click();
-  const link = await page.getByRole("textbox", { name: "Link" }).inputValue();
-  await page.keyboard.press("Escape");
-
-  // The Collector sees Files only, hands in a file and Lead Check finds it ready.
-  const cal = await browser.newPage();
-  await cal.goto(new URL(link).pathname + new URL(link).hash);
-  await cal.getByLabel("New password").fill("cal collector passphrase");
-  await cal.getByLabel("Repeat password").fill("cal collector passphrase");
-  await cal.getByRole("button", { name: "Set password and sign in" }).click();
-  const nav = cal.getByRole("navigation", { name: "Main" });
-  await expect(nav.getByRole("link")).toHaveText(["Files"]);
-  await cal
-    .getByLabel(/Excel file/)
-    .setInputFiles(path.join(HERE, "..", "fixtures", "cleaning-leads.xlsx"));
-  // The niche is asked for once the file is chosen (step 38).
-  const askCal = cal.getByRole("dialog", {
-    name: "Which niche is this file for?",
-  });
-  await askCal.getByLabel("Niche").selectOption("Cleaning");
-  await askCal.getByRole("button", { name: "Upload and check" }).click();
-  await expect(cal.getByText(/is uploaded and being checked/)).toBeVisible();
-  // Checked on the server (step 33), even after a reload; no errors: its Final check.
-  await cal.reload();
-  const mine = cal.getByRole("row", { name: /cleaning-leads\.xlsx/ });
-  await expect(mine).toContainText("Cleaning 01");
-  await expect(mine).toContainText("No errors");
-  await mine.getByRole("button", { name: "Send to Top Review now" }).click();
-  await expect(mine).toContainText("Ready"); // no city of 10 businesses: no Top to choose
-  await mine.getByRole("button", { name: "cleaning-leads.xlsx" }).click();
-  await expect(cal.getByText(/this\s+file is ready/)).toBeVisible();
-  const businesses = cal.getByRole("region", {
-    name: "Businesses in this file",
-  });
-  await expect(
-    businesses.getByText("Sparkle Home Cleaning").first(),
-  ).toBeVisible();
-  // The file with its problems marked downloads.
-  const downloaded = cal.waitForEvent("download");
-  await cal.getByRole("button", { name: /Download problems to fix/ }).click();
-  expect((await downloaded).suggestedFilename()).toBe(
-    "cleaning-leads-v1-to-fix.xlsx",
-  );
-  await cal.getByRole("link", { name: "Files" }).first().click();
-
-  // The Owner adds the ready file to a batch and saves its preview there.
-  await page
-    .getByRole("navigation", { name: "Main" })
-    .getByRole("link", { name: "Files" })
-    .click();
-  const row = page.getByRole("row", { name: /cleaning-leads\.xlsx/ });
-  await expect(row).toContainText("Cal"); // who handed it in
-  await expect(
-    row.getByRole("button", { name: "Add to Cleaning 01" }),
-  ).toBeVisible();
-  // Another batch than its own: from the file's page.
-  await row.getByRole("button", { name: "Open" }).click();
-  await page
-    .getByLabel("Add to batch")
-    .selectOption({ label: "Texas November" });
-  await page.getByRole("button", { name: "Add to batch" }).click();
-  const preview = page.getByRole("article", { name: "Preview" });
-  await preview.getByRole("button", { name: "Save 4 businesses" }).click();
-  await expect(preview.getByText(/Saved: 0 new and 4 updated/)).toBeVisible();
-
-  // Both now see where it is used; it can't be used again.
-  await cal.reload();
-  const used = cal.getByRole("row", { name: /cleaning-leads\.xlsx/ });
-  await expect(used).toContainText("Used in Texas November");
-  await expect(used).toContainText("by Olivia");
-  await cal.close();
-});
-
-test("a Reviewer chooses the Top of each city and the file becomes ready", async ({
-  browser,
-}) => {
-  // A file with a city of 12 businesses and no error: it waits for Top Review.
+test("a city of 10 businesses or more gets its Top and goes on to the batch", async () => {
   await page
     .getByRole("navigation", { name: "Main" })
     .getByRole("link", { name: "Files" })
@@ -454,53 +411,32 @@ test("a Reviewer chooses the Top of each city and the file becomes ready", async
   });
   await ask.getByLabel("Niche").selectOption("Cleaning");
   await ask.getByRole("button", { name: "Upload and check" }).click();
-  const card = page.getByRole("row", { name: /top-review\.xlsx/ });
-  await expect(card).toContainText("No errors");
-  await card.getByRole("button", { name: "Send to Top Review now" }).click();
-  await expect(card).toContainText("Waiting for the reviewer");
+  const row = page.getByRole("row", { name: /top-review\.xlsx/ });
+  await expect(row).toContainText("No errors");
+  await row.getByRole("button", { name: "Send to Top Review now" }).click();
+  await expect(row).toContainText("Waiting for the reviewer");
+  await expect(row).toContainText("0 of 1 city in the batch");
 
-  // The Owner invites a Reviewer, who sees Top Review only.
+  // The Reviewer finds Austin Not ready and chooses its Top.
+  await rita.reload();
+  await rita.getByRole("button", { name: "Austin" }).click();
+  await rita.getByRole("checkbox", { name: "Top: Austin Shine 3" }).check();
+  await rita.getByRole("button", { name: "Save the Top of Austin" }).click();
+  await expect(rita.getByText(/Saved the Top of Austin/)).toBeVisible();
+
+  // Ready: it would go on in an hour; the Owner sends it now.
+  await page.reload();
+  await expect(row).toContainText("1 city ready");
+  await row
+    .getByRole("button", { name: "Send ready cities to Cleaning now" })
+    .click();
+  await expect(row).toContainText("1 of 1 city in the batch");
+  await expect(row).toContainText("Done");
   await page
     .getByRole("navigation", { name: "Main" })
-    .getByRole("link", { name: "Users" })
-    .click();
-  await page.getByRole("button", { name: "+ Invite" }).click();
-  const invite = page.getByRole("dialog", { name: "Invite someone" });
-  await invite.getByLabel("Name").fill("Rita");
-  await invite.getByLabel("Email").fill("rita@example.com");
-  await invite.getByLabel("Role").selectOption("reviewer");
-  await invite.getByRole("button", { name: "Send invite" }).click();
-  const link = await page.getByRole("textbox", { name: "Link" }).inputValue();
-  await page.keyboard.press("Escape");
-
-  const rita = await browser.newPage();
-  await rita.goto(new URL(link).pathname + new URL(link).hash);
-  await rita.getByLabel("New password").fill("rita reviewer passphrase");
-  await rita.getByLabel("Repeat password").fill("rita reviewer passphrase");
-  await rita.getByRole("button", { name: "Set password and sign in" }).click();
-  await expect(
-    rita.getByRole("navigation", { name: "Main" }).getByRole("link"),
-  ).toHaveText(["Top Review"]);
-  await rita.getByRole("button", { name: "top-review.xlsx" }).click();
-  await rita.getByRole("button", { name: "Tulsa" }).click();
-  await rita.getByRole("checkbox", { name: "Top: Tulsa Shine 3" }).check();
-  await rita.getByRole("button", { name: "Save the Top of Tulsa" }).click();
-  await expect(
-    rita.getByText(
-      "Every city has a Top: top-review.xlsx is ready and locked.",
-    ),
-  ).toBeVisible();
-  await expect(
-    rita.getByRole("button", { name: "top-review.xlsx" }),
-  ).toHaveCount(0);
-  await rita.close();
-
-  // The Owner sees it ready.
-  await page
-    .getByRole("navigation", { name: "Main" })
-    .getByRole("link", { name: "Files" })
+    .getByRole("link", { name: "Batches" })
     .click();
   await expect(
-    page.getByRole("row", { name: /top-review\.xlsx/ }),
-  ).toContainText("Ready");
+    page.getByRole("row", { name: /Cleaning Benchmark 1/ }),
+  ).toContainText("15 · 2 Top");
 });

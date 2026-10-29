@@ -13,7 +13,7 @@ from app.auth.tokens import now
 from app.db.models import Role, Submission
 from app.imports import file_checker
 from tests.conftest import Person
-from tests.hub_data import batch_id
+from tests.hub_data import make_benchmark
 from tests.test_imports import STANDARD, row
 from tests.test_submissions import BAD, GOOD, hand_in, revise
 
@@ -30,7 +30,7 @@ BIG = {
 @pytest.fixture
 def owner(person: Person) -> TestClient:
     client, _ = person(Role.OWNER, "Olivia")
-    batch_id(client, "Batch 01", "Cleaning")
+    make_benchmark(client, "Cleaning Benchmark 1", "Cleaning")
     return client
 
 
@@ -45,16 +45,17 @@ def test_a_file_without_errors_waits_in_its_final_check(owner: TestClient, perso
     assert sub["status"] == "final_check"
     # It goes on by itself an hour after it had no error.
     assert sub["sends_at"] is not None
-    assert rita.get("/api/review/files").json() == []
-    assert rita.get(f"/api/review/files/{sub['id']}").status_code == 404
+    assert rita.get("/api/review/cities").json()["cities"] == []
+    assert rita.get(f"/api/review/files/{sub['id']}/cities/Tulsa").status_code == 404
     # Its sender can still change it.
     assert revise(cal, sub["id"], BIG, send=False).json()["status"] == "final_check"
 
     sent = cal.post(f"/api/submissions/{sub['id']}/send")
-    assert sent.status_code == 200 and sent.json()["status"] == "needs_top"
-    assert [f["file_name"] for f in rita.get("/api/review/files").json()] == ["tulsa.xlsx"]
+    assert sent.status_code == 200 and sent.json()["status"] == "top_review"
+    cities = rita.get("/api/review/cities").json()["cities"]
+    assert [c["file_name"] for c in cities] == ["tulsa.xlsx"]
     # Sent on: done for the Collector.
-    assert revise(cal, sub["id"], BIG).json()["error"]["code"] == "no_errors"
+    assert revise(cal, sub["id"], BIG).json()["error"]["code"] == "sent_on"
     again = cal.post(f"/api/submissions/{sub['id']}/send")
     assert again.json()["error"]["code"] == "not_final_check"
 
@@ -74,9 +75,9 @@ def test_the_scheduler_sends_it_on_after_an_hour(
         db.commit()
         assert file_checker.send_due(db) == 2
         db.commit()
-    assert status(cal, waiting["id"])["status"] == "needs_top"
-    # Its cities are all under 10 businesses: no Top to choose, ready at once.
-    assert status(cal, small["id"])["status"] == "ready"
+    assert status(cal, waiting["id"])["status"] == "top_review"
+    # Its cities are all under 10 businesses: none goes on unless it is given a Top.
+    assert status(cal, small["id"])["status"] == "in_batch"
 
 
 def test_errors_again_start_the_hour_again(owner: TestClient, person: Person) -> None:
@@ -93,11 +94,11 @@ def test_who_sends_a_file_on(owner: TestClient, person: Person) -> None:
     dana, _ = person(Role.COLLECTOR)
     viewer, _ = person(Role.VIEWER)
     rita, _ = person(Role.REVIEWER)
+    bad = hand_in(cal, BAD, name="bad.xlsx", send=False)
     sub = hand_in(cal, GOOD, send=False)
     assert dana.post(f"/api/submissions/{sub['id']}/send").status_code == 404
     assert rita.post(f"/api/submissions/{sub['id']}/send").status_code == 404
     assert viewer.post(f"/api/submissions/{sub['id']}/send").status_code == 403
     assert owner.post(f"/api/submissions/{sub['id']}/send").status_code == 200
-    bad = hand_in(cal, BAD, name="bad.xlsx", send=False)
     refused = cal.post(f"/api/submissions/{bad['id']}/send")
     assert refused.json()["error"]["code"] == "not_final_check"

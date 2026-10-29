@@ -127,12 +127,9 @@ def rename_niche(niche_id: uuid.UUID, body: RenameIn, me: CurrentUser, db: Db) -
             .values(niche=body.name)
         )
     niche.name = body.name
-    # Files' batch names follow ("Cleaning 01" → "House Cleaning 01").
-    for sub in db.scalars(
-        select(Submission).where(func.lower(func.trim(Submission.niche)) == body.name.lower())
-    ):
-        if sub.batch_name.lower().startswith(old.strip().lower() + " "):
-            sub.batch_name = body.name + sub.batch_name[len(old.strip()) :]
+    # The niche's batch is named after it (step 39): it follows.
+    for batch in db.scalars(select(Batch).where(func.lower(Batch.name) == old.strip().lower())):
+        batch.name = body.name
     audit.record(
         db,
         me,

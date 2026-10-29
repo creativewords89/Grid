@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.tokens import now
 from app.db.models import Submission
-from app.imports import reader
+from app.imports import file_cities, reader
 from app.imports import submissions as files
 
 log = logging.getLogger("file_checker")
@@ -51,6 +51,8 @@ def check_one(engine: Engine, file_id: uuid.UUID, version: int) -> None:
         if sub is None:
             return
         content, niche, number = sub.content, sub.niche, sub.number
+        # Read now: the other files' cities and businesses it is checked against (step 39).
+        against = file_cities.others(db, sub)
     last = [0.0]
 
     def progress(percent: int) -> None:
@@ -68,7 +70,7 @@ def check_one(engine: Engine, file_id: uuid.UUID, version: int) -> None:
     error = None
     try:
         content = files.clean(content)
-        found = files.run(content, niche, progress, number)
+        found = files.run(content, niche, progress, number, against)
     except reader.ReadError as failure:
         error = str(failure)[:500]
     except Exception:
@@ -90,18 +92,19 @@ def check_one(engine: Engine, file_id: uuid.UUID, version: int) -> None:
             sub.check = found.check
             sub.problems = found.problems
             sub.leads = found.leads
+            file_cities.sync(sub, found.check["cities"])
             # The Final check's hour starts when the file has no error (step 36).
             if found.check["errors"]:
                 sub.clean_since = None
             elif sub.clean_since is None:
                 sub.clean_since = now()
-            files.lock_if_topped(sub)
         db.commit()
     log.info("checked file %s (version %s)", file_id, version)
 
 
 def send_due(db: Session) -> int:
-    """Files whose Final check hour is over go on to Top Review (step 36)."""
+    """Files whose Final check hour is over go on to Top Review (step 36), and ready cities
+    whose hour is over to their batch (step 39)."""
     due = db.scalars(
         select(Submission)
         .where(
@@ -117,6 +120,7 @@ def send_due(db: Session) -> int:
         if not sub.check.get("errors"):
             files.send_on(sub)
             sent += 1
+    file_cities.move_due(db)
     return sent
 
 

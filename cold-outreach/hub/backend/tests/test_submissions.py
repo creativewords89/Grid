@@ -1,5 +1,6 @@
-"""The Files screen (SPEC step 31): Collectors hand in lead files and fix them until Lead
-Check finds no error; Owners and Admins add a ready file to a batch of its niche, once."""
+"""The Files screen (SPEC steps 31 and 39): Collectors hand in lead files and fix them until
+Lead Check finds no error; sent on to Top Review, a file is theirs no more. A business
+handed in twice is an error, a city handed in twice is muted."""
 
 import io
 from typing import Any
@@ -12,7 +13,7 @@ from openpyxl.comments import Comment
 from app.db.models import Role
 from app.imports import submissions
 from tests.conftest import Person, run_file_checker
-from tests.hub_data import batch_id, make_batch
+from tests.hub_data import make_benchmark
 from tests.test_imports import STANDARD, row, workbook
 
 pytestmark = pytest.mark.usefixtures("files_checked")
@@ -46,9 +47,38 @@ def test_every_problem_has_its_tab_row_and_column() -> None:
     assert submissions.run(workbook(GOOD), "Cleaning").check["errors"] == 0
 
 
-def test_a_business_on_two_rows_is_checked_once() -> None:
+def test_a_business_on_two_rows_is_checked_once_and_is_an_error() -> None:
     twice = {"Tulsa": [STANDARD, BAD_ROW, BAD_ROW]}
-    assert submissions.run(workbook(twice), "Cleaning").check["errors"] == 2
+    found = submissions.run(workbook(twice), "Cleaning")
+    assert found.check["errors"] == 3
+    same = next(p for p in found.problems if p["code"] == "SAME_IN_FILE")
+    assert same["message"] == (
+        "Same business on another row of this file (Tulsa row 2, Tulsa row 3):"
+        " Upload fixes keeps it once"
+    )
+
+
+def test_a_muted_city_is_not_checked() -> None:
+    others = submissions.Others(cities={"tulsa": "Tulsa is already in file F1 (a.xlsx)"})
+    found = submissions.run(workbook(BAD), "Cleaning", others=others)
+    assert found.check["errors"] == 0
+    assert found.check["cities"]["tulsa"]["muted"] == "Tulsa is already in file F1 (a.xlsx)"
+    assert found.check["cities"]["dallas"]["muted"] == ""
+    assert all(lead.get("muted") for lead in found.leads if lead["tab"] == "Tulsa")
+
+
+def test_a_business_handed_in_before_is_an_error() -> None:
+    def same(values: dict[str, str]) -> str | None:
+        return "in file F1 (a.xlsx) as F1-0001" if values["business_name"] == "Sparkle" else None
+
+    found = submissions.run(workbook(GOOD), "Cleaning", others=submissions.Others(same=same))
+    assert [(p["business"], p["code"], p["message"]) for p in found.problems] == [
+        (
+            "Sparkle",
+            "SAME_ELSEWHERE",
+            "Same business already handed in: in file F1 (a.xlsx) as F1-0001",
+        )
+    ]
 
 
 def test_the_same_leads_have_the_same_fingerprint() -> None:
@@ -85,8 +115,8 @@ def test_marks_of_an_old_marked_copy_are_taken_out() -> None:
 @pytest.fixture
 def owner(person: Person) -> TestClient:
     client, _ = person(Role.OWNER, "Olivia")
-    make_batch(client, "Batch 01", "Cleaning")
-    make_batch(client, "Roofs 01", "Roofing")
+    make_benchmark(client, "Cleaning Benchmark 1", "Cleaning")
+    make_benchmark(client, "Roofing Benchmark 1", "Roofing")
     return client
 
 
@@ -129,12 +159,6 @@ def revise(client: TestClient, file_id: str, tabs: dict[str, Any], send: bool = 
     return client.get(f"/api/submissions/{file_id}")
 
 
-def use(client: TestClient, file_id: str, batch: str = "Batch 01") -> Any:
-    return client.post(
-        f"/api/submissions/{file_id}/use", json={"batch_id": batch_id(client, batch)}
-    )
-
-
 def test_a_collector_sees_only_the_files_screen(owner: TestClient, person: Person) -> None:
     collector, _ = person(Role.COLLECTOR, "Cal")
     for path in (
@@ -147,6 +171,7 @@ def test_a_collector_sees_only_the_files_screen(owner: TestClient, person: Perso
         "/api/benchmarks",
         "/api/alerts",
         "/api/users",
+        "/api/review/cities",
     ):
         assert collector.get(path).status_code == 403, path
     assert collector.get("/api/submissions").status_code == 200
@@ -162,7 +187,12 @@ def test_a_collector_hands_in_fixes_and_sees_only_their_own_files(
     bad = hand_in(cal, BAD)
     assert bad["status"] == "errors" and bad["errors"] == 2 and bad["version"] == 1
     assert bad["uploaded_by"] == "Cal" and bad["mine"]
+    assert bad["batch_name"] == "Cleaning"
     assert len(bad["problems"]) == 2 and bad["tabs"]["Tulsa"]["errors"] == 2
+    assert [(c["name"], c["businesses"], c["state"]) for c in bad["cities"]] == [
+        ("Dallas", 1, "small"),
+        ("Tulsa", 3, "small"),
+    ]
     # Others' files are not there for a Collector; Owners see every file.
     assert dana.get("/api/submissions").json() == []
     assert dana.get(f"/api/submissions/{bad['id']}").status_code == 404
@@ -175,8 +205,9 @@ def test_a_collector_hands_in_fixes_and_sees_only_their_own_files(
     assert marked.status_code == 200
     assert load_workbook(io.BytesIO(marked.content)).sheetnames == ["Problems"]
     fixed = revise(cal, bad["id"], GOOD).json()
-    assert fixed["status"] == "ready" and fixed["errors"] == 0 and fixed["version"] == 2
-    assert fixed["problems"] == []
+    assert fixed["errors"] == 0 and fixed["version"] == 2 and fixed["problems"] == []
+    # Sent on, its cities are all under 10 businesses: none goes on unless given a Top.
+    assert fixed["status"] == "in_batch" and fixed["cities_going"] == 0
 
 
 def test_handing_in_needs_a_known_niche_and_an_excel_file(
@@ -196,76 +227,135 @@ def test_handing_in_needs_a_known_niche_and_an_excel_file(
     failed = cal.get(f"/api/submissions/{junk.json()['id']}").json()
     assert failed["status"] == "failed" and "isn't an Excel file" in failed["error"]
     assert cal.get(f"/api/submissions/{junk.json()['id']}/marked.xlsx").status_code == 409
-    assert revise(cal, junk.json()["id"], GOOD).json()["status"] == "ready"
-    assert hand_in(cal, GOOD, niche="cleaning")["niche"] == "Cleaning"
+    assert revise(cal, junk.json()["id"], GOOD, send=False).json()["status"] == "final_check"
+    assert hand_in(cal, BIG_DALLAS, niche="roofing")["niche"] == "Roofing"
 
 
-def test_viewers_see_every_file_but_cannot_hand_in_or_use(
+def test_viewers_see_every_file_but_cannot_hand_in_or_send(
     owner: TestClient, person: Person
 ) -> None:
     cal, _ = person(Role.COLLECTOR)
     viewer, _ = person(Role.VIEWER)
-    ready = hand_in(cal, GOOD)
-    assert [f["id"] for f in viewer.get("/api/submissions").json()] == [ready["id"]]
+    sent = hand_in(cal, GOOD)
+    assert [f["id"] for f in viewer.get("/api/submissions").json()] == [sent["id"]]
     refused = viewer.post(
         "/api/submissions", files={"file": ("a.xlsx", workbook(GOOD))}, data={"niche": "Cleaning"}
     )
     assert refused.status_code == 403
-    assert viewer.post(f"/api/submissions/{ready['id']}/use", json={}).status_code in (403, 422)
-    assert use(viewer, ready["id"]).status_code == 403
-    batch = {"batch_id": batch_id(viewer, "Batch 01")}
-    assert cal.post(f"/api/submissions/{ready['id']}/use", json=batch).status_code == 403
-    assert viewer.delete(f"/api/submissions/{ready['id']}").status_code == 403
+    assert viewer.post(f"/api/submissions/{sent['id']}/to-batch", json={}).status_code == 403
+    assert viewer.delete(f"/api/submissions/{sent['id']}").status_code == 403
+    tulsa = viewer.post(f"/api/submissions/{sent['id']}/cities/tulsa/unmute")
+    assert tulsa.status_code == 403
 
 
-def test_a_ready_file_is_added_to_a_batch_of_its_niche_once(
-    owner: TestClient, person: Person
-) -> None:
-    cal, _ = person(Role.COLLECTOR, "Cal")
-    bad = hand_in(cal, BAD)
-    assert use(owner, bad["id"]).json()["error"]["code"] == "not_ready"
-    ready = revise(cal, bad["id"], GOOD).json()
-    assert use(owner, ready["id"], "Roofs 01").json()["error"]["code"] == "other_niche"
-
-    adding = use(owner, ready["id"])
-    assert adding.status_code == 200, adding.text
-    assert adding.json()["status"] == "adding"
-    assert adding.json()["batch"]["batch_name"] == "Batch 01"
-    import_id = adding.json()["batch"]["import_id"]
-    preview = owner.get(f"/api/imports/{import_id}").json()
-    assert preview["status"] == "preview" and preview["file_name"] == "tulsa.xlsx"
-    # While it waits in the batch, it can't be added again, revised or deleted.
-    assert use(owner, ready["id"]).json()["error"]["code"] == "adding"
-    assert revise(cal, ready["id"], GOOD).json()["error"]["code"] == "adding"
-    assert cal.delete(f"/api/submissions/{ready['id']}").json()["error"]["code"] == "adding"
-
-    # Discarded in the batch: the file is free again.
-    owner.post(f"/api/imports/{import_id}/discard")
-    assert cal.get(f"/api/submissions/{ready['id']}").json()["status"] == "ready"
-
-    import_id = use(owner, ready["id"]).json()["batch"]["import_id"]
-    assert owner.post(f"/api/imports/{import_id}/confirm").status_code == 200
-    used = cal.get(f"/api/submissions/{ready['id']}").json()
-    assert used["status"] == "used"
-    assert used["batch"]["batch_name"] == "Batch 01" and used["batch"]["by"] == "Olivia"
-    assert use(owner, ready["id"]).json()["error"]["code"] == "used"
-    assert revise(cal, ready["id"], GOOD).json()["error"]["code"] == "used"
-    assert cal.delete(f"/api/submissions/{ready['id']}").json()["error"]["code"] == "used"
-
-    # The same leads handed in again: a warning, and they can't be used a second time.
-    again = hand_in(cal, GOOD, name="copy.xlsx")
-    assert again["same_as"] == 'Same leads as "tulsa.xlsx", used in Batch 01.'
-    assert use(owner, again["id"]).json()["error"]["code"] == "same_leads_used"
-
-
-def test_a_file_is_deleted_only_before_it_is_used(owner: TestClient, person: Person) -> None:
+def test_a_file_sent_on_is_locked_for_its_sender(owner: TestClient, person: Person) -> None:
     cal, _ = person(Role.COLLECTOR)
     first = hand_in(cal, BAD)
     assert cal.delete(f"/api/submissions/{first['id']}").status_code == 204
     assert cal.get("/api/submissions").json() == []
-    # Owners and Admins can delete anyone's file that isn't used.
-    second = hand_in(cal, GOOD)
-    assert owner.delete(f"/api/submissions/{second['id']}").status_code == 204
+    waiting = hand_in(cal, GOOD, send=False)
+    assert waiting["status"] == "final_check"
+    assert revise(cal, waiting["id"], GOOD, send=False).status_code == 200
+    sent = sent_on(cal, waiting["id"])
+    # Sent on to Top Review: only seen. An Owner or Admin can still delete it.
+    assert revise(cal, sent["id"], GOOD).json()["error"]["code"] == "sent_on"
+    assert cal.delete(f"/api/submissions/{sent['id']}").json()["error"]["code"] == "sent_on"
+    upload = cal.post(
+        f"/api/submissions/{sent['id']}/fixes", files={"file": ("f.xlsx", workbook(GOOD))}
+    )
+    assert upload.json()["error"]["code"] == "sent_on"
+    assert owner.delete(f"/api/submissions/{sent['id']}").status_code == 204
+
+
+# --- the same business or city twice (step 39) -------------------------------------------------
+
+TWINS = {
+    "Austin": [STANDARD, row("Sparkle", "https://share.google/sp", "512 555 0100", city="Austin")]
+}
+BIG_DALLAS = {
+    "Dallas": [
+        STANDARD,
+        *(
+            row(f"Gleam {n}", f"https://share.google/g{n}", f"(214) 555-{n:04d}", city="Dallas")
+            for n in range(10)
+        ),
+    ]
+}
+
+
+def test_a_business_already_handed_in_is_an_error(owner: TestClient, person: Person) -> None:
+    cal, _ = person(Role.COLLECTOR)
+    first = hand_in(cal, GOOD)
+    # Sparkle (by its GBP link) is in the earlier file, in another city and another niche too.
+    second = hand_in(cal, TWINS, niche="Roofing", name="austin.xlsx")
+    assert second["status"] == "errors" and second["errors"] == 1
+    assert second["problems"][0]["message"] == (
+        f"Same business already handed in: in file F{first['number']} (tulsa.xlsx) as "
+        f"F{first['number']}-0003"
+    )
+    # The earlier file isn't told about the later one.
+    assert owner.get(f"/api/submissions/{first['id']}").json()["errors"] == 0
+    # Taken out of the second file, it passes.
+    fixed = revise(
+        cal,
+        second["id"],
+        {
+            "Austin": [
+                STANDARD,
+                row("New Co", "https://share.google/n", "512 555 0199", city="Austin"),
+            ]
+        },
+    )
+    assert fixed.json()["errors"] == 0
+
+
+def test_a_city_handed_in_again_is_muted_until_unmuted(owner: TestClient, person: Person) -> None:
+    cal, _ = person(Role.COLLECTOR)
+    first = hand_in(cal, BIG_DALLAS, name="dallas.xlsx")
+    other_dallas = {
+        "Dallas": [
+            STANDARD,
+            *(
+                row(f"Shine {n}", f"https://share.google/s{n}", f"(214) 556-{n:04d}", city="Dallas")
+                for n in range(10)
+            ),
+            row(
+                "Bad Co",
+                "https://share.google/bc",
+                "call us",
+                city="Dallas",
+                website="https://facebook.com/bc",
+            ),
+        ],
+        "Austin": [
+            STANDARD,
+            row("Bloom", "https://share.google/bl", "512 555 0111", city="Austin"),
+        ],
+    }
+    second = hand_in(cal, other_dallas, name="dallas-2.xlsx")
+    # Dallas is muted (its bad row isn't counted); Austin is checked as usual.
+    assert second["errors"] == 0 and second["cities_muted"] == 1
+    dallas = next(c for c in second["cities"] if c["name"] == "Dallas")
+    assert dallas["state"] == "muted"
+    assert dallas["muted"] == (
+        f"Dallas is already in file F{first['number']} (dallas.xlsx), handed in earlier"
+    )
+    # The same city of another niche isn't muted.
+    roofing = hand_in(cal, other_dallas, niche="Roofing", name="roof.xlsx")
+    assert roofing["cities_muted"] == 0
+    # Only Owners and Admins unmute, and only once no other file has it.
+    url = f"/api/submissions/{second['id']}/cities/dallas/unmute"
+    assert cal.post(url).status_code == 403
+    still = owner.post(url)
+    assert still.json()["error"]["code"] == "still_taken"
+    assert owner.delete(f"/api/submissions/{first['id']}").status_code == 204
+    unmuted = owner.post(url)
+    assert unmuted.status_code == 200 and unmuted.json()["status"] == "checking"
+    run_file_checker()
+    again = owner.get(f"/api/submissions/{second['id']}").json()
+    # Checked again: Dallas is on, and its bad row (and Roofing's twins) count now.
+    assert again["cities_muted"] == 0
+    assert again["status"] == "errors"
 
 
 def test_owners_invite_collectors(owner: TestClient) -> None:
