@@ -20,8 +20,8 @@ from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
 from app.db.models import Agent, Batch, Lead, LeadFile
 from app.errors import ApiError
-from app.imports import reader
-from app.imports.service import sync_do_not_contact
+from app.imports import check, lead_check, reader
+from app.imports.service import recheck, sync_cities, sync_do_not_contact
 from app.leads import files
 from app.permissions import Action, can, ensure
 
@@ -64,11 +64,13 @@ class LeadOut(BaseModel):
     data: dict[str, str]
     extra: dict[str, str]  # the file's other columns, by their header
     results: dict[str, Any]
+    check: list[dict[str, Any]]  # Lead Check (step 26): what is wrong in its fields
 
 
 class LeadDetail(LeadOut):
     files: list[FileOut]
     can_edit: bool
+    held: bool  # a file it came with has a lead with an error: agents leave it alone
 
 
 class LeadPage(BaseModel):
@@ -94,6 +96,7 @@ def _out(lead: Lead, batches: dict[uuid.UUID, str]) -> LeadOut:
         data=lead.data or {},
         extra=lead.extra or {},
         results=lead.results or {},
+        check=lead.check or [],
     )
 
 
@@ -106,6 +109,8 @@ def _agent_labels(db: Session) -> dict[str, str]:
 
 
 Sort = Literal["lead_id", "name", "city", "newest", "score", "rating", "reviews"]
+# Lead Check filter (step 26): any problem, errors only, or one kind of problem (its code).
+Problems = Annotated[str | None, Query(pattern=r"^(any|errors|[A-Z_]{3,40})$")]
 
 
 def _number(field: str) -> Any:
@@ -122,8 +127,15 @@ def _query(
     website: Literal["yes", "no"] | None,
     sort: Sort,
     score_of: str | None,
+    problems: str | None = None,
 ) -> Select[Lead]:
     query = select(Lead)
+    if problems == "any":
+        query = query.where(func.jsonb_array_length(func.coalesce(Lead.check, "[]")) > 0)
+    elif problems == "errors":
+        query = query.where(Lead.check.contains([{"severity": "error"}]))
+    elif problems:
+        query = query.where(Lead.check.contains([{"code": problems}]))
     if batch_id is not None:
         query = query.where(Lead.batch_id == batch_id)
     if q:
@@ -188,11 +200,15 @@ def list_leads(
     website: Literal["yes", "no"] | None = None,
     sort: Sort = "lead_id",
     score_of: AgentKey = None,
+    problems: Problems = None,
     page: Annotated[int, Query(ge=1, le=100_000)] = 1,
 ) -> LeadPage:
     """100 leads a page, filtered and sorted (`sort=score&score_of=<agent>`: best first)."""
     ensure(me, Action.VIEW_HUB)
-    query = _query(batch_id, q, city, level, website, sort, score_of)
+    if batch_id is not None:
+        lead_check.ensure_checked(db, batch_id)
+        db.commit()
+    query = _query(batch_id, q, city, level, website, sort, score_of, problems)
     total = db.scalar(select(func.count()).select_from(query.order_by(None).subquery())) or 0
     found = db.scalars(query.offset((page - 1) * PAGE).limit(PAGE))
     batches = {b.id: b.name for b in db.scalars(select(Batch))}
@@ -222,10 +238,11 @@ def export_leads(
     website: Literal["yes", "no"] | None = None,
     sort: Sort = "lead_id",
     score_of: AgentKey = None,
+    problems: Problems = None,
 ) -> Response:
     """The leads on screen (same filters), every column, as an Excel file."""
     ensure(me, Action.VIEW_HUB)
-    query = _query(batch_id, q, city, level, website, sort, score_of).limit(MAX_EXPORT)
+    query = _query(batch_id, q, city, level, website, sort, score_of, problems).limit(MAX_EXPORT)
     batches = {b.id: b.name for b in db.scalars(select(Batch))}
     labels = _agent_labels(db)
     book = Workbook()
@@ -282,10 +299,16 @@ def _detail(db: Session, me: CurrentUser, lead: Lead) -> LeadDetail:
     found = db.scalars(
         select(LeadFile).where(LeadFile.lead_id == lead.lead_id).order_by(LeadFile.created_at)
     )
+    out = _out(lead, batches).model_dump()
+    values = check.lead_values(lead)
+    # Each problem with its one-click fix, when there is one (step 27).
+    out["check"] = [item | {"fix": check.fix_for(item["code"], values)} for item in out["check"]]
+    held = lead.batch_id is not None and lead.lead_id in lead_check.held_leads(db, lead.batch_id)
     return LeadDetail(
-        **_out(lead, batches).model_dump(),
+        **out,
         files=[FileOut.model_validate(f, from_attributes=True) for f in found],
         can_edit=can(me, Action.EDIT_LEADS),
+        held=held,
     )
 
 
@@ -298,19 +321,51 @@ def read_lead(lead_id: str, me: CurrentUser, db: Db) -> LeadDetail:
 Short = Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)]
 
 
+Field500 = Short | None
+Number = Annotated[str, StringConstraints(strip_whitespace=True, max_length=20)] | None
+
+# Fields kept in `lead.data`, by name (the others are columns of the lead).
+DATA_KEYS = (
+    "address",
+    "phone",
+    "whatsapp",
+    "website",
+    "facebook",
+    "instagram",
+    "reviews",
+    "rating",
+)
+
+
 class LeadPatch(Strict):
+    """Every standard field of the lead file can be changed in the Hub (step 27); an empty
+    value clears a field. Top is chosen in a city, never here."""
+
+    business_name: (
+        Annotated[str, StringConstraints(strip_whitespace=True, max_length=255)] | None
+    ) = None
+    gbp_link: Field500 = None
+    address: Field500 = None
+    city: Annotated[str, StringConstraints(strip_whitespace=True, max_length=120)] | None = None
+    website: Field500 = None
+    phone: Field500 = None
+    whatsapp: Field500 = None
     email: Annotated[str, StringConstraints(max_length=2000)] | None = None
-    phone: Short | None = None
-    website: Short | None = None
+    facebook: Field500 = None
+    instagram: Field500 = None
+    reviews: Number = None
+    rating: Number = None
     notes: Annotated[str, StringConstraints(strip_whitespace=True, max_length=4000)] | None = None
 
 
 def _view(lead: Lead) -> dict[str, Any]:
     data = lead.data or {}
     return {
+        "business_name": lead.business_name,
+        "gbp_link": lead.gbp_link,
+        "city": lead.city,
         "email": ", ".join(lead.emails),
-        "phone": data.get("phone", ""),
-        "website": data.get("website", ""),
+        **{key: data.get(key, "") for key in DATA_KEYS},
         "level": lead.level,
         "notes": data.get("notes", ""),
     }
@@ -318,31 +373,47 @@ def _view(lead: Lead) -> dict[str, Any]:
 
 @router.patch("/leads/{lead_id}", response_model=LeadDetail)
 def update_lead(lead_id: str, body: LeadPatch, me: CurrentUser, db: Db) -> LeadDetail:
-    """Change a lead's email(s), phone, website or notes; an empty value clears a field. Top
-    is chosen in a city (`mark_top`), not here; a Top lead keeps its email, phone and GBP
-    link on the do-not-contact list."""
+    """Change any of a lead's standard fields or its notes (step 27); an empty value clears
+    a field. Lead Check runs again at once. Top is chosen in a city (`mark_top`), not here; a
+    Top lead keeps its email, phone and GBP link on the do-not-contact list."""
     ensure(me, Action.EDIT_LEADS)
     lead = _get(db, lead_id)
     before = _view(lead)
     data = dict(lead.data or {})
+    if body.business_name is not None:
+        if not body.business_name:
+            message = "A business needs a name."
+            raise ApiError(422, "invalid", message, {"business_name": message})
+        lead.business_name = body.business_name
+    if body.city is not None:
+        if not body.city:
+            message = "A business needs a city."
+            raise ApiError(422, "invalid", message, {"city": message})
+        lead.city = body.city
+    if body.gbp_link is not None:
+        lead.gbp_link = reader.clean_gbp(body.gbp_link)[:500]
     if body.email is not None:
         valid, invalid = reader.split_emails(body.email)
         if invalid:
             message = f"This doesn't look like an email: {invalid[0]}"
             raise ApiError(422, "invalid", message, {"email": message})
         lead.emails = list(dict.fromkeys(valid))
-    if body.phone is not None:
-        data["phone"] = body.phone
-        lead.phone_digits = reader.phone_digits(body.phone)
-    if body.website is not None:
-        data["website"] = reader.clean_website(body.website)
-        lead.website_domain = reader.website_domain(data["website"])[:255] if body.website else ""
-    if body.notes is not None:
-        data["notes"] = body.notes
+    for key in (*DATA_KEYS, "notes"):
+        value = getattr(body, key)
+        if value is not None:
+            data[key] = reader.clean_website(value) if key == "website" and value else value
     lead.data = {key: value for key, value in data.items() if value}
+    lead.phone_digits = reader.phone_digits(lead.data.get("phone", ""))
+    lead.website_domain = reader.website_domain(lead.data.get("website", ""))[:255]
+    place = {"business_name": lead.business_name, "city": lead.city} | lead.data
+    lead.name_address = reader.name_place(place)[:600]
+    recheck(lead)
     changes = audit.diff(before, _view(lead))
     if changes:
         sync_do_not_contact(db, lead)
+        if before["city"] != lead.city and lead.batch_id is not None:
+            db.flush()
+            sync_cities(db, lead.batch_id)
         audit.record(db, me, "edit", "lead", lead.lead_id, lead.business_name, changes)
     db.commit()
     return _detail(db, me, lead)

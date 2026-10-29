@@ -163,6 +163,39 @@ export type ImportCounts = {
   saved_updated?: number;
 };
 
+/** A Lead Check problem (steps 26–27): an error holds its file back, a warning never does. */
+export type CheckIssue = {
+  code: string;
+  field: string; // the column it is about: business_name, gbp_link, address, …
+  severity: "error" | "warning";
+  message: string;
+  // A one-click fix, when there is one: the field changes it makes.
+  fix?: { label: string; changes: Partial<Record<string, string>> } | null;
+};
+
+export type PreviewCheck = {
+  errors: number;
+  warnings: number;
+  tabs: Record<string, { errors: number; warnings: number; columns: CheckIssue[] }>;
+};
+
+/** A saved file's Lead Check report. */
+export type CheckReport = {
+  import_id: string;
+  file_name: string;
+  held: boolean;
+  errors: number;
+  warnings: number;
+  cities: { city: string; errors: number; warnings: number }[];
+  tabs: Record<string, CheckIssue[]>;
+  issues: (CheckIssue & {
+    lead_id: string;
+    business_name: string;
+    city: string;
+    value: string;
+  })[];
+};
+
 export type ImportPreview = {
   has_level_column: boolean;
   empty_tabs: string[];
@@ -175,6 +208,7 @@ export type ImportPreview = {
   no_gbp_link: string[];
   top: string[];
   new_lists: string[];
+  check?: PreviewCheck;
 };
 
 export type LeadImport = {
@@ -189,6 +223,7 @@ export type LeadImport = {
   confirmed_at: string | null;
   counts: ImportCounts;
   preview: ImportPreview;
+  check_errors?: number | null; // a saved file: its leads with an error; held while > 0
 };
 
 export type SheetStatus = "new" | "updated" | "other_batch" | "merged" | "top" | "skipped";
@@ -205,6 +240,7 @@ export type SheetRow = {
   extra: Record<string, string>;
   raw: Record<string, string>;
   bad_emails: string[];
+  issues?: CheckIssue[];
 };
 
 export type ImportSheet = {
@@ -232,6 +268,8 @@ export type LeadList = {
   ready: boolean; // a Top chosen: agents may work on it (step 20)
   added_from: { id: string; file_name: string; confirmed_at: string | null } | null;
   new: boolean; // it came with the batch's latest file (step 22)
+  errors: number; // Lead Check problems of its leads (step 26)
+  warnings: number;
 };
 
 export type GbpTargets = {
@@ -285,6 +323,7 @@ export type Lead = {
   data: Record<string, string>;
   extra: Record<string, string>;
   results: Record<string, LeadResult>;
+  check: CheckIssue[];
 };
 
 export type LeadFile = {
@@ -296,7 +335,7 @@ export type LeadFile = {
   created_at: string;
 };
 
-export type LeadDetail = Lead & { files: LeadFile[]; can_edit: boolean };
+export type LeadDetail = Lead & { files: LeadFile[]; can_edit: boolean; held: boolean };
 
 export type LeadPage = {
   leads: Lead[];
@@ -315,15 +354,27 @@ export type LeadFilters = {
   website?: "" | "yes" | "no";
   sort?: "lead_id" | "name" | "city" | "newest" | "score" | "rating" | "reviews";
   score_of?: string;
+  problems?: string; // "any", "errors" or a problem's code (Lead Check)
   page?: number;
 };
 
-export type LeadPatch = {
-  email?: string;
-  phone?: string;
-  website?: string;
-  notes?: string;
-};
+// Every standard field of the lead file can be changed in the Hub (step 27).
+export const LEAD_FIELDS = [
+  "business_name",
+  "gbp_link",
+  "address",
+  "city",
+  "website",
+  "phone",
+  "whatsapp",
+  "email",
+  "facebook",
+  "instagram",
+  "reviews",
+  "rating",
+  "notes",
+] as const;
+export type LeadPatch = Partial<Record<(typeof LEAD_FIELDS)[number], string>>;
 
 /** `?name=value&…` for the filters that are set. */
 export function leadQuery(filters: Record<string, string | number | undefined>): string {
@@ -693,6 +744,8 @@ export const api = {
       `/imports/${id}/deletion`,
     ),
   deleteImport: (id: string) => request<void>("DELETE", `/imports/${id}`),
+  checkReport: (id: string) => request<CheckReport>("GET", `/imports/${id}/check`),
+  checkAgain: (id: string) => request<CheckReport>("POST", `/imports/${id}/check`),
   updateList: (id: string, patch: { active?: boolean }) =>
     request<LeadList>("PATCH", `/lists/${id}`, patch),
   setBudget: (daily_total_budget_usd: string, time_zone: string) =>

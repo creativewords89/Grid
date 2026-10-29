@@ -306,6 +306,8 @@ class Lead(TimestampMixin, Base):
     extra: Mapped[dict[str, str]] = mapped_column(JSONB, default=dict, server_default="{}")
     # agent key -> {status, score, summary, details, benchmark_id, benchmark_version, at}
     results: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
+    # Lead Check (step 26): what is wrong in its fields; None until checked.
+    check: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
     first_import_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("imports.id", ondelete="SET NULL")
     )

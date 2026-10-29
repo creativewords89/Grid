@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   api,
   ApiError,
+  LEAD_FIELDS,
   leadQuery,
   type LeadDetail,
   type LeadFilters,
@@ -9,6 +10,7 @@ import {
   type LeadPatch,
 } from "../api";
 import { useAuth } from "../auth";
+import { CHECK_CODES, FIELD_NAMES, problemCount } from "../checkLabels";
 import { Alert, Field, Modal } from "../components/ui";
 import { when } from "../format";
 
@@ -16,6 +18,8 @@ import { when } from "../format";
 // filter, sort, page through 100 at a time, download what is shown as Excel, and open a lead
 // to see the agents' results and files, or (Owners and Admins) change or delete it. The
 // table shows every field of the lead file side by side; the Lists (City + Niche) follow.
+
+type LeadField = (typeof LEAD_FIELDS)[number];
 
 const SORTS: [NonNullable<LeadFilters["sort"]>, string][] = [
   ["lead_id", "Lead ID"],
@@ -128,6 +132,23 @@ export function BatchLeads({ batchId, city = "" }: { batchId: string; city?: str
           </select>
         </div>
         <div className="field">
+          <label htmlFor="leads-problems">Problems</label>
+          <select
+            id="leads-problems"
+            value={filters.problems ?? ""}
+            onChange={(e) => change({ problems: e.target.value })}
+          >
+            <option value="">All leads</option>
+            <option value="any">Any problem</option>
+            <option value="errors">Errors only (hold the file)</option>
+            {CHECK_CODES.map(([code, label]) => (
+              <option key={code} value={code}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
           <label htmlFor="leads-sort">Sort by</label>
           <select
             id="leads-sort"
@@ -226,6 +247,7 @@ export function BatchLeads({ batchId, city = "" }: { batchId: string; city?: str
                 )}
                 <th>Lead ID</th>
                 <th className="sticky-col">Business name</th>
+                <th>Check</th>
                 {COLUMNS.map(([key, label]) => (
                   <th key={key}>{label}</th>
                 ))}
@@ -263,11 +285,25 @@ export function BatchLeads({ batchId, city = "" }: { batchId: string; city?: str
                       {lead.business_name || lead.lead_id}
                     </button>
                   </td>
-                  {COLUMNS.map(([key]) => (
-                    <td key={key} className="small">
-                      <Cell lead={lead} field={key} />
-                    </td>
-                  ))}
+                  <td className="small nowrap">
+                    {problemCount(
+                      (lead.check ?? []).filter((i) => i.severity === "error").length,
+                      (lead.check ?? []).filter((i) => i.severity === "warning").length,
+                    ) || <span className="muted">✓</span>}
+                  </td>
+                  {COLUMNS.map(([key]) => {
+                    const found = (lead.check ?? []).filter((i) => i.field === checkField(key));
+                    const wrong = found.some((i) => i.severity === "error");
+                    return (
+                      <td
+                        key={key}
+                        className={`small ${wrong ? "cell-problem" : ""}`}
+                        title={found.map((i) => i.message).join("; ") || undefined}
+                      >
+                        <Cell lead={lead} field={key} />
+                      </td>
+                    );
+                  })}
                   {data.extra_columns.map((name) => (
                     <td key={`extra:${name}`} className="small">
                       {lead.extra[name] || <span className="muted">—</span>}
@@ -338,6 +374,11 @@ const COLUMNS: [string, string][] = [
 ];
 const LINKS = new Set(["gbp_link", "website", "facebook", "instagram"]);
 
+/** The Lead Check field of a column of the table. */
+function checkField(column: string): string {
+  return column === "emails" ? "email" : column;
+}
+
 /** A web address that is safe to open: http(s) only, a bare domain gets https://. */
 function webLink(value: string): string | null {
   const text = value.trim();
@@ -376,14 +417,16 @@ function size(bytes: number): string {
     : `${(bytes / 1048576).toFixed(1)} MB`;
 }
 
-const SHOWN: [string, string][] = [
-  ["address", "Address"],
-  ["whatsapp", "WhatsApp"],
-  ["facebook", "Facebook"],
-  ["instagram", "Instagram"],
-  ["reviews", "Reviews (from the file)"],
-  ["rating", "Rating (from the file)"],
-];
+/** The lead's current value of each field the Hub can change. */
+function valuesOf(lead: LeadDetail): Record<LeadField, string> {
+  const out = {} as Record<LeadField, string>;
+  for (const key of LEAD_FIELDS) out[key] = lead.data[key] ?? "";
+  out.business_name = lead.business_name;
+  out.gbp_link = lead.gbp_link;
+  out.city = lead.city;
+  out.email = lead.emails.join(", ");
+  return out;
+}
 
 export function LeadDialog({
   id,
@@ -397,12 +440,7 @@ export function LeadDialog({
   onChanged: () => void;
 }) {
   const [lead, setLead] = useState<LeadDetail | null>(null);
-  const [form, setForm] = useState<Required<LeadPatch>>({
-    email: "",
-    phone: "",
-    website: "",
-    notes: "",
-  });
+  const [form, setForm] = useState<Record<LeadField, string> | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<{ kind: "error" | "success"; text: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -410,12 +448,7 @@ export function LeadDialog({
 
   const show = useCallback((found: LeadDetail) => {
     setLead(found);
-    setForm({
-      email: found.emails.join(", "),
-      phone: found.data.phone ?? "",
-      website: found.data.website ?? "",
-      notes: found.data.notes ?? "",
-    });
+    setForm(valuesOf(found));
   }, []);
 
   useEffect(() => {
@@ -427,14 +460,14 @@ export function LeadDialog({
       );
   }, [id, show]);
 
-  async function save(event: FormEvent) {
-    event.preventDefault();
+  /** Save the fields that changed (or a fix's changes); Lead Check runs again at once. */
+  async function send(patch: LeadPatch, done: string) {
     setBusy(true);
     setErrors({});
     setNotice(null);
     try {
-      show(await api.updateLead(id, form));
-      setNotice({ kind: "success", text: "Saved." });
+      show(await api.updateLead(id, patch));
+      setNotice({ kind: "success", text: done });
       onChanged();
     } catch (err) {
       if (err instanceof ApiError) {
@@ -444,6 +477,15 @@ export function LeadDialog({
     } finally {
       setBusy(false);
     }
+  }
+
+  function save(event: FormEvent) {
+    event.preventDefault();
+    if (!lead || !form) return;
+    const before = valuesOf(lead);
+    const patch: LeadPatch = {};
+    for (const key of LEAD_FIELDS) if (form[key] !== before[key]) patch[key] = form[key];
+    void send(patch, "Saved.");
   }
 
   async function remove() {
@@ -475,13 +517,39 @@ export function LeadDialog({
               </>
             )}
           </p>
+          {lead.held && (
+            <Alert kind="error">
+              Lead Check holds this lead&apos;s file back: agents wait for every lead of the file
+              until all its errors are fixed.
+            </Alert>
+          )}
+          {(lead.check ?? []).length > 0 && (
+            <div className="card stack-tight" role="region" aria-label="Problems">
+              <p className="cell-strong">Lead Check</p>
+              <ul className="check-list">
+                {(lead.check ?? []).map((item) => (
+                  <li key={`${item.code}:${item.field}`}>
+                    {item.severity === "error" ? "🔴" : "🟠"}{" "}
+                    <strong>{FIELD_NAMES[item.field] ?? item.field}:</strong> {item.message}
+                    {lead.can_edit && item.fix && (
+                      <>
+                        {" "}
+                        <button
+                          type="button"
+                          className="button button-small"
+                          disabled={busy}
+                          onClick={() => void send(item.fix?.changes ?? {}, "Fixed.")}
+                        >
+                          {item.fix.label}
+                        </button>
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <dl className="lead-facts">
-            {SHOWN.filter(([key]) => lead.data[key]).map(([key, label]) => (
-              <div key={key}>
-                <dt>{label}</dt>
-                <dd>{lead.data[key]}</dd>
-              </div>
-            ))}
             {Object.entries(lead.extra ?? {}).map(([name, text]) => (
               <div key={`extra:${name}`}>
                 <dt>{name}</dt>
@@ -523,22 +591,19 @@ export function LeadDialog({
           <form className="stack" onSubmit={save} aria-label="Lead details" noValidate>
             <fieldset disabled={!lead.can_edit || busy} className="stack plain">
               <div className="connection-fields">
-                <Field
-                  label="Email(s)"
-                  value={form.email}
-                  error={errors.email}
-                  onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                />
-                <Field
-                  label="Phone"
-                  value={form.phone}
-                  onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                />
-                <Field
-                  label="Website"
-                  value={form.website}
-                  onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))}
-                />
+                {form &&
+                  LEAD_FIELDS.filter((key) => key !== "notes").map((key) => {
+                    const problem = (lead.check ?? []).find((i) => i.field === key);
+                    return (
+                      <Field
+                        key={key}
+                        label={key === "email" ? "Email(s)" : (FIELD_NAMES[key] ?? key)}
+                        value={form[key]}
+                        error={errors[key] ?? (problem ? problem.message : undefined)}
+                        onChange={(e) => setForm((f) => (f ? { ...f, [key]: e.target.value } : f))}
+                      />
+                    );
+                  })}
               </div>
               {lead.level === "Top" && (
                 <p className="small">
@@ -551,8 +616,8 @@ export function LeadDialog({
                 <textarea
                   id="lead-notes"
                   rows={3}
-                  value={form.notes}
-                  onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                  value={form?.notes ?? ""}
+                  onChange={(e) => setForm((f) => (f ? { ...f, notes: e.target.value } : f))}
                 />
               </div>
             </fieldset>

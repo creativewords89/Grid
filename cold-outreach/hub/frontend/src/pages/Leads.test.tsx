@@ -20,6 +20,7 @@ function lead(id: string, overrides: Partial<Lead> = {}): Lead {
     data: { phone: "(918) 523-8300", website: "https://mc.com/", address: "12 Elm St" },
     extra: {},
     results: {},
+    check: [],
     ...overrides,
   };
 }
@@ -37,7 +38,7 @@ function leadPage(leads: Lead[], overrides: Partial<LeadPage> = {}): LeadPage {
 }
 
 function detail(overrides: Partial<LeadDetail> = {}): LeadDetail {
-  return { ...lead("L-000001"), files: [], can_edit: true, ...overrides };
+  return { ...lead("L-000001"), files: [], can_edit: true, held: false, ...overrides };
 }
 
 const as = (role: "owner" | "admin" | "viewer") =>
@@ -95,6 +96,7 @@ test("the leads show like a sheet, with the agents' scores, filters and pages", 
   expect(headers).toEqual([
     "Lead ID",
     "Business name",
+    "Check",
     "GBP link",
     "Address",
     "City",
@@ -191,7 +193,7 @@ test("open a lead, change it and mark it Top", async () => {
 
   await userEvent.click(await screen.findByRole("button", { name: "Multi-Clean" }));
   const dialog = await screen.findByRole("dialog", { name: "Multi-Clean" });
-  expect(within(dialog).getByText("12 Elm St")).toBeVisible();
+  expect(within(dialog).getByLabelText("Address")).toHaveValue("12 Elm St");
   expect(within(dialog).getByText("No agent has checked this lead yet.")).toBeVisible();
   expect(within(dialog).getByRole("link", { name: "gbp-report.pdf" })).toHaveAttribute(
     "href",
@@ -204,12 +206,8 @@ test("open a lead, change it and mark it Top", async () => {
   await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
   expect(await within(dialog).findByText("Saved.")).toBeVisible();
-  expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({
-    email: "owner@mc.com",
-    phone: "(918) 523-8300",
-    website: "https://mc.com/",
-    notes: "",
-  });
+  // Only what changed is sent.
+  expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ email: "owner@mc.com" });
   // Top is shown, not changed, in the lead window (step 19).
   expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
   expect(within(dialog).getByText(/Never audited or contacted/)).toBeVisible();
@@ -367,4 +365,64 @@ test("viewers can't choose Top, even in a city", async () => {
 
   expect(await screen.findByText("Multi-Clean")).toBeVisible();
   expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+});
+
+test("Lead Check: problems, the filter, a held lead and a one-click fix (steps 26–27)", async () => {
+  const wrong = lead("L-000002", {
+    business_name: "Sparkle",
+    data: { website: "https://fb.com/sp", address: "9 Elm St (918) 555-0300" },
+    check: [
+      {
+        code: "WEBSITE_IS_FACEBOOK",
+        field: "website",
+        severity: "error",
+        message: "Website is a Facebook link",
+      },
+    ],
+  });
+  const calls = mockApi({
+    "GET /auth/me": as("admin"),
+    "GET /leads?batch_id=b1": [200, leadPage([lead("L-000001"), wrong])],
+    "GET /leads?batch_id=b1&problems=errors&page=1": [200, leadPage([wrong])],
+    "GET /leads/L-000002": [
+      200,
+      {
+        ...wrong,
+        files: [],
+        can_edit: true,
+        held: true,
+        check: [
+          {
+            ...wrong.check[0],
+            fix: {
+              label: "Move it to Facebook",
+              changes: { website: "", facebook: "https://fb.com/sp" },
+            },
+          },
+        ],
+      },
+    ],
+    "PATCH /leads/L-000002": [200, detail({ lead_id: "L-000002", business_name: "Sparkle" })],
+  });
+  render(
+    <AuthProvider>
+      <BatchLeads batchId="b1" />
+    </AuthProvider>,
+  );
+
+  const row = (await screen.findByRole("button", { name: "Sparkle" })).closest("tr")!;
+  expect(row).toHaveTextContent("🔴 1");
+  expect(row.querySelector(".cell-problem")).toHaveAttribute("title", "Website is a Facebook link");
+  await userEvent.selectOptions(screen.getByLabelText("Problems"), "errors");
+  expect(calls.some((c) => c.path === "/leads?batch_id=b1&problems=errors&page=1")).toBe(true);
+
+  await userEvent.click(screen.getByRole("button", { name: "Sparkle" }));
+  const dialog = await screen.findByRole("dialog", { name: "Sparkle" });
+  expect(within(dialog).getByText(/Lead Check holds this lead/)).toBeVisible();
+  await userEvent.click(within(dialog).getByRole("button", { name: "Move it to Facebook" }));
+  expect(await within(dialog).findByText("Fixed.")).toBeVisible();
+  expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({
+    website: "",
+    facebook: "https://fb.com/sp",
+  });
 });
