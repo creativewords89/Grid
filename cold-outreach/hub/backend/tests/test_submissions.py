@@ -54,7 +54,7 @@ def test_a_business_on_two_rows_is_checked_once_and_is_an_error() -> None:
     same = next(p for p in found.problems if p["code"] == "SAME_IN_FILE")
     assert same["message"] == (
         "Same business on another row of this file (Tulsa row 2, Tulsa row 3):"
-        " Upload fixes keeps it once"
+        " press Remove duplicates"
     )
 
 
@@ -377,3 +377,37 @@ def test_a_city_other_than_the_tabs_name_is_fine() -> None:
     found = submissions.run(workbook(named), "Cleaning")
     assert found.check["errors"] == 0
     assert list(found.check["cities"]) == ["dallas"]
+
+
+def test_remove_duplicates_keeps_one_row_and_takes_out_ones_handed_in_before(
+    owner: TestClient, person: Person
+) -> None:
+    """Step 40: a business on several rows keeps its first row, gaps filled from the others;
+    a business already handed in is taken out of the file."""
+    cal, _ = person(Role.COLLECTOR, "Cal")
+    dana, _ = person(Role.COLLECTOR, "Dana")
+    first = hand_in(cal, GOOD)  # Sparkle, in Dallas
+    twice = row("Gleam", "https://share.google/gl", "214 555 0101", city="Austin")
+    again = row("Gleam", "https://share.google/gl", "", "gleam@gleam.com", city="Austin")
+    sparkle = row("Sparkle", "https://share.google/sp", "214 555 0100", city="Austin")
+    tabs = {"Austin": [STANDARD, twice, again, sparkle, BIG_DALLAS["Dallas"][1]]}
+    sub = hand_in(cal, tabs, niche="Roofing", name="austin.xlsx", send=False)
+    assert sub["status"] == "errors"
+    assert sub["duplicates"] == {"rows": 1, "elsewhere": 1}
+    url = f"/api/submissions/{sub['id']}/remove-duplicates"
+    # Only who may fix the file.
+    assert dana.post(url).status_code == 404
+    done = cal.post(url)
+    assert done.status_code == 200, done.text
+    assert (done.json()["status"], done.json()["version"]) == ("checking", 2)
+    run_file_checker()
+    after = cal.get(f"/api/submissions/{sub['id']}").json()
+    assert (after["errors"], after["businesses"]) == (0, 2)
+    assert after["duplicates"] == {"rows": 0, "elsewhere": 0}
+    table = cal.get(f"/api/submissions/{sub['id']}/leads").json()["leads"]
+    gleam = next(lead for lead in table if lead["values"]["business_name"] == "Gleam")
+    assert gleam["values"]["email"] == "gleam@gleam.com"  # filled from the removed row
+    assert len(gleam["rows"]) == 1
+    # Nothing left to remove.
+    assert cal.post(url).json()["error"]["code"] == "no_duplicates"
+    assert owner.get(f"/api/submissions/{first['id']}").json()["errors"] == 0

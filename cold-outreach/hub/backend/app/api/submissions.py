@@ -78,10 +78,18 @@ class FileOut(BaseModel):
     can_send_cities: bool = False  # may send its ready cities to the batch now
 
 
+class Duplicates(BaseModel):
+    """What Remove duplicates (step 40) takes out of the file."""
+
+    rows: int  # extra rows of a business on several rows (its first row stays)
+    elsewhere: int  # businesses already handed in (another file, or a batch)
+
+
 class FileDetail(FileOut):
     tabs: dict[str, Any]
     problems: list[dict[str, Any]]
     cities: list[CityOut]
+    duplicates: Duplicates
 
 
 def status_of(sub: Submission) -> Status:
@@ -186,7 +194,16 @@ def _detail(db: Session, me: User, sub: Submission) -> FileDetail:
         tabs=sub.check.get("tabs", {}),
         problems=sub.problems,
         cities=cities,
+        duplicates=Duplicates(
+            rows=sum(len(lead.get("rows", [])) - 1 for lead in sub.leads if not _elsewhere(lead)),
+            elsewhere=sum(1 for lead in sub.leads if _elsewhere(lead)),
+        ),
     )
+
+
+def _elsewhere(lead: dict[str, Any]) -> bool:
+    """A business already handed in, in another file or a batch (step 39)."""
+    return any(i["code"] == "SAME_ELSEWHERE" for i in lead["issues"])
 
 
 def _may_see(me: User, sub: Submission) -> bool:
@@ -451,6 +468,42 @@ def upload_fixes(
         "skipped": skipped,
         "businesses_after": len(kept),
     }
+
+
+@router.post("/submissions/{file_id}/remove-duplicates", response_model=FileDetail)
+def remove_duplicates(file_id: uuid.UUID, me: CurrentUser, db: Db) -> FileDetail:
+    """Remove duplicates (step 40): a business on several rows keeps its first row (gaps
+    filled from the others, emails pooled), and a business already handed in (in another
+    file or a batch) is taken out of this file. The file is made again as a new version and
+    checked again. Whoever may upload fixes may do this."""
+    sub = _changeable(db, me, file_id, revise=True)
+    if sub.state != "checked":
+        raise ApiError(409, "not_checked", "This file isn't checked yet.")
+    extra = sum(len(lead.get("rows", [])) - 1 for lead in sub.leads if not _elsewhere(lead))
+    taken_out = [lead for lead in sub.leads if _elsewhere(lead)]
+    if not extra and not taken_out:
+        raise ApiError(409, "no_duplicates", "This file has no duplicates.")
+    kept = [lead for lead in sub.leads if not _elsewhere(lead)]
+    if not kept:
+        raise ApiError(409, "empty", "That would take every business out of the file.")
+    _store(sub, files.rebuilt(kept))
+    sub.version += 1
+    audit.record(
+        db,
+        me,
+        "remove duplicates",
+        "file",
+        sub.id,
+        sub.file_name,
+        [
+            {"field": "version", "from": sub.version - 1, "to": sub.version},
+            {"field": "duplicate rows removed", "from": None, "to": extra},
+            {"field": "already handed in, taken out", "from": None, "to": len(taken_out)},
+        ],
+    )
+    db.commit()
+    db.refresh(sub)
+    return _detail(db, me, sub)
 
 
 LEADS_PAGE = 100

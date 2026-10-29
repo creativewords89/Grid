@@ -123,18 +123,14 @@ test("a Collector hands in a file, fixes it and sends it on to Top Review", asyn
   await expect(
     businesses.getByText("Sparkle Home Cleaning").first(),
   ).toBeVisible();
-  // The problems out, and back in: the business is kept once.
+  // The problems download for Excel; the duplicate is removed on the Hub (step 40).
   const downloaded = cal.waitForEvent("download");
   await cal.getByRole("button", { name: /Download problems to fix/ }).click();
-  const fix = await downloaded;
-  expect(fix.suggestedFilename()).toBe("cleaning-leads-v1-to-fix.xlsx");
-  const saved = path.join(RUN, "cleaning-leads-to-fix.xlsx");
-  await fix.saveAs(saved);
-  await cal.getByRole("button", { name: /Upload fixes/ }).click();
-  const dialog = cal.getByRole("dialog", { name: "Upload fixes" });
-  await dialog.getByLabel(/Fixed file/).setInputFiles(saved);
-  await dialog.getByRole("button", { name: "Check the file" }).click();
-  await dialog.getByRole("button", { name: "Save 1 change" }).click();
+  expect((await downloaded).suggestedFilename()).toBe(
+    "cleaning-leads-v1-to-fix.xlsx",
+  );
+  cal.once("dialog", (dialog) => void dialog.accept());
+  await cal.getByRole("button", { name: "Remove duplicates" }).click();
   await expect(cal.getByText(/No errors\. Final check/)).toBeVisible({
     timeout: 20_000,
   });
