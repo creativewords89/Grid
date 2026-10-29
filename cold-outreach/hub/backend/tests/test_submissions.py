@@ -455,3 +455,55 @@ def test_remove_duplicates_keeps_one_row_and_takes_out_ones_handed_in_before(
     # Nothing left to remove.
     assert cal.post(url).json()["error"]["code"] == "no_duplicates"
     assert owner.get(f"/api/submissions/{first['id']}").json()["errors"] == 0
+
+
+def test_owners_and_admins_change_a_files_niche_also_in_top_review(
+    owner: TestClient, person: Person
+) -> None:
+    """Step 42: a file handed in for the wrong niche moves to the right one; in Top Review
+    its cities go with it (muted where the new niche has the city), until one is in a batch."""
+    cal, _ = person(Role.COLLECTOR)
+    admin, _ = person(Role.ADMIN)
+    rita, _ = person(Role.REVIEWER)
+    roof = hand_in(cal, BIG_DALLAS, niche="Roofing", name="roof-dallas.xlsx")
+    sub = hand_in(cal, BIG_DALLAS | TWINS, name="dallas.xlsx")  # Cleaning, by mistake
+    assert sub["status"] == "errors"  # its businesses are in the Roofing file too
+    url = f"/api/submissions/{sub['id']}/niche"
+    assert cal.patch(url, json={"niche": "Roofing"}).status_code == 403
+    assert rita.patch(url, json={"niche": "Roofing"}).status_code == 403
+    assert owner.patch(url, json={"niche": "Bakery"}).json()["error"]["code"] == "unknown_niche"
+    owner.delete(f"/api/submissions/{roof['id']}")
+
+    # Not sent on yet: checked again for the new niche.
+    changed = admin.patch(url, json={"niche": "roofing"})
+    assert changed.status_code == 200, changed.text
+    assert (changed.json()["niche"], changed.json()["status"]) == ("Roofing", "checking")
+    run_file_checker()
+    sent = sent_on(cal, sub["id"])
+    assert sent["status"] == "top_review" and sent["batch_name"] == "Roofing"
+
+    # In Top Review: moved without checking again; Top Review shows the new niche at once.
+    # A Cleaning file with Austin, handed in later: Austin is muted when this one comes back.
+    rival = hand_in(
+        cal,
+        TWINS
+        | {"Waco": [STANDARD, row("W", "https://share.google/w", "254 555 0100", city="Waco")]},
+        name="austin.xlsx",
+        send=False,
+    )
+    back = owner.patch(url, json={"niche": "Cleaning"}).json()
+    assert back["status"] == "top_review" and back["niche"] == "Cleaning"
+    cities = rita.get("/api/review/cities").json()["cities"]
+    assert {(c["name"], c["niche"]) for c in cities} >= {("Dallas", "Cleaning")}
+    # The later Cleaning file with Austin is checked again: its Austin is muted now.
+    assert owner.get(f"/api/submissions/{rival['id']}").json()["status"] == "checking"
+    run_file_checker()
+    rival_after = owner.get(f"/api/submissions/{rival['id']}").json()
+    austin = next(c for c in rival_after["cities"] if c["name"] == "Austin")
+    assert austin["state"] == "muted"
+
+    # Once a city is in its batch the niche stays.
+    key = rita.get(f"/api/review/files/{sub['id']}/cities/Dallas").json()["businesses"][0]["key"]
+    rita.put(f"/api/review/files/{sub['id']}/cities/Dallas", json={"tops": [key]})
+    rita.post(f"/api/submissions/{sub['id']}/to-batch", json={"city": "dallas"})
+    assert owner.patch(url, json={"niche": "Roofing"}).json()["error"]["code"] == "in_batch"

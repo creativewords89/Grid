@@ -1068,3 +1068,12 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     a reload or going offline. **Cities under 10** are one page (30 cities a page) with their
     businesses: tick their Tops and **Save the Tops of N cities** at once
     (`PUT /api/review/tops`).
+42. **Change a file's niche** (asked for after step 41): Owners and Admins correct the niche
+    a file was handed in for (**Change niche** on its page), also once it is in Top Review,
+    until a city of it is in a batch. A file not sent on yet is checked again for the new
+    niche. One sent on isn't: its cities go to the new niche's batch with their Tops, a city
+    the new niche already has (another file handed in earlier, or its batch) is muted (its
+    Top goes), and a city muted for the old niche is unmuted when nothing has it and its
+    businesses have no error. Files of the new niche handed in later lose a city this one
+    has (the earlier file keeps it): muted when sent on, else checked again.
+    (`PATCH /api/submissions/{id}/niche`.)

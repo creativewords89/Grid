@@ -242,21 +242,33 @@ def move_due(db: Session) -> int:
     return moved
 
 
+def _city_errors(sub: Submission, city: FileCity, against: files.Others) -> int:
+    """How many businesses of a muted city have an error (they weren't checked)."""
+    bad = 0
+    for lead in sub.leads:
+        if files.city_key(lead["values"].get("city", "")) == city.key:
+            found = check.check_lead(lead["values"])
+            duplicate = len(lead.get("rows", [])) > 1 or against.same(lead["values"])
+            bad += bool(found) or bool(duplicate)
+    return bad
+
+
+def _unmute(sub: Submission, city: FileCity) -> None:
+    sub.leads = [
+        {k: v for k, v in lead.items() if k != "muted"}
+        if files.city_key(lead["values"].get("city", "")) == city.key
+        else lead
+        for lead in sub.leads
+    ]
+    city.muted = ""
+    city.items = files.city_businesses(sub.leads, city.key)
+
+
 def unmute_sent(db: Session, sub: Submission, city: FileCity) -> None:
     """Unmute a city of a file already sent on to Top Review (step 41): the file isn't
     checked again, only the city's businesses are, here and now. With an error among them
     it stays muted (it would have held the file back)."""
-    against = others(db, sub)
-    bad = 0
-    leads = []
-    for lead in sub.leads:
-        if files.city_key(lead["values"].get("city", "")) == city.key:
-            found = check.check_lead(lead["values"])
-            if len(lead.get("rows", [])) > 1 or against.same(lead["values"]):
-                found.append(check.issue("SAME_ELSEWHERE", "business_name"))
-            bad += bool(found)
-            lead = {k: v for k, v in lead.items() if k != "muted"}
-        leads.append(lead)
+    bad = _city_errors(sub, city, others(db, sub))
     if bad:
         raise ApiError(
             409,
@@ -264,6 +276,57 @@ def unmute_sent(db: Session, sub: Submission, city: FileCity) -> None:
             f"{bad} {'business' if bad == 1 else 'businesses'} of {city.name} have errors: "
             "a city of a file sent on to Top Review is unmuted only without errors.",
         )
-    sub.leads = leads
-    city.muted = ""
-    city.items = files.city_businesses(leads, city.key)
+    _unmute(sub, city)
+
+
+def recheck_mutes(db: Session, sub: Submission) -> None:
+    """After a file sent on changed niche (step 42): without checking the file again, each
+    city not in a batch is muted when the new niche already has it (its Top goes), and a
+    city muted for the old niche is unmuted when nothing has it and its businesses have no
+    error (else it stays muted, saying why)."""
+    against = others(db, sub)
+    for city in sub.cities:
+        if city.moved_at is not None:
+            continue
+        taken = against.cities.get(city.key)
+        if taken:
+            city.muted = taken[:300]
+            city.tops, city.topped_at, city.items = [], None, []
+        elif city.muted:
+            bad = _city_errors(sub, city, against)
+            if bad:
+                city.muted = (
+                    f"{bad} {'business' if bad == 1 else 'businesses'} of {city.name} have errors"
+                )[:300]
+            else:
+                _unmute(sub, city)
+
+
+def mute_later_files(db: Session, sub: Submission) -> None:
+    """After a file changed niche (step 42): the files of its new niche handed in after it
+    lose a city it has (the earlier file keeps a city). One sent on gets that city muted
+    (its Top goes); one not sent on yet is checked again."""
+    mine = {c.key for c in sub.cities if c.moved_at is None and not c.muted}
+    if not mine:
+        return
+    later = db.scalars(
+        select(FileCity)
+        .join(Submission, FileCity.submission_id == Submission.id)
+        .where(
+            func.lower(func.trim(Submission.niche)) == _niche(sub.niche),
+            Submission.number > sub.number,
+            FileCity.key.in_(mine),
+            FileCity.muted == "",
+            FileCity.moved_at.is_(None),
+        )
+    )
+    for city in later:
+        other = city.file
+        if other.sent_at is None:
+            if other.state == "checked":
+                other.state, other.progress, other.claimed_at = "checking", 0, None
+            continue
+        city.muted = (
+            f"{city.name} is already in file F{sub.number} ({sub.file_name}), handed in earlier"
+        )[:300]
+        city.tops, city.topped_at, city.items = [], None, []
