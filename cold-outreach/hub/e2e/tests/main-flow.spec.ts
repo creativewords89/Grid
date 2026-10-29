@@ -409,3 +409,66 @@ test("a Collector hands in a file and the Owner drags it onto a batch, once", as
   await expect(used).toContainText("by Olivia");
   await cal.close();
 });
+
+test("a Reviewer chooses the Top of each city and the file becomes ready", async ({
+  browser,
+}) => {
+  // A file with a city of 12 businesses and no error: it waits for Top Review.
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Files" })
+    .click();
+  await page.getByLabel("Niche").selectOption("Cleaning");
+  await page
+    .getByLabel(/Excel file/)
+    .setInputFiles(path.join(HERE, "..", "fixtures", "top-review.xlsx"));
+  await page.getByRole("button", { name: "Upload and check" }).click();
+  const handedIn = page.getByRole("dialog", { name: "top-review.xlsx" });
+  await expect(handedIn.getByText(/Waiting for Top Review/)).toBeVisible();
+  await handedIn.getByRole("button", { name: "Close" }).click();
+
+  // The Owner invites a Reviewer, who sees Top Review only.
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Users" })
+    .click();
+  await page.getByRole("button", { name: "+ Invite" }).click();
+  const invite = page.getByRole("dialog", { name: "Invite someone" });
+  await invite.getByLabel("Name").fill("Rita");
+  await invite.getByLabel("Email").fill("rita@example.com");
+  await invite.getByLabel("Role").selectOption("reviewer");
+  await invite.getByRole("button", { name: "Send invite" }).click();
+  const link = await page.getByRole("textbox", { name: "Link" }).inputValue();
+  await page.keyboard.press("Escape");
+
+  const rita = await browser.newPage();
+  await rita.goto(new URL(link).pathname + new URL(link).hash);
+  await rita.getByLabel("New password").fill("rita reviewer passphrase");
+  await rita.getByLabel("Repeat password").fill("rita reviewer passphrase");
+  await rita.getByRole("button", { name: "Set password and sign in" }).click();
+  await expect(
+    rita.getByRole("navigation", { name: "Main" }).getByRole("link"),
+  ).toHaveText(["Top Review"]);
+  await rita.getByRole("button", { name: "top-review.xlsx" }).click();
+  await rita.getByRole("button", { name: "Tulsa" }).click();
+  await rita.getByRole("checkbox", { name: "Top: Tulsa Shine 3" }).check();
+  await rita.getByRole("button", { name: "Save the Top of Tulsa" }).click();
+  await expect(
+    rita.getByText(
+      "Every city has a Top: top-review.xlsx is ready and locked.",
+    ),
+  ).toBeVisible();
+  await expect(
+    rita.getByRole("button", { name: "top-review.xlsx" }),
+  ).toHaveCount(0);
+  await rita.close();
+
+  // The Owner sees it ready.
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Files" })
+    .click();
+  await expect(
+    page.getByRole("row", { name: /top-review\.xlsx/ }),
+  ).toContainText("Ready");
+});

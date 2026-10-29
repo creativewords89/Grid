@@ -193,3 +193,19 @@ def sign_in(client: TestClient, email: str, password: str = PASSWORD) -> dict[st
     body: dict[str, object] = response.json()
     client.headers["X-CSRF-Token"] = str(body["csrf_token"])
     return body
+
+
+Person = Callable[..., tuple[TestClient, User]]
+
+
+@pytest.fixture
+def person(make_user: UserFactory, app_factory: Callable[[], TestClient]) -> Person:
+    """A signed-in person with a client of their own."""
+
+    def make(role: Role, name: str = "P") -> tuple[TestClient, User]:
+        user = make_user(role, name=name)
+        client = app_factory()
+        sign_in(client, user.email)
+        return client, user
+
+    return make

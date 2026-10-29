@@ -152,7 +152,16 @@ def _sheet(report: reader.Report, rows: list[dict[str, Any]], batch: Batch) -> d
     }
 
 
-def preview(db: Session, user: User, file_name: str, content: bytes, batch: Batch) -> Import:
+def preview(
+    db: Session,
+    user: User,
+    file_name: str,
+    content: bytes,
+    batch: Batch,
+    chosen_tops: set[str] | None = None,
+) -> Import:
+    """`chosen_tops`: the businesses chosen Top in Top Review (step 32), by the first row each is
+    on; they are saved as Top."""
     niche = batch.niche
     try:
         report = reader.read(content, niche)
@@ -167,7 +176,9 @@ def preview(db: Session, user: User, file_name: str, content: bytes, batch: Batc
         match = registry.match(row)
         row["lead_id"] = match.lead_id if match else ""
         row["batch_id"] = str(match.batch_id) if match and match.batch_id else ""
-        row["top"] = bool(match and match.level == "Top")  # Top is chosen in the Hub
+        # Top is chosen in the Hub, or in Top Review before the file came (step 32).
+        row["chosen_top"] = row["rows"][0] in (chosen_tops or set())
+        row["top"] = bool(match and match.level == "Top") or row["chosen_top"]
         if match is None:
             continue
         label = f"{row['business_name'] or row['gbp_link']} ({match.lead_id}"
@@ -336,6 +347,8 @@ def confirm(db: Session, imp: Import, user: User) -> Import:
     for row in imp.rows:
         match = registry.match(row)
         lead = _apply(db, imp, row, match, number)
+        if row.get("chosen_top"):
+            lead.level = "Top"
         for where in row["rows"]:
             lead_of[where] = lead.lead_id
         if match is None:

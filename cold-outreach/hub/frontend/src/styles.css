@@ -3067,3 +3067,28 @@ textarea {
 .file-target.no-fit {
   opacity: 0.45;
 }
+
+/* Top Review (step 32). */
+.review-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.review-table tbody tr.row-top td {
+  background: var(--ok-bg);
+}
+
+.review-table td:first-child,
+.review-table th:first-child {
+  width: 44px;
+  text-align: center;
+}
+
+.review-table input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+}

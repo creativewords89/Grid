@@ -9,12 +9,13 @@ const TEAM: Role[] = ["owner", "admin", "viewer"];
 
 // Sidebar of SPEC section 7; screens are added with their build steps. Hiding items is for
 // tidiness only: the server enforces access.
-// Collectors (step 31) see Files only.
+// Collectors (step 31) see Files only, Reviewers (step 32) Top Review only.
 const NAV: NavItem[] = [
   { path: "/", label: "Overview", roles: TEAM },
   { path: "/benchmarks", label: "Benchmarks", roles: TEAM },
   { path: "/batches", label: "Batches", roles: TEAM },
-  { path: "/files", label: "Files" },
+  { path: "/files", label: "Files", roles: [...TEAM, "collector"] },
+  { path: "/review", label: "Top Review", roles: ["owner", "admin", "reviewer"] },
   { path: "/agents", label: "Agents", roles: TEAM },
   { path: "/runs", label: "Runs", roles: TEAM },
   { path: "/connections", label: "Connections", roles: ["owner"] },
@@ -84,7 +85,9 @@ export function Shell({ path, children }: { path: string; children: ReactNode })
               key={item.path}
               href={item.path}
               aria-current={
-                path === item.path || (item.path === "/files" && user.role === "collector")
+                path === item.path ||
+                (item.path === "/files" && user.role === "collector") ||
+                (item.path === "/review" && user.role === "reviewer")
                   ? "page"
                   : undefined
               }

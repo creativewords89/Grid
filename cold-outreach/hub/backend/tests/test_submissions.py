@@ -2,16 +2,15 @@
 Check finds no error; Owners and Admins add a ready file to a batch of its niche, once."""
 
 import io
-from collections.abc import Callable
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 
-from app.db.models import Role, User
+from app.db.models import Role
 from app.imports import submissions
-from tests.conftest import UserFactory, sign_in
+from tests.conftest import Person
 from tests.hub_data import batch_id, make_batch
 from tests.test_imports import STANDARD, row, workbook
 
@@ -82,22 +81,6 @@ def test_the_marked_file_and_taking_the_marks_out_again() -> None:
 
 
 # --- the API ------------------------------------------------------------------------------------
-
-
-Person = Callable[..., tuple[TestClient, User]]
-
-
-@pytest.fixture
-def person(make_user: UserFactory, app_factory: Callable[[], TestClient]) -> Person:
-    """A signed-in person with a client of their own."""
-
-    def make(role: Role, name: str = "P") -> tuple[TestClient, User]:
-        user = make_user(role, name=name)
-        client = app_factory()
-        sign_in(client, user.email)
-        return client, user
-
-    return make
 
 
 @pytest.fixture

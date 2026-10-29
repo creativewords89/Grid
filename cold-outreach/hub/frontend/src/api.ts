@@ -1,7 +1,8 @@
 // Typed calls to the `/api` routes (SPEC section 8). Every write sends the CSRF token.
 
 // A Collector (step 31) is the external team that collects leads: the Files screen only.
-export type Role = "owner" | "admin" | "viewer" | "collector";
+// A Reviewer (step 32) chooses each city's Top in the files: the Top Review screen only.
+export type Role = "owner" | "admin" | "viewer" | "collector" | "reviewer";
 
 export type User = {
   id: string;
@@ -428,7 +429,7 @@ export type HandedInFile = {
   businesses: number;
   errors: number;
   warnings: number;
-  status: "errors" | "ready" | "adding" | "used";
+  status: "errors" | "needs_top" | "ready" | "adding" | "used";
   uploaded_by: string | null;
   mine: boolean;
   created_at: string;
@@ -441,6 +442,40 @@ export type HandedInFile = {
     by: string | null;
   } | null;
   same_as: string | null;
+  cities_on: number;
+  cities_topped: number;
+};
+
+/** A file in Top Review (step 32). */
+export type ReviewFile = {
+  id: string;
+  file_name: string;
+  niche: string;
+  businesses: number;
+  created_at: string;
+  state: "needs_top" | "done";
+  cities_on: number;
+  cities_topped: number;
+};
+
+export type ReviewCityState = "ready" | "needs_top" | "off";
+
+export type ReviewFileDetail = ReviewFile & {
+  cities: { key: string; name: string; businesses: number; tops: number; state: ReviewCityState }[];
+};
+
+export type ReviewCity = {
+  key: string;
+  name: string;
+  state: ReviewCityState;
+  columns: { key: string; label: string }[];
+  businesses: {
+    key: string;
+    rows: string[];
+    values: Record<string, string>;
+    extra: Record<string, string>;
+    top: boolean;
+  }[];
 };
 
 export type FileProblem = {
@@ -784,6 +819,16 @@ export const api = {
     return upload<HandedInFileDetail>(`/submissions/${id}/version`, form);
   },
   deleteFile: (id: string) => request<void>("DELETE", `/submissions/${id}`),
+  reopenFile: (id: string) => request<HandedInFile>("POST", `/submissions/${id}/reopen`),
+  // Top Review (step 32).
+  reviewFiles: () => request<ReviewFile[]>("GET", "/review/files"),
+  reviewFile: (id: string) => request<ReviewFileDetail>("GET", `/review/files/${id}`),
+  reviewCity: (id: string, city: string) =>
+    request<ReviewCity>("GET", `/review/files/${id}/cities/${encodeURIComponent(city)}`),
+  saveTops: (id: string, city: string, tops: string[]) =>
+    request<ReviewFileDetail>("PUT", `/review/files/${id}/cities/${encodeURIComponent(city)}`, {
+      tops,
+    }),
   useFile: (id: string, batchId: string) =>
     request<HandedInFile>("POST", `/submissions/${id}/use`, { batch_id: batchId }),
   benchmarks: () => request<Benchmark[]>("GET", "/benchmarks"),

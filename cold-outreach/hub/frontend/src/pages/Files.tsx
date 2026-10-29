@@ -7,11 +7,13 @@ import { day } from "../format";
 import { navigate } from "../router";
 
 /** The Files screen (step 31): the external team (Collectors) hand in lead files, see what
- * Lead Check finds and upload revised versions until a file is ready; an Owner or Admin
- * drags a ready file onto a batch of its niche. A file is used once. */
+ * Lead Check finds and upload revised versions until it has no error; Reviewers then choose
+ * each city's Top (Top Review, step 32); an Owner or Admin drags the ready file onto a batch
+ * of its niche. A file is used once. */
 
 const STATUS: Record<HandedInFile["status"], [string, string]> = {
   errors: ["badge-error", "Needs fixing"],
+  needs_top: ["badge-warning", "Needs Top"],
   ready: ["badge-ok", "Ready"],
   adding: ["badge-warning", "Being added"],
   used: ["badge", "Used"],
@@ -21,6 +23,7 @@ type Filter = "" | HandedInFile["status"];
 const FILTERS: [Filter, string][] = [
   ["", "All"],
   ["errors", "Needs fixing"],
+  ["needs_top", "Needs Top"],
   ["ready", "Ready"],
   ["adding", "Being added"],
   ["used", "Used"],
@@ -110,7 +113,7 @@ export function Files() {
             setNotice(
               item.errors
                 ? `${item.file_name}: ${item.errors} to fix. Open it to see where.`
-                : `${item.file_name} is ready.`,
+                : `${item.file_name} has no errors: it goes to Top Review.`,
             );
             setOpen(item.id);
           }}
@@ -441,7 +444,26 @@ function FileDialog({
     }
   }
 
-  const changeable = item && (item.mine || staff) && !["used", "adding"].includes(item.status);
+  // Once a file has no error the Collectors are done: only Owners and Admins delete it then.
+  const revisable = item && (item.mine || staff) && item.status === "errors";
+  const deletable =
+    item &&
+    (staff ? ["errors", "needs_top", "ready"] : ["errors"]).includes(item.status) &&
+    (item.mine || staff);
+
+  async function reopen() {
+    setBusy(true);
+    setError("");
+    try {
+      await api.reopenFile(id);
+      setItem(await api.file(id));
+      onChanged();
+    } catch (err) {
+      setError(message(err, "Not reopened."));
+    } finally {
+      setBusy(false);
+    }
+  }
   const fitting = item ? batches.filter((b) => sameNiche(b.niche, item.niche)) : [];
   const columnWarnings = item
     ? Object.entries(item.tabs).flatMap(([tab, t]) => t.columns.map((c) => ({ tab, ...c })))
@@ -474,15 +496,25 @@ function FileDialog({
               upload the revised version.
             </p>
           )}
+          {item.status === "needs_top" && (
+            <p>
+              🟡 No errors. Waiting for Top Review: {item.cities_topped} of {item.cities_on}{" "}
+              {item.cities_on === 1 ? "city has" : "cities have"} a Top.
+            </p>
+          )}
           {item.status === "ready" && (
-            <p>✅ No errors: this file is ready to be added to a batch.</p>
+            <p>
+              ✅ No errors and every city has a Top
+              {item.cities_on === 0 && " (no city has 10 businesses, so none needs one)"}: this file
+              is ready to be added to a batch.
+            </p>
           )}
 
           <div className="row">
             <a className="button" href={`/api/submissions/${item.id}/marked.xlsx`} download>
               <span aria-hidden>⬇</span> Download problems to fix
             </a>
-            {changeable && (
+            {revisable && (
               <label className={`button ${busy ? "disabled" : ""}`}>
                 <span aria-hidden>⬆</span> Upload revised version
                 <input
@@ -495,7 +527,12 @@ function FileDialog({
                 />
               </label>
             )}
-            {changeable && (
+            {staff && item.status === "ready" && (
+              <button className="button" disabled={busy} onClick={() => void reopen()}>
+                Reopen for Top Review
+              </button>
+            )}
+            {deletable && (
               <button
                 className="button button-danger"
                 disabled={busy}
