@@ -381,12 +381,13 @@ test("a Collector hands in a file and the Owner drags it onto a batch, once", as
   await cal
     .getByLabel(/Excel file/)
     .setInputFiles(path.join(HERE, "..", "fixtures", "cleaning-leads.xlsx"));
-  await cal.getByRole("button", { name: "Upload and check" }).click();
   await expect(cal.getByText(/is uploaded and being checked/)).toBeVisible();
-  // Checked on the server (step 33), even after a reload.
+  // Checked on the server (step 33), even after a reload; no errors: its Final check.
   await cal.reload();
-  const mine = cal.getByRole("row", { name: /cleaning-leads\.xlsx/ });
-  await expect(mine).toContainText("Ready");
+  const mine = cal.getByRole("listitem", { name: "cleaning-leads.xlsx" });
+  await expect(mine).toContainText("Goes to Top Review in");
+  await mine.getByRole("button", { name: "Send to Top Review now" }).click();
+  await expect(mine).toContainText("Ready"); // no city of 10 businesses: no Top to choose
   await mine.getByRole("button", { name: "cleaning-leads.xlsx" }).click();
   await expect(cal.getByText(/this\s+file is ready/)).toBeVisible();
   const businesses = cal.getByRole("region", {
@@ -408,8 +409,8 @@ test("a Collector hands in a file and the Owner drags it onto a batch, once", as
     .getByRole("navigation", { name: "Main" })
     .getByRole("link", { name: "Files" })
     .click();
-  const row = page.getByRole("row", { name: /cleaning-leads\.xlsx/ });
-  await expect(row.getByText("Ready")).toBeVisible();
+  const row = page.getByRole("listitem", { name: "cleaning-leads.xlsx" });
+  await expect(row).toContainText("Drag it onto a batch");
   await row.dragTo(
     page
       .getByRole("complementary", { name: "Batches" })
@@ -421,7 +422,7 @@ test("a Collector hands in a file and the Owner drags it onto a batch, once", as
 
   // Both now see where it is used; it can't be used again.
   await cal.reload();
-  const used = cal.getByRole("row", { name: /cleaning-leads\.xlsx/ });
+  const used = cal.getByRole("listitem", { name: "cleaning-leads.xlsx" });
   await expect(used).toContainText("Used in Texas November");
   await expect(used).toContainText("by Olivia");
   await cal.close();
@@ -439,10 +440,10 @@ test("a Reviewer chooses the Top of each city and the file becomes ready", async
   await page
     .getByLabel(/Excel file/)
     .setInputFiles(path.join(HERE, "..", "fixtures", "top-review.xlsx"));
-  await page.getByRole("button", { name: "Upload and check" }).click();
-  await expect(
-    page.getByRole("row", { name: /top-review\.xlsx/ }),
-  ).toContainText("Needs Top");
+  const card = page.getByRole("listitem", { name: "top-review.xlsx" });
+  await expect(card).toContainText("No errors");
+  await card.getByRole("button", { name: "Send to Top Review now" }).click();
+  await expect(card).toContainText("Waiting for Top Review");
 
   // The Owner invites a Reviewer, who sees Top Review only.
   await page
@@ -486,6 +487,6 @@ test("a Reviewer chooses the Top of each city and the file becomes ready", async
     .getByRole("link", { name: "Files" })
     .click();
   await expect(
-    page.getByRole("row", { name: /top-review\.xlsx/ }),
+    page.getByRole("listitem", { name: "top-review.xlsx" }),
   ).toContainText("Ready");
 });

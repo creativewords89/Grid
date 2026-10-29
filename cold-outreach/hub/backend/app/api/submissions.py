@@ -31,9 +31,11 @@ from app.permissions import Action, can, ensure
 
 router = APIRouter(tags=["files"])
 
-# checking (or failed: unreadable) → errors (Collectors fix them) → needs_top (Top Review)
-# → ready → adding → used
-Status = Literal["checking", "failed", "errors", "needs_top", "ready", "adding", "used"]
+# checking (or failed: unreadable) → errors (Collectors fix them) → final_check (an hour, or
+# until sent on) → needs_top (Top Review) → ready → adding → used
+Status = Literal[
+    "checking", "failed", "errors", "final_check", "needs_top", "ready", "adding", "used"
+]
 
 
 class BatchRef(BaseModel):
@@ -69,6 +71,8 @@ class FileOut(BaseModel):
     # Checked in the background (step 33): how far, and why it couldn't be read.
     progress: int = 100
     error: str | None = None
+    # In its Final check (step 36): when it goes on to Top Review by itself.
+    sends_at: datetime | None = None
 
 
 class FileDetail(FileOut):
@@ -86,6 +90,8 @@ def status_of(sub: Submission) -> Status:
         return "checking" if sub.state == "checking" else "failed"
     if sub.check.get("errors"):
         return "errors"
+    if sub.sent_at is None:
+        return "final_check"
     return "needs_top" if sub.topped_at is None else "ready"
 
 
@@ -147,6 +153,9 @@ def _out(db: Session, me: User, sub: Submission) -> FileOut:
         cities_topped=sum(1 for key in on if sub.tops.get(key)),
         progress=sub.progress,
         error=sub.error,
+        sends_at=sub.clean_since + files.FINAL_CHECK
+        if status_of(sub) == "final_check" and sub.clean_since
+        else None,
     )
 
 
@@ -187,7 +196,9 @@ def _changeable(db: Session, me: User, file_id: uuid.UUID, revise: bool) -> Subm
         raise ApiError(
             409, "adding", "This file is being added to a batch: confirm or discard it there."
         )
-    if status not in ("checking", "failed", "errors") and (revise or not can(me, Action.USE_FILES)):
+    if status not in ("checking", "failed", "errors", "final_check") and (
+        revise or not can(me, Action.USE_FILES)
+    ):
         raise ApiError(409, "no_errors", "This file has no errors: it can't be changed any more.")
     return sub
 
@@ -204,7 +215,7 @@ def _store(sub: Submission, content: bytes) -> None:
     sub.content = content
     sub.state, sub.progress, sub.error, sub.claimed_at = "checking", 0, None, None
     sub.sha256, sub.businesses, sub.check, sub.problems, sub.leads = "", 0, {}, [], []
-    sub.tops, sub.topped_at = {}, None
+    sub.tops, sub.topped_at, sub.clean_since, sub.sent_at = {}, None, None, None
 
 
 @router.get("/submissions/niches", response_model=list[NicheName])
@@ -545,6 +556,24 @@ def reopen(file_id: uuid.UUID, me: CurrentUser, db: Db) -> FileOut:
         raise ApiError(409, "not_ready", "Only a ready file that isn't in a batch is reopened.")
     sub.topped_at = None
     audit.record(db, me, "reopen for Top Review", "file", sub.id, sub.file_name, [])
+    db.commit()
+    db.refresh(sub)
+    return _out(db, me, sub)
+
+
+@router.post("/submissions/{file_id}/send", response_model=FileOut)
+def send(file_id: uuid.UUID, me: CurrentUser, db: Db) -> FileOut:
+    """Send a file without errors on to Top Review now, before its Final check hour is over
+    (step 36): by whoever handed it in, or an Owner or Admin."""
+    sub = _get(db, me, file_id)
+    if not (
+        can(me, Action.USE_FILES) or (can(me, Action.SUBMIT_FILES) and sub.uploaded_by == me.id)
+    ):
+        raise ApiError(403, "forbidden", "Only the person who handed it in can send it on.")
+    if status_of(sub) != "final_check":
+        raise ApiError(409, "not_final_check", "Only a file in its Final check is sent on.")
+    files.send_on(sub)
+    audit.record(db, me, "send to Top Review", "file", sub.id, sub.file_name, [])
     db.commit()
     db.refresh(sub)
     return _out(db, me, sub)

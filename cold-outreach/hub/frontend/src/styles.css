@@ -3125,3 +3125,199 @@ textarea {
 .files-new-niche input {
   min-height: 36px;
 }
+
+/* Files (step 36): the stages, the drop zone and a card per file. */
+.files-hand-in-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.files-hand-in-head h2 {
+  margin: 0;
+}
+
+.files-niche {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  min-width: 200px;
+}
+
+.files-niche select {
+  min-height: 40px;
+}
+
+.files-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 140px;
+  padding: 20px 16px;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+  text-align: center;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.files-drop p {
+  margin: 0;
+}
+
+.files-drop.over {
+  border-color: var(--brand);
+  background: var(--info-bg);
+}
+
+.files-drop.busy {
+  border-style: solid;
+}
+
+.files-drop-icon {
+  font-size: 26px;
+  color: var(--brand);
+}
+
+.files-choose {
+  cursor: pointer;
+}
+
+.files-drop-progress {
+  width: min(420px, 100%);
+}
+
+.files-stages {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  margin: 4px 0;
+}
+
+@media (max-width: 900px) {
+  .files-stages {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.files-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.files-stage:hover {
+  border-color: var(--brand);
+}
+
+.files-stage.on {
+  border-color: var(--brand);
+  background: var(--info-bg);
+  box-shadow: inset 0 -3px 0 var(--brand);
+}
+
+.files-stage-count {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.files-stage-number {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.file-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.file-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.file-card-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.file-card-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.file-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.file-card-progress {
+  min-width: 220px;
+}
+
+.stage-track {
+  display: flex;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stage-track li {
+  width: 22px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.stage-track li.done {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+
+.stage-track li.now {
+  background: var(--brand);
+  border-color: var(--brand);
+}
+
+.file-card-head .link-button {
+  display: inline;
+}

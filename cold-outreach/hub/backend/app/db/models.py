@@ -325,6 +325,10 @@ class Submission(TimestampMixin, Base):
     # Top Review (step 32): each city's Top businesses, by the city (lower case) -> the first
     # row of each ("Tulsa row 14"). `topped_at` is set when every city that is on has a Top:
     # the file is then ready and locked (an Owner or Admin can reopen it).
+    # Final check (step 36): since when the file has had no error (`clean_since`), and when it
+    # went on to Top Review (`sent_at`): by its sender, or an hour after it had no error.
+    clean_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     tops: Mapped[dict[str, list[str]]] = mapped_column(JSONB, default=dict, server_default="{}")
     topped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Checked in the background (step 33): "checking" (with its progress, 0-100) until the

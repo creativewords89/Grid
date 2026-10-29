@@ -10,6 +10,7 @@ import re
 import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import Any
 
 from openpyxl import Workbook, load_workbook
@@ -122,8 +123,15 @@ def run(
             )
     _give_ids(leads, number)
     problems.sort(key=lambda p: (order.get(p["tab"], 0), p["line"], p["severity"] != "error"))
-    errors = sum(t["errors"] for t in tabs.values())
-    warnings = sum(t["warnings"] + len(t["columns"]) for t in tabs.values())
+    # A tab's column problems count by their severity (errors since step 36).
+    errors = sum(
+        t["errors"] + sum(1 for c in t["columns"] if c["severity"] == "error")
+        for t in tabs.values()
+    )
+    warnings = sum(
+        t["warnings"] + sum(1 for c in t["columns"] if c["severity"] != "error")
+        for t in tabs.values()
+    )
     return Checked(
         businesses=len(report.leads),
         fingerprint=_fingerprint(report),
@@ -166,10 +174,21 @@ def cities(sub: Submission) -> dict[str, dict[str, Any]]:
     return found
 
 
+FINAL_CHECK = timedelta(hours=1)  # a file without errors waits this long before Top Review
+
+
+def send_on(sub: Submission) -> None:
+    """The Final check is over (step 36): the file goes on to Top Review."""
+    sub.sent_at = now()
+    lock_if_topped(sub)
+
+
 def lock_if_topped(sub: Submission) -> None:
-    """A checked file without errors whose every city that is on has a Top is ready, and
-    locked for Top Review."""
+    """A checked file sent on to Top Review, without errors, whose every city that is on has
+    a Top is ready, and locked for Top Review."""
     if sub.state != "checked" or sub.check.get("errors") or sub.topped_at is not None:
+        return
+    if sub.sent_at is None:
         return
     if all_topped(cities(sub), sub.tops):
         sub.topped_at = now()

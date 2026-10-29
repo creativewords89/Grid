@@ -95,12 +95,14 @@ def test_each_error(changes: dict[str, str], expected: str) -> None:
     assert next(i for i in found if i.code == expected).severity == "error"
 
 
-def test_missing_or_doubtful_data_only_warns() -> None:
+def test_missing_or_doubtful_data_is_an_error_too() -> None:
+    """Warnings until step 36; every problem is an error since."""
     found = check_lead(CLEAN | {"gbp_link": "", "email": "test@x.com"})
-
     assert {i.code for i in found} == {"NO_GBP_LINK", "EMAIL_PLACEHOLDER"}
-    assert all(i.severity == "warning" for i in found)
+    assert {i.code for i in check_lead(CLEAN | {"business_name": ""})} == {"NO_NAME"}
+    assert all(i.severity == "error" for i in found)
     tab = check_tab(["business_name", "gbp_link", "phone"], ["phone"], 2)
+    assert all(i.severity == "error" for i in tab)
     assert {(i.code, i.field) for i in tab} >= {
         ("MISSING_COLUMN", "instagram"),
         ("DUPLICATE_COLUMN", "phone"),
@@ -186,7 +188,9 @@ def test_the_preview_shows_lead_check_before_saving(client: TestClient, owner: U
     preview = upload(client, workbook(FILE))
 
     found = preview["preview"]["check"]
-    assert found["errors"] == 2  # Sparkle: phone in address, Facebook link as website
+    # Sparkle: phone in address, Facebook link as website; and the tabs' column problems,
+    # errors too since step 36 (Tulsa's Phone twice, Dallas without Instagram).
+    assert found["errors"] == 4
     assert found["tabs"]["Tulsa"]["errors"] == 2
     columns = {(c["code"], c["field"]) for c in found["tabs"]["Tulsa"]["columns"]}
     assert ("DUPLICATE_COLUMN", "phone") in columns

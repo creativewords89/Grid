@@ -1,9 +1,10 @@
 """Lead Check (SPEC step 26): is each lead file in the Hub's standard, and is each field
 holding what its column says? Pure functions, so every rule is easy to test.
 
-An **error** (🔴) is wrong data in a field, such as a phone number in the address or a
-Facebook link as the website: until every error of a file is fixed, agents leave all of that
-file's leads alone. A **warning** (🟠) is missing or doubtful data: shown, never blocking.
+An **error** (🔴) is wrong or missing data, such as a phone number in the address, a Facebook
+link as the website or no GBP link: until every error of a file is fixed, agents leave all of
+that file's leads alone. A **warning** (🟠) would be shown and never block; since step 36 every
+problem is an error (the severity stays, for a rule that may be a warning again).
 """
 
 import re
@@ -33,9 +34,9 @@ STANDARD: dict[str, str] = {
 CODES: dict[str, tuple[Severity, str]] = {
     "NAME_IS_LINK": ("error", "Business name is a link"),
     "NAME_IS_PHONE": ("error", "Business name is a phone number"),
-    "NO_NAME": ("warning", "No business name"),
+    "NO_NAME": ("error", "No business name"),
     "GBP_NOT_MAPS": ("error", "GBP link isn't a Google Maps link"),
-    "NO_GBP_LINK": ("warning", "No GBP link"),
+    "NO_GBP_LINK": ("error", "No GBP link"),
     "ADDRESS_HAS_PHONE": ("error", "Address holds a phone number"),
     "ADDRESS_HAS_EMAIL": ("error", "Address holds an email"),
     "ADDRESS_HAS_LINK": ("error", "Address holds a link"),
@@ -52,7 +53,7 @@ CODES: dict[str, tuple[Severity, str]] = {
     # WhatsApp says whether the Phone number has WhatsApp: Yes, or empty when it hasn't.
     "WHATSAPP_NOT_YES": ("error", "WhatsApp should be Yes or empty"),
     "WHATSAPP_NO_PHONE": ("error", "WhatsApp is Yes but there is no phone"),
-    "EMAIL_PLACEHOLDER": ("warning", "Email looks made up (test@, example.com)"),
+    "EMAIL_PLACEHOLDER": ("error", "Email looks made up (test@, example.com)"),
     "FACEBOOK_IS_INSTAGRAM": ("error", "Facebook is an Instagram link"),
     "FACEBOOK_NOT_FACEBOOK": ("error", "Facebook isn't a Facebook link"),
     "INSTAGRAM_IS_FACEBOOK": ("error", "Instagram is a Facebook link"),
@@ -63,10 +64,10 @@ CODES: dict[str, tuple[Severity, str]] = {
     "RATING_NOT_NUMBER": ("error", "Rating isn't a number"),
     "RATING_OUT_OF_RANGE": ("error", "Rating isn't between 0 and 5"),
     "REVIEWS_RATING_SWAPPED": ("error", "Reviews and Rating look swapped"),
-    # A tab (city) of the file: never blocking.
-    "MISSING_COLUMN": ("warning", "Column missing"),
-    "DUPLICATE_COLUMN": ("warning", "Column twice: the first one is used"),
-    "CITY_NOT_TAB": ("warning", "City differs from the tab's name"),
+    # A tab (city) of the file. (Every problem is an error since step 36.)
+    "MISSING_COLUMN": ("error", "Column missing"),
+    "DUPLICATE_COLUMN": ("error", "Column twice: the first one is used"),
+    "CITY_NOT_TAB": ("error", "City differs from the tab's name"),
 }
 
 PHONE_IN_TEXT = re.compile(r"(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}")
@@ -228,7 +229,7 @@ def check_lead(values: dict[str, str]) -> list[Issue]:
 
 def check_tab(fields: list[str], duplicates: list[str], city_not_tab: int) -> list[Issue]:
     """The problems of one tab (city) of a file: missing or doubled standard columns, rows
-    whose City isn't the tab's name. Warnings only."""
+    whose City isn't the tab's name (errors since step 36)."""
     found = [issue("MISSING_COLUMN", f) for f in STANDARD if f not in fields and f != "city"]
     found += [issue("DUPLICATE_COLUMN", f) for f in duplicates if f in STANDARD]
     if city_not_tab:

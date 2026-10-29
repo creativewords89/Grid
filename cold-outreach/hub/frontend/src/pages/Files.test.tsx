@@ -30,6 +30,7 @@ function file(overrides: Partial<HandedInFile> = {}): HandedInFile {
     cities_topped: 0,
     progress: 100,
     error: null,
+    sends_at: null,
     ...overrides,
   };
 }
@@ -123,9 +124,10 @@ test("a collector lands on Files whatever the address, hands in a file and sees 
 
   expect(await screen.findByRole("heading", { name: "Files" })).toBeVisible();
   expect(calls.some((c) => c.path.startsWith("/batches"))).toBe(false);
-  await userEvent.selectOptions(await screen.findByLabelText("Niche"), "Cleaning");
+  await screen.findByRole("option", { name: "Cleaning" }); // the niches are loaded
+  await userEvent.selectOptions(screen.getByLabelText("Niche"), "Cleaning");
+  // Choosing (or dropping) the file uploads it at once.
   await userEvent.upload(screen.getByLabelText(/Excel file/), new File(["x"], "tulsa.xlsx"));
-  await userEvent.click(screen.getByRole("button", { name: "Upload and check" }));
 
   expect(await screen.findByText(/is uploaded and being checked/)).toBeVisible();
   expect(await screen.findByText("Checking 40%")).toBeVisible();
@@ -315,4 +317,37 @@ test("fixes come back from Excel: shown first, then saved", async () => {
   expect(screen.queryByRole("dialog", { name: "Upload fixes" })).toBeNull();
   const sent = calls.filter((c) => c.path === "/submissions/f1/fixes").map((c) => c.body);
   expect(sent.map((b) => (b as { confirm: string }).confirm)).toEqual(["false", "true"]);
+});
+
+test("a file without errors waits in its Final check, and can be sent on now", async () => {
+  const waiting = file({
+    status: "final_check",
+    errors: 0,
+    warnings: 0,
+    sends_at: new Date(Date.now() + 42 * 60_000).toISOString(),
+  });
+  let listed = [waiting, file({ id: "f2", file_name: "other.xlsx" })];
+  const calls = mockApi({
+    "GET /auth/me": me(collector),
+    "GET /submissions": () => [200, listed],
+    "GET /submissions/niches": [200, ["Cleaning"]],
+    "POST /submissions/f1/send": () => {
+      listed = [{ ...waiting, status: "needs_top", sends_at: null }, listed[1]!];
+      return [200, listed[0]];
+    },
+  });
+  render(<App />);
+
+  const card = await screen.findByRole("listitem", { name: "tulsa.xlsx" });
+  expect(within(card).getByText(/Goes to Top Review in 4[12] min/)).toBeVisible();
+  // The stages count the files; one shows just the files at that stage.
+  const stages = screen.getByRole("navigation", { name: "Stages" });
+  await userEvent.click(within(stages).getByRole("button", { name: /Final check/ }));
+  expect(screen.queryByRole("listitem", { name: "other.xlsx" })).toBeNull();
+
+  await userEvent.click(within(card).getByRole("button", { name: "Send to Top Review now" }));
+  expect(calls.some((c) => c.method === "POST" && c.path === "/submissions/f1/send")).toBe(true);
+  await userEvent.click(within(stages).getByRole("button", { name: /Top Review/ }));
+  const sent = await screen.findByRole("listitem", { name: "tulsa.xlsx" });
+  expect(within(sent).getByText(/Waiting for Top Review/)).toBeVisible();
 });

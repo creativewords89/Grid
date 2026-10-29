@@ -91,7 +91,11 @@ def owner(person: Person) -> TestClient:
 
 
 def hand_in(
-    client: TestClient, tabs: dict[str, Any], niche: str = "Cleaning", name: str = "tulsa.xlsx"
+    client: TestClient,
+    tabs: dict[str, Any],
+    niche: str = "Cleaning",
+    name: str = "tulsa.xlsx",
+    send: bool = True,
 ) -> dict[str, Any]:
     response = client.post(
         "/api/submissions", files={"file": (name, workbook(tabs))}, data={"niche": niche}
@@ -99,17 +103,29 @@ def hand_in(
     assert response.status_code == 201, response.text
     assert response.json()["status"] == "checking"
     run_file_checker()
-    body: dict[str, Any] = client.get(f"/api/submissions/{response.json()['id']}").json()
+    file_id = response.json()["id"]
+    body: dict[str, Any] = client.get(f"/api/submissions/{file_id}").json()
+    if send and body["status"] == "final_check":
+        body = sent_on(client, file_id)
     return body
 
 
-def revise(client: TestClient, file_id: str, tabs: dict[str, Any]) -> Any:
+def sent_on(client: TestClient, file_id: str) -> dict[str, Any]:
+    """Send a file without errors on to Top Review, as its sender does (step 36)."""
+    response = client.post(f"/api/submissions/{file_id}/send")
+    assert response.status_code == 200, response.text
+    return client.get(f"/api/submissions/{file_id}").json()  # type: ignore[no-any-return]
+
+
+def revise(client: TestClient, file_id: str, tabs: dict[str, Any], send: bool = True) -> Any:
     response = client.post(
         f"/api/submissions/{file_id}/version", files={"file": ("tulsa-v2.xlsx", workbook(tabs))}
     )
     if response.status_code != 200:
         return response
     run_file_checker()
+    if send and client.get(f"/api/submissions/{file_id}").json()["status"] == "final_check":
+        client.post(f"/api/submissions/{file_id}/send")
     return client.get(f"/api/submissions/{file_id}")
 
 

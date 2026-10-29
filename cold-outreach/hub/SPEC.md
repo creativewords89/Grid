@@ -955,3 +955,21 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     first instead of Row; Upload fixes finds each row by it. The file's table shows File
     ID (its tab and row on hover) and can be searched and sorted by it. Migration `0024`
     numbers the files already handed in and checks them again.
+36. **Every problem an error, the Final check and the Files screen redesigned** (asked for
+    after step 35): Lead Check's six warnings (no business name, no GBP link, a made-up
+    email, a column missing or given twice, a City that isn't the tab's) are errors,
+    everywhere: on Files and in the batches (saved checks are cleared, so batch leads are
+    checked again and their files may be held), and a tab's column problems count as
+    errors. A file without errors is in its **Final check**: an hour after it had no error
+    (`clean_since`) the scheduler sends it on to Top Review (`sent_at`), or its sender (or
+    an Owner or Admin) does with **Send to Top Review now**; until then it can still be
+    fixed, and errors again start the hour again. Files already past it count as sent.
+    **Files** shows the way as stages with their counts (Checking, Fix errors, Final check,
+    Top Review, Ready, In a batch), one choosing the files at that stage; a drop zone to
+    hand in a file (it is uploaded and checked as soon as it is dropped or chosen); a card
+    per file with a dot per stage and what to do next (Download problems to fix, Upload
+    fixes, Send to Top Review now, the time left, Top Review's progress, where it is used),
+    and the Batches panel saying when a ready file can be dragged there. Migration `0025`.
+    **Tests:** the rules as errors, the Final check (sent by its sender, by the scheduler
+    after an hour, errors again, who may), a held batch file fixed; vitest for the stages,
+    the drop zone and the Final check card; e2e through the Final check.
