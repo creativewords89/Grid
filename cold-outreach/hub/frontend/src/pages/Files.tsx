@@ -831,6 +831,28 @@ function FileView({
     }
   }
 
+  // Step 40: each business keeps its first row; ones handed in before leave this file.
+  async function removeDuplicates(found: HandedInFileDetail) {
+    const { rows, elsewhere } = found.duplicates;
+    const parts = [
+      rows > 0 &&
+        `${rows} duplicate ${rows === 1 ? "row" : "rows"} will be removed (each business keeps its first row, with what the others add)`,
+      elsewhere > 0 &&
+        `${elsewhere} ${elsewhere === 1 ? "business" : "businesses"} already handed in will be taken out of this file`,
+    ].filter(Boolean);
+    if (!window.confirm(`${parts.join("; ")}. The file is then checked again. Go on?`)) return;
+    setBusy(true);
+    setError("");
+    try {
+      setItem(await api.removeDuplicates(id));
+      onChanged();
+    } catch (err) {
+      setError(message(err, "Not removed."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function cityAction(action: () => Promise<HandedInFileDetail>, failed: string) {
     setBusy(true);
     setError("");
@@ -929,6 +951,15 @@ function FileView({
             {revisable && (
               <button className="button" disabled={busy} onClick={() => setFixesOpen(true)}>
                 <span aria-hidden>⬆</span> Upload fixes
+              </button>
+            )}
+            {revisable && item.duplicates.rows + item.duplicates.elsewhere > 0 && (
+              <button
+                className="button button-primary"
+                disabled={busy}
+                onClick={() => void removeDuplicates(item)}
+              >
+                Remove duplicates
               </button>
             )}
             {revisable && item.status === "final_check" && (

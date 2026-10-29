@@ -175,7 +175,7 @@ def _same(lead: reader.Lead, others: Others) -> list[check.Issue]:
                 "SAME_IN_FILE",
                 "business_name",
                 severity,
-                f"{message} ({where}): Upload fixes keeps it once",
+                f"{message} ({where}): press Remove duplicates",
             )
         )
     elsewhere = others.same(lead.values)

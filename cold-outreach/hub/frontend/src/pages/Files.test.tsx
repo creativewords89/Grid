@@ -54,6 +54,7 @@ const detail: HandedInFileDetail = {
     },
   ],
   cities: [],
+  duplicates: { rows: 0, elsewhere: 0 },
 };
 
 function city(overrides: Partial<FileCity> = {}): FileCity {
@@ -451,4 +452,31 @@ test("a whole new file through Upload fixes replaces the file once confirmed", a
   expect(screen.queryByRole("dialog", { name: "Upload fixes" })).toBeNull();
   const sent = calls.filter((c) => c.path === "/submissions/f1/fixes").map((c) => c.body);
   expect(sent.map((b) => (b as { confirm: string }).confirm)).toEqual(["false", "true"]);
+});
+
+test("Remove duplicates keeps one row of each business, after asking", async () => {
+  const twice = { ...detail, duplicates: { rows: 3, elsewhere: 1 } };
+  const confirm = vi.fn(() => true);
+  vi.stubGlobal("confirm", confirm);
+  const calls = mockApi({
+    "GET /auth/me": me(collector),
+    "GET /submissions": [200, [file()]],
+    "GET /submissions/niches": [200, ["Cleaning"]],
+    "GET /submissions/f1": [200, twice],
+    "GET /submissions/f1/leads?page=1&sort=row": [200, leads],
+    "POST /submissions/f1/remove-duplicates": [
+      200,
+      { ...detail, status: "checking", progress: 0, version: 2 },
+    ],
+  });
+  render(<App />);
+
+  await userEvent.click(await screen.findByRole("button", { name: "tulsa.xlsx" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Remove duplicates" }));
+  expect(confirm).toHaveBeenCalledWith(
+    expect.stringMatching(/3 duplicate rows will be removed.*1 business already handed in/),
+  );
+  expect(calls.some((c) => c.path === "/submissions/f1/remove-duplicates")).toBe(true);
+  expect(await screen.findByText(/Lead Check is checking this file/)).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Remove duplicates" })).toBeNull();
 });

@@ -566,6 +566,9 @@ export type HandedInFileDetail = HandedInFile & {
   >;
   problems: FileProblem[];
   cities: FileCity[];
+  // What Remove duplicates takes out (step 40): extra rows of a business on several rows,
+  // and businesses already handed in.
+  duplicates: { rows: number; elsewhere: number };
 };
 
 export type Batch = {
@@ -970,6 +973,8 @@ export const api = {
   deleteNiche: (id: string) => request<void>("DELETE", `/niches/${id}`),
   deleteFile: (id: string) => request<void>("DELETE", `/submissions/${id}`),
   sendToReview: (id: string) => request<HandedInFile>("POST", `/submissions/${id}/send`),
+  removeDuplicates: (id: string) =>
+    request<HandedInFileDetail>("POST", `/submissions/${id}/remove-duplicates`),
   // A file's ready cities (or one) to their batch now (step 39).
   sendCities: (id: string, city?: string) =>
     request<HandedInFileDetail>("POST", `/submissions/${id}/to-batch`, city ? { city } : {}),

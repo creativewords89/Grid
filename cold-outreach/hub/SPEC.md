@@ -1035,3 +1035,12 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     (Corrected again after step 39: a file's page no longer lists its tabs' column problems,
     and "City differs from the tab's name" is no longer checked, as the city is the City
     column's; migration `0028` checks the files handed in again.)
+40. **Remove duplicates** (asked for after step 39): a file whose businesses have duplicates
+    shows **Remove duplicates** on its page, for whoever may fix it (its Collector, Owners
+    and Admins, until it is sent on to Top Review). Asked first ("3 duplicate rows will be
+    removed …; 1 business already handed in will be taken out of this file"), it makes the
+    file again as a new version and checks it again: a business on several rows keeps its
+    first row, gaps in it filled from the others and their emails added; a business already
+    handed in (another file handed in earlier, or a batch) is taken out of this file. The
+    "Same business on another row" error says to press it. Duplicates are removed on the
+    Hub only, never through the Excel file (Upload fixes still keeps such a business once).
