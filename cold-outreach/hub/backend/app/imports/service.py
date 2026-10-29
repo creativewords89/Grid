@@ -68,18 +68,13 @@ class Registry:
             self.by_name.setdefault(lead.name_address, []).append(lead)
 
     def match(self, values: dict[str, str]) -> Lead | None:
-        """The same rule as within a file: GBP link, else phone or name + address unless
-        both have different GBP links."""
+        """The same rule as within a file: the GBP link, or name + address (step 39)."""
         link = values.get("gbp_link", "")
         if link and link in self.by_gbp:
             return self.by_gbp[link]
-        candidates = self.by_phone.get(reader.phone_digits(values.get("phone", "")), []) + (
-            self.by_name.get(reader.name_place(values), [])
-        )
-        for lead in candidates:
-            if not (link and lead.gbp_link and link != lead.gbp_link):
-                return lead
-        return None
+        place = reader.name_place(values)
+        found = self.by_name.get(place, []) if place else []
+        return found[0] if found else None
 
 
 def _lead_row(lead: reader.Lead) -> dict[str, Any]:

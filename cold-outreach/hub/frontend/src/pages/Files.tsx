@@ -3,7 +3,6 @@ import {
   api,
   ApiError,
   download,
-  type FileCity,
   type FileFixResult,
   type FileLead,
   type FileLeadFilters,
@@ -598,15 +597,13 @@ function CheckCell({ item }: { item: HandedInFile }) {
 /** How far its cities are (step 39): "3 of 8 cities in the batch". */
 function InBatch({ item }: { item: HandedInFile }) {
   if (!["top_review", "in_batch"].includes(item.status)) return <span className="muted">—</span>;
-  if (item.cities_going === 0)
-    return <span className="small muted">No city goes on (all under 10)</span>;
+  if (item.cities_going === 0) return <span className="small muted">No city in the batch</span>;
   return (
     <span className="small">
       <strong>
         {item.cities_in_batch} of {item.cities_going}
       </strong>{" "}
       {item.cities_going === 1 ? "city" : "cities"} in the batch
-      {item.cities_ready > 0 && ` · ${item.cities_ready} ready`}
       {item.cities_muted > 0 && ` · ${item.cities_muted} muted`}
     </span>
   );
@@ -690,13 +687,7 @@ function FileRow({
             No errors · {item.sends_at ? minutesLeft(item.sends_at) : "an hour"} left
           </span>
         )}
-        {item.status === "top_review" && (
-          <span className="badge badge-warning">
-            {item.cities_ready > 0
-              ? `${item.cities_ready} ${item.cities_ready === 1 ? "city" : "cities"} ready`
-              : "Waiting for Top"}
-          </span>
-        )}
+        {item.status === "top_review" && <span className="badge badge-warning">In Top Review</span>}
         {item.status === "in_batch" && <span className="badge badge-ok">Done</span>}
       </td>
       <td>
@@ -736,17 +727,9 @@ function FileRow({
               Send to Top Review now
             </button>
           )}
-          {item.status === "top_review" && !item.can_send_cities && (
-            <span className="small muted">Waiting for the reviewer</span>
-          )}
-          {item.can_send_cities && (
-            <button
-              className="button button-small button-primary"
-              disabled={busy}
-              onClick={() => void act(() => api.sendCities(item.id), "not sent.")}
-            >
-              Send ready cities to {item.batch_name} now
-            </button>
+          {/* Ready, Not ready and under 10 cities are on Top Review, not here. */}
+          {item.status === "top_review" && (
+            <span className="small muted">Waiting for Top Review</span>
           )}
           <button className="button button-small" onClick={onOpen}>
             Open
@@ -922,15 +905,15 @@ function FileView({
           )}
           {item.status === "top_review" && (
             <p>
-              🟡 In Top Review. A city goes on to <strong>{item.batch_name}</strong> an hour after
-              it gets its Top, or at once with <strong>Send to batch now</strong>.
+              🟡 In Top Review: each city goes on to <strong>{item.batch_name}</strong> once it has
+              its Top.
             </p>
           )}
           {item.status === "in_batch" && (
             <p>
               ✅ Done:{" "}
               {item.cities_going === 0
-                ? "no city has 10 businesses, so none goes on unless a Reviewer gives it a Top."
+                ? "no city is in the batch."
                 : `its cities are in ${item.batch_name}.`}
             </p>
           )}
@@ -960,15 +943,6 @@ function FileView({
                 Send to Top Review now
               </button>
             )}
-            {item.can_send_cities && (
-              <button
-                className="button button-primary"
-                disabled={busy}
-                onClick={() => void cityAction(() => api.sendCities(id), "Not sent.")}
-              >
-                Send ready cities to {item.batch_name} now
-              </button>
-            )}
             {deletable && (
               <button
                 className="button button-danger"
@@ -980,16 +954,28 @@ function FileView({
             )}
           </div>
 
-          {item.cities.length > 0 && (
-            <FileCities
-              item={item}
-              staff={staff}
-              busy={busy}
-              onSend={(city) => void cityAction(() => api.sendCities(id, city.key), "Not sent.")}
-              onUnmute={(city) =>
-                void cityAction(() => api.unmuteCity(id, city.key), "Not unmuted.")
-              }
-            />
+          {/* No cities table here (Top Review has them): only the muted ones, as a warning. */}
+          {item.cities.some((c) => c.state === "muted") && (
+            <ul className="check-list small" aria-label="Muted cities">
+              {item.cities
+                .filter((c) => c.state === "muted")
+                .map((city) => (
+                  <li key={city.key}>
+                    🟠 {city.name} is muted: {city.muted}{" "}
+                    {staff && (
+                      <button
+                        className="link-button"
+                        disabled={busy}
+                        onClick={() =>
+                          void cityAction(() => api.unmuteCity(id, city.key), "Not unmuted.")
+                        }
+                      >
+                        Unmute
+                      </button>
+                    )}
+                  </li>
+                ))}
+            </ul>
           )}
 
           {columnWarnings.length > 0 && (
@@ -1018,93 +1004,6 @@ function FileView({
         </div>
       )}
     </>
-  );
-}
-
-const CITY_STATE: Record<FileCity["state"], [string, string]> = {
-  needs_top: ["badge-warning", "Not ready"],
-  ready: ["badge-ok", "Ready"],
-  small: ["badge", "Under 10"],
-  muted: ["badge-error", "Muted"],
-  in_batch: ["badge-ok", "In the batch"],
-};
-
-/** The file's cities (step 39): each needs a Top, is ready (it goes on to the batch an hour
- * later), under 10 businesses, muted (another file or the batch has it) or in the batch. */
-function FileCities({
-  item,
-  staff,
-  busy,
-  onSend,
-  onUnmute,
-}: {
-  item: HandedInFileDetail;
-  staff: boolean;
-  busy: boolean;
-  onSend: (city: FileCity) => void;
-  onUnmute: (city: FileCity) => void;
-}) {
-  const sent = ["top_review", "in_batch"].includes(item.status);
-  return (
-    <div className="card table-card">
-      <div className="table-scroll">
-        <table className="table">
-          <caption className="table-caption">
-            Cities · they go on to {item.batch_name} one by one, once they have a Top
-          </caption>
-          <thead>
-            <tr>
-              <th>City</th>
-              <th>Businesses</th>
-              <th>State</th>
-              <th>Top</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {item.cities.map((city) => (
-              <tr key={city.key}>
-                <td className="cell-strong">{city.name}</td>
-                <td>{city.businesses.toLocaleString()}</td>
-                <td>
-                  <span className={`badge ${CITY_STATE[city.state][0]}`}>
-                    {CITY_STATE[city.state][1]}
-                  </span>
-                  {city.state === "muted" && <div className="small muted">{city.muted}</div>}
-                  {city.state === "ready" && city.moves_at && sent && (
-                    <div className="small muted">Goes on in {minutesLeft(city.moves_at)}</div>
-                  )}
-                  {city.state === "in_batch" && city.moved_at && (
-                    <div className="small muted">{day(city.moved_at)}</div>
-                  )}
-                </td>
-                <td>{city.tops > 0 ? city.tops : "—"}</td>
-                <td>
-                  {city.state === "ready" && sent && item.can_send_cities && (
-                    <button
-                      className="button button-small"
-                      disabled={busy}
-                      onClick={() => onSend(city)}
-                    >
-                      Send to batch now
-                    </button>
-                  )}
-                  {city.state === "muted" && staff && (
-                    <button
-                      className="button button-small"
-                      disabled={busy}
-                      onClick={() => onUnmute(city)}
-                    >
-                      Unmute
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
   );
 }
 
