@@ -337,11 +337,13 @@ class GRP_REST_Auth {
 		);
 
 		return array(
-			'member'      => self::me_payload( $member ),
-			'work_day'    => $work_day,
+			'member'          => self::me_payload( $member ),
+			// Profile fields still missing: tracking waits until they are filled in (section 3, Profile lock).
+			'profile_missing' => GRP_Permissions::missing_profile( $member ),
+			'work_day'        => $work_day,
 			// Minutes between screenshots while a timer runs; 0 = none (SPEC.md 6.23).
-			'screenshots' => GRP_Screenshots::every(),
-			'schedule'    => GRP_Time::schedule( GRP_Cycles::today(), $days, $member, GRP_REST_People::team_weekly(), GRP_REST_People::days_off(), $leaves, $work_day ),
+			'screenshots'     => GRP_Screenshots::every(),
+			'schedule'        => GRP_Time::schedule( GRP_Cycles::today(), $days, $member, GRP_REST_People::team_weekly(), GRP_REST_People::days_off(), $leaves, $work_day ),
 		);
 	}
 

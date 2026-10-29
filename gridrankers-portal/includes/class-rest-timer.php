@@ -108,9 +108,10 @@ class GRP_REST_Timer extends GRP_REST_Controller {
 
 		return rest_ensure_response(
 			array(
-				'work_day'    => $payload['work_day'],
-				'schedule'    => $payload['schedule'],
-				'screenshots' => $payload['screenshots'],
+				'work_day'        => $payload['work_day'],
+				'schedule'        => $payload['schedule'],
+				'screenshots'     => $payload['screenshots'],
+				'profile_missing' => $payload['profile_missing'],
 			)
 		);
 	}

@@ -67,7 +67,7 @@ export function createController({ store, loadToken, saveToken, device, createAp
 	}
 
 	function start(task) {
-		if (!state.member) return state;
+		if (!state.member || (state.profileMissing || []).length) return state;
 		const next = T.start(state, task, now());
 		next.entries[next.timer.id] = { ...next.entries[next.timer.id], member_id: state.member.id };
 		set(next);
@@ -121,7 +121,7 @@ export function createController({ store, loadToken, saveToken, device, createAp
 			if (refresh || now() - lastRefresh > REFRESH_MS) {
 				const [schedule, tasks] = await Promise.all([client.schedule(14), client.tasks()]);
 				lastRefresh = now();
-				state = S.withEvery({ ...state, workDay: schedule.work_day, schedule: schedule.schedule, tasks }, schedule.screenshots);
+				state = T.withProfile(S.withEvery({ ...state, workDay: schedule.work_day, schedule: schedule.schedule, tasks }, schedule.screenshots), schedule.profile_missing);
 			}
 			// Back online after a while: "Synced N entries".
 			const flash = wasDown && uploaded ? { n: uploaded, atMs: now() } : state.sync.flash;
@@ -257,6 +257,7 @@ export function createController({ store, loadToken, saveToken, device, createAp
 			attention: T.attention(state),
 			sync: state.sync,
 			screenshots: (state.shots && state.shots.every) || 0,
+			profileMissing: state.profileMissing || [],
 			shotsWaiting: Object.keys((state.shots && state.shots.queue) || {}).length,
 			prompts: { ...state.prompts, shots: state.member && S.noticeDue(state) ? { every: state.shots.every } : undefined, crash: state.prompts.crash ? { ...state.prompts.crash, label: (T.running(state) || {}).label } : undefined, away: state.prompts.away ? { ...state.prompts.away, minutes: Math.max(1, Math.round(((state.prompts.away.toMs || nowMs) - state.prompts.away.fromMs) / 60000)) } : undefined },
 			flash: state.sync.flash && now() - state.sync.flash.atMs < 10000 ? state.sync.flash : null,

@@ -98,6 +98,8 @@ class Test_GRP_REST_Timer extends GRP_REST_TestCase {
 
 	public function test_start_stop_and_one_timer_per_person() {
 		$task = $this->task( 'Fix H1 tags' );
+		// Both starts from one moment, so a slow second between them doesn't change the 20 minutes.
+		$now = time();
 
 		$first = $this->api_as(
 			'member',
@@ -106,7 +108,7 @@ class Test_GRP_REST_Timer extends GRP_REST_TestCase {
 			array(
 				'ref_kind'   => 'item',
 				'ref_id'     => $task['id'],
-				'started_at' => $this->ago( 30 ),
+				'started_at' => GRP_Ids::now( $now - 30 * MINUTE_IN_SECONDS ),
 			)
 		);
 		$this->assertStatus( 200, $first );
@@ -115,7 +117,7 @@ class Test_GRP_REST_Timer extends GRP_REST_TestCase {
 		$this->assertSame( 'web', $timer['source'] );
 		$this->assertSame( $timer['id'], $this->api_as( 'member', 'GET', '/timer' )->get_data()['timer']['id'] );
 
-		$switch = $this->api_as( 'member', 'POST', '/timer/start', array( 'started_at' => $this->ago( 10 ) ) );
+		$switch = $this->api_as( 'member', 'POST', '/timer/start', array( 'started_at' => GRP_Ids::now( $now - 10 * MINUTE_IN_SECONDS ) ) );
 		$this->assertStatus( 200, $switch );
 		$stopped = $switch->get_data()['stopped'];
 		$this->assertSame( $timer['id'], $stopped['id'], 'starting a timer stops the running one' );
@@ -140,6 +142,12 @@ class Test_GRP_REST_Timer extends GRP_REST_TestCase {
 		$locked = $this->api_as( 'other', 'POST', '/timer/start' );
 		$this->assertStatus( 403, $locked );
 		$this->assertSame( 'grp_profile_incomplete', $locked->get_data()['code'] );
+		// The desktop app's upload says what is missing, and the schedule tells it beforehand.
+		$refused = GRP_Time_Entries::save( GRP_Store::get( 'grp_members', $this->team['other']['id'] ), array( 'started_at' => $this->ago( 30 ) ) );
+		$this->assertSame( 'grp_profile_incomplete', $refused['code'] );
+		$this->assertSame( 'Finish your profile on the portal first (your page → Settings). Missing: Phone number.', $refused['message'] );
+		$this->assertSame( array( 'Phone number' ), GRP_REST_Auth::device_payload( GRP_Store::get( 'grp_members', $this->team['other']['id'] ), 1 )['profile_missing'] );
+		$this->assertSame( array(), GRP_REST_Auth::device_payload( $this->team['member'], 1 )['profile_missing'] );
 
 		GRP_Store::delete( 'grp_pay', $this->team['lead']['id'] );
 		$this->assertSame( 'grp_pay_needed', $this->api_as( 'lead', 'POST', '/timer/start' )->get_data()['code'] );
