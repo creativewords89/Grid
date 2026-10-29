@@ -17,7 +17,8 @@ export class ApiError extends Error {
 	}
 }
 
-export const DEFAULT_SERVER = 'https://portal.gridrankers.com';
+// Where the team's portal (and their sign-in codes) live.
+export const DEFAULT_SERVER = 'https://bot.gridrankers.com';
 
 // A clean portal address: https:// added when missing, no trailing slash.
 export function cleanServer(value) {
@@ -58,7 +59,16 @@ export function createClient({ server, getToken, fetchImpl, timeoutMs = 20000 })
 		} catch (e) {
 			data = null;
 		}
-		if (!res.ok) throw new ApiError(res.status, data && data.code, data && data.message);
+		if (!res.ok) {
+			// Not a portal with the tracker: a wrong address, or the portal hasn't updated itself yet.
+			if (res.status === 404 && (!data || data.code === 'rest_no_route' || data.code === 'rest_invalid_handler')) {
+				throw new ApiError(404, 'grp_no_tracker', 'This portal doesn’t have the time tracker yet (or the address is wrong). Check the portal address, or try again after the portal updates.');
+			}
+			throw new ApiError(res.status, data && data.code, data && data.message);
+		}
+		if (data === null && text) {
+			throw new ApiError(res.status, 'grp_not_portal', 'That address isn’t a GridRankers portal. Check the portal address.');
+		}
 		return data;
 	}
 

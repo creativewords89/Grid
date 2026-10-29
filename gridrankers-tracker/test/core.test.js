@@ -34,8 +34,8 @@ describe('ids and clock', () => {
 
 describe('api', () => {
 	it('cleans the portal address', () => {
-		expect(cleanServer('portal.gridrankers.com/')).toBe('https://portal.gridrankers.com');
-		expect(cleanServer('')).toBe('https://portal.gridrankers.com');
+		expect(cleanServer('bot.gridrankers.com/')).toBe('https://bot.gridrankers.com');
+		expect(cleanServer('')).toBe('https://bot.gridrankers.com');
 		expect(cleanServer('http://localhost:8090')).toBe('http://localhost:8090');
 	});
 
@@ -53,6 +53,13 @@ describe('api', () => {
 		expect(JSON.parse(calls[0].init.body)).toEqual({ code: 'CODE1234', device_name: 'Laptop' });
 		expect(calls[1].init.headers.Authorization).toBe('Bearer abc');
 		expect(JSON.parse(calls[1].init.body).clock_offset).toBe(5);
+	});
+
+	it('says so when the address has no tracker or isn’t a portal', async () => {
+		const noRoute = createClient({ server: 'https://p.example', fetchImpl: async () => ({ ok: false, status: 404, text: async () => '{"code":"rest_no_route","message":"No route was found"}' }) });
+		await expect(noRoute.signIn('CODE', {})).rejects.toMatchObject({ code: 'grp_no_tracker' });
+		const html = createClient({ server: 'https://p.example', fetchImpl: async () => ({ ok: true, status: 200, text: async () => '<!doctype html><html></html>' }) });
+		await expect(html.signIn('CODE', {})).rejects.toMatchObject({ code: 'grp_not_portal' });
 	});
 
 	it('tells offline from signed out', async () => {
