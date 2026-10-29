@@ -657,19 +657,16 @@ class NicheIn(Strict):
 
 @router.patch("/submissions/{file_id}/niche", response_model=FileDetail)
 def change_niche(file_id: uuid.UUID, body: NicheIn, me: CurrentUser, db: Db) -> FileDetail:
-    """An Owner or Admin changes a file's niche (step 42), also in Top Review, until a city
-    of it is in a batch: its cities then go to the new niche's batch. A file not sent on yet
-    is checked again (cities are muted by niche); one sent on isn't, only its cities' mutes
-    are looked at again for the new niche."""
+    """An Owner or Admin changes a file's niche (step 42), also in Top Review: its cities go
+    to the new niche's batch from then on. A city already in a batch stays there, with its
+    leads and their results. A file not sent on yet is checked again (cities are muted by
+    niche); one sent on isn't, only its cities' mutes are looked at again for the new
+    niche."""
     ensure(me, Action.USE_FILES)
     sub = _get(db, me, file_id)
     chosen = niche_names(db).get(body.niche.lower())
     if chosen is None:
         raise ApiError(422, "unknown_niche", "Choose one of the niches.", {"niche": "Unknown."})
-    if any(c.moved_at is not None for c in sub.cities):
-        raise ApiError(
-            409, "in_batch", "A city of this file is in its batch: its niche can't change."
-        )
     if sub.state == "checking":
         raise ApiError(409, "checking", "This file is being checked: try again in a moment.")
     before = sub.niche

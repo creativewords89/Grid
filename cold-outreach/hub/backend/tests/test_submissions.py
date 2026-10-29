@@ -502,8 +502,17 @@ def test_owners_and_admins_change_a_files_niche_also_in_top_review(
     austin = next(c for c in rival_after["cities"] if c["name"] == "Austin")
     assert austin["state"] == "muted"
 
-    # Once a city is in its batch the niche stays.
+    # A city already in its batch stays there, with its leads; the others move on.
     key = rita.get(f"/api/review/files/{sub['id']}/cities/Dallas").json()["businesses"][0]["key"]
     rita.put(f"/api/review/files/{sub['id']}/cities/Dallas", json={"tops": [key]})
     rita.post(f"/api/submissions/{sub['id']}/to-batch", json={"city": "dallas"})
-    assert owner.patch(url, json={"niche": "Roofing"}).json()["error"]["code"] == "in_batch"
+    moved = owner.patch(url, json={"niche": "Roofing"})
+    assert moved.status_code == 200, moved.text
+    after = moved.json()
+    assert after["niche"] == "Roofing" and after["cities_in_batch"] == 1
+    assert {c["name"]: c["state"] for c in after["cities"]}["Dallas"] == "in_batch"
+    [cleaning] = [b for b in owner.get("/api/batches").json() if b["niche"] == "Cleaning"]
+    assert cleaning["leads"] == 10  # Dallas's leads stay in the Cleaning batch
+    # Austin, still in Top Review, is a Roofing city now.
+    cities = rita.get("/api/review/cities", params={"show": "small"}).json()["cities"]
+    assert ("Austin", "Roofing") in {(c["name"], c["niche"]) for c in cities}
