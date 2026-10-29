@@ -308,6 +308,8 @@ class Submission(TimestampMixin, Base):
     __tablename__ = "submissions"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    # The file's number (step 35): its businesses' File IDs are F<number>-0001, F<number>-0002…
+    number: Mapped[int] = mapped_column(Integer, unique=True)
     file_name: Mapped[str] = mapped_column(String(255))
     niche: Mapped[str] = mapped_column(String(80))
     uploaded_by: Mapped[uuid.UUID | None] = mapped_column(

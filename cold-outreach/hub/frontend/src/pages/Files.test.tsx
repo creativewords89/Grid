@@ -12,6 +12,7 @@ const me = (user: typeof owner) => [200, { user, csrf_token: "t" }] as [number, 
 function file(overrides: Partial<HandedInFile> = {}): HandedInFile {
   return {
     id: "f1",
+    number: 12,
     file_name: "tulsa.xlsx",
     niche: "Cleaning",
     version: 1,
@@ -80,6 +81,7 @@ const leads = {
   cities: ["Tulsa"],
   leads: [
     {
+      id: "F12-0001",
       tab: "Tulsa",
       line: 2,
       rows: ["Tulsa row 2"],
@@ -87,6 +89,7 @@ const leads = {
       issues: [],
     },
     {
+      id: "F12-0014",
       tab: "Tulsa",
       line: 14,
       rows: ["Tulsa row 14"],
@@ -194,7 +197,7 @@ test("a file opens to its businesses, the wrong cells marked", async () => {
   const wrong = await within(table).findByText("call us");
   expect(wrong.closest("td")).toHaveClass("cell-problem");
   expect(wrong.closest("td")).toHaveAttribute("title", "Phone holds letters");
-  expect(within(table).getByText("Tulsa · 14")).toBeVisible();
+  expect(within(table).getByText("F12-0014")).toHaveAttribute("title", "Tulsa, row 14");
   // Only to look at: no editing in the table.
   expect(within(table).queryByRole("textbox", { name: /Phone/ })).toBeNull();
   const problems = within(table).getByLabelText("Problems");
@@ -273,7 +276,7 @@ test("fixes come back from Excel: shown first, then saved", async () => {
       {
         tab: "Tulsa",
         line: 2,
-        row: "Tulsa · 14",
+        file_id: "F12-0014",
         business_name: "Bad Co",
         changes: [
           { field: "Phone", from: "call us", to: "(918) 555-2222" },
@@ -281,7 +284,7 @@ test("fixes come back from Excel: shown first, then saved", async () => {
         ],
       },
     ],
-    removed: [{ tab: "Tulsa", line: 3, row: "Tulsa · 15", business_name: "Ghost Co" }],
+    removed: [{ tab: "Tulsa", line: 3, file_id: "F12-0015", business_name: "Ghost Co" }],
     skipped: [],
     businesses_after: 1,
   };

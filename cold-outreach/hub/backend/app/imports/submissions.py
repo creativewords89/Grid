@@ -6,6 +6,7 @@ Review (step 32). Pure functions over the workbook."""
 import hashlib
 import io
 import json
+import re
 import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -14,6 +15,7 @@ from typing import Any
 from openpyxl import Workbook, load_workbook
 from openpyxl.comments import Comment
 from openpyxl.styles import Font, PatternFill
+from openpyxl.utils import get_column_letter
 from openpyxl.utils.exceptions import InvalidFileException
 
 from app.auth.tokens import now
@@ -59,10 +61,17 @@ def _where(lead: reader.Lead, field_name: str, rows: dict[str, reader.SheetRow])
 TABLE_FIELDS = (*check.STANDARD, "notes")
 
 
-def run(content: bytes, niche: str, progress: Callable[[int], None] | None = None) -> Checked:
+def run(
+    content: bytes,
+    niche: str,
+    progress: Callable[[int], None] | None = None,
+    number: int = 0,
+) -> Checked:
     """Lead Check on a file: every problem with its tab, row, column and value. A business
     given on several rows is checked once, as it will be saved. `progress` is told how far
-    it is, in percent: reading the tabs is the first 60, checking the businesses the rest."""
+    it is, in percent: reading the tabs is the first 60, checking the businesses the rest.
+    Each business gets its File ID (step 35): the one in the file if the Hub made it, else
+    the next of the file `number`."""
 
     def tell(percent: float) -> None:
         if progress is not None:
@@ -95,6 +104,7 @@ def run(content: bytes, niche: str, progress: Callable[[int], None] | None = Non
                 "values": {k: lead.values[k][:500] for k in TABLE_FIELDS if lead.values.get(k)},
                 "extra": lead.extra,
                 "issues": [i.as_dict() for i in found],
+                "id": lead.values.get("file_id", ""),
             }
         )
         for item in found:
@@ -110,6 +120,7 @@ def run(content: bytes, niche: str, progress: Callable[[int], None] | None = Non
                     "value": lead.values.get(item.field, "")[:300],
                 }
             )
+    _give_ids(leads, number)
     problems.sort(key=lambda p: (order.get(p["tab"], 0), p["line"], p["severity"] != "error"))
     errors = sum(t["errors"] for t in tabs.values())
     warnings = sum(t["warnings"] + len(t["columns"]) for t in tabs.values())
@@ -216,72 +227,88 @@ def clean(content: bytes) -> bytes:
     return out.getvalue()
 
 
-# --- the fix file (step 34) -----------------------------------------------------------------
-# Like a batch's fix file (step 28): a tab per city, the businesses with a problem, every
-# standard column with each wrong cell marked, and the problems; a business is found again by
-# its Row (its tab and row in the file), and Delete = Yes takes it out of the file.
+# --- the fix file (steps 34 and 35) -----------------------------------------------------------
+# Like a batch's fix file (step 28), on one sheet: the businesses with a problem by city, each
+# found again by its File ID, every standard column with each wrong cell marked, the problems,
+# and Delete = Yes to take it out of the file.
 
 FIX_FIELDS = EDIT_FIELDS  # Business name … Notes, as the batch's fix file has them
-ROW, PROBLEMS, DELETE = "Row", "Problems", "Delete"
-FIX_HEADER = [ROW, *(fixes.LABELS[f] for f in FIX_FIELDS), PROBLEMS, DELETE]
+FILE_ID, PROBLEMS, DELETE = "File ID", "Problems", "Delete"
+FIX_HEADER = [FILE_ID, *(fixes.LABELS[f] for f in FIX_FIELDS), PROBLEMS, DELETE]
+FIX_SHEET = "Problems"
 YES_WORDS = ("yes", "y", "x", "delete")
+FILE_ID_FORM = re.compile(r"^F(\d+)-(\d{4,})$")
 
 
-def row_key(lead: dict[str, Any]) -> str:
-    return f"{lead['tab']} · {lead['line']}"
+def file_id(number: int, n: int) -> str:
+    return f"F{number}-{n:04d}"
+
+
+def _give_ids(leads: list[dict[str, Any]], number: int) -> None:
+    """Businesses keep a File ID of this file the Hub wrote in it (once each); the others
+    get the next ones, in the file's order."""
+    taken: set[str] = set()
+    highest = 0
+    for lead in leads:
+        found = FILE_ID_FORM.match(lead["id"].upper())
+        if found and int(found[1]) == number and lead["id"].upper() not in taken:
+            lead["id"] = lead["id"].upper()
+            taken.add(lead["id"])
+            highest = max(highest, int(found[2]))
+        else:
+            lead["id"] = ""
+    for lead in leads:
+        if not lead["id"]:
+            highest += 1
+            lead["id"] = file_id(number, highest)
 
 
 def fix_file(leads: list[dict[str, Any]]) -> bytes:
-    """The businesses with a problem, a tab per city, to fix in Excel and upload back."""
+    """The businesses with a problem, on one sheet by city, to fix in Excel and upload."""
     book = Workbook()
-    first = book.active
-    by_city: dict[str, list[dict[str, Any]]] = {}
-    for lead in leads:
-        if lead["issues"]:
-            by_city.setdefault(lead["values"].get("city", "") or lead["tab"], []).append(lead)
-    taken: set[str] = set()
-    for city in sorted(by_city, key=str.lower):
-        sheet = book.create_sheet(fixes.tab_name(city, taken))
-        sheet.append(FIX_HEADER)
-        for cell in sheet[1]:
-            cell.font = Font(bold=True)
-        for lead in by_city[city]:
-            issues = lead["issues"]
-            sheet.append(
-                [
-                    row_key(lead),
-                    *(lead["values"].get(f, "") for f in FIX_FIELDS),
-                    "; ".join(
-                        f"{fixes.LABELS.get(i['field'], i['field'])}: {i['message']}"
-                        for i in issues
-                    ),
-                    "",
-                ]
+    sheet = book.active
+    assert sheet is not None
+    sheet.title = FIX_SHEET
+    sheet.append(FIX_HEADER)
+    for cell in sheet[1]:
+        cell.font = Font(bold=True)
+    shown = sorted(
+        (lead for lead in leads if lead["issues"]),
+        key=lambda lead: (lead["values"].get("city", "").lower(), lead["id"]),
+    )
+    for lead in shown:
+        issues = lead["issues"]
+        sheet.append(
+            [
+                lead["id"],
+                *(lead["values"].get(f, "") for f in FIX_FIELDS),
+                "; ".join(
+                    f"{fixes.LABELS.get(i['field'], i['field'])}: {i['message']}" for i in issues
+                ),
+                "",
+            ]
+        )
+        line = sheet.max_row
+        for cell in sheet[line]:
+            cell.data_type = "s"  # text: a value starting with = never runs as a formula
+        for item in issues:
+            if item["field"] not in FIX_FIELDS:
+                continue
+            cell = sheet.cell(line, FIX_FIELDS.index(item["field"]) + 2)
+            error = item["severity"] == "error"
+            if error or cell.fill != RED:
+                cell.fill = RED if error else YELLOW
+            old = cell.comment.text + "\n" if cell.comment else ""
+            cell.comment = Comment(
+                f"{old}{'Error' if error else 'Warning'}: {item['message']}", AUTHOR
             )
-            line = sheet.max_row
-            for cell in sheet[line]:
-                cell.data_type = "s"  # text: a value starting with = never runs as a formula
-            for item in issues:
-                if item["field"] not in FIX_FIELDS:
-                    continue
-                cell = sheet.cell(line, FIX_FIELDS.index(item["field"]) + 2)
-                error = item["severity"] == "error"
-                if error or cell.fill != RED:
-                    cell.fill = RED if error else YELLOW
-                old = cell.comment.text + "\n" if cell.comment else ""
-                cell.comment = Comment(
-                    f"{old}{'Error' if error else 'Warning'}: {item['message']}", AUTHOR
-                )
-        sheet.freeze_panes = "C2"
-        sheet.auto_filter.ref = sheet.dimensions
-        widths = [14, 28, 24, 34, 16, 28, 16, 10, 28, 28, 28, 9, 8, 24, 50, 8]
-        for index, width in enumerate(widths):
-            sheet.column_dimensions[sheet.cell(1, index + 1).column_letter].width = width
-    if first is not None and len(book.worksheets) > 1:
-        book.remove(first)
-    elif first is not None:
-        first.title = "No problems"
-        first.append(["Every business in this file passes Lead Check."])
+    if not shown:
+        sheet.append(["", "Every business in this file passes Lead Check."])
+    sheet.freeze_panes = "C2"
+    sheet.auto_filter.ref = sheet.dimensions
+    widths = [11, 28, 24, 34, 16, 28, 16, 10, 28, 28, 28, 9, 8, 24, 50, 8]
+    for index, width in enumerate(widths):
+        sheet.column_dimensions[get_column_letter(index + 1)].width = width
     out = io.BytesIO()
     book.save(out)
     return out.getvalue()
@@ -291,7 +318,7 @@ def fix_file(leads: list[dict[str, Any]]) -> bytes:
 class FixRow:
     tab: str  # where in the fix file, for messages
     line: int
-    key: str  # its Row: "Tulsa · 14"
+    key: str  # its File ID: "F12-0014"
     values: dict[str, str]  # only the fix file's columns ("" clears)
     delete: bool
 
@@ -301,7 +328,7 @@ def _cell(raw: tuple[Any, ...], at: int | None) -> str:
 
 
 def read_fixes(content: bytes) -> list[FixRow]:
-    """Every row of a fix file with a Row, with its columns' values and Delete."""
+    """Every row of a fix file with a File ID, with its columns' values and Delete."""
     try:
         book = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
     except (InvalidFileException, zipfile.BadZipFile, KeyError, OSError, ValueError) as error:
@@ -313,10 +340,10 @@ def read_fixes(content: bytes) -> list[FixRow]:
         if not cells:
             continue
         header = [reader.clean(c).lower() for c in cells[0]]
-        if ROW.lower() not in header:
+        if FILE_ID.lower() not in header:
             continue
         found = True
-        key_at = header.index(ROW.lower())
+        key_at = header.index(FILE_ID.lower())
         delete_at = header.index(DELETE.lower()) if DELETE.lower() in header else None
         columns: dict[int, str] = {}
         for index, name in enumerate(header):
@@ -325,7 +352,7 @@ def read_fixes(content: bytes) -> list[FixRow]:
                 columns[index] = target
         for line, raw in enumerate(cells[1:], start=2):
             values = {target: _cell(raw, index) for index, target in columns.items()}
-            key = _cell(raw, key_at)
+            key = _cell(raw, key_at).upper()
             if not key and not any(values.values()):
                 continue
             delete = _cell(raw, delete_at).lower() in YES_WORDS
@@ -334,20 +361,21 @@ def read_fixes(content: bytes) -> list[FixRow]:
                 raise fixes.FixFileError(f"At most {fixes.MAX_ROWS:,} rows in one fix file.")
     if not found:
         raise fixes.FixFileError(
-            "No Row column: upload the file the Hub made (Download problems to fix)."
+            "No File ID column: upload the file the Hub made (Download problems to fix)."
         )
     return rows
 
 
 def rebuilt(leads: list[dict[str, Any]]) -> bytes:
-    """The file made again from its businesses (after fixes): a tab per tab of the file, the
-    standard columns and the file's other columns."""
+    """The file made again from its businesses (after fixes): a tab per tab of the file, each
+    business's File ID (kept when it is checked again), the standard columns and the file's
+    other columns."""
     book = Workbook()
     first = book.active
     extra: list[str] = []
     for lead in leads:
         extra += [name for name in lead.get("extra", {}) if name not in extra]
-    header = [*(fixes.LABELS[f] for f in FIX_FIELDS), *extra]
+    header = [FILE_ID, *(fixes.LABELS[f] for f in FIX_FIELDS), *extra]
     sheets: dict[str, Any] = {}
     taken: set[str] = set()
     for lead in leads:
@@ -358,6 +386,7 @@ def rebuilt(leads: list[dict[str, Any]]) -> bytes:
         values = lead["values"]
         sheets[tab].append(
             [
+                lead.get("id", ""),
                 *(values.get(f, "") for f in FIX_FIELDS),
                 *(lead.get("extra", {}).get(name, "") for name in extra),
             ]

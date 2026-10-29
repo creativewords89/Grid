@@ -946,3 +946,12 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     may revise it. **Upload revised version** stays, for a whole new file. **Tests:** the
     fix file, preview then save, Delete, rows that don't match, who may, the other columns
     kept; vitest for the dialog.
+35. **File IDs and one sheet** (asked for after step 34): each file handed in has a number
+    (`submissions.number`, given in order) and each of its businesses a **File ID**,
+    F<number>-0001… in the file's order, like a Lead ID before there is one; a business
+    keeps it through fixes (the file the Hub makes again carries a File ID column, read back
+    and never kept as a column of its own) and a whole new file gets new ones. The fix file
+    is one sheet, **Problems**, the businesses with a problem by city, with **File ID**
+    first instead of Row; Upload fixes finds each row by it. The file's table shows File
+    ID (its tab and row on hover) and can be searched and sorted by it. Migration `0024`
+    numbers the files already handed in and checks them again.

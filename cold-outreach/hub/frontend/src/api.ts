@@ -423,6 +423,7 @@ export type BatchStatus = "not_started" | "running" | "paused";
 /** A lead file handed in on the Files screen (step 31). */
 export type HandedInFile = {
   id: string;
+  number: number; // its businesses' File IDs are F<number>-0001… (step 35)
   file_name: string;
   niche: string;
   version: number;
@@ -451,6 +452,7 @@ export type HandedInFile = {
 
 /** A business of a handed-in file, for the Files table (step 33). */
 export type FileLead = {
+  id: string; // the File ID, "F12-0014" (step 35)
   tab: string;
   line: number;
   rows: string[];
@@ -471,7 +473,7 @@ export type FileLeadFilters = {
   search?: string;
   city?: string;
   problems?: "" | "problems" | "errors" | "warnings" | "ok";
-  sort?: "row" | "name" | "city" | "reviews" | "rating" | "problems";
+  sort?: "row" | "id" | "name" | "city" | "reviews" | "rating" | "problems";
   page?: number;
 };
 
@@ -482,12 +484,12 @@ export type FileFixResult = {
   changed: {
     tab: string;
     line: number;
-    row: string;
+    file_id: string;
     business_name: string;
     changes: { field: string; from: string; to: string }[];
   }[];
-  removed: { tab: string; line: number; row: string; business_name: string }[];
-  skipped: { tab: string; line: number; row: string; reason: string }[];
+  removed: { tab: string; line: number; file_id: string; business_name: string }[];
+  skipped: { tab: string; line: number; file_id: string; reason: string }[];
   businesses_after: number;
 };
 
