@@ -358,8 +358,10 @@ function CityView({
                         />
                       </td>
                       {city.columns.map((c) => (
-                        <td key={c.key} className="cell-trunc" title={value(b, c.key)}>
-                          {value(b, c.key)}
+                        <td key={c.key} className="small" title={value(b, c.key)}>
+                          <span className={c.key === "address" ? "cell-clamp" : "cell-trunc"}>
+                            {value(b, c.key)}
+                          </span>
                         </td>
                       ))}
                     </tr>

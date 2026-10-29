@@ -1038,20 +1038,24 @@ function FileLeads({ id }: { id: string }) {
                         return (
                           <td
                             key={key}
-                            className={`${wrong.length ? "cell-problem" : ""} ${key === "address" ? "cell-clamp" : "cell-trunc"}`}
+                            className={wrong.length ? "cell-problem small" : "small"}
                             title={
                               wrong.length
                                 ? wrong.map((i) => i.message).join("\n")
                                 : value || undefined
                             }
                           >
-                            {link ? (
-                              <a href={link} target="_blank" rel="noopener noreferrer">
-                                {value}
-                              </a>
-                            ) : (
-                              value || <span className="muted">—</span>
-                            )}
+                            {/* Cut to one line (the address to two) inside the cell, so the
+                                table keeps its rows. */}
+                            <span className={key === "address" ? "cell-clamp" : "cell-trunc"}>
+                              {link ? (
+                                <a href={link} target="_blank" rel="noopener noreferrer">
+                                  {value}
+                                </a>
+                              ) : (
+                                value || <span className="muted">—</span>
+                              )}
+                            </span>
                           </td>
                         );
                       })}
