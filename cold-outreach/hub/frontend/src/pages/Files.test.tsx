@@ -288,7 +288,19 @@ test("a file in Top Review: no Ready cities here; a muted city is a warning an o
       muted: "Dallas is already in file F3 (dallas.xlsx), handed in earlier",
     }),
   ];
-  const full = { ...detail, ...reviewing, problems: [], cities };
+  const full = {
+    ...detail,
+    ...reviewing,
+    problems: [],
+    cities,
+    tabs: {
+      Irvine: {
+        errors: 0,
+        warnings: 0,
+        columns: [{ field: "city", message: "City differs from the tab's name" }],
+      },
+    },
+  };
   const calls = mockApi({
     "GET /auth/me": me(owner),
     "GET /submissions": [200, [reviewing]],
@@ -311,6 +323,8 @@ test("a file in Top Review: no Ready cities here; a muted city is a warning an o
   expect(muted).toHaveTextContent("Dallas is muted: Dallas is already in file F3");
   expect(screen.queryByRole("table", { name: /Cities/ })).toBeNull();
   expect(screen.queryByRole("button", { name: /Send/ })).toBeNull();
+  // A tab's column problems aren't listed on the file's page.
+  expect(screen.queryByText(/City differs from the tab's name/)).toBeNull();
   await userEvent.click(within(muted).getByRole("button", { name: "Unmute" }));
   expect(calls.some((c) => c.path === "/submissions/f1/cities/dallas/unmute")).toBe(true);
 });

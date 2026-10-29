@@ -843,9 +843,6 @@ function FileView({
       setBusy(false);
     }
   }
-  const columnWarnings = item
-    ? Object.entries(item.tabs).flatMap(([tab, t]) => t.columns.map((c) => ({ tab, ...c })))
-    : [];
 
   return (
     <>
@@ -978,15 +975,6 @@ function FileView({
             </ul>
           )}
 
-          {columnWarnings.length > 0 && (
-            <ul className="check-list small">
-              {columnWarnings.map((c, index) => (
-                <li key={index}>
-                  🟠 {c.tab}: {FIELD_NAMES[c.field] ?? c.field} · {c.message}
-                </li>
-              ))}
-            </ul>
-          )}
           {!["checking", "failed"].includes(item.status) && (
             <FileLeads key={`${item.id}-${item.version}`} id={item.id} />
           )}
