@@ -21,8 +21,8 @@ from app.auth.deps import CurrentUser, Db
 from app.db.models import Agent, Batch, Lead, LeadFile
 from app.errors import ApiError
 from app.imports import check, lead_check, reader
-from app.imports.service import recheck, sync_cities, sync_do_not_contact
-from app.leads import files
+from app.imports.service import sync_do_not_contact
+from app.leads import edit, files
 from app.permissions import Action, can, ensure
 
 router = APIRouter(tags=["leads"])
@@ -131,7 +131,7 @@ def _query(
 ) -> Select[Lead]:
     query = select(Lead)
     if problems == "any":
-        query = query.where(func.jsonb_array_length(func.coalesce(Lead.check, "[]")) > 0)
+        query = query.where(Lead.check.is_not(None), func.jsonb_array_length(Lead.check) > 0)
     elif problems == "errors":
         query = query.where(Lead.check.contains([{"severity": "error"}]))
     elif problems:
@@ -324,18 +324,6 @@ Short = Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)]
 Field500 = Short | None
 Number = Annotated[str, StringConstraints(strip_whitespace=True, max_length=20)] | None
 
-# Fields kept in `lead.data`, by name (the others are columns of the lead).
-DATA_KEYS = (
-    "address",
-    "phone",
-    "whatsapp",
-    "website",
-    "facebook",
-    "instagram",
-    "reviews",
-    "rating",
-)
-
 
 class LeadPatch(Strict):
     """Every standard field of the lead file can be changed in the Hub (step 27); an empty
@@ -358,19 +346,6 @@ class LeadPatch(Strict):
     notes: Annotated[str, StringConstraints(strip_whitespace=True, max_length=4000)] | None = None
 
 
-def _view(lead: Lead) -> dict[str, Any]:
-    data = lead.data or {}
-    return {
-        "business_name": lead.business_name,
-        "gbp_link": lead.gbp_link,
-        "city": lead.city,
-        "email": ", ".join(lead.emails),
-        **{key: data.get(key, "") for key in DATA_KEYS},
-        "level": lead.level,
-        "notes": data.get("notes", ""),
-    }
-
-
 @router.patch("/leads/{lead_id}", response_model=LeadDetail)
 def update_lead(lead_id: str, body: LeadPatch, me: CurrentUser, db: Db) -> LeadDetail:
     """Change any of a lead's standard fields or its notes (step 27); an empty value clears
@@ -378,42 +353,11 @@ def update_lead(lead_id: str, body: LeadPatch, me: CurrentUser, db: Db) -> LeadD
     Top lead keeps its email, phone and GBP link on the do-not-contact list."""
     ensure(me, Action.EDIT_LEADS)
     lead = _get(db, lead_id)
-    before = _view(lead)
-    data = dict(lead.data or {})
-    if body.business_name is not None:
-        if not body.business_name:
-            message = "A business needs a name."
-            raise ApiError(422, "invalid", message, {"business_name": message})
-        lead.business_name = body.business_name
-    if body.city is not None:
-        if not body.city:
-            message = "A business needs a city."
-            raise ApiError(422, "invalid", message, {"city": message})
-        lead.city = body.city
-    if body.gbp_link is not None:
-        lead.gbp_link = reader.clean_gbp(body.gbp_link)[:500]
-    if body.email is not None:
-        valid, invalid = reader.split_emails(body.email)
-        if invalid:
-            message = f"This doesn't look like an email: {invalid[0]}"
-            raise ApiError(422, "invalid", message, {"email": message})
-        lead.emails = list(dict.fromkeys(valid))
-    for key in (*DATA_KEYS, "notes"):
-        value = getattr(body, key)
-        if value is not None:
-            data[key] = reader.clean_website(value) if key == "website" and value else value
-    lead.data = {key: value for key, value in data.items() if value}
-    lead.phone_digits = reader.phone_digits(lead.data.get("phone", ""))
-    lead.website_domain = reader.website_domain(lead.data.get("website", ""))[:255]
-    place = {"business_name": lead.business_name, "city": lead.city} | lead.data
-    lead.name_address = reader.name_place(place)[:600]
-    recheck(lead)
-    changes = audit.diff(before, _view(lead))
+    try:
+        changes = edit.apply(db, lead, body.model_dump(exclude_none=True))
+    except edit.EditError as error:
+        raise ApiError(422, "invalid", error.message, {error.field: error.message}) from None
     if changes:
-        sync_do_not_contact(db, lead)
-        if before["city"] != lead.city and lead.batch_id is not None:
-            db.flush()
-            sync_cities(db, lead.batch_id)
         audit.record(db, me, "edit", "lead", lead.lead_id, lead.business_name, changes)
     db.commit()
     return _detail(db, me, lead)

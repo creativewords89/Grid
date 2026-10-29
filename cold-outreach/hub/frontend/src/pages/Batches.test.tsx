@@ -742,10 +742,11 @@ test("Lead Check: a held file in Past imports, its report and the cities' proble
   );
   expect(within(dialog).getByText("Address holds a phone number")).toBeVisible();
   expect(within(dialog).getByText(/Dallas:/)).toBeVisible();
-  expect(within(dialog).getByRole("link", { name: "Download Excel" })).toHaveAttribute(
+  expect(within(dialog).getByRole("link", { name: "Download problems to fix" })).toHaveAttribute(
     "href",
-    "/api/imports/i1/check.xlsx",
+    "/api/imports/i1/fixes.xlsx",
   );
+  expect(within(dialog).getByRole("button", { name: "Upload fixes" })).toBeVisible();
   await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
 
   // The Cities tab: problems by city, and a filter for them.

@@ -11,6 +11,7 @@ import {
 } from "../api";
 import { useAuth } from "../auth";
 import { CHECK_CODES, FIELD_NAMES, problemCount } from "../checkLabels";
+import { FixFileButtons } from "../components/FixFile";
 import { Alert, Field, Modal } from "../components/ui";
 import { when } from "../format";
 
@@ -189,6 +190,15 @@ export function BatchLeads({ batchId, city = "" }: { batchId: string; city?: str
           </a>
         </div>
       </form>
+      {/* Lead Check (step 28): fix the problems offline and upload them back. */}
+      <div className="row">
+        <FixFileButtons
+          href={`/api/batches/${batchId}/fixes.xlsx`}
+          batchId={batchId}
+          staff={staff}
+          onSaved={load}
+        />
+      </div>
       {error && <Alert kind="error">{error}</Alert>}
       {data && (
         <p className="muted small">
