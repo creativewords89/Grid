@@ -333,6 +333,10 @@ def fix_file(leads: list[dict[str, Any]]) -> bytes:
     return out.getvalue()
 
 
+class NoFileId(fixes.FixFileError):
+    """The file has no File ID column: a whole new version of the file, not a fix file."""
+
+
 @dataclass
 class FixRow:
     tab: str  # where in the fix file, for messages
@@ -379,9 +383,7 @@ def read_fixes(content: bytes) -> list[FixRow]:
             if len(rows) > fixes.MAX_ROWS:
                 raise fixes.FixFileError(f"At most {fixes.MAX_ROWS:,} rows in one fix file.")
     if not found:
-        raise fixes.FixFileError(
-            "No File ID column: upload the file the Hub made (Download problems to fix)."
-        )
+        raise NoFileId("No File ID column: this is a whole file, not the Hub's fix file.")
     return rows
 
 
