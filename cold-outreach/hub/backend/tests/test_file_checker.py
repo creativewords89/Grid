@@ -45,12 +45,12 @@ def test_progress_is_saved_as_it_goes(
     seen: list[int] = []
     real = files.run
 
-    def watched(content: bytes, niche: str, progress: Any) -> Any:
+    def watched(content: bytes, niche: str, progress: Any, number: int) -> Any:
         def told(percent: int) -> None:
             progress(percent)
             seen.append(cal.get(f"/api/submissions/{file_id}").json()["progress"])
 
-        return real(content, niche, told)
+        return real(content, niche, told, number)
 
     monkeypatch.setattr(files, "run", watched)
     file_id = post(cal, GOOD)

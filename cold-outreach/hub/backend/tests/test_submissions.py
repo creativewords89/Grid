@@ -157,7 +157,7 @@ def test_a_collector_hands_in_fixes_and_sees_only_their_own_files(
     # The fix file, then a revised version: checked again.
     marked = cal.get(f"/api/submissions/{bad['id']}/marked.xlsx")
     assert marked.status_code == 200
-    assert load_workbook(io.BytesIO(marked.content)).sheetnames == ["Tulsa"]
+    assert load_workbook(io.BytesIO(marked.content)).sheetnames == ["Problems"]
     fixed = revise(cal, bad["id"], GOOD).json()
     assert fixed["status"] == "ready" and fixed["errors"] == 0 and fixed["version"] == 2
     assert fixed["problems"] == []

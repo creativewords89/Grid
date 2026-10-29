@@ -14,7 +14,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, File, Form, Query, Response, UploadFile
 from pydantic import BaseModel, StringConstraints
-from sqlalchemy import select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app import audit
@@ -46,6 +46,7 @@ class BatchRef(BaseModel):
 
 class FileOut(BaseModel):
     id: uuid.UUID
+    number: int  # its businesses' File IDs are F<number>-0001… (step 35)
     file_name: str
     niche: str
     version: int
@@ -128,6 +129,7 @@ def _out(db: Session, me: User, sub: Submission) -> FileOut:
     on = files.cities_on(files.cities(sub))
     return FileOut(
         id=sub.id,
+        number=sub.number,
         file_name=sub.file_name,
         niche=sub.niche,
         version=sub.version,
@@ -237,8 +239,14 @@ def hand_in(
     if chosen is None:
         raise ApiError(422, "unknown_niche", "Choose one of the niches.", {"niche": "Unknown."})
     content = _read(file)
+    # One file at a time takes the next number (its File IDs start with it, step 35).
+    db.execute(text("SELECT pg_advisory_xact_lock(4242002)"))
+    number = (db.scalar(select(func.max(Submission.number))) or 0) + 1
     sub = Submission(
-        file_name=(file.filename or "leads.xlsx")[:255], niche=chosen, uploaded_by=me.id
+        file_name=(file.filename or "leads.xlsx")[:255],
+        niche=chosen,
+        uploaded_by=me.id,
+        number=number,
     )
     _store(sub, content)
     db.add(sub)
@@ -281,8 +289,8 @@ def revise(
 
 @router.get("/submissions/{file_id}/marked.xlsx")
 def marked(file_id: uuid.UUID, me: CurrentUser, db: Db) -> Response:
-    """The fix file (step 34): the businesses with a problem, a tab per city, each wrong
-    cell marked, to fix in Excel and upload back with Upload fixes."""
+    """The fix file (steps 34 and 35): the businesses with a problem on one sheet by city,
+    each with its File ID and wrong cells marked, to fix in Excel and send with Upload fixes."""
     sub = _get(db, me, file_id)
     if status_of(sub) in ("checking", "failed"):
         raise ApiError(409, "not_checked", "This file isn't checked yet.")
@@ -303,9 +311,9 @@ def upload_fixes(
     file: Annotated[UploadFile, File()],
     confirm: Annotated[bool, Form()] = False,
 ) -> dict[str, Any]:
-    """The fix file back from Excel (step 34): each row found by its Row, every column of
-    the file changing its value (an empty cell clears it), Delete = Yes taking the business
-    out. Without `confirm` nothing is saved: the answer says what would change. Saved, the
+    """The fix file back from Excel (steps 34 and 35): each row found by its File ID, every
+    column of the file changing its value (an empty cell clears it), Delete = Yes taking the
+    business out. Without `confirm` nothing is saved: the answer says what would change. Saved, the
     file is made again with the fixes, as a new version, and checked again."""
     sub = _changeable(db, me, file_id, revise=True)
     try:
@@ -313,19 +321,19 @@ def upload_fixes(
     except fixes.FixFileError as error:
         raise ApiError(422, "unreadable", str(error), {"file": str(error)}) from None
     leads = [dict(lead, values=dict(lead["values"])) for lead in sub.leads]
-    by_key = {files.row_key(lead): lead for lead in leads}
+    by_key = {lead["id"]: lead for lead in leads}
     changed: list[dict[str, Any]] = []
     removed: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
     seen: set[str] = set()
     for row in rows:
-        where = {"tab": row.tab, "line": row.line, "row": row.key}
+        where = {"tab": row.tab, "line": row.line, "file_id": row.key}
         lead = by_key.get(row.key)
         if lead is None:
-            skipped.append(where | {"reason": "No business of this file is on that Row."})
+            skipped.append(where | {"reason": "No business of this file has that File ID."})
             continue
         if row.key in seen:
-            skipped.append(where | {"reason": "This Row is on an earlier row too."})
+            skipped.append(where | {"reason": "This File ID is on an earlier row too."})
             continue
         seen.add(row.key)
         name = lead["values"].get("business_name") or lead["values"].get("gbp_link", "")
@@ -380,8 +388,8 @@ LEADS_PAGE = 100
 
 
 def _matches(lead: dict[str, Any], words: list[str]) -> bool:
-    text = " ".join(lead["values"].values()).lower()
-    return all(word in text for word in words)
+    found = " ".join([lead.get("id", ""), *lead["values"].values()]).lower()
+    return all(word in found for word in words)
 
 
 def _number(text: str) -> float:
@@ -398,7 +406,7 @@ def file_leads(
     city: Annotated[str, Query(max_length=120)] = "",
     problems: Annotated[Literal["", "problems", "errors", "warnings", "ok"], Query()] = "",
     sort: Annotated[
-        Literal["row", "name", "city", "reviews", "rating", "problems"], Query()
+        Literal["row", "id", "name", "city", "reviews", "rating", "problems"], Query()
     ] = "row",
     page: Annotated[int, Query(ge=1, le=10_000)] = 1,
 ) -> dict[str, Any]:
@@ -426,7 +434,9 @@ def file_leads(
             counts[found] += 1
     if problems:
         rows = [r for r in rows if problems in kinds(r)]
-    if sort == "name":
+    if sort == "id":
+        rows.sort(key=lambda r: r.get("id", ""))
+    elif sort == "name":
         rows.sort(key=lambda r: r["values"].get("business_name", "").lower())
     elif sort == "city":
         rows.sort(key=lambda r: (r["values"].get("city", "").lower(), r["line"]))

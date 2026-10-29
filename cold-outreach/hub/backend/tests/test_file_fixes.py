@@ -1,7 +1,7 @@
-"""Fixing a handed-in file (SPEC step 34): its fix file has a tab per city with the
-businesses with a problem, like a batch's; uploaded back, each row is found by its Row, its
-columns change the business, Delete = Yes takes it out, and the file is made again as a new
-version and checked again."""
+"""Fixing a handed-in file (SPEC steps 34 and 35): its fix file has the businesses with a
+problem on one sheet by city, each with its File ID, like a batch's; uploaded back, each row is
+found by its File ID, its columns change the business, Delete = Yes takes it out, and the file
+is made again as a new version (the File IDs kept) and checked again."""
 
 import io
 from typing import Any
@@ -63,12 +63,14 @@ def rows(sheet: Any) -> list[list[Any]]:
 
 
 def test_the_fix_file_is_like_a_batchs(cal: TestClient) -> None:
-    file_id = hand_in(cal, FILE)["id"]
+    sub = hand_in(cal, FILE)
+    file_id, n = sub["id"], sub["number"]
     book = fix_file(cal, file_id)
-    assert book.sheetnames == ["Dallas", "Tulsa"]  # a tab per city, the problems only
-    tulsa = rows(book["Tulsa"])
-    assert tulsa[0] == [
-        "Row",
+    assert book.sheetnames == ["Problems"]  # one sheet, the problems only, by city
+    sheet = book["Problems"]
+    found = rows(sheet)
+    assert found[0] == [
+        "File ID",
         "Business name",
         "GBP link",
         "Address",
@@ -85,27 +87,43 @@ def test_the_fix_file_is_like_a_batchs(cal: TestClient) -> None:
         "Problems",
         "Delete",
     ]
-    assert [r[0] for r in tulsa[1:]] == ["Tulsa · 3", "Tulsa · 4"]
-    assert tulsa[1][1] == "Bad Co" and "Phone: Phone holds letters" in tulsa[1][14]
-    sheet = book["Tulsa"]
-    phone = sheet.cell(2, 7)
+    # File IDs in the file's order: Tulsa's three, then Dallas's two.
+    assert [(r[0], r[1]) for r in found[1:]] == [
+        (f"F{n}-0005", "Gleam"),
+        (f"F{n}-0002", "Bad Co"),
+        (f"F{n}-0003", "No Map Co"),
+    ]
+    assert "Phone: Phone holds letters" in found[2][14]
+    phone = sheet.cell(3, 7)
     assert phone.value == "call us" and phone.fill.fgColor.rgb == "00F8C9C9"
     assert phone.comment is not None and "Phone holds letters" in phone.comment.text
-    gbp = sheet.cell(3, 3)
+    gbp = sheet.cell(4, 3)
     assert gbp.fill.fgColor.rgb == "00FFF1B8"  # a warning: no GBP link
     assert sheet.freeze_panes == "C2" and sheet.auto_filter.ref
+    # The table shows the same File IDs.
+    table = cal.get(f"/api/submissions/{file_id}/leads").json()["leads"]
+    assert [r["id"] for r in table] == [f"F{n}-000{i}" for i in range(1, 6)]
+
+
+def test_each_file_has_its_own_number(cal: TestClient) -> None:
+    first = hand_in(cal, FILE)["number"]
+    second = hand_in(cal, FILE, name="again.xlsx")["number"]
+    assert second == first + 1
 
 
 def test_fixes_are_shown_then_saved_as_a_new_version(cal: TestClient) -> None:
-    file_id = hand_in(cal, FILE)["id"]
+    sub = hand_in(cal, FILE)
+    file_id, n = sub["id"], sub["number"]
     book = fix_file(cal, file_id)
-    tulsa, dallas = book["Tulsa"], book["Dallas"]
-    tulsa.cell(2, 6).value = "https://badco.com"  # Website
-    tulsa.cell(2, 7).value = "(918) 555-2222"  # Phone
-    dallas.cell(2, 16).value = "Yes"  # Delete Gleam
+    sheet = book["Problems"]
+    sheet.cell(2, 16).value = "Yes"  # Delete Gleam
+    sheet.cell(3, 6).value = "https://badco.com"  # Bad Co's Website
+    sheet.cell(3, 7).value = "(918) 555-2222"  # and Phone
     preview = send(cal, file_id, book).json()
     assert preview["saved"] is False
-    assert [(c["row"], c["business_name"]) for c in preview["changed"]] == [("Tulsa · 3", "Bad Co")]
+    assert [(c["file_id"], c["business_name"]) for c in preview["changed"]] == [
+        (f"F{n}-0002", "Bad Co")
+    ]
     assert {(c["field"], c["from"], c["to"]) for c in preview["changed"][0]["changes"]} == {
         ("Website", "https://facebook.com/bc", "https://badco.com"),
         ("Phone", "call us", "(918) 555-2222"),
@@ -122,29 +140,34 @@ def test_fixes_are_shown_then_saved_as_a_new_version(cal: TestClient) -> None:
     after = cal.get(f"/api/submissions/{file_id}").json()
     # Cities under 10 businesses need no Top: with no error the file is ready.
     assert (after["status"], after["businesses"], after["errors"]) == ("ready", 4, 0)
-    names = [
-        r["values"]["business_name"]
-        for r in cal.get(f"/api/submissions/{file_id}/leads").json()["leads"]
+    table = cal.get(f"/api/submissions/{file_id}/leads", params={"sort": "id"}).json()
+    # The businesses keep their File IDs in the new version; Gleam's is gone.
+    assert [(r["id"], r["values"]["business_name"]) for r in table["leads"]] == [
+        (f"F{n}-0001", "Multi-Clean"),
+        (f"F{n}-0002", "Bad Co"),
+        (f"F{n}-0003", "No Map Co"),
+        (f"F{n}-0004", "Sparkle"),
     ]
-    assert sorted(names) == ["Bad Co", "Multi-Clean", "No Map Co", "Sparkle"]
+    assert table["leads"][1]["values"]["phone"] == "(918) 555-2222"
+    assert "File ID" not in table["leads"][0]["extra"]
 
 
 def test_rows_that_dont_match_are_left_out(cal: TestClient) -> None:
     file_id = hand_in(cal, FILE)["id"]
     book = fix_file(cal, file_id)
-    sheet = book["Tulsa"]
-    sheet.append(["Tulsa · 99", "Ghost"])
-    sheet.append(["Tulsa · 3", "Bad Co again"])
+    sheet = book["Problems"]
+    sheet.append(["F999-0001", "Ghost"])
+    sheet.append([sheet.cell(3, 1).value, "Bad Co again"])
     found = send(cal, file_id, book).json()
     assert [s["reason"] for s in found["skipped"]] == [
-        "No business of this file is on that Row.",
-        "This Row is on an earlier row too.",
+        "No business of this file has that File ID.",
+        "This File ID is on an earlier row too.",
     ]
     assert found["changed"] == []
     other = Workbook()
     other.active.append(["Business name", "Phone"])  # type: ignore[union-attr]
     refused = send(cal, file_id, other)
-    assert refused.status_code == 422 and "No Row column" in refused.json()["error"]["message"]
+    assert refused.status_code == 422 and "No File ID column" in refused.json()["error"]["message"]
 
 
 def test_only_who_may_change_the_file_uploads_fixes(cal: TestClient, person: Person) -> None:
@@ -162,7 +185,7 @@ def test_only_who_may_change_the_file_uploads_fixes(cal: TestClient, person: Per
 def test_every_business_can_not_be_taken_out(cal: TestClient) -> None:
     file_id = hand_in(cal, {"Tulsa": [STANDARD, BAD_ROW]})["id"]
     book = fix_file(cal, file_id)
-    book["Tulsa"].cell(2, 16).value = "yes"
+    book["Problems"].cell(2, 16).value = "yes"
     assert send(cal, file_id, book, confirm=True).json()["error"]["code"] == "empty"
 
 
@@ -170,7 +193,7 @@ def test_the_file_made_again_keeps_its_other_columns(cal: TestClient) -> None:
     tabs = {"Tulsa": [[*STANDARD, "Owner"], [*BAD_ROW, "Kevin"]]}
     file_id = hand_in(cal, tabs)["id"]
     book = fix_file(cal, file_id)
-    book["Tulsa"].cell(2, 7).value = "(918) 555-2222"
+    book["Problems"].cell(2, 7).value = "(918) 555-2222"
     send(cal, file_id, book, confirm=True)
     run_file_checker()
     lead = cal.get(f"/api/submissions/{file_id}/leads").json()["leads"][0]

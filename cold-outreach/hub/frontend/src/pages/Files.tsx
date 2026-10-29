@@ -1031,7 +1031,7 @@ function FileLeads({ id }: { id: string }) {
             value={filters.sort ?? "row"}
             onChange={(e) => set({ sort: e.target.value as FileLeadFilters["sort"] })}
           >
-            <option value="row">Sort: tab and row</option>
+            <option value="row">Sort: File ID</option>
             <option value="problems">Sort: most problems</option>
             <option value="name">Sort: name</option>
             <option value="city">Sort: city</option>
@@ -1052,7 +1052,7 @@ function FileLeads({ id }: { id: string }) {
               <table className="table leads-table">
                 <thead>
                   <tr>
-                    <th>Tab · Row</th>
+                    <th>File ID</th>
                     <th>Business name</th>
                     <th>Check</th>
                     {TABLE_COLUMNS.slice(1).map((key) => (
@@ -1062,9 +1062,9 @@ function FileLeads({ id }: { id: string }) {
                 </thead>
                 <tbody>
                   {data.leads.map((lead) => (
-                    <tr key={lead.rows[0]}>
-                      <td className="small nowrap">
-                        {lead.tab} · {lead.line}
+                    <tr key={lead.id || lead.rows[0]}>
+                      <td className="small nowrap" title={`${lead.tab}, row ${lead.line}`}>
+                        {lead.id}
                       </td>
                       {[TABLE_COLUMNS[0]!, "check", ...TABLE_COLUMNS.slice(1)].map((key) => {
                         if (key === "check")
@@ -1155,7 +1155,7 @@ function FileFixDialog({
       <div className="stack">
         <p className="muted">
           The file from <strong>Download problems to fix</strong>, fixed in Excel. Each row is found
-          by its Row; an empty cell clears the value; Delete = Yes takes the business out of the
+          by its File ID; an empty cell clears the value; Delete = Yes takes the business out of the
           file. Nothing changes until you save.
         </p>
         <label className="field">
@@ -1196,7 +1196,7 @@ function FileFixDialog({
             {result.removed.length > 0 && (
               <Alert kind="error">
                 Taken out of the file:{" "}
-                {result.removed.map((r) => `${r.business_name} (${r.row})`).join(", ")}
+                {result.removed.map((r) => `${r.business_name} (${r.file_id})`).join(", ")}
               </Alert>
             )}
             {result.changed.length > 0 && (
@@ -1204,7 +1204,7 @@ function FileFixDialog({
                 <table className="table compact-table">
                   <thead>
                     <tr>
-                      <th>Row</th>
+                      <th>File ID</th>
                       <th>Business</th>
                       <th>Column</th>
                       <th>From</th>
@@ -1214,8 +1214,8 @@ function FileFixDialog({
                   <tbody>
                     {result.changed.flatMap((r) =>
                       r.changes.map((c, index) => (
-                        <tr key={`${r.row}-${index}`}>
-                          <td className="nowrap small">{r.row}</td>
+                        <tr key={`${r.file_id}-${index}`}>
+                          <td className="nowrap small">{r.file_id}</td>
                           <td>{r.business_name}</td>
                           <td>{c.field}</td>
                           <td className="small">
@@ -1235,7 +1235,7 @@ function FileFixDialog({
               <ul className="check-list small">
                 {result.skipped.map((r) => (
                   <li key={`${r.tab}-${r.line}`}>
-                    🟠 {r.tab} row {r.line} ({r.row || "no Row"}): {r.reason}
+                    🟠 {r.tab} row {r.line} ({r.file_id || "no File ID"}): {r.reason}
                   </li>
                 ))}
               </ul>

@@ -50,7 +50,7 @@ def check_one(engine: Engine, file_id: uuid.UUID, version: int) -> None:
         sub = db.get(Submission, file_id)
         if sub is None:
             return
-        content, niche = sub.content, sub.niche
+        content, niche, number = sub.content, sub.niche, sub.number
     last = [0.0]
 
     def progress(percent: int) -> None:
@@ -68,7 +68,7 @@ def check_one(engine: Engine, file_id: uuid.UUID, version: int) -> None:
     error = None
     try:
         content = files.clean(content)
-        found = files.run(content, niche, progress)
+        found = files.run(content, niche, progress, number)
     except reader.ReadError as failure:
         error = str(failure)[:500]
     except Exception:

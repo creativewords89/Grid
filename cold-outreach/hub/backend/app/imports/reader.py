@@ -56,6 +56,9 @@ def _squash(text: str) -> str:
 
 
 HEADER_TO_FIELD = {_squash(name): f for f, names in SYNONYMS.items() for name in names}
+# The File ID the Hub gives each business of a handed-in file (step 35), in the files it
+# makes: read back so a business keeps it, never a lead field of its own.
+HEADER_TO_FIELD["fileid"] = "file_id"
 
 EMAIL = re.compile(r"^[^@\s,;]+@[^@\s,;]+\.[a-z]{2,}$", re.IGNORECASE)
 NOT_OWN_SITE = re.compile(r"(facebook|instagram|linktr\.ee|yelp)\.", re.IGNORECASE)
