@@ -90,9 +90,34 @@ def check_one(engine: Engine, file_id: uuid.UUID, version: int) -> None:
             sub.check = found.check
             sub.problems = found.problems
             sub.leads = found.leads
+            # The Final check's hour starts when the file has no error (step 36).
+            if found.check["errors"]:
+                sub.clean_since = None
+            elif sub.clean_since is None:
+                sub.clean_since = now()
             files.lock_if_topped(sub)
         db.commit()
     log.info("checked file %s (version %s)", file_id, version)
+
+
+def send_due(db: Session) -> int:
+    """Files whose Final check hour is over go on to Top Review (step 36)."""
+    due = db.scalars(
+        select(Submission)
+        .where(
+            Submission.state == "checked",
+            Submission.sent_at.is_(None),
+            Submission.clean_since.is_not(None),
+            Submission.clean_since <= now() - files.FINAL_CHECK,
+        )
+        .with_for_update(skip_locked=True)
+    )
+    sent = 0
+    for sub in due:
+        if not sub.check.get("errors"):
+            files.send_on(sub)
+            sent += 1
+    return sent
 
 
 def run_pending(engine: Engine) -> int:

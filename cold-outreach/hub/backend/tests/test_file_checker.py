@@ -72,7 +72,7 @@ def test_a_stopped_check_is_taken_over(cal: TestClient, clean_engine: Engine) ->
         sub.claimed_at = now() - file_checker.STALE - timedelta(seconds=1)
         db.commit()
     assert run_file_checker() == 1
-    assert cal.get(f"/api/submissions/{file_id}").json()["status"] == "ready"
+    assert cal.get(f"/api/submissions/{file_id}").json()["status"] == "final_check"
 
 
 def test_a_version_handed_in_during_its_check_is_the_one_kept(
@@ -89,7 +89,7 @@ def test_a_version_handed_in_during_its_check_is_the_one_kept(
     file_checker.check_one(clean_engine, *claimed)  # the old version's check ends
     assert cal.get(f"/api/submissions/{file_id}").json()["status"] == "checking"
     assert run_file_checker() == 1
-    assert cal.get(f"/api/submissions/{file_id}").json()["status"] == "ready"
+    assert cal.get(f"/api/submissions/{file_id}").json()["status"] == "final_check"
 
 
 def test_the_files_table(cal: TestClient) -> None:
@@ -130,17 +130,18 @@ def test_others_cannot_see_the_table(cal: TestClient, person: Person) -> None:
 
 
 def test_problems_are_errors_and_warnings(cal: TestClient) -> None:
-    # A warning only (no GBP link) and an error only: Problems has both, All has the OK too.
+    # Two businesses with a problem: Problems has both, All has the OK ones too.
     warned = row("No Map Co", "", "(918) 555-7777")
     file_id = hand_in(cal, {"Tulsa": [*BAD["Tulsa"], warned]})["id"]
     table = cal.get(f"/api/submissions/{file_id}/leads").json()
-    assert table["counts"] == {"all": 4, "problems": 2, "errors": 1, "warnings": 1, "ok": 2}
+    # No GBP link is an error since step 36: no warnings are left.
+    assert table["counts"] == {"all": 4, "problems": 2, "errors": 2, "warnings": 0, "ok": 2}
 
     def names(kind: str) -> list[str]:
         found = cal.get(f"/api/submissions/{file_id}/leads", params={"problems": kind}).json()
         return sorted(r["values"]["business_name"] for r in found["leads"])
 
     assert names("problems") == ["Bad Co", "No Map Co"]
-    assert names("errors") == ["Bad Co"]
-    assert names("warnings") == ["No Map Co"]
+    assert names("errors") == ["Bad Co", "No Map Co"]
+    assert names("warnings") == []
     assert names("ok") == ["Multi-Clean", "Top Shine"]

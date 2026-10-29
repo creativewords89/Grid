@@ -430,7 +430,8 @@ export type HandedInFile = {
   businesses: number;
   errors: number;
   warnings: number;
-  status: "checking" | "failed" | "errors" | "needs_top" | "ready" | "adding" | "used";
+  status:
+    "checking" | "failed" | "errors" | "final_check" | "needs_top" | "ready" | "adding" | "used";
   uploaded_by: string | null;
   mine: boolean;
   created_at: string;
@@ -448,6 +449,7 @@ export type HandedInFile = {
   // Checked in the background (step 33): how far, and why it couldn't be read.
   progress: number;
   error: string | null;
+  sends_at: string | null; // in its Final check: when it goes on to Top Review (step 36)
 };
 
 /** A business of a handed-in file, for the Files table (step 33). */
@@ -952,6 +954,7 @@ export const api = {
   renameNiche: (id: string, name: string) => request<NicheRow>("PATCH", `/niches/${id}`, { name }),
   deleteNiche: (id: string) => request<void>("DELETE", `/niches/${id}`),
   deleteFile: (id: string) => request<void>("DELETE", `/submissions/${id}`),
+  sendToReview: (id: string) => request<HandedInFile>("POST", `/submissions/${id}/send`),
   reopenFile: (id: string) => request<HandedInFile>("POST", `/submissions/${id}/reopen`),
   // Top Review (step 32).
   reviewFiles: () => request<ReviewFile[]>("GET", "/review/files"),

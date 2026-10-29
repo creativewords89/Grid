@@ -15,7 +15,7 @@ from app.db.models import AuditEntry, DoNotContact, Lead, Role, User
 from tests.conftest import UserFactory, sign_in
 from tests.hub_data import batch_id, put_bot
 from tests.test_agents import MANIFEST, add_agent, agent_call
-from tests.test_imports import FILE, STANDARD, row, upload, workbook
+from tests.test_imports import FILE, STANDARD, leads, row, upload, workbook
 
 
 @pytest.fixture
@@ -223,6 +223,14 @@ def test_an_agent_reads_full_rows_and_saves_its_result(client: TestClient, saved
     batch = batch_id(client)
     put_bot(client, batch, "gbp-audit")
     client.put(f"/api/batches/{batch}/cities", json={"active": True})  # small cities
+    # No Map Co has no GBP link: an error since step 36, which holds its file's leads back.
+    held = agent_call(client, "GET", f"/batches/{batch}/leads", token).json()
+    assert held == []
+    no_map = next(x for x in leads(client).values() if x["business_name"] == "No Map Co")
+    fixed = client.patch(
+        f"/api/leads/{no_map['lead_id']}", json={"gbp_link": "https://share.google/nm"}
+    )
+    assert fixed.status_code == 200, fixed.text
 
     rows = agent_call(client, "GET", f"/batches/{batch}/leads", token).json()
     multi = rows[0]

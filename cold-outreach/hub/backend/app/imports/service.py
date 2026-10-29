@@ -262,8 +262,15 @@ def _preview_check(report: reader.Report, sheet_rows: list[dict[str, Any]]) -> d
         tab = tabs.setdefault(row["tab"], {"errors": 0, "warnings": 0, "columns": []})
         for item in row.get("issues", []):
             tab["errors" if item["severity"] == "error" else "warnings"] += 1
-    errors = sum(t["errors"] for t in tabs.values())
-    warnings = sum(t["warnings"] + len(t["columns"]) for t in tabs.values())
+    # A tab's column problems count by their severity (errors since step 36).
+    errors = sum(
+        t["errors"] + sum(1 for c in t["columns"] if c["severity"] == "error")
+        for t in tabs.values()
+    )
+    warnings = sum(
+        t["warnings"] + sum(1 for c in t["columns"] if c["severity"] != "error")
+        for t in tabs.values()
+    )
     return {"errors": errors, "warnings": warnings, "tabs": tabs}
 
 

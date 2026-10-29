@@ -35,6 +35,7 @@ def tick() -> bool:
                 log.info("queued the scheduled run %s", run.id)
             for run in service.expire_stale_runs(db):
                 log.warning("run %s timed out: %s", run.id, run.stop_reason)
+            file_checker.send_due(db)  # files whose Final check is over (step 36)
             alerts.check_balance(db)
             alerts.check_backup(db)
             alerts.daily_summary(db)

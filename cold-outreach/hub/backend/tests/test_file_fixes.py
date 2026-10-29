@@ -98,7 +98,7 @@ def test_the_fix_file_is_like_a_batchs(cal: TestClient) -> None:
     assert phone.value == "call us" and phone.fill.fgColor.rgb == "00F8C9C9"
     assert phone.comment is not None and "Phone holds letters" in phone.comment.text
     gbp = sheet.cell(4, 3)
-    assert gbp.fill.fgColor.rgb == "00FFF1B8"  # a warning: no GBP link
+    assert gbp.fill.fgColor.rgb == "00F8C9C9"  # no GBP link: an error since step 36
     assert sheet.freeze_panes == "C2" and sheet.auto_filter.ref
     # The table shows the same File IDs.
     table = cal.get(f"/api/submissions/{file_id}/leads").json()["leads"]
@@ -119,10 +119,12 @@ def test_fixes_are_shown_then_saved_as_a_new_version(cal: TestClient) -> None:
     sheet.cell(2, 16).value = "Yes"  # Delete Gleam
     sheet.cell(3, 6).value = "https://badco.com"  # Bad Co's Website
     sheet.cell(3, 7).value = "(918) 555-2222"  # and Phone
+    sheet.cell(4, 3).value = "https://share.google/nm"  # No Map Co's GBP link
     preview = send(cal, file_id, book).json()
     assert preview["saved"] is False
     assert [(c["file_id"], c["business_name"]) for c in preview["changed"]] == [
-        (f"F{n}-0002", "Bad Co")
+        (f"F{n}-0002", "Bad Co"),
+        (f"F{n}-0003", "No Map Co"),
     ]
     assert {(c["field"], c["from"], c["to"]) for c in preview["changed"][0]["changes"]} == {
         ("Website", "https://facebook.com/bc", "https://badco.com"),
@@ -138,8 +140,8 @@ def test_fixes_are_shown_then_saved_as_a_new_version(cal: TestClient) -> None:
     assert (waiting["status"], waiting["version"]) == ("checking", 2)
     assert run_file_checker() == 1
     after = cal.get(f"/api/submissions/{file_id}").json()
-    # Cities under 10 businesses need no Top: with no error the file is ready.
-    assert (after["status"], after["businesses"], after["errors"]) == ("ready", 4, 0)
+    # No error: the file is in its Final check (step 36).
+    assert (after["status"], after["businesses"], after["errors"]) == ("final_check", 4, 0)
     table = cal.get(f"/api/submissions/{file_id}/leads", params={"sort": "id"}).json()
     # The businesses keep their File IDs in the new version; Gleam's is gone.
     assert [(r["id"], r["values"]["business_name"]) for r in table["leads"]] == [

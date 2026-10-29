@@ -87,7 +87,7 @@ def _open(db: Session, file_id: uuid.UUID, lock: bool = False) -> Submission:
     """A file open for Top Review; a done one is locked."""
     query = select(Submission).where(Submission.id == file_id)
     sub = db.scalar(query.with_for_update() if lock else query)
-    if sub is None or status_of(sub) in ("checking", "failed", "errors"):
+    if sub is None or status_of(sub) in ("checking", "failed", "errors", "final_check"):
         raise ApiError(404, "not_found", "That file doesn't exist.")
     if status_of(sub) != "needs_top":
         raise ApiError(409, "locked", "Every city of this file has a Top: it is done and locked.")
@@ -108,7 +108,7 @@ def review_files(me: CurrentUser, db: Db) -> list[ReviewFile]:
     found = [
         _file(sub)
         for sub in db.scalars(select(Submission).order_by(Submission.created_at.desc()).limit(500))
-        if status_of(sub) not in ("checking", "failed", "errors")
+        if status_of(sub) not in ("checking", "failed", "errors", "final_check")
     ]
     db.commit()  # the cities of files handed in before step 32 were read just now
     return sorted(found, key=lambda f: f.state != "needs_top")
