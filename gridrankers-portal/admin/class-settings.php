@@ -206,6 +206,9 @@ class GRP_Admin_Settings {
 						<input type="password" name="key" class="regular-text code" autocomplete="off" placeholder="<?php echo esc_attr( $has_key ? __( 'Saved — paste a new key to change it', 'gridrankers-portal' ) : __( 'Link key from the main portal', 'gridrankers-portal' ) ); ?>">
 						<?php if ( GRP_Link::is_tracker() && $link['last_error'] ) : ?>
 							<p class="description"><?php echo esc_html( $link['last_error'] ); ?></p>
+						<?php elseif ( GRP_Link::is_tracker() && $link['last_copy_at'] ) : ?>
+							<?php /* translators: %s: how long ago, e.g. "3 mins". */ ?>
+							<p class="description"><?php echo esc_html( sprintf( __( 'Profiles copied %s ago. They are copied every 5 minutes.', 'gridrankers-portal' ), human_time_diff( (int) strtotime( $link['last_copy_at'] . ' UTC' ) ) ) ); ?></p>
 						<?php endif; ?>
 					</td>
 				</tr>
@@ -220,6 +223,7 @@ class GRP_Admin_Settings {
 				<?php endif; ?>
 				<?php if ( GRP_Link::is_tracker() ) : ?>
 					<button type="submit" name="do" value="test" class="button"><?php esc_html_e( 'Test connection', 'gridrankers-portal' ); ?></button>
+					<button type="submit" name="do" value="sync" class="button"><?php esc_html_e( 'Sync now', 'gridrankers-portal' ); ?></button>
 				<?php endif; ?>
 			</p>
 		</form>
@@ -258,6 +262,13 @@ class GRP_Admin_Settings {
 	 */
 	public static function apply_link( array $input ) {
 		$do = (string) ( $input['do'] ?? 'save' );
+		if ( 'sync' === $do ) {
+			$copy = GRP_Link_Copy::run();
+			return is_wp_error( $copy ) ? self::link_failed( $copy ) : array(
+				'ok'      => true,
+				'message' => self::copy_message( $copy ),
+			);
+		}
 		if ( 'make_key' === $do || 'unlink' === $do || 'test' === $do ) {
 			if ( 'make_key' === $do ) {
 				$key = GRP_Link::make_key();
@@ -274,11 +285,7 @@ class GRP_Admin_Settings {
 					'message' => __( 'Unlinked. The tracker portal can no longer reach this site.', 'gridrankers-portal' ),
 				);
 			}
-			$test = GRP_Link::test();
-			return is_wp_error( $test ) ? self::link_failed( $test ) : array(
-				'ok'      => true,
-				'message' => $test['message'],
-			);
+			return self::test_and_copy();
 		}
 
 		$part = (string) ( $input['part'] ?? '' );
@@ -297,11 +304,7 @@ class GRP_Admin_Settings {
 			if ( is_wp_error( $saved ) ) {
 				return self::link_failed( $saved );
 			}
-			$test = GRP_Link::test();
-			return is_wp_error( $test ) ? self::link_failed( $test ) : array(
-				'ok'      => true,
-				'message' => $test['message'],
-			);
+			return self::test_and_copy();
 		}
 		GRP_Link::set_alone();
 
@@ -309,6 +312,37 @@ class GRP_Admin_Settings {
 			'ok'      => true,
 			'message' => __( 'Saved. This site works on its own.', 'gridrankers-portal' ),
 		);
+	}
+
+	/**
+	 * Test connection, then the first copy of the profiles when it works.
+	 *
+	 * @return array `{ok, message}`.
+	 */
+	private static function test_and_copy() {
+		$test = GRP_Link::test();
+		if ( is_wp_error( $test ) ) {
+			return self::link_failed( $test );
+		}
+		$copy = GRP_Link_Copy::run();
+
+		return array(
+			'ok'      => ! is_wp_error( $copy ),
+			'message' => $test['message'] . ' · ' . ( is_wp_error( $copy ) ? $copy->get_error_message() : self::copy_message( $copy ) ),
+		);
+	}
+
+	/**
+	 * What a copy changed, in words.
+	 *
+	 * @param array $copy GRP_Link_Copy::apply()'s summary.
+	 * @return string
+	 */
+	private static function copy_message( array $copy ) {
+		$people = $copy['members'] ?? array();
+
+		/* translators: 1: people added, 2: people changed, 3: people made inactive. */
+		return sprintf( __( 'Profiles copied: %1$d new, %2$d changed, %3$d removed.', 'gridrankers-portal' ), (int) ( $people['added'] ?? 0 ), (int) ( $people['changed'] ?? 0 ), (int) ( $people['removed'] ?? 0 ) );
 	}
 
 	/**

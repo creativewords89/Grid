@@ -115,6 +115,11 @@ the hours. To link them:
    key, **Save**. It tests the connection at once ("Connected to bot.gridrankers.com · 23 people");
    **Test connection** does it again later.
 
+From then on the tracker portal copies the profiles, working hours, days off, approved leave, projects
+and tasks every 5 minutes (WP-Cron `grp_link_sync`, run by the real cron above), and **Sync now** copies
+at once. Codes, salary, payment details and leave reasons never leave the main portal. On the tracker
+portal all of these are read-only: change them on the main portal.
+
 Both sites need HTTPS. The link key reaches only `/link/*` on the main portal, and wrong keys lock the
 caller's IP for 15 minutes like wrong codes. **Make a link key** again (or **Unlink**) ends the old key.
 The Authorization note above applies to the main portal too.

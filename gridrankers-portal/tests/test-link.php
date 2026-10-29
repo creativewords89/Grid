@@ -25,6 +25,13 @@ class Test_GRP_Link extends GRP_REST_TestCase {
 	 */
 	private $sent = null;
 
+	/**
+	 * Every address the tracker portal called.
+	 *
+	 * @var string[]
+	 */
+	private $urls = array();
+
 	public function set_up() {
 		parent::set_up();
 		delete_option( GRP_Link::OPTION );
@@ -50,12 +57,35 @@ class Test_GRP_Link extends GRP_REST_TestCase {
 	 * @return array|WP_Error
 	 */
 	public function fake_http( $pre, $args, $url ) {
-		$this->sent = array(
+		$this->sent   = array(
 			'url'  => $url,
 			'args' => $args,
 		);
+		$this->urls[] = $url;
 		if ( is_wp_error( $this->answer ) ) {
 			return $this->answer;
+		}
+		// After Test connection the profiles are copied: the main portal's people.
+		if ( str_contains( $url, rawurlencode( '/link/people' ) ) && 200 === $this->answer['status'] ) {
+			$people = array(
+				'members' => array(
+					array(
+						'id'     => 'from-main',
+						'name'   => 'Mia Main',
+						'role'   => 'member',
+						'active' => 1,
+					),
+				),
+			);
+			return array(
+				'headers'  => array(),
+				'body'     => wp_json_encode( $people ),
+				'response' => array(
+					'code'    => 200,
+					'message' => '',
+				),
+				'cookies'  => array(),
+			);
 		}
 
 		return array(
@@ -266,9 +296,10 @@ class Test_GRP_Link extends GRP_REST_TestCase {
 			)
 		);
 		$this->assertTrue( $result['ok'] );
-		$this->assertSame( 'Connected to bot.gridrankers.com · 23 people', $result['message'] );
+		$this->assertStringStartsWith( 'Connected to bot.gridrankers.com · 23 people · Profiles copied: 1 new', $result['message'] );
 		$this->assertSame( 'Bearer ' . $key, $this->sent['args']['headers']['Authorization'] );
-		$this->assertSame( 'https://bot.gridrankers.com/?rest_route=%2Fgr-portal%2Fv1%2Flink%2Fping', $this->sent['url'] );
+		$this->assertSame( 'https://bot.gridrankers.com/?rest_route=%2Fgr-portal%2Fv1%2Flink%2Fping', $this->urls[0] );
+		$this->assertSame( 'Mia Main', GRP_Store::get( 'grp_members', 'from-main' )['name'] );
 		$this->assertNull( GRP_Link::settings()['last_error'] );
 	}
 

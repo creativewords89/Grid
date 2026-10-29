@@ -104,7 +104,13 @@ class GRP_Pay {
 	 * @return bool
 	 */
 	public static function needs_setup( $member ) {
-		return self::earns( $member ) && ! self::complete( GRP_Store::get( 'grp_pay', (string) $member['id'] ) );
+		$pay = GRP_Store::get( 'grp_pay', (string) $member['id'] );
+		// A tracker portal copies only set-up pay's working hours (SPEC.md 6.22): the row is enough.
+		if ( GRP_Link::is_tracker() ) {
+			return self::earns( $member ) && ! $pay;
+		}
+
+		return self::earns( $member ) && ! self::complete( $pay );
 	}
 
 	/**

@@ -33,6 +33,24 @@ class GRP_REST_Link {
 				'permission_callback' => array( 'GRP_Link', 'request_ok' ),
 			)
 		);
+		register_rest_route(
+			GRP_REST_Auth::REST_NAMESPACE,
+			'/link/people',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => array( __CLASS__, 'people' ),
+				'permission_callback' => array( 'GRP_Link', 'request_ok' ),
+			)
+		);
+	}
+
+	/**
+	 * GET /link/people: the profiles, schedule and tasks the tracker portal copies.
+	 *
+	 * @return WP_REST_Response
+	 */
+	public static function people() {
+		return rest_ensure_response( GRP_Link_Copy::payload() );
 	}
 
 	/**

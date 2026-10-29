@@ -348,6 +348,20 @@ class GRP_Link {
 	}
 
 	/**
+	 * Records the tracker portal's last copy from the main portal.
+	 *
+	 * @param string|null $error Why it failed, or null when it worked.
+	 */
+	public static function copied( $error ) {
+		self::save(
+			null === $error ? array(
+				'last_copy_at' => gmdate( 'Y-m-d H:i:s' ),
+				'last_error'   => null,
+			) : array( 'last_error' => $error )
+		);
+	}
+
+	/**
 	 * Gate for `/link/*` (called by the API guard): only on a main portal, only with the link key,
 	 * and wrong keys count against the IP like wrong codes.
 	 *
