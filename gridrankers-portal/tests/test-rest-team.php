@@ -370,7 +370,8 @@ class Test_GRP_REST_Team extends GRP_REST_TestCase {
 		$routes = array_filter(
 			array_keys( rest_get_server()->get_routes() ),
 			static function ( $route ) {
-				return str_starts_with( $route, '/gr-portal/v1/' ) && ! str_starts_with( $route, '/gr-portal/v1/auth/' );
+				// The link's routes take the link key, not a sign-in (test-link.php).
+				return str_starts_with( $route, '/gr-portal/v1/' ) && ! str_starts_with( $route, '/gr-portal/v1/auth/' ) && ! str_starts_with( $route, '/gr-portal/v1/link/' );
 			}
 		);
 		$this->assertGreaterThan( 20, count( $routes ) );

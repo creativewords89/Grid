@@ -808,6 +808,16 @@ class GRP_Auth {
 	}
 
 	/**
+	 * Counts a failed attempt from outside sign-in (a wrong link key, SPEC.md 6.22) toward the same
+	 * lockout as wrong codes.
+	 *
+	 * @param string $ip Client IP address.
+	 */
+	public static function count_failure( $ip ) {
+		self::record_failure( $ip );
+	}
+
+	/**
 	 * Counts a failed attempt; the 5th failure locks the IP for 15 minutes.
 	 *
 	 * @param string $ip Client IP address.

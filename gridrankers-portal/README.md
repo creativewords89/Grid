@@ -103,6 +103,22 @@ A person's signed-in computers are listed (and revoked) through `/devices`; **Se
 and removing someone sign their computers out too. The app itself, its installers and its releases:
 `gridrankers-tracker/README.md`.
 
+### Main portal and tracker portal (SPEC.md 6.22)
+
+Profiles are made once, on the **main portal** (bot.gridrankers.com). The **tracker portal**
+(tracker.gridrankers.com) runs this same plugin, copies the profiles from the main portal and sends it
+the hours. To link them:
+
+1. On the main portal: WP admin → **GridRankers → Settings → Sites** → **Main portal**, type the tracker
+   portal's address, **Save**, then **Make a link key** and copy the key (it is shown once).
+2. On the tracker portal: the same screen → **Tracker portal**, type the main portal's address, paste the
+   key, **Save**. It tests the connection at once ("Connected to bot.gridrankers.com · 23 people");
+   **Test connection** does it again later.
+
+Both sites need HTTPS. The link key reaches only `/link/*` on the main portal, and wrong keys lock the
+caller's IP for 15 minutes like wrong codes. **Make a link key** again (or **Unlink**) ends the old key.
+The Authorization note above applies to the main portal too.
+
 ### Backups
 
 Rely on Hostinger's daily backups and download a JSON export regularly

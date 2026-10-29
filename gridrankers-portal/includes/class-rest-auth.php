@@ -150,7 +150,16 @@ class GRP_REST_Auth {
 		}
 		$path = substr( $route, strlen( $prefix ) );
 
+		// The tracker portal's calls (SPEC.md 6.22): the link key only, on a main portal only.
+		if ( self::link_route( $path ) ) {
+			$ok = GRP_Link::guard( $request );
+			return true === $ok ? $result : $ok;
+		}
+
 		if ( preg_match( '/^Bearer\s+(\S*)$/i', trim( (string) $request->get_header( 'Authorization' ) ), $m ) ) {
+			if ( GRP_Link::key_ok( $m[1] ) ) {
+				return new WP_Error( 'grp_link_route', __( 'A link key works only for the tracker portal’s link.', 'gridrankers-portal' ), array( 'status' => 403 ) );
+			}
 			if ( ! self::device_route( $path ) ) {
 				return new WP_Error( 'grp_device_route', __( 'Open the portal in your browser to do this.', 'gridrankers-portal' ), array( 'status' => 403 ) );
 			}
@@ -175,6 +184,16 @@ class GRP_REST_Auth {
 		}
 
 		return $result;
+	}
+
+	/**
+	 * Whether a route (path under the namespace) is one of the link's `/link/*` routes.
+	 *
+	 * @param string $path Path, e.g. `/link/ping`.
+	 * @return bool
+	 */
+	public static function link_route( $path ) {
+		return '/link' === $path || str_starts_with( $path, '/link/' );
 	}
 
 	/**

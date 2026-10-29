@@ -23,6 +23,7 @@ class GRP_Admin_Settings {
 	public static function init() {
 		add_action( 'admin_menu', array( __CLASS__, 'register_menu' ) );
 		add_action( 'admin_post_grp_update_check', array( __CLASS__, 'handle_update_check' ) );
+		add_action( 'admin_post_grp_link', array( __CLASS__, 'handle_link' ) );
 		add_filter( 'plugin_row_meta', array( __CLASS__, 'row_meta' ), 10, 2 );
 		add_action( 'admin_notices', array( __CLASS__, 'plugins_notice' ) );
 	}
@@ -136,9 +137,191 @@ class GRP_Admin_Settings {
 				);
 				?>
 			</p>
+			<?php self::render_sites(); ?>
 			<?php self::render_updates(); ?>
 		</div>
 		<?php
+	}
+
+	/**
+	 * Sites box (SPEC.md 6.22): on its own, main portal (tracker address, Make a link key, Unlink) or
+	 * tracker portal (main portal address, link key, Test connection).
+	 */
+	public static function render_sites() {
+		$link    = GRP_Link::settings();
+		$part    = GRP_Link::part();
+		$user    = get_current_user_id();
+		$new_key = get_transient( 'grp_link_new_key_' . $user );
+		$notice  = get_transient( 'grp_link_notice_' . $user );
+		delete_transient( 'grp_link_new_key_' . $user );
+		delete_transient( 'grp_link_notice_' . $user );
+		$has_key = '' !== (string) get_option( GRP_Link::KEY_OPTION, '' );
+		?>
+		<h2><?php esc_html_e( 'Sites', 'gridrankers-portal' ); ?></h2>
+		<p><?php esc_html_e( 'Profiles are made once, on the main portal. A tracker portal copies them, signs the desktop tracker in with the same codes and sends the hours back.', 'gridrankers-portal' ); ?></p>
+		<?php if ( is_array( $notice ) ) : ?>
+			<div class="notice notice-<?php echo esc_attr( $notice['ok'] ? 'success' : 'error' ); ?> inline"><p><?php echo esc_html( $notice['message'] ); ?></p></div>
+		<?php endif; ?>
+		<?php if ( $new_key ) : ?>
+			<div class="notice notice-warning inline">
+				<p><strong><?php esc_html_e( 'Your new link key — copy it now, it is shown only once:', 'gridrankers-portal' ); ?></strong></p>
+				<p><input type="text" class="large-text code" readonly value="<?php echo esc_attr( $new_key ); ?>" onclick="this.select()"></p>
+				<p><?php esc_html_e( 'Paste it on the tracker portal: WP admin → GridRankers → Settings → Sites → Tracker portal.', 'gridrankers-portal' ); ?></p>
+			</div>
+		<?php endif; ?>
+		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+			<input type="hidden" name="action" value="grp_link">
+			<?php wp_nonce_field( 'grp_link' ); ?>
+			<table class="form-table" role="presentation">
+				<tr>
+					<th scope="row"><?php esc_html_e( 'This site is', 'gridrankers-portal' ); ?></th>
+					<td>
+						<fieldset>
+							<label><input type="radio" name="part" value="alone" <?php checked( GRP_Link::ALONE, $part ); ?>> <?php esc_html_e( 'On its own', 'gridrankers-portal' ); ?></label><br>
+							<label><input type="radio" name="part" value="main" <?php checked( GRP_Link::MAIN, $part ); ?>> <?php esc_html_e( 'Main portal — profiles, reports and pay live here', 'gridrankers-portal' ); ?></label><br>
+							<label><input type="radio" name="part" value="tracker" <?php checked( GRP_Link::TRACKER, $part ); ?>> <?php esc_html_e( 'Tracker portal — copies profiles from the main portal', 'gridrankers-portal' ); ?></label>
+						</fieldset>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="grp-tracker-url"><?php esc_html_e( 'Tracker site (main portal)', 'gridrankers-portal' ); ?></label></th>
+					<td>
+						<input type="url" id="grp-tracker-url" name="tracker_url" class="regular-text" placeholder="https://tracker.gridrankers.com" value="<?php echo esc_attr( $link['tracker_url'] ); ?>">
+						<p class="description">
+							<?php
+							if ( GRP_Link::has_key() ) {
+								/* translators: %s: date and time. */
+								echo esc_html( sprintf( __( 'Linked · key made %s (UTC).', 'gridrankers-portal' ), $link['made_at'] ) );
+							} else {
+								esc_html_e( 'Not linked: make a link key.', 'gridrankers-portal' );
+							}
+							?>
+						</p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="grp-main-url"><?php esc_html_e( 'Main portal (tracker portal)', 'gridrankers-portal' ); ?></label></th>
+					<td>
+						<input type="url" id="grp-main-url" name="main_url" class="regular-text" placeholder="https://bot.gridrankers.com" value="<?php echo esc_attr( $link['main_url'] ); ?>"><br>
+						<input type="password" name="key" class="regular-text code" autocomplete="off" placeholder="<?php echo esc_attr( $has_key ? __( 'Saved — paste a new key to change it', 'gridrankers-portal' ) : __( 'Link key from the main portal', 'gridrankers-portal' ) ); ?>">
+						<?php if ( GRP_Link::is_tracker() && $link['last_error'] ) : ?>
+							<p class="description"><?php echo esc_html( $link['last_error'] ); ?></p>
+						<?php endif; ?>
+					</td>
+				</tr>
+			</table>
+			<p>
+				<button type="submit" name="do" value="save" class="button button-primary"><?php esc_html_e( 'Save', 'gridrankers-portal' ); ?></button>
+				<?php if ( GRP_Link::is_main() ) : ?>
+					<button type="submit" name="do" value="make_key" class="button"><?php esc_html_e( 'Make a link key', 'gridrankers-portal' ); ?></button>
+					<?php if ( GRP_Link::has_key() ) : ?>
+						<button type="submit" name="do" value="unlink" class="button"><?php esc_html_e( 'Unlink', 'gridrankers-portal' ); ?></button>
+					<?php endif; ?>
+				<?php endif; ?>
+				<?php if ( GRP_Link::is_tracker() ) : ?>
+					<button type="submit" name="do" value="test" class="button"><?php esc_html_e( 'Test connection', 'gridrankers-portal' ); ?></button>
+				<?php endif; ?>
+			</p>
+		</form>
+		<?php
+	}
+
+	/**
+	 * Saves the Sites box and runs its buttons, then comes back to the settings page.
+	 */
+	public static function handle_link() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'You do not have permission to do that.', 'gridrankers-portal' ), 403 );
+		}
+		check_admin_referer( 'grp_link' );
+
+		$input = array();
+		foreach ( array( 'do', 'part', 'tracker_url', 'main_url', 'key' ) as $field ) {
+			$input[ $field ] = isset( $_POST[ $field ] ) ? sanitize_text_field( wp_unslash( $_POST[ $field ] ) ) : ''; // Nonce checked above.
+		}
+		$result = self::apply_link( $input );
+		$user   = get_current_user_id();
+		if ( ! empty( $result['key'] ) ) {
+			set_transient( 'grp_link_new_key_' . $user, $result['key'], 10 * MINUTE_IN_SECONDS );
+		}
+		set_transient( 'grp_link_notice_' . $user, array_intersect_key( $result, array_flip( array( 'ok', 'message' ) ) ), 10 * MINUTE_IN_SECONDS );
+
+		wp_safe_redirect( admin_url( 'admin.php?page=' . self::PAGE_SLUG ) );
+		exit;
+	}
+
+	/**
+	 * What the Sites box's buttons do.
+	 *
+	 * @param array $input `{do: save|make_key|unlink|test, part, tracker_url, main_url, key}`.
+	 * @return array `{ok, message, key?}` (key: a new link key, to show once).
+	 */
+	public static function apply_link( array $input ) {
+		$do = (string) ( $input['do'] ?? 'save' );
+		if ( 'make_key' === $do || 'unlink' === $do || 'test' === $do ) {
+			if ( 'make_key' === $do ) {
+				$key = GRP_Link::make_key();
+				return is_wp_error( $key ) ? self::link_failed( $key ) : array(
+					'ok'      => true,
+					'message' => __( 'New link key made. The old one no longer works.', 'gridrankers-portal' ),
+					'key'     => $key,
+				);
+			}
+			if ( 'unlink' === $do ) {
+				GRP_Link::unlink();
+				return array(
+					'ok'      => true,
+					'message' => __( 'Unlinked. The tracker portal can no longer reach this site.', 'gridrankers-portal' ),
+				);
+			}
+			$test = GRP_Link::test();
+			return is_wp_error( $test ) ? self::link_failed( $test ) : array(
+				'ok'      => true,
+				'message' => $test['message'],
+			);
+		}
+
+		$part = (string) ( $input['part'] ?? '' );
+		if ( GRP_Link::MAIN === $part ) {
+			$saved = GRP_Link::set_main( (string) ( $input['tracker_url'] ?? '' ) );
+			if ( is_wp_error( $saved ) ) {
+				return self::link_failed( $saved );
+			}
+			return array(
+				'ok'      => true,
+				'message' => GRP_Link::has_key() ? __( 'Saved.', 'gridrankers-portal' ) : __( 'Saved. Now make a link key.', 'gridrankers-portal' ),
+			);
+		}
+		if ( GRP_Link::TRACKER === $part ) {
+			$saved = GRP_Link::set_tracker( (string) ( $input['main_url'] ?? '' ), (string) ( $input['key'] ?? '' ) );
+			if ( is_wp_error( $saved ) ) {
+				return self::link_failed( $saved );
+			}
+			$test = GRP_Link::test();
+			return is_wp_error( $test ) ? self::link_failed( $test ) : array(
+				'ok'      => true,
+				'message' => $test['message'],
+			);
+		}
+		GRP_Link::set_alone();
+
+		return array(
+			'ok'      => true,
+			'message' => __( 'Saved. This site works on its own.', 'gridrankers-portal' ),
+		);
+	}
+
+	/**
+	 * A failed Sites action.
+	 *
+	 * @param WP_Error $error Why.
+	 * @return array
+	 */
+	private static function link_failed( WP_Error $error ) {
+		return array(
+			'ok'      => false,
+			'message' => $error->get_error_message(),
+		);
 	}
 
 	/**
