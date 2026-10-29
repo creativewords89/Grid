@@ -1738,3 +1738,28 @@ button.hol-day:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .dr-split b{color:var(--doing)}
 .dr-tracked-note{margin:0;padding:10px 12px;border-radius:10px;background:var(--done-bg);color:var(--ink);font-size:.85rem}
 .pay-who .pay-hand{display:block;font-size:.72rem;color:var(--doing);font-weight:600}
+/* Time tab (SPEC.md 6.21): a week of time entries, the working day and desktop computers. */
+.tt{display:flex;flex-direction:column;gap:14px}
+.tt h3{margin:0 0 8px;font-family:var(--display);font-size:1.05rem}
+.tt-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+.tt-head h3{margin:0 auto 0 0}
+.tt-nav{display:flex;align-items:center;gap:6px;font-size:.85rem;font-weight:600;color:var(--ink-2)}
+.tt-total{font-variant-numeric:tabular-nums;font-size:1.05rem}
+.tt-day{border-top:1px solid var(--line);padding-top:8px;margin-top:8px}
+.tt-dayh{display:flex;justify-content:space-between;font-size:.82rem;color:var(--ink-2);margin-bottom:4px}
+.tt-dayh b{color:var(--ink)}
+.tt-list{list-style:none;margin:0;padding:0}
+.tt-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px dashed var(--line);flex-wrap:wrap}
+.tt-row:last-child{border-bottom:0}
+.tt-when{font-variant-numeric:tabular-nums;font-size:.85rem;color:var(--ink-2);min-width:112px}
+.tt-what{display:flex;flex-direction:column;flex:1;min-width:160px}
+.tt-what small{color:var(--ink-2);font-size:.78rem}
+.tt-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
+.tt-src,.tt-flag{font-size:.7rem;font-weight:700;border-radius:99px;padding:1px 8px;background:var(--panel-2);color:var(--ink-2)}
+.tt-flag{background:var(--doing-bg);color:var(--doing)}
+.tt-dur{font-variant-numeric:tabular-nums}
+.tt-acts{display:flex;gap:10px}
+.linkbtn.danger{color:var(--urgent)}
+.tt-edit{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tt-edit input,.tt-startf input{border:1px solid var(--line);background:var(--panel-2);border-radius:8px;padding:6px 8px}
+.tt-startf{display:flex;align-items:center;gap:8px;flex-wrap:wrap}

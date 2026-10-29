@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { elapsed, entryLabel, fmtClock, isTracked, runningOf, splitMinutes } from '../lib/timer.js';
+import { addDays, canEditTime, canSetStart, elapsed, entryLabel, flagLabels, fmtClock, isTracked, localDate, localTime, runningOf, splitMinutes, toUtc } from '../lib/timer.js';
 
 const data = {
 	time_entries: {
@@ -40,5 +40,45 @@ describe('timer', () => {
 		expect(isTracked(entries[0])).toBe(true);
 		expect(isTracked(entries[1])).toBe(false);
 		expect(splitMinutes(entries)).toEqual({ tracked: 60, hand: 45, total: 105 });
+	});
+});
+
+describe('time tab', () => {
+	const admin = { id: 'a', role: 'admin' };
+	const lead = { id: 'l', role: 'lead' };
+	const lead2 = { id: 'l2', role: 'lead' };
+	const member = { id: 'm', role: 'member' };
+
+	it('adds days', () => {
+		expect(addDays('2026-10-29', -6)).toBe('2026-10-23');
+		expect(addDays('2026-12-30', 3)).toBe('2027-01-02');
+	});
+
+	it('mirrors who may change whose time', () => {
+		const today = '2026-10-29';
+		expect(canEditTime(member, member, { day: today }, today)).toBe(true);
+		expect(canEditTime(member, member, { day: '2026-10-28' }, today)).toBe(false);
+		expect(canEditTime(lead, member, { day: '2026-10-01' }, today)).toBe(true);
+		expect(canEditTime(lead, lead2, { day: today }, today)).toBe(false);
+		expect(canEditTime(admin, lead, { day: '2026-10-01' }, today)).toBe(true);
+		expect(canEditTime(member, lead, { day: today }, today)).toBe(false);
+	});
+
+	it('mirrors who sets when a day starts', () => {
+		expect(canSetStart(admin, lead)).toBe(true);
+		expect(canSetStart(lead, member)).toBe(true);
+		expect(canSetStart(lead, lead2)).toBe(false);
+		expect(canSetStart(member, member)).toBe(false);
+	});
+
+	it('round-trips local times', () => {
+		const utc = toUtc('2026-10-29', '09:30');
+		expect(localTime(utc)).toBe('09:30');
+		expect(localDate(utc)).toBe('2026-10-29');
+	});
+
+	it('labels flags', () => {
+		expect(flagLabels({ flags: { day_off: true, clock_skew: 300 } })).toEqual(['Day off', 'Clock was off']);
+		expect(flagLabels({})).toEqual([]);
 	});
 });

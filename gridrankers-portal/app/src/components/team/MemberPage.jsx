@@ -12,6 +12,7 @@ import MyLeave from './MyLeave.jsx';
 import { AssignedList, BarChart, LogWorkDialog, PeriodHead, ProjectMix, SetCodeDialog, dayLabel } from './parts.jsx';
 import { downloadReport } from './pdf.js';
 import TeamArea from './TeamArea.jsx';
+import TimeTab from './TimeTab.jsx';
 
 export const trend = (a, b) =>
 	a === b ? <span className="tr eq">same as previous</span> : a > b ? <span className="tr up">▲ {a - b} vs previous</span> : <span className="tr down">▼ {b - a} vs previous</span>;
@@ -450,18 +451,18 @@ export default function MemberPage({ pid, perf, setPerf, onBack, initialTab }) {
 				['calendar', 'Calendar'],
 				['team', 'Team'],
 				['teamleave', 'Leave', waiting || ''],
-				...(person.role !== 'admin' ? [['leave', 'My leave']] : []),
+				...(person.role !== 'admin' ? [['leave', 'My leave'], ['time', 'My time']] : []),
 				['profile', 'Profile settings'],
 				...(isAdmin(person) ? [['admin', 'Admin settings']] : []),
 				['activity', 'Recent Activity'],
 			]
 		: self
-		? [...(person.role !== 'admin' ? [['leave', 'My leave']] : []), ['calendar', 'Calendar'], ['profile', 'Settings'], ['activity', 'Recent Activities']]
+		? [...(person.role !== 'admin' ? [['leave', 'My leave'], ['time', 'My time']] : []), ['calendar', 'Calendar'], ['profile', 'Settings'], ['activity', 'Recent Activities']]
 		: [
 				['dash', 'Overview'],
 				['assigned', 'Tasks', open.length || ''],
 				['calendar', 'Calendar'],
-				...(person.role !== 'admin' ? [['leave', 'Leave']] : []),
+				...(person.role !== 'admin' ? [['leave', 'Leave'], ['time', 'Time']] : []),
 				['activity', 'Recent Activities'],
 				['profile', 'Profile'],
 			];
@@ -471,6 +472,9 @@ export default function MemberPage({ pid, perf, setPerf, onBack, initialTab }) {
 	let body;
 	if (teamSection) {
 		body = <TeamArea key={teamSection} section={teamSection} perf={perf} setPerf={setPerf} onPerson={setTeamPerson} />;
+	} else if (tab === 'time') {
+		// Time tracker (SPEC.md 6.21): their entries, working day and desktop computers.
+		body = <TimeTab key={person.id} person={person} />;
 	} else if (tab === 'dash') {
 		const urgent = open.filter((x) => x.priority === 'urgent').length;
 		body = (
