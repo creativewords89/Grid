@@ -160,7 +160,7 @@ class GRP_Admin_Settings {
 		<h2><?php esc_html_e( 'Sites', 'gridrankers-portal' ); ?></h2>
 		<p><?php esc_html_e( 'Profiles are made once, on the main portal. A tracker portal copies them, signs the desktop tracker in with the same codes and sends the hours back.', 'gridrankers-portal' ); ?></p>
 		<?php if ( is_array( $notice ) ) : ?>
-			<div class="notice notice-<?php echo esc_attr( $notice['ok'] ? 'success' : 'error' ); ?> inline"><p><?php echo esc_html( $notice['message'] ); ?></p></div>
+			<div class="notice grp-link-notice notice-<?php echo esc_attr( $notice['ok'] ? 'success' : 'error' ); ?> inline"><p><?php echo esc_html( $notice['message'] ); ?></p></div>
 		<?php endif; ?>
 		<?php if ( $new_key ) : ?>
 			<div class="notice notice-warning inline">
