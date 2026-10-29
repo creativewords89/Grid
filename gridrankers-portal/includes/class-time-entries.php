@@ -34,6 +34,11 @@ class GRP_Time_Entries {
 	const LATE_SECONDS = DAY_IN_SECONDS;
 
 	/**
+	 * Deleted entries can be restored for this many days, then they are removed for good.
+	 */
+	const TRASH_DAYS = 30;
+
+	/**
 	 * Saves one entry for a person as the desktop app or the portal sends it, with every check of
 	 * SPEC.md 6.21. An entry the server already has (same id) is not saved twice: it is only stopped
 	 * when it was still running here and now has an end.
@@ -219,6 +224,64 @@ class GRP_Time_Entries {
 					'entry'  => $deleted,
 				);
 			}
+		);
+	}
+
+	/**
+	 * Restores a deleted entry: its time comes back into the report. Every check applies again
+	 * (overlap, a locked report, too long ago). The permission check is the caller's.
+	 *
+	 * @param array  $entry  Deleted entry.
+	 * @param string $editor Who restores it.
+	 * @return array `{status: saved|refused, entry?, code?, message?}`.
+	 */
+	public static function restore( array $entry, $editor ) {
+		if ( empty( $entry['deleted_at'] ) ) {
+			return self::refused( 'grp_conflict', __( 'It has already been restored.', 'gridrankers-portal' ) );
+		}
+		$member = (array) GRP_Store::get( 'grp_members', (string) $entry['member_id'] );
+
+		return GRP_Store::transaction(
+			static function () use ( $entry, $member, $editor ) {
+				$why = self::why_not( $member, $entry, GRP_Ids::now() );
+				if ( $why ) {
+					return $why;
+				}
+				$row = GRP_Store::update(
+					self::TABLE,
+					$entry['id'],
+					array(
+						'deleted_at' => null,
+						'edited_by'  => (string) $editor,
+					)
+				);
+				self::sync_report( (string) $entry['member_id'], $entry['day'] );
+
+				return array(
+					'status' => 'saved',
+					'entry'  => $row,
+				);
+			}
+		);
+	}
+
+	/**
+	 * The hourly job: removes entries deleted more than 30 days ago (too old to be uploaded again).
+	 *
+	 * @param string|null $now Now (UTC).
+	 * @return int Entries removed.
+	 */
+	public static function purge( $now = null ) {
+		global $wpdb;
+
+		$now = $now ? $now : GRP_Ids::now();
+
+		return (int) $wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$wpdb->prepare(
+				'DELETE FROM %i WHERE deleted_at IS NOT NULL AND deleted_at < %s',
+				GRP_Install::table( self::TABLE ),
+				GRP_Ids::now( strtotime( $now . ' UTC' ) - self::TRASH_DAYS * DAY_IN_SECONDS )
+			)
 		);
 	}
 

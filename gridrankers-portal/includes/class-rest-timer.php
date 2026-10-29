@@ -25,6 +25,7 @@ class GRP_REST_Timer extends GRP_REST_Controller {
 		self::route( '/time-entries/batch', WP_REST_Server::CREATABLE, 'batch' );
 		self::route( '/time-entries/(?P<id>[\w-]+)', 'PATCH', 'update' );
 		self::route( '/time-entries/(?P<id>[\w-]+)', WP_REST_Server::DELETABLE, 'destroy' );
+		self::route( '/time-entries/(?P<id>[\w-]+)/restore', WP_REST_Server::CREATABLE, 'restore' );
 		self::route( '/settings/work-start', 'PUT', 'work_start' );
 	}
 
@@ -240,6 +241,31 @@ class GRP_REST_Timer extends GRP_REST_Controller {
 		}
 
 		return rest_ensure_response( array( 'deleted' => true ) );
+	}
+
+	/**
+	 * POST /time-entries/{id}/restore: brings a deleted entry back (within 30 days) by whoever may
+	 * change it; its time returns to the report.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function restore( WP_REST_Request $request ) {
+		$entry  = GRP_Store::get( GRP_Time_Entries::TABLE, (string) $request['id'] );
+		$member = $entry ? GRP_Store::get( 'grp_members', (string) $entry['member_id'] ) : null;
+		if ( ! $member ) {
+			return self::not_found();
+		}
+		if ( ! self::can( GRP_Permissions::EDIT_TIME, self::owner( $member ) + array( 'day' => $entry['day'] ) ) ) {
+			return self::forbidden();
+		}
+
+		$result = GRP_Time_Entries::restore( $entry, (string) self::actor()['id'] );
+		if ( 'refused' === $result['status'] ) {
+			return self::refusal( $result );
+		}
+
+		return rest_ensure_response( $result['entry'] );
 	}
 
 	/**

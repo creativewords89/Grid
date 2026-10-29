@@ -42,6 +42,7 @@ class GRP_REST_Sync extends GRP_REST_Controller {
 		'grp_client_requests'  => 'client_requests',
 		'grp_request_messages' => 'request_messages',
 		'grp_report_changes'   => 'report_changes',
+		'grp_time_entries'     => 'time_entries',
 	);
 
 	/**
@@ -88,7 +89,9 @@ class GRP_REST_Sync extends GRP_REST_Controller {
 				$changes[ $key ] = array();
 				continue;
 			}
-			if ( ( 'grp_activity' === $table && ! $manager ) || 'grp_dismissals' === $table ) {
+			// Time (SPEC.md 6.21): a Team Member only their own; Team Leaders and the Super Admin everyone's
+			// (the Super Admin tracks none, so a Team Leader sees exactly what VIEW_TIME allows).
+			if ( ( in_array( $table, array( 'grp_activity', 'grp_time_entries' ), true ) && ! $manager ) || 'grp_dismissals' === $table ) {
 				$where['member_id'] = $actor['id'];
 			}
 

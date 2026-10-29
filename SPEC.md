@@ -394,6 +394,7 @@ Daily reports → **Holidays**, for everyone; the rules are those of 6.10 (the s
   - at the end of the working day: "It's 5:00 — stop your timer and send your daily report" (and once 30 minutes later if the timer still runs or the report isn't sent).
   Every reminder has **Snooze 15 min**; reminders cannot be turned off during the working day. The timer itself works on any day.
 - **Portal**: the timer chip in the top bar (what is running, Stop, switch), the tracked entries in Daily reports, a **Time** view of the person's entries (edit / delete by the rules of section 3), and the person's devices with **Revoke**. Tracked time writes no `grp_activity` rows: those count completed work in the performance reports, and the daily report already holds the time.
+- **Deleted time**: a deleted entry is kept 30 days (so a resent upload is never saved again) and can be restored by whoever may change it, with every check again; then the hourly job removes it. Time entries are in the export (`timeEntries`); devices never are.
 - **Desktop app**: Windows and macOS installers, signed; starts with the computer; updates itself.
 
 ## 7. Screens (match the reference file)
@@ -522,7 +523,7 @@ The team sections are tabs of **My page** for leaders and the Super Admin (7.6) 
 | GET `/pay/me` · PUT `/pay/me` `{day_minutes, salary, method, bank_name?, branch?, account_name, account_number, routing?}` · GET `/salary?member=&month=YYYY-MM` · GET `/salary/sheet?month=` · POST `/salary/paid` `{month, member_ids, paid?}` | pay (6.19) |
 | POST `/auth/device` `{code, device_name, platform, app_version}` → `{token, device, member, work_day, schedule, tasks, timer}` (no nonce) · DELETE `/auth/device` (the app signs out) · GET `/devices?member=` · DELETE `/devices/id` (Revoke) | desktop sign-in and devices (6.21) |
 | GET `/timer` · POST `/timer/start` `{id, project_id, ref_kind, ref_id, period_key?, note?, started_at?}` · POST `/timer/stop` `{ended_at?, idle_seconds?}` · GET `/timer/schedule?days=14` · GET `/timer/tasks` | the running timer, schedule and tasks (6.21) |
-| GET `/time-entries?member=&from=&to=` · PATCH/DELETE `/time-entries/id` · POST `/time-entries/batch` `{entries: [..≤200], clock_offset?}` | time entries (6.21) |
+| GET `/time-entries?member=&from=&to=` · PATCH/DELETE `/time-entries/id` · POST `/time-entries/id/restore` (within 30 days) · POST `/time-entries/batch` `{entries: [..≤200], clock_offset?}` | time entries (6.21) |
 | PUT `/settings/work-start` `{start}` (Super Admin) · PATCH `/members/id` `{work_start}` | start of the working day (6.21) |
 | GET `/export` · POST `/import` (admin, nonce) | data |
 
@@ -726,7 +727,7 @@ Mapping: `clients → grp_projects` (pstate/active → state; cycleDay, cycleSet
 93. (Done.) Device sign-in: `POST /auth/device` with the code (same lockout) answering the token, the device, the person, their working day and 14 days of schedule; `DELETE /auth/device`; bearer tokens limited to the tracker routes; `/devices` (list, Revoke); revoke on Set code / role change / Remove member; Pay lock. **Tests:** wrong code gives nothing; a revoked or expired token gets 401; a token cannot reach `/projects`; the answer carries only the person's own data.
 94. (Done.) REST `/timer` and `/time-entries` (and `tasks` + `timer` in the sign-in answer) (one timer per person, batch with per-entry answers, overlap, report lock, 12-hour auto-stop in the hourly job, flags), tracked entries written into the daily report and kept by `PUT /daily-reports` (their minutes follow the timer), `/timer/schedule`, `/timer/tasks`, `/settings/work-start`, `work_start` on `PATCH /members/id`. **Tests** for every rule and permission; tracked minutes are paid once.
 95. (Done.) Handwritten hours: the Super Admin's notice on send and when handwritten minutes go up. **Tests:** a report with only tracked time sends no notice; more handwritten time on a sent report sends another; less sends none.
-96. `/sync` (with its privacy), export / import and trash for time entries. **Tests:** a Team Member never receives another person's time.
+96. (Done.) `/sync` (with its privacy), export / import (`timeEntries`; tracked report lines stay tracked; devices never) and trash for time entries (deleted entries restore within 30 days, then the hourly job removes them). **Tests:** a Team Member never receives another person's time.
 97. Portal: the timer chip in the top bar; tracked / ✍ by hand in Daily reports, Team reports and the pay sheet. Playwright.
 98. Portal: the Time view, devices with Revoke, the start-of-day setting. Playwright.
 99. Desktop: `gridrankers-tracker/` scaffold (Electron + Vite + React), sign in with the code, tray, start / stop.

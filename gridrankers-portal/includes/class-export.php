@@ -37,6 +37,7 @@ class GRP_Export {
 			'posts'        => array_map( array( __CLASS__, 'post' ), GRP_Store::find( 'grp_posts', array(), array( 'order_by' => 'created_at' ) ) ),
 			'keywords'     => array_map( array( __CLASS__, 'keyword' ), GRP_Store::find( 'grp_keywords', array(), array( 'order_by' => 'created_at' ) ) ),
 			'dailyReports' => array_map( array( __CLASS__, 'daily_report' ), GRP_Store::find( 'grp_daily_reports', array(), array( 'order_by' => 'day' ) ) ),
+			'timeEntries'  => array_map( array( __CLASS__, 'time_entry' ), GRP_Store::find( 'grp_time_entries', array(), array( 'order_by' => 'started_at' ) ) ),
 			'visitors'     => array(),
 		);
 
@@ -245,6 +246,7 @@ class GRP_Export {
 				'birthYear' => $r['birth_year'],
 				'location'  => $r['location'],
 				'weeklyOff' => $r['weekly_off'],
+				'workStart' => $r['work_start'] ?? null,
 				'createdAt' => self::iso( $r['created_at'] ),
 			)
 		);
@@ -476,6 +478,37 @@ class GRP_Export {
 				'sentAt'    => self::iso( $r['sent_at'] ),
 				'late'      => (bool) $r['late'],
 				'createdAt' => self::iso( $r['created_at'] ),
+			)
+		);
+	}
+
+	/**
+	 * `grp_time_entries` → `timeEntries` (SPEC.md 6.21). Desktop devices are never exported.
+	 *
+	 * @param array $r Row.
+	 * @return array
+	 */
+	public static function time_entry( array $r ) {
+		return self::clean(
+			array(
+				'id'          => $r['id'],
+				'memberId'    => $r['member_id'],
+				'day'         => $r['day'],
+				'projectId'   => $r['project_id'],
+				'refKind'     => $r['ref_kind'],
+				'refId'       => $r['ref_id'],
+				'periodKey'   => $r['period_key'],
+				'startedAt'   => self::iso( $r['started_at'] ),
+				'endedAt'     => self::iso( $r['ended_at'] ),
+				'seconds'     => (int) $r['seconds'],
+				'idleSeconds' => (int) $r['idle_seconds'],
+				'source'      => $r['source'],
+				'note'        => '' === (string) $r['note'] ? null : $r['note'],
+				'flags'       => $r['flags'] ? $r['flags'] : null,
+				'syncedAt'    => self::iso( $r['synced_at'] ),
+				'editedBy'    => $r['edited_by'],
+				'deletedAt'   => self::iso( $r['deleted_at'] ),
+				'createdAt'   => self::iso( $r['created_at'] ),
 			)
 		);
 	}
