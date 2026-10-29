@@ -4,37 +4,50 @@
 import { test, expect } from '@playwright/test';
 import { LEAD, MAX, apiCall, openProject, showStrip, signIn, signOut, watchErrors } from './helpers.mjs';
 
+// The e2e seed starts Cycle Co's new cycle today — but cycle days stop at 28, so on the 29th–31st it
+// started on the 28th: the 3-day setup then has 2 or 1 days left, or is a day overdue on the 31st.
+const DAY = 86400000;
+const now = new Date();
+const todayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+const startMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), Math.min(28, now.getUTCDate()));
+const beforeStart = new Date(startMs - DAY).toISOString().slice(0, 10);
+const left = 3 - Math.round((todayMs - startMs) / DAY);
+const late = left > 0 ? 0 : 1 - left;
+const days = (n) => `${n} day${n === 1 ? '' : 's'}`;
+const flagText = left > 0 ? `${days(left)} left` : `Overdue · ${days(late)}`;
+// The reminder in Notifications, with `todo` (a regex source) in it.
+const reminderText = (todo) => new RegExp(left > 0 ? `New cycle for Cycle Co — ${todo} · ${days(left)} left` : `Cycle Co: new cycle setup is ${days(late)} overdue — ${todo}`);
+
 test('assign and review a new cycle', async ({ page }) => {
 	const noErrors = watchErrors(page);
 	const box = (title) => page.locator('.md-card', { has: page.getByRole('heading', { name: title }) });
 	const dlg = page.locator('dialog[open]');
 
-	// A meeting task due last cycle (the cycle started today) and still open.
+	// A meeting task due last cycle (the day before this cycle started) and still open.
 	await signIn(page, LEAD);
 	const cycleCoId = (await apiCall(page, 'GET', 'projects')).json.find((p) => p.name === 'Cycle Co').id;
-	const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-	expect((await apiCall(page, 'POST', 'meeting-tasks', { project_id: cycleCoId, title: 'Cycle photos', assignees: [{ id: 'tm_max', n: 1 }], deadline: { type: 'date', date: yesterday } })).status).toBe(201);
+	expect((await apiCall(page, 'POST', 'meeting-tasks', { project_id: cycleCoId, title: 'Cycle photos', assignees: [{ id: 'tm_max', n: 1 }], deadline: { type: 'date', date: beforeStart } })).status).toBe(201);
 	await page.reload();
 	const setup = box('New cycle setup').locator('.cs-proj', { hasText: 'Cycle Co' });
 	// Cycle blogs has Max; Cycle pages (and any standard tasks grp_daily added) have nobody yet.
 	await expect(setup).toContainText(/Assign monthly tasks · 1 of \d+ have people/);
 	await expect(setup).toContainText('Review monthly tasks · 0 of 2 reviewed');
 	await expect(setup).toContainText('Review meeting minutes · 0 of 1 reviewed');
-	await expect(setup.locator('.mp-flag')).toContainText('3 days left');
-	await showStrip(page, 'New cycle for Cycle Co.');
+	await expect(setup.locator('.mp-flag')).toContainText(flagText);
+	await showStrip(page, left > 0 ? 'New cycle for Cycle Co.' : 'Cycle Co: new cycle setup is');
 
 	// Today's reminder in Notifications and on the bell: no dismiss, and the bell keeps it new.
 	const reminder = box('Notifications').locator('.nf-must-item', { hasText: 'Cycle Co' });
-	await expect(reminder).toContainText(/New cycle for Cycle Co — \d+ unassigned, 3 to review · 3 days left/);
+	await expect(reminder).toContainText(reminderText('\\d+ unassigned, 3 to review'));
 	await expect(reminder.getByRole('button')).toHaveText(['Open setup']);
 	// Under the filter chips, not above them.
 	const [chips, rem] = [await box('Notifications').locator('.nf-chips').boundingBox(), await reminder.boundingBox()];
 	expect(rem.y).toBeGreaterThan(chips.y + chips.height - 1);
 	await page.locator('.md-bell-btn').click();
-	await expect(page.locator('.md-pop li.must', { hasText: 'New cycle for Cycle Co' })).toHaveClass(/new/);
+	await expect(page.locator('.md-pop li.must', { hasText: 'Cycle Co' })).toHaveClass(/new/);
 	await page.locator('.md-bell-btn').click();
 	await page.locator('.md-bell-btn').click();
-	await expect(page.locator('.md-pop li.must.new', { hasText: 'New cycle for Cycle Co' })).toHaveCount(1);
+	await expect(page.locator('.md-pop li.must.new', { hasText: 'Cycle Co' })).toHaveCount(1);
 	await page.locator('.md-bell-btn').click();
 	// Mark all read clears the rest but never the reminder (opening the bell clears nothing).
 	const markAll = box('Notifications').getByRole('button', { name: 'Mark all read' });
@@ -82,7 +95,7 @@ test('assign and review a new cycle', async ({ page }) => {
 	await dlg.getByRole('button', { name: 'Close' }).last().click();
 	await expect(setup).toContainText('Review monthly tasks · 2 of 2 reviewed');
 	await expect(setup).toContainText('Review meeting minutes · 1 of 1 reviewed');
-	await expect(reminder).toContainText(/New cycle for Cycle Co — \d+ unassigned · 3 days left/);
+	await expect(reminder).toContainText(reminderText('\\d+ unassigned'));
 
 	// The catch-up task is on Meeting Minutes with its tag.
 	await openProject(page, 'Cycle Co');
