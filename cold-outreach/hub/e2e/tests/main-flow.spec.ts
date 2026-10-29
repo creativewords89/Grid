@@ -140,7 +140,7 @@ test("a Collector hands in a file, fixes it and sends it on to Top Review", asyn
   });
   await cal.getByRole("button", { name: "Send to Top Review now" }).click();
   // Both cities are under 10 businesses: none goes on unless it is given a Top.
-  await expect(cal.getByText(/no city has 10 businesses/)).toBeVisible();
+  await expect(cal.getByText(/no city is in the batch/)).toBeVisible();
   await expect(cal.getByRole("button", { name: /Upload fixes/ })).toHaveCount(
     0,
   );
@@ -414,7 +414,7 @@ test("a city of 10 businesses or more gets its Top and goes on to the batch", as
   const row = page.getByRole("row", { name: /top-review\.xlsx/ });
   await expect(row).toContainText("No errors");
   await row.getByRole("button", { name: "Send to Top Review now" }).click();
-  await expect(row).toContainText("Waiting for the reviewer");
+  await expect(row).toContainText("Waiting for Top Review");
   await expect(row).toContainText("0 of 1 city in the batch");
 
   // The Reviewer finds Austin Not ready and chooses its Top.
@@ -424,12 +424,19 @@ test("a city of 10 businesses or more gets its Top and goes on to the batch", as
   await rita.getByRole("button", { name: "Save the Top of Austin" }).click();
   await expect(rita.getByText(/Saved the Top of Austin/)).toBeVisible();
 
-  // Ready: it would go on in an hour; the Owner sends it now.
+  // Ready: it would go on in an hour; the Reviewer sends it now (Files doesn't show it).
   await page.reload();
-  await expect(row).toContainText("1 city ready");
-  await row
-    .getByRole("button", { name: "Send ready cities to Cleaning now" })
+  await expect(row).not.toContainText("ready");
+  await rita
+    .getByRole("navigation", { name: "Cities" })
+    .getByRole("button", { name: /^Ready/ })
     .click();
+  await rita
+    .getByRole("row", { name: /Austin/ })
+    .getByRole("button", { name: "Send to batch now" })
+    .click();
+  await expect(rita.getByText("Austin is in its batch.")).toBeVisible();
+  await page.reload();
   await expect(row).toContainText("1 of 1 city in the batch");
   await expect(row).toContainText("Done");
   await page

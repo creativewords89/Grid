@@ -175,27 +175,18 @@ def normal_text(text: str) -> str:
 
 
 def name_place(values: dict[str, str]) -> str:
-    """Name + address; for a row with only a name, name + city (the weakest match)."""
+    """Name + address; empty without either (step 39: a name alone, or a name and a city,
+    is never enough, as one brand has a business in many cities)."""
     name = normal_text(values.get("business_name", ""))
-    if not name:
-        return ""
     address = normal_text(values.get("address", ""))
-    if address:
-        return f"{name}|{address}"
-    if values.get("gbp_link") or phone_digits(values.get("phone", "")):
-        return ""
-    city = normal_text(values.get("city", ""))
-    return f"{name}|city:{city}" if city else ""
+    return f"{name}|{address}" if name and address else ""
 
 
 def keys(values: dict[str, str]) -> set[str]:
-    """What makes two rows the same business: the GBP link, the phone, or name + address."""
+    """What makes two rows the same business: the GBP link, or name + address."""
     found = set()
     if values.get("gbp_link"):
         found.add("gbp:" + values["gbp_link"])
-    digits = phone_digits(values.get("phone", ""))
-    if digits:
-        found.add("phone:" + digits)
     place = name_place(values)
     if place:
         found.add("name:" + place)
@@ -320,11 +311,9 @@ def read_rows(
 
 
 def same_business(a: dict[str, str], b: dict[str, str]) -> bool:
-    """Two rows are one business when their GBP links match, or when their phone or name
-    and address match and they don't have two different GBP links. A brand with one phone
-    number but a profile in each city stays one lead per profile."""
-    if a.get("gbp_link") and b.get("gbp_link"):
-        return a["gbp_link"] == b["gbp_link"]
+    """Two rows are one business when their GBP links match, or their business name and
+    address both match (step 39). The same name in another city, or the same phone, isn't
+    enough: one brand often has a business in many cities, each at its own address."""
     return bool(keys(a) & keys(b))
 
 

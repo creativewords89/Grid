@@ -311,10 +311,10 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 3. **Cleaning:** spaces and line breaks squeezed; phone compared by its last 10 digits; website
    loses its `utm_*` parameters only; emails lower-cased, split on commas, spaces, semicolons or
    slashes, `%20` decoded; anything that isn't an email is listed and left out.
-4. **Same business** (within the file and against the registry): the **same GBP link**; or,
-   when the two don't have **different** GBP links, the same phone, or the same name + address
-   (name + city when a row has no GBP link, phone or address). So a brand with one phone number
-   and a profile in each city stays one lead per profile. Merged rows pool their emails; an
+4. **Same business** (within the file and against the registry): the **same GBP link**, or
+   the **same business name and address** (since step 39; a name alone, a name and a city,
+   or the same phone is never enough, as one brand often has a business in many cities,
+   each at its own address). Merged rows pool their emails; an
    empty field is filled from the other row; when both have a value the first row's is kept;
    Top wins. **A business is in one batch only**, the one it was first imported into: found in
    a file added to another batch, it is listed as "already in another batch", stays where it
@@ -1020,8 +1020,11 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     A city taken out of the batch (its import deleted) is muted too. **Files**: tabs All ·
     Checking · Fix errors · Final check · Top Review · In the batch; Batch name is the
     niche's batch; **In a batch** shows "3 of 8 cities in the batch" (and how many are ready
-    or muted); a file's page lists its cities with their state, Send to batch now and
-    Unmute. **Batches**: no New batch and no upload in a batch any more (the API keeps
+    or muted). (Corrected after step 39: Ready, Not ready and under 10 aren't shown on
+    Files, nor Send to batch now: they are on Top Review. A file in Top Review says **In Top
+    Review · Waiting for Top Review**; its page names only its muted cities, as a warning,
+    with Unmute for Owners and Admins. The same business is the same GBP link, or the same
+    name and address: the same name in another city is another business.) **Batches**: no New batch and no upload in a batch any more (the API keeps
     them for Owners and Admins); a batch opens on its Cities. Migration `0027` deletes the
     batches made before with their leads, imports, cities, agents' results, tasks and Top
     do-not-contact entries (files, niches, benchmarks, agents and people stay; files agents

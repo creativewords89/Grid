@@ -263,14 +263,13 @@ test("a file in the batch shows its cities, and can't be changed", async () => {
   ]); // a Collector's own files: no Handed in by
   await userEvent.click(screen.getByRole("button", { name: "tulsa.xlsx" }));
   expect(await screen.findByRole("heading", { name: "tulsa.xlsx" })).toBeVisible();
-  const cities = screen.getByRole("table", { name: /Cities/ });
-  expect(within(cities).getByRole("row", { name: /Tulsa/ })).toHaveTextContent("In the batch");
-  expect(within(cities).getByRole("row", { name: /Waco/ })).toHaveTextContent("Under 10");
+  // No table of cities on a file's page: Top Review has them.
+  expect(screen.queryByRole("table", { name: /Cities/ })).toBeNull();
   expect(screen.queryByRole("button", { name: /Upload fixes/ })).toBeNull();
   expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
 });
 
-test("ready cities go to the batch now; an owner unmutes a muted city", async () => {
+test("a file in Top Review: no Ready cities here; a muted city is a warning an owner unmutes", async () => {
   const reviewing = file({
     status: "top_review",
     errors: 0,
@@ -281,7 +280,7 @@ test("ready cities go to the batch now; an owner unmutes a muted city", async ()
     can_send_cities: true,
   });
   const cities = [
-    city({ state: "ready", tops: 1, moves_at: new Date(Date.now() + 30 * 60_000).toISOString() }),
+    city({ state: "ready", tops: 1 }),
     city({
       key: "dallas",
       name: "Dallas",
@@ -296,28 +295,23 @@ test("ready cities go to the batch now; an owner unmutes a muted city", async ()
     "GET /submissions/niches": [200, ["Cleaning"]],
     "GET /submissions/f1": [200, full],
     "GET /submissions/f1/leads?page=1&sort=row": [200, leads],
-    "POST /submissions/f1/to-batch": [200, full],
     "POST /submissions/f1/cities/dallas/unmute": [200, { ...full, status: "checking" }],
   });
   render(<App />);
 
   const row = await screen.findByRole("row", { name: /tulsa\.xlsx/ });
   expect(within(row).getByText("Cal")).toBeVisible(); // who handed it in
-  expect(within(row).getByText("1 city ready")).toBeVisible();
-  await userEvent.click(
-    within(row).getByRole("button", { name: "Send ready cities to Cleaning now" }),
-  );
-  expect(calls.find((c) => c.path === "/submissions/f1/to-batch")?.body).toEqual({});
+  expect(within(row).getByText("In Top Review")).toBeVisible();
+  expect(within(row).getByText("Waiting for Top Review")).toBeVisible();
+  expect(within(row).queryByText(/ready/i)).toBeNull();
+  expect(within(row).queryByRole("button", { name: /Send/ })).toBeNull();
 
   await userEvent.click(within(row).getByRole("button", { name: "Open" }));
-  const table = await screen.findByRole("table", { name: /Cities/ });
-  expect(within(table).getByText(/Goes on in (29|30) min/)).toBeVisible();
-  expect(within(table).getByText(/already in file F3/)).toBeVisible();
-  await userEvent.click(within(table).getByRole("button", { name: "Send to batch now" }));
-  expect(calls.filter((c) => c.path === "/submissions/f1/to-batch").at(-1)?.body).toEqual({
-    city: "tulsa",
-  });
-  await userEvent.click(within(table).getByRole("button", { name: "Unmute" }));
+  const muted = await screen.findByRole("list", { name: "Muted cities" });
+  expect(muted).toHaveTextContent("Dallas is muted: Dallas is already in file F3");
+  expect(screen.queryByRole("table", { name: /Cities/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /Send/ })).toBeNull();
+  await userEvent.click(within(muted).getByRole("button", { name: "Unmute" }));
   expect(calls.some((c) => c.path === "/submissions/f1/cities/dallas/unmute")).toBe(true);
 });
 
@@ -403,7 +397,7 @@ test("a file without errors waits in its Final check, and can be sent on now", a
   expect(calls.some((c) => c.method === "POST" && c.path === "/submissions/f1/send")).toBe(true);
   await userEvent.click(within(stages).getByRole("button", { name: /Top Review/ }));
   const sent = await screen.findByRole("row", { name: /tulsa\.xlsx/ });
-  expect(within(sent).getByText(/Waiting for the reviewer/)).toBeVisible();
+  expect(within(sent).getByText(/Waiting for Top Review/)).toBeVisible();
 });
 
 test("a whole new file through Upload fixes replaces the file once confirmed", async () => {

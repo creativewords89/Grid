@@ -120,7 +120,7 @@ def test_variant_headers_and_a_missing_city_column() -> None:
     assert report.unknown_columns == {"Operation Hour": ["Dallas"]}
 
 
-def test_same_phone_and_two_emails_become_one_lead() -> None:
+def test_same_name_and_address_and_two_emails_become_one_lead() -> None:
     content = workbook(
         {
             "Aurora": [
@@ -167,21 +167,31 @@ def test_city_filled_down_an_empty_tab_is_not_a_business() -> None:
     assert report.skipped_rows == []
 
 
-def test_a_row_with_only_a_name_matches_by_name_and_city() -> None:
+def test_a_name_without_an_address_is_never_matched() -> None:
+    """Step 39: only the GBP link, or the name and the address, make two rows one."""
     content = workbook(
         {
             "San Jose": [
                 ["Business name", "City", "Email"],
                 ["MOLLY MAID of S. Silicon Valley", "San Jose", "a@mm.com"],
                 ["Molly Maid of S Silicon Valley", "San Jose", "b@mm.com"],
-                ["Molly Maid of S Silicon Valley", "Fremont", ""],
             ]
         }
     )
 
-    report = reader.read(content, "Cleaning")
+    assert len(reader.read(content, "Cleaning").leads) == 2
 
-    assert [lead.emails for lead in report.leads] == [["a@mm.com", "b@mm.com"], []]
+
+def test_one_brand_in_many_cities_or_one_phone_stays_separate() -> None:
+    """Step 39: the same name at another address, or the same phone, is another business."""
+    content = workbook(
+        {
+            "Austin": [STANDARD, row("Molly Maid", "", "(512) 555-0100", city="Austin")],
+            "Dallas": [STANDARD, row("Molly Maid", "", "(512) 555-0100", city="Dallas")],
+        }
+    )
+
+    assert len(reader.read(content, "Cleaning").leads) == 2
 
 
 def test_bad_emails_are_listed_and_encoded_spaces_cleaned() -> None:
@@ -719,7 +729,7 @@ def test_small_cities_are_muted_and_follow_new_files_unless_set_by_hand(
     # Unmuted by hand: the rule leaves Austin alone from now on.
     client.patch(f"/api/lists/{cities['Austin']['id']}", json={"active": True})
 
-    more = [row(f"D {n}", f"https://share.google/e{n}", f"8{n}", city="Dallas") for n in range(7)]
+    more = [row(f"E {n}", f"https://share.google/e{n}", f"8{n}", city="Dallas") for n in range(7)]
     second = upload(client, workbook({"Dallas": [STANDARD, *more]}))
     client.post(f"/api/imports/{second['id']}/confirm")
     after = {c["city"]: c for c in client.get(url).json()}
