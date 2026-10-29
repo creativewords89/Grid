@@ -192,7 +192,8 @@ test("the leads are in their batch and download as Excel", async () => {
     page.getByRole("button", { name: "Maid Pro Dallas" }),
   ).toBeVisible();
   const download = page.waitForEvent("download");
-  await page.getByRole("link", { name: "Download Excel" }).click();
+  await page.locator("summary", { hasText: "Download" }).click(); // the Download menu
+  await page.getByRole("link", { name: /^Download Excel/ }).click();
   const file = await download;
   expect(file.suggestedFilename()).toMatch(/^leads-\d{4}-\d{2}-\d{2}\.xlsx$/);
   await page.getByLabel("Website").selectOption("");
@@ -309,7 +310,7 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
   await page.getByRole("tab", { name: "Lead files" }).click();
   await page
     .getByLabel("Sort by")
-    .selectOption({ label: "Demo score (best first)" });
+    .selectOption({ label: "Sort: Demo score (best first)" });
   await expect(page.getByRole("row", { name: /Batch Demo$/ })).toBeVisible();
   const scored = page.getByRole("row", { name: /Sparkle Home Cleaning/ });
   await expect(scored.getByRole("cell").last()).toHaveText(/^\d+$/);

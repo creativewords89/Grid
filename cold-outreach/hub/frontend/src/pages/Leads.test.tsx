@@ -86,7 +86,8 @@ test("the leads show like a sheet, with the agents' scores, filters and pages", 
   );
 
   const rows = await screen.findAllByRole("row");
-  expect(screen.getByText("230 leads · page 1 of 3")).toBeVisible();
+  expect(screen.getByText("230 leads")).toBeVisible();
+  expect(screen.getAllByText("Page 1 of 3")[0]).toBeVisible();
   expect(within(rows[0]!).getByText("GBP")).toBeVisible();
   expect(within(rows[1]!).getByText("61")).toBeVisible();
   // Every field of the lead file is a column, links open in a new tab.
@@ -124,12 +125,12 @@ test("the leads show like a sheet, with the agents' scores, filters and pages", 
     "_blank",
   );
   expect(within(rows[2]!).getByText("Top")).toBeVisible();
-  expect(screen.getByRole("link", { name: "Download Excel" })).toHaveAttribute(
+  expect(screen.getByRole("link", { name: /^Download Excel/ })).toHaveAttribute(
     "href",
     "/api/leads/export?batch_id=b1",
   );
 
-  await userEvent.click(screen.getByRole("button", { name: "Next" }));
+  await userEvent.click(screen.getAllByRole("button", { name: "Next" })[0]!);
   expect(await screen.findByText("L-000101")).toBeVisible();
 
   await userEvent.type(screen.getByLabelText("Search"), "shine");
@@ -137,8 +138,10 @@ test("the leads show like a sheet, with the agents' scores, filters and pages", 
   expect(await screen.findByText("No leads match.")).toBeVisible();
   await userEvent.selectOptions(screen.getByLabelText("Top"), "top");
   await screen.findByText("No leads match.");
+  // The filters that are on show as chips; a chip takes its filter off.
+  expect(screen.getByRole("button", { name: "Top only ×" })).toBeVisible();
   expect(calls.some((c) => c.path === "/leads?batch_id=b1&page=1&q=shine&level=top")).toBe(true);
-  expect(screen.getByRole("link", { name: "Download Excel" })).toHaveAttribute(
+  expect(screen.getByRole("link", { name: /^Download Excel/ })).toHaveAttribute(
     "href",
     "/api/leads/export?batch_id=b1&q=shine&level=top",
   );
@@ -298,7 +301,7 @@ test("the batch's Leads tab shows Top but has no boxes to choose it", async () =
     </AuthProvider>,
   );
 
-  expect(await screen.findByText("Top is chosen in a city", { exact: false })).toBeVisible();
+  expect(await screen.findByLabelText(/Top is chosen in a city/)).toBeVisible();
   expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   expect(screen.getByRole("row", { name: /Multi-Clean/ })).toHaveTextContent("Top");
 });
@@ -466,7 +469,7 @@ test("a fix file: download, upload, see what changes, then save (step 28)", asyn
     </AuthProvider>,
   );
 
-  expect(await screen.findByRole("link", { name: "Download problems to fix" })).toHaveAttribute(
+  expect(await screen.findByRole("link", { name: /^Download problems to fix/ })).toHaveAttribute(
     "href",
     "/api/batches/b1/fixes.xlsx",
   );

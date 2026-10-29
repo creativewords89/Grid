@@ -826,3 +826,9 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     The preview checks each business as it will be
     saved (its rows merged first, so an empty cell filled from another row isn't an error)
     and counts it once. **Tests:** each corrected rule, sorting by 1.4k, merged rows.
+30. **The Leads tab redesigned** (asked for after step 29): one toolbar (a search that
+    applies as you type, compact City, Top, Website, Problems and Sort, a **Download** menu
+    with Excel and problems to fix, **Upload fixes**); a summary line with the count, the
+    filters that are on as chips that take them off, the Top hint as ⓘ, and the pages
+    (‹ Page n of N ›, also under the table); a Check badge per lead (✓ OK, 🔴 n, 🟠 n), zebra
+    rows, addresses on at most two lines and long values cut with the full text on hover.
