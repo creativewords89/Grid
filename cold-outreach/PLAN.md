@@ -9,7 +9,7 @@ This file holds the decisions that apply to the whole system. Each part has its 
 
 | Part | Spec | State |
 |---|---|---|
-| Agent Hub | [hub/SPEC.md](hub/SPEC.md) | Built and installed (steps 1–11); step 12, tasks and the batch pipeline, done; step 13, agents made clear and the full Leads table, done; step 14, the lead file tab by tab, done; step 15, leads in their batch, cities per batch, deleting files, done; step 16, small cities muted and cities paged, done; step 17, Top chosen in the Hub, done; step 18, tasks made in the batch, done |
+| Agent Hub | [hub/SPEC.md](hub/SPEC.md) | Built and installed (steps 1–11); step 12, tasks and the batch pipeline, done; step 13, agents made clear and the full Leads table, done; step 14, the lead file tab by tab, done; step 15, leads in their batch, cities per batch, deleting files, done; step 16, small cities muted and cities paged, done; step 17, Top chosen in the Hub, done; step 18, tasks made in the batch, done; steps 19–24 (Top per city, Ready cities, lead files, the standard steps), done; step 25, agents run in the Hub, done |
 | GBP audit agent | `agents/gbp-audit/SPEC.md` | Decided (section 5), spec written before its build |
 | Website audit agent | `agents/website-audit/SPEC.md` | Decided (section 6), spec written before its build |
 | Social media audit agent | `agents/social-audit/SPEC.md` | Data source not decided |
@@ -52,8 +52,11 @@ This file is the record; where it and an older message disagree, this file wins.
                          Hub: Leads (rows, results, reports) · Excel download
 ```
 
-- **Separate agents.** Each agent is its own Python package and Docker container, with its
-  own tests and version. One breaking never stops the others.
+- **Agents run in the Hub** (Hub step 25). Each agent is its own Python module with its own
+  tests and version, run by the Hub's `agents` service: it is added on the Agents screen by
+  choosing its kind, with nothing to type on the server. Each runs in its own thread and
+  talks to the Hub only through the agent API, so one breaking never stops the others. An
+  agent can still be its own Docker container when that is needed.
 - **One Hub.** Login, settings, secrets, schedules, runs, costs and alerts live in the Hub.
   Agents hold no secrets of their own: they get what they need from the Hub when a run starts.
 - **Agents ask the Hub for work** (they poll it); the Hub never needs access to Docker.

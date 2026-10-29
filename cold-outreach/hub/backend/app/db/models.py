@@ -176,6 +176,9 @@ class Agent(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(120))
     enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    # A built-in kind (app/builtin, e.g. "demo"): the Hub's agents service runs it (step 25).
+    # None for an agent with a token and a container of its own.
+    kind: Mapped[str | None] = mapped_column(String(40))
     # Sent by the agent when it starts; None until it has connected once.
     manifest: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     # The values set in the Hub for the manifest's settings.

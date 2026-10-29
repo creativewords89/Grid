@@ -20,6 +20,8 @@ export type SetupState = { label: string; done: boolean };
 
 /** Where an agent is in its setup, in one line for its card. */
 export function setupState(agent: Agent): SetupState {
+  if (agent.kind && !agent.manifest && !agent.last_seen_at)
+    return { label: "Starting in the Hub: it connects within a minute.", done: false };
   if (!agent.manifest && !agent.last_seen_at)
     return { label: "Waiting for its first connection: start it on the server.", done: false };
   const running = agent.batches.some((b) => b.status === "running");
