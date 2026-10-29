@@ -10,6 +10,7 @@ import { createClient } from '../src/core/api.js';
 import { fmtClock } from '../src/core/clock.js';
 import { createController } from '../src/core/controller.js';
 import { createStore } from '../src/core/store.js';
+import updater from 'electron-updater';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const asset = (name) => path.join(here, '..', 'assets', name);
@@ -186,6 +187,15 @@ app.whenReady().then(() => {
 
 	// Starts with the computer (installed app only), quietly in the tray.
 	if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: true, openAsHidden: true, args: ['--hidden'] });
+
+	// Updates itself (installed app only): checks now and every 6 hours, downloads in the background and
+	// installs when the tracker next quits (SPEC.md 6.21).
+	if (app.isPackaged && !process.env.GRT_NO_UPDATES) {
+		const { autoUpdater } = updater;
+		const look = () => autoUpdater.checkForUpdatesAndNotify().catch((e) => console.error('Update check failed', e.message));
+		look();
+		setInterval(look, 6 * 3600 * 1000);
+	}
 });
 
 app.on('second-instance', showWindow);

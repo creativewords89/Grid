@@ -4,6 +4,9 @@ import { settingOf } from '../../lib/people.js';
 import { fmtMinutes } from '../../lib/reports.js';
 import { addDays, canEditTime, canSetStart, entryLabel, flagLabels, fmtClock, localDate, localTime, toUtc } from '../../lib/timer.js';
 
+// Where the desktop tracker's installers are (the `tracker-latest` pre-release, gridrankers-tracker/).
+const DOWNLOADS = 'https://github.com/creativewords89/grid/releases/download/tracker-latest/';
+
 // A person's time (SPEC.md 6.21, step 98): a week of time entries with their total, edit / delete
 // (with Undo) by the rules of section 3, when their working day starts, and their signed-in
 // desktop computers with Revoke.
@@ -142,6 +145,19 @@ export default function TimeTab({ person }) {
 			{devices && (
 				<section className="dcard tt-dev" aria-label="Desktop tracker">
 					<h3>Desktop tracker</h3>
+					{person.id === me.id && (
+						<p className="hint">
+							Get it for{' '}
+							<a href={DOWNLOADS + 'GridRankers-Tracker-Setup.exe'} target="_blank" rel="noopener noreferrer">
+								Windows
+							</a>{' '}
+							or{' '}
+							<a href={DOWNLOADS + 'GridRankers-Tracker-mac.dmg'} target="_blank" rel="noopener noreferrer">
+								Mac
+							</a>{' '}
+							and sign in with your code.
+						</p>
+					)}
 					{!devices.length ? (
 						<p className="empty">Not signed in on any computer.</p>
 					) : (

@@ -1,0 +1,133 @@
+# GridRankers Tracker (desktop app, SPEC.md 6.21): test every change; build the Windows and macOS
+# installers for every change merged to main and publish them.
+#
+# Releases are GitHub pre-releases so the plugin's updater (which reads the repository's latest
+# release) never sees them: `tracker-v1.0.N` for each build, and `tracker-latest`, replaced each time,
+# which the installed apps read to update themselves (electron-updater, generic provider).
+#
+# Signing (optional; without it the installers are unsigned and Windows SmartScreen / macOS Gatekeeper
+# warn, and macOS can't update itself): repository secrets WIN_CSC_LINK + WIN_CSC_KEY_PASSWORD (a .pfx,
+# base64), MAC_CSC_LINK + MAC_CSC_KEY_PASSWORD (a Developer ID .p12, base64), and for notarizing
+# APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID.
+name: Tracker
+
+on:
+  pull_request:
+    paths: ['gridrankers-tracker/**', '.github/workflows/tracker.yml']
+  push:
+    branches: [main]
+    paths: ['gridrankers-tracker/**', '.github/workflows/tracker.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: tracker-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: gridrankers-tracker
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: gridrankers-tracker/package-lock.json
+      - run: npm ci
+      - name: Vitest
+        run: npm test
+      - name: Build the window
+        run: npx vite build
+
+  build:
+    needs: test
+    if: github.event_name != 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: --win
+          - os: macos-latest
+            target: --mac
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: gridrankers-tracker/package-lock.json
+      - run: npm ci
+      - name: Version 1.0.<run>
+        shell: bash
+        run: npm version --no-git-tag-version "1.0.${{ github.run_number }}"
+      - run: npx vite build
+      - name: Build the installers
+        shell: bash
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          EXTRA=()
+          if [ "${{ runner.os }}" = "Windows" ] && [ -n "$WIN_CSC_LINK" ]; then
+            export CSC_LINK="$WIN_CSC_LINK" CSC_KEY_PASSWORD="$WIN_CSC_KEY_PASSWORD"
+          elif [ "${{ runner.os }}" = "macOS" ] && [ -n "$MAC_CSC_LINK" ]; then
+            export CSC_LINK="$MAC_CSC_LINK" CSC_KEY_PASSWORD="$MAC_CSC_KEY_PASSWORD"
+            if [ -n "$APPLE_ID" ]; then EXTRA+=(-c.mac.notarize=true); else unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; fi
+          else
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+            unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
+          fi
+          npx electron-builder ${{ matrix.target }} --publish never "${EXTRA[@]}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tracker-${{ runner.os }}
+          path: |
+            gridrankers-tracker/release/*.exe
+            gridrankers-tracker/release/*.dmg
+            gridrankers-tracker/release/*.zip
+            gridrankers-tracker/release/*.yml
+            gridrankers-tracker/release/*.blockmap
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: tracker-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/tracker
+          merge-multiple: true
+      - name: Publish tracker-v1.0.N and replace tracker-latest
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="1.0.${{ github.run_number }}"
+          FILES=$(ls "$RUNNER_TEMP"/tracker/* | grep -v builder-debug)
+          NOTES="GridRankers Tracker $VERSION — Windows: GridRankers-Tracker-Setup.exe · Mac: GridRankers-Tracker-mac.dmg. $(git log -1 --format=%s)"
+          gh release create "tracker-v$VERSION" $FILES --prerelease --title "GridRankers Tracker $VERSION" --notes "$NOTES"
+          gh release delete tracker-latest --yes --cleanup-tag || true
+          gh release create tracker-latest $FILES --prerelease --title "GridRankers Tracker (latest: $VERSION)" --notes "$NOTES"

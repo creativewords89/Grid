@@ -100,7 +100,8 @@ SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
 ```
 
 A person's signed-in computers are listed (and revoked) through `/devices`; **Set code**, a role change
-and removing someone sign their computers out too.
+and removing someone sign their computers out too. The app itself, its installers and its releases:
+`gridrankers-tracker/README.md`.
 
 ### Backups
 

@@ -24,6 +24,7 @@ test('time tab: entries, working day and computers', async ({ page }) => {
 	await expect(yesterday).toBeVisible();
 	await expect(yesterday.getByRole('button', { name: 'Edit' })).toHaveCount(0);
 	await expect(page.locator('.tt-dev')).toContainText('Max’s laptop');
+	await expect(page.locator('.tt-dev').getByRole('link', { name: 'Windows' })).toHaveAttribute('href', /tracker-latest\/GridRankers-Tracker-Setup\.exe$/);
 	await expect(page.locator('.tt-start')).toContainText('the team’s');
 	await expect(page.getByLabel('Day starts at')).toHaveCount(0);
 	await signOut(page);
