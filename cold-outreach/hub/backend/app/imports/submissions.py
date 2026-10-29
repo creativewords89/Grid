@@ -106,7 +106,7 @@ def run(
     for name in report.tab_names:
         layout = report.tab_columns.get(name)
         columns = (
-            check.check_tab(layout["fields"], layout["duplicates"], layout["city_not_tab"])
+            check.check_tab(layout["fields"], layout["duplicates"])
             if layout and (name in live_tabs or not muted)
             else []
         )

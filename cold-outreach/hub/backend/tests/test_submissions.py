@@ -364,3 +364,16 @@ def test_owners_invite_collectors(owner: TestClient) -> None:
     )
     assert response.status_code == 201, response.text
     assert response.json()["user"]["role"] == "collector"
+
+
+def test_a_city_other_than_the_tabs_name_is_fine() -> None:
+    """After step 39: the city is the City column's, whatever the tab is called."""
+    named = {
+        "Sheet1": [
+            STANDARD,
+            row("Sparkle", "https://share.google/sp", "214 555 0100", city="Dallas"),
+        ]
+    }
+    found = submissions.run(workbook(named), "Cleaning")
+    assert found.check["errors"] == 0
+    assert list(found.check["cities"]) == ["dallas"]

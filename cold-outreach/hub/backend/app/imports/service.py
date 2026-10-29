@@ -259,11 +259,7 @@ def _preview_check(report: reader.Report, sheet_rows: list[dict[str, Any]]) -> d
     tabs: dict[str, dict[str, Any]] = {}
     for name in report.tab_names:
         layout = report.tab_columns.get(name)
-        columns = (
-            check.check_tab(layout["fields"], layout["duplicates"], layout["city_not_tab"])
-            if layout
-            else []
-        )
+        columns = check.check_tab(layout["fields"], layout["duplicates"]) if layout else []
         tabs[name] = {"errors": 0, "warnings": 0, "columns": [i.as_dict() for i in columns]}
     for row in sheet_rows:
         if not row.get("counted"):
