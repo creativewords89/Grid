@@ -7,6 +7,8 @@ import { useToasts } from './components/Toasts.jsx';
 import { useConfirm } from './components/ConfirmDialog.jsx';
 import SignIn from './components/SignIn.jsx';
 import Setup from './components/Setup.jsx';
+import TrackerPortal from './components/TrackerPortal.jsx';
+import { isTracker } from './lib/site.js';
 import Sidebar from './components/Sidebar.jsx';
 import TopBar from './components/TopBar.jsx';
 import CompletionDialog from './components/CompletionDialog.jsx';
@@ -211,8 +213,10 @@ export default function App({ config }) {
 	}, [api]);
 
 	const syncStatus = useSync(api, auth.status === 'signedIn', dispatch);
-	const reports = useReportState(api, auth.status === 'signedIn');
-	const pay = usePayState(api, auth.status === 'signedIn');
+	// A tracker portal (SPEC.md 6.22) has no reports or pay: they are on the main portal.
+	const tracker = isTracker(config);
+	const reports = useReportState(api, auth.status === 'signedIn' && !tracker);
+	const pay = usePayState(api, auth.status === 'signedIn' && !tracker);
 	const [askOut, setAskOut] = useState(false);
 
 	// The remembered screen belongs to whoever chose it: someone else signing in on this tab
@@ -336,6 +340,16 @@ export default function App({ config }) {
 	};
 
 	const ctx = { api, data, dispatch, me, view, setView, project, setProject, search, setSearch, toast, confirm, config, cycleOff, setCycleOff, today, askCompletion, askHandin, flash, teamPerson, setTeamPerson, setViewAs: startTour, reports, pay };
+
+	if (tracker) {
+		return (
+			<PortalContext.Provider value={ctx}>
+				<TrackerPortal onSignOut={signOutNow} />
+				{toastView}
+				{confirmView}
+			</PortalContext.Provider>
+		);
+	}
 
 	const target = viewAs && data.members[viewAs];
 	const viewing = canTour(me, target) ? target : null;

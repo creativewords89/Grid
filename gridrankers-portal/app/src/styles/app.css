@@ -1763,3 +1763,27 @@ button.hol-day:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .tt-edit{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .tt-edit input,.tt-startf input{border:1px solid var(--line);background:var(--panel-2);border-radius:8px;padding:6px 8px}
 .tt-startf{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+/* Main portal linked to a tracker portal (SPEC.md 6.22) */
+.tchip-away{display:inline-flex;align-items:center;gap:6px;font-size:.8rem;font-weight:700;color:var(--ink-2);text-decoration:none;border:1px solid var(--line);border-radius:99px;padding:4px 12px}
+.tt-elsewhere{margin:0 0 10px}
+.tt-main.waiting{background:var(--panel-2);color:var(--ink-2)}
+.tt-main.refused,.trk-refused{background:var(--urgent-bg,#fde8e8);color:var(--urgent)}
+/* The tracker portal (SPEC.md 6.22) */
+.trk{min-height:100vh;background:var(--bg);color:var(--ink)}
+.trk-top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:14px 24px;border-bottom:1px solid var(--line);background:var(--panel)}
+.trk-brand{font-size:1.1rem}
+.trk-brand span{color:var(--ink-2);font-weight:600}
+.trk-note{margin:0;flex:1;color:var(--ink-2);font-size:.85rem}
+.trk-me{display:flex;align-items:center;gap:8px;font-weight:600}
+.trk-tabs{display:flex;gap:4px;padding:10px 24px 0;border-bottom:1px solid var(--line);overflow-x:auto}
+.trk-tab{border:0;background:none;padding:10px 14px;font-weight:700;color:var(--ink-2);border-bottom:2px solid transparent;cursor:pointer}
+.trk-tab.on{color:var(--ink);border-bottom-color:var(--accent,currentColor)}
+.trk-body{padding:20px 24px;max-width:1200px}
+.trk-who{margin:8px 0 12px}
+.trk-scroll{overflow-x:auto}
+.trk-table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.trk-table th,.trk-table td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+.trk-table thead th{font-size:.75rem;color:var(--ink-2);font-weight:700}
+.trk-person{display:inline-flex;align-items:center;gap:8px;font-weight:600}
+.trk-ok{color:var(--done,green);font-weight:700}
+@media (max-width:640px){.trk-top,.trk-tabs,.trk-body{padding-left:16px;padding-right:16px}}

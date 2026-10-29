@@ -218,6 +218,8 @@ class GRP_Time_Entries {
 				}
 				$deleted = GRP_Store::update( self::TABLE, $entry['id'], $changes );
 				self::sync_report( (string) $entry['member_id'], $entry['day'] );
+				// Its screenshots go with it (SPEC.md 6.23).
+				GRP_Screenshots::delete_for_entry( (string) $entry['id'] );
 
 				return array(
 					'status' => 'saved',

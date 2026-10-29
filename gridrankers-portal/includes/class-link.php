@@ -348,6 +348,20 @@ class GRP_Link {
 	}
 
 	/**
+	 * What the portal app needs to know about the link (no key): this site's part, the main
+	 * portal's address on a tracker portal, the tracker's on a linked main portal.
+	 *
+	 * @return array `{part, mainUrl, trackerUrl}`.
+	 */
+	public static function public_info() {
+		return array(
+			'part'       => self::part(),
+			'mainUrl'    => self::main_url(),
+			'trackerUrl' => self::has_key() ? (string) self::settings()['tracker_url'] : '',
+		);
+	}
+
+	/**
 	 * Records the tracker portal's last copy from the main portal.
 	 *
 	 * @param string|null $error Why it failed, or null when it worked.

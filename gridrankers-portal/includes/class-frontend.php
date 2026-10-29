@@ -173,6 +173,7 @@ class GRP_Frontend {
 			'isWpAdmin'  => current_user_can( 'manage_options' ),
 			'wpUserName' => $user->exists() ? $user->display_name : '',
 			'version'    => GRP_VERSION,
+			'site'       => GRP_Link::public_info(),
 		);
 	}
 

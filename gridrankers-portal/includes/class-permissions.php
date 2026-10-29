@@ -271,6 +271,15 @@ class GRP_Permissions {
 	const MANAGE_DEVICES = 'manage_devices';
 
 	/**
+	 * See a person's screenshots (SPEC.md 6.23). Context: `{member_id, role}`. Their own; a Team Leader
+	 * Team Members'; the Super Admin everyone's.
+	 */
+	const VIEW_SCREENSHOTS = 'view_screenshots';
+
+	/** Delete a screenshot, or set how often they are taken (SPEC.md 6.23). Super Admin only. */
+	const MANAGE_SCREENSHOTS = 'manage_screenshots';
+
+	/**
 	 * Task work that is locked while a Team Leader's or Team Member's required profile is
 	 * incomplete (SPEC.md section 3, Profile lock).
 	 */
@@ -376,6 +385,12 @@ class GRP_Permissions {
 			case self::VIEW_DAILY_REPORT:
 			case self::VIEW_TIME:
 				return self::is_self( $user, $context['member_id'] ?? null ) || $admin || ( $manager && in_array( $context['role'] ?? '', array( self::ROLE_LEAD, self::ROLE_MEMBER ), true ) );
+
+			case self::VIEW_SCREENSHOTS:
+				return self::is_self( $user, $context['member_id'] ?? null ) || $admin || ( $manager && self::ROLE_MEMBER === ( $context['role'] ?? '' ) );
+
+			case self::MANAGE_SCREENSHOTS:
+				return $admin;
 
 			case self::TRACK_TIME:
 				// Time is tracked to be paid: the Super Admin has no salary in the portal (SPEC.md 6.21).

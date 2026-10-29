@@ -76,6 +76,8 @@ class GRP_Store {
 		'total',
 		'seconds',
 		'idle_seconds',
+		'width',
+		'height',
 	);
 
 	/**

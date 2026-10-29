@@ -46,7 +46,7 @@ class GRP_Link_Copy {
 	/**
 	 * Routes a tracker portal still writes to; every other change is made on the main portal.
 	 */
-	const TRACKER_WRITES = array( '/auth/', '/timer', '/time-entries', '/devices/', '/notifications/dismiss' );
+	const TRACKER_WRITES = array( '/auth/', '/timer', '/time-entries', '/devices/', '/notifications/dismiss', '/screenshots/', '/settings/screenshots' );
 
 	/**
 	 * Hooks the job, its schedule and the read-only gate.

@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePortal } from '../context.js';
+import { hostOf, trackerElsewhere } from '../lib/site.js';
 import { elapsed, entryLabel, fmtClock, runningOf } from '../lib/timer.js';
 
 // The timer in the top bar (SPEC.md 6.21): what is running and for how long, Stop, and a list to
 // start or switch to a task. Team Leaders and Team Members only (the Super Admin tracks no time);
 // hidden in a tour. Tracked time goes into the person's daily report on the server.
 export default function TimerChip() {
-	const { api, data, dispatch, me, toast, viewOnly, reports } = usePortal();
+	const { api, data, dispatch, me, toast, viewOnly, reports, config } = usePortal();
+	const elsewhere = trackerElsewhere(config);
 	const running = runningOf(data, me.id);
 	const [now, setNow] = useState(Date.now());
 	const [open, setOpen] = useState(false);
@@ -39,6 +41,14 @@ export default function TimerChip() {
 	}, [open, api, toast]);
 
 	if (viewOnly || me.role === 'admin') return null;
+	// A main portal linked to a tracker portal (SPEC.md 6.22): time is tracked there.
+	if (elsewhere) {
+		return (
+			<a className="tchip tchip-away" href={elsewhere} target="_blank" rel="noopener noreferrer" title="Time is tracked on the tracker portal">
+				⏱ Time is tracked on {hostOf(elsewhere)}
+			</a>
+		);
+	}
 
 	const keep = (res) => {
 		['timer', 'stopped', 'entry'].forEach((k) => res && res[k] && dispatch({ type: 'upsert', table: 'time_entries', row: res[k] }));

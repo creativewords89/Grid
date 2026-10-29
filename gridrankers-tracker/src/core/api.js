@@ -34,12 +34,13 @@ export function createClient({ server, getToken, fetchImpl, timeoutMs = 20000 })
 	const base = cleanServer(server) + '/';
 	const doFetch = fetchImpl || globalThis.fetch;
 
-	async function request(method, path, { body, query, auth = true } = {}) {
+	async function request(method, path, { body, form, query, auth = true } = {}) {
 		const url = new URL(base);
 		url.searchParams.set('rest_route', '/gr-portal/v1/' + path.replace(/^\//, ''));
 		Object.entries(query || {}).forEach(([k, v]) => v !== undefined && v !== null && url.searchParams.set(k, v));
 		const headers = { Accept: 'application/json' };
 		if (body !== undefined) headers['Content-Type'] = 'application/json';
+		// A form (a screenshot) sets its own multipart Content-Type.
 		const token = auth && getToken ? getToken() : null;
 		if (token) headers.Authorization = 'Bearer ' + token;
 
@@ -47,7 +48,7 @@ export function createClient({ server, getToken, fetchImpl, timeoutMs = 20000 })
 		const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
 		let res;
 		try {
-			res = await doFetch(url.toString(), { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined, signal: ctrl ? ctrl.signal : undefined, cache: 'no-store' });
+			res = await doFetch(url.toString(), { method, headers, body: form || (body !== undefined ? JSON.stringify(body) : undefined), signal: ctrl ? ctrl.signal : undefined, cache: 'no-store' });
 		} catch (e) {
 			throw new ApiError(0, 'offline', 'Can’t reach the portal. Your time is saved on this computer.');
 		} finally {
@@ -83,5 +84,13 @@ export function createClient({ server, getToken, fetchImpl, timeoutMs = 20000 })
 		tasks: () => request('GET', 'timer/tasks'),
 		// POST /time-entries/batch: an answer per entry (saved / exists / refused).
 		batch: (entries, clockOffset = 0) => request('POST', 'time-entries/batch', { body: { entries, clock_offset: clockOffset } }),
+		// POST /time-entries/{id}/screenshots: a JPEG of the screens (SPEC.md 6.23).
+		uploadShot: (entryId, { id, takenAt, bytes }) => {
+			const form = new FormData();
+			form.append('id', id);
+			form.append('taken_at', takenAt);
+			form.append('file', new Blob([bytes], { type: 'image/jpeg' }), `${id}.jpg`);
+			return request('POST', `time-entries/${encodeURIComponent(entryId)}/screenshots`, { form });
+		},
 	};
 }

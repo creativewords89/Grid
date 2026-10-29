@@ -42,8 +42,9 @@ class Test_GRP_Install extends WP_UnitTestCase {
 		'grp_pay'              => array( 'id', 'member_id', 'day_minutes', 'salary', 'method', 'bank_name', 'branch', 'account_name', 'account_number', 'routing' ),
 		'grp_payslips'         => array( 'id', 'member_id', 'month', 'salary', 'day_minutes', 'worked', 'extra', 'extra_pay', 'leave_taken', 'leave_pay', 'deducted_days', 'deducted', 'total', 'account', 'paid_at', 'paid_by' ),
 		'grp_report_changes'   => array( 'id', 'member_id', 'member_role', 'day', 'entries', 'from_minutes', 'to_minutes', 'reason', 'status', 'decided_by', 'decided_at', 'message', 'created_by' ),
-		'grp_time_entries'     => array( 'id', 'member_id', 'day', 'project_id', 'ref_kind', 'ref_id', 'period_key', 'started_at', 'ended_at', 'seconds', 'idle_seconds', 'source', 'note', 'device_id', 'flags', 'synced_at', 'edited_by', 'deleted_at' ),
+		'grp_time_entries'     => array( 'id', 'member_id', 'day', 'project_id', 'ref_kind', 'ref_id', 'period_key', 'started_at', 'ended_at', 'seconds', 'idle_seconds', 'source', 'note', 'device_id', 'flags', 'synced_at', 'main_synced_at', 'main_sent', 'main_error', 'edited_by', 'deleted_at' ),
 		'grp_devices'          => array( 'id', 'member_id', 'name', 'platform', 'app_version', 'token_hash', 'expires_at', 'last_seen_at', 'ip', 'revoked_at' ),
+		'grp_screenshots'      => array( 'id', 'member_id', 'entry_id', 'day', 'taken_at', 'path', 'width', 'height', 'size' ),
 	);
 
 	/**

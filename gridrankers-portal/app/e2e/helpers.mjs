@@ -7,8 +7,8 @@ export const MAX = 'MAXCODE11';
 const live = (page) => page.getByText('Shared with your team · live').waitFor({ timeout: 15000 });
 
 // Fails the test on any uncaught error or console error on the portal page, other than expected
-// 401/403 responses (wp-admin and wp-login load things this test site can't serve).
-export function watchErrors(page) {
+// 401/403 responses (wp-admin and wp-login load things this test site can't serve), or `allowed`.
+export function watchErrors(page, allowed = /401|403/) {
 	const errors = [];
 	const onPortal = () => !/\/wp-(admin|login)/.test(page.url());
 	const add = (msg) => {
@@ -17,7 +17,7 @@ export function watchErrors(page) {
 	};
 	page.on('pageerror', (e) => onPortal() && add(`pageerror: ${e.message}`));
 	page.on('console', (m) => {
-		if (onPortal() && m.type() === 'error' && !/401|403/.test(m.text())) add(`console: ${m.text()}`);
+		if (onPortal() && m.type() === 'error' && !allowed.test(m.text())) add(`console: ${m.text()}`);
 	});
 	page.on('requestfailed', (r) => {
 		const why = r.failure()?.errorText || '';
