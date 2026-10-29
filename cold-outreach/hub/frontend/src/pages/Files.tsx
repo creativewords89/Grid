@@ -1117,6 +1117,31 @@ function FileView({
             )}
           </div>
 
+          {staff && item.cities.some((c) => c.state === "in_batch") && (
+            <ul className="check-list small" aria-label="Cities in the batch">
+              {item.cities
+                .filter((c) => c.state === "in_batch")
+                .map((city) => (
+                  <li key={city.key}>
+                    ✅ {city.name} is in its batch{" "}
+                    <button
+                      className="link-button"
+                      disabled={busy}
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            `Send ${city.name} back to Top Review? Its leads in the batch go, with their agents' results; its Top is chosen again.`,
+                          )
+                        )
+                          void cityAction(() => api.sendBackCity(id, city.key), "Not sent back.");
+                      }}
+                    >
+                      Send back to Top Review
+                    </button>
+                  </li>
+                ))}
+            </ul>
+          )}
           {/* No cities table here (Top Review has them): only the muted ones, as a warning. */}
           {item.cities.some((c) => c.state === "muted") && (
             <ul className="check-list small" aria-label="Muted cities">

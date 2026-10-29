@@ -586,3 +586,36 @@ test("a new niche is added from Change niche, then chosen", async () => {
     niche: "Construction",
   });
 });
+
+test("an owner sends a city in its batch back to Top Review", async () => {
+  const done = file({ status: "in_batch", errors: 0, cities_in_batch: 1 });
+  const full = {
+    ...detail,
+    ...done,
+    problems: [],
+    cities: [city({ state: "in_batch", tops: 1, moved_at: "2026-10-29T12:00:00Z" })],
+  };
+  vi.stubGlobal(
+    "confirm",
+    vi.fn(() => true),
+  );
+  const calls = mockApi({
+    "GET /auth/me": me(owner),
+    "GET /submissions": [200, [done]],
+    "GET /submissions/niches": [200, ["Cleaning"]],
+    "GET /submissions/f1": [200, full],
+    "GET /submissions/f1/leads?page=1&sort=row": [200, leads],
+    "POST /submissions/f1/cities/tulsa/send-back": [
+      200,
+      { ...full, status: "top_review", cities_in_batch: 0, cities: [city()] },
+    ],
+  });
+  render(<App />);
+
+  await userEvent.click(await screen.findByRole("button", { name: "tulsa.xlsx" }));
+  const inBatch = await screen.findByRole("list", { name: "Cities in the batch" });
+  await userEvent.click(within(inBatch).getByRole("button", { name: "Send back to Top Review" }));
+  expect(calls.some((c) => c.path === "/submissions/f1/cities/tulsa/send-back")).toBe(true);
+  expect(await screen.findByText(/In Top Review/)).toBeVisible();
+  expect(screen.queryByRole("list", { name: "Cities in the batch" })).toBeNull();
+});

@@ -19,7 +19,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, defer, selectinload
 
 from app import audit
-from app.api.imports import MAX_BYTES, NicheName
+from app.api.imports import MAX_BYTES, NicheName, remove_import
 from app.api.niches import niche_names
 from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
@@ -27,6 +27,7 @@ from app.db.models import Batch, FileCity, Niche, Role, Submission, User
 from app.errors import ApiError
 from app.imports import check, file_cities, fixes
 from app.imports import submissions as files
+from app.leads import files as lead_files
 from app.permissions import Action, can, ensure
 
 router = APIRouter(tags=["files"])
@@ -647,6 +648,27 @@ def to_batch(file_id: uuid.UUID, body: ToBatchIn, me: CurrentUser, db: Db) -> Fi
     for city in ready:
         file_cities.move(db, sub, city, me)
     db.commit()
+    db.refresh(sub)
+    return _detail(db, me, sub)
+
+
+@router.post("/submissions/{file_id}/cities/{city}/send-back", response_model=FileDetail)
+def send_back(file_id: uuid.UUID, city: str, me: CurrentUser, db: Db) -> FileDetail:
+    """An Owner or Admin sends a city in its batch back to Top Review (step 43): its leads
+    there go, with their agents' results; it comes back without a Top."""
+    ensure(me, Action.USE_FILES)
+    ensure(me, Action.IMPORT_LEADS)
+    sub = _get(db, me, file_id)
+    found = next((c for c in sub.cities if c.key == files.city_key(city)), None)
+    if found is None:
+        raise ApiError(404, "not_found", "That city isn't in this file.")
+    imp = found.imp
+    if found.moved_at is None or imp is None:
+        raise ApiError(409, "not_in_batch", f"{found.name} isn't in a batch.")
+    stored = remove_import(db, me, imp, send_back=True)
+    db.commit()
+    for lead_id, stored_id in stored:
+        lead_files.remove(lead_id, stored_id)
     db.refresh(sub)
     return _detail(db, me, sub)
 
