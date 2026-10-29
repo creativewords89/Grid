@@ -59,3 +59,6 @@ input{width:100%;border:1px solid var(--line);background:var(--panel-2);border-r
 .prompt{background:var(--doing-bg);border:1px solid color-mix(in srgb,var(--doing) 40%,var(--line));border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px}
 .prompt p{margin:0}
 .prompt .acts{display:flex;gap:6px;flex-wrap:wrap}
+.reminder{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:14px;padding:10px 12px;display:flex;gap:10px;align-items:center;justify-content:space-between}
+.reminder>div{display:flex;flex-direction:column;font-size:.85rem}
+.reminder span{color:var(--ink-2)}

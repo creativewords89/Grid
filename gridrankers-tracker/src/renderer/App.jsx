@@ -114,6 +114,34 @@ function Main({ view }) {
 				</section>
 			)}
 
+			{view.prompts.away && (
+				<section className="prompt" role="alertdialog" aria-label="Away">
+					<p>
+						{view.prompts.away.kind === 'sleep' ? 'You were away' : 'You’ve been away'} <b>{view.prompts.away.minutes} min</b>
+						{run ? ` with the timer on ${run.label}` : ''}.
+					</p>
+					<div className="acts">
+						<button type="button" className="btn small primary" onClick={() => tracker.answer('away', 'keep')}>
+							Keep
+						</button>
+						<button type="button" className="btn small" onClick={() => tracker.answer('away', 'discard')}>
+							Discard
+						</button>
+					</div>
+				</section>
+			)}
+			{view.reminder && (
+				<section className="reminder" role="region" aria-label="Reminder">
+					<div>
+						<b>{view.reminder.title}</b>
+						<span>{view.reminder.body}</span>
+					</div>
+					<button type="button" className="btn small" onClick={() => tracker.snooze()}>
+						Snooze 15 min
+					</button>
+				</section>
+			)}
+
 			<section className={'timer' + (run ? ' on' : '')} aria-label="Timer">
 				{run ? (
 					<>

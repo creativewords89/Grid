@@ -110,4 +110,28 @@ describe('controller offline', () => {
 		expect(again.view().running).toBeNull();
 		expect(again.view().prompts.crash).toBeUndefined();
 	});
+
+	it('ticks: asks after 10 idle minutes, notes the return, reminds once and snoozes', async () => {
+		const { make, tick } = setup();
+		const ctl = make();
+		await ctl.signIn('https://p.example', 'MAXCODE11');
+		ctl.set({ ...ctl.state, schedule: [{ date: '2026-10-29', working: true, start: '09:00', end: '17:00' }] });
+
+		tick(10 * 60000); // 09:10, no timer: "start your timer"
+		expect(ctl.tick({ idleSeconds: 0 }).kind).toBe('start');
+		expect(ctl.tick({ idleSeconds: 0 })).toBeNull();
+		expect(ctl.view().reminder.kind).toBe('start');
+		ctl.snooze();
+		expect(ctl.view().reminder).toBeNull();
+
+		ctl.start(none);
+		tick(15 * 60000);
+		ctl.tick({ idleSeconds: 11 * 60 });
+		expect(ctl.view().prompts.away.kind).toBe('idle');
+		tick(60000);
+		ctl.tick({ idleSeconds: 5 });
+		expect(ctl.view().prompts.away.minutes).toBe(12);
+		ctl.answer('away', 'keep');
+		expect(ctl.view().prompts.away).toBeUndefined();
+	});
 });

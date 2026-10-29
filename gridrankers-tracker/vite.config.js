@@ -7,5 +7,5 @@ export default defineConfig({
 	base: './',
 	plugins: [react()],
 	build: { outDir: '../../dist', emptyOutDir: true },
-	test: { root: '.', include: ['test/**/*.test.js'], environment: 'node' },
+	test: { root: '.', include: ['test/**/*.test.js'], environment: 'node', env: { TZ: 'UTC' } },
 });

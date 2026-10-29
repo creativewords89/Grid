@@ -248,3 +248,45 @@ export function discardRunning(state) {
 // Waits between uploads that failed: 5 s, 15 s, 1 min, then every 5 min.
 export const RETRY_SECONDS = [5, 15, 60, 300];
 export const retryDelayMs = (failures) => RETRY_SECONDS[Math.min(Math.max(failures, 1), RETRY_SECONDS.length) - 1] * 1000;
+
+// --- Away: idle or asleep while a timer runs (SPEC.md 6.21) -----------------------------------------
+
+// No keyboard or mouse for this long with a timer running: "You've been away 10 min — Keep / Discard".
+export const IDLE_ASK_SECONDS = 10 * 60;
+
+// Asleep at least this long with a timer running asks too: "You were away {n} min — Keep / Discard".
+export const SLEEP_ASK_MS = 60 * 1000;
+
+// Asks once per time away, from when it began.
+export function away(state, fromMs, kind, toMs = null) {
+	if (!state.timer || state.prompts.away) return state;
+	const entry = running(state);
+	return { ...state, prompts: { ...state.prompts, away: { fromMs: Math.max(fromMs, fromUtc(entry.started_at)), toMs, kind } } };
+}
+
+// The person is back (keyboard or mouse again): the time away ends then.
+export function back(state, atMs) {
+	const ask = state.prompts.away;
+	return ask && !ask.toMs ? { ...state, prompts: { ...state.prompts, away: { ...ask, toMs: atMs } } } : state;
+}
+
+// Keep: the time away stays (counted as idle time). Discard: the entry ends when the person left and a
+// new one starts now on the same task.
+export function resolveAway(state, choice, nowMs) {
+	const ask = state.prompts.away;
+	if (!ask) return state;
+	const prompts = { ...state.prompts };
+	delete prompts.away;
+	let next = { ...state, prompts };
+	const entry = running(next);
+	if (!entry) return next;
+	const until = ask.toMs || nowMs;
+	if (choice === 'discard') {
+		next = stop(next, ask.fromMs);
+		next = start(next, entry, until);
+	} else {
+		const idle = Math.round((until - ask.fromMs) / 1000);
+		next = { ...next, entries: { ...next.entries, [entry.id]: { ...entry, idle_seconds: (entry.idle_seconds || 0) + idle } } };
+	}
+	return next;
+}

@@ -1,7 +1,7 @@
 // GridRankers Tracker — the Electron main process (SPEC.md 6.21). It wires the controller (src/core) to
 // the window, the tray, the operating system's keychain and the network.
 
-import { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, net, powerMonitor, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, Menu, Notification, Tray, ipcMain, nativeImage, net, powerMonitor, safeStorage, shell } from 'electron';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -58,8 +58,9 @@ function createWindow() {
 		webPreferences: { preload: path.join(here, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false },
 	});
 	win.loadFile(path.join(here, '..', 'dist', 'index.html'));
+	// Started with the computer: stay in the tray.
 	win.once('ready-to-show', () => {
-		if (!app.getLoginItemSettings().wasOpenedAsHidden) win.show();
+		if (!app.getLoginItemSettings().wasOpenedAsHidden && !process.argv.includes('--hidden')) win.show();
 	});
 	// Closing the window keeps the tracker running in the tray.
 	win.on('close', (e) => {
@@ -98,11 +99,22 @@ function updateTray() {
 			{ type: 'separator' },
 			...(v.running ? [{ label: 'Stop timer', click: () => ctl.stop() }] : []),
 			...(v.signedIn ? recent.map((c) => ({ label: `Start: ${c.label}`, click: () => ctl.start(c) })) : []),
+			...(v.reminder ? [{ label: 'Snooze reminders 15 min', click: () => ctl.snooze() }] : []),
 			{ type: 'separator' },
 			{ label: 'Open GridRankers Tracker', click: showWindow },
 			{ label: 'Quit', click: () => ((quitting = true), app.quit()) },
 		])
 	);
+}
+
+// A desktop notification; clicking it opens the window (where Snooze 15 min is); on macOS it also
+// carries a Snooze button.
+function remind({ title, body }, snoozable = true) {
+	if (!Notification.isSupported()) return;
+	const n = new Notification({ title, body, icon: asset('icon.png'), actions: snoozable && process.platform === 'darwin' ? [{ type: 'button', text: 'Snooze 15 min' }] : [] });
+	n.on('click', showWindow);
+	n.on('action', () => ctl.snooze());
+	n.show();
 }
 
 function push() {
@@ -136,6 +148,7 @@ app.whenReady().then(() => {
 	ipcMain.handle('sync', () => ctl.sync({ refresh: true }).then(() => ({ ok: true })));
 	ipcMain.handle('dismiss', (_e, id) => (ctl.dismiss(id), { ok: true }));
 	ipcMain.handle('answer', (_e, { prompt, choice }) => (ctl.answer(prompt, choice), { ok: true }));
+	ipcMain.handle('snooze', () => (ctl.snooze(), { ok: true }));
 	ipcMain.handle('openPortal', () => shell.openExternal(ctl.state.server));
 
 	tray = new Tray(nativeImage.createFromPath(asset('tray-idle.png')));
@@ -152,8 +165,27 @@ app.whenReady().then(() => {
 	ctl.sync({ refresh: true }).finally(() => setTimeout(loop, ctl.nextSyncMs()));
 	// The computer shutting down: the timer stops now (a power cut is caught by the heartbeat instead).
 	powerMonitor.on('shutdown', () => ctl.stop());
-	// Back on the network: send what is waiting.
-	powerMonitor.on('resume', () => ctl.sync({ refresh: true }));
+	// Asleep with a timer running asks on waking: "You were away {n} min — Keep / Discard".
+	powerMonitor.on('suspend', () => ctl.suspended());
+	powerMonitor.on('resume', () => ctl.resumed());
+
+	// Reminders and "away" checks every 30 s (SPEC.md 6.21).
+	const check = () => {
+		const due = ctl.tick({ idleSeconds: powerMonitor.getSystemIdleTime() });
+		if (due) remind(due);
+		const v = ctl.view();
+		if (v.prompts.away && !asked) {
+			asked = true;
+			remind({ title: v.prompts.away.kind === 'sleep' ? `You were away ${v.prompts.away.minutes} min` : 'You’ve been away 10 min', body: 'Keep the time, or discard it? Open the tracker to choose.' }, false);
+		}
+		if (!v.prompts.away) asked = false;
+	};
+	let asked = false;
+	setInterval(check, 30 * 1000);
+	check();
+
+	// Starts with the computer (installed app only), quietly in the tray.
+	if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: true, openAsHidden: true, args: ['--hidden'] });
 });
 
 app.on('second-instance', showWindow);

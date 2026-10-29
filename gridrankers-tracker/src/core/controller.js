@@ -3,6 +3,7 @@
 
 import { createClient, DEFAULT_SERVER } from './api.js';
 import { fromUtc, localDay } from './clock.js';
+import { dueReminder, markFired, SNOOZE_MS } from './reminders.js';
 import * as T from './tracker.js';
 
 // Schedule and tasks are refreshed this often while online.
@@ -143,8 +144,37 @@ export function createController({ store, loadToken, saveToken, device, createAp
 	// The person's answer to a question the tracker asked.
 	function answer(prompt, choice) {
 		if (prompt === 'crash') set(T.resolveCrash(state, choice, now()));
+		if (prompt === 'away') set(T.resolveAway(state, choice, now()));
 		sync();
 		return state;
+	}
+
+	// Every 30 s: asks when the person has been idle 10 minutes with a timer running, and returns the
+	// reminder to show now, if any (it is recorded, and shown in the window until the next one).
+	function tick({ idleSeconds = 0 } = {}) {
+		const nowMs = now();
+		if (state.timer && idleSeconds >= T.IDLE_ASK_SECONDS && !state.prompts.away) set(T.away(state, nowMs - idleSeconds * 1000, 'idle'));
+		else if (state.prompts.away && !state.prompts.away.toMs && idleSeconds < 60) set(T.back(state, nowMs - idleSeconds * 1000));
+		const due = state.member ? dueReminder({ schedule: state.schedule, nowMs, running: !!state.timer, online: state.sync.online, snoozeUntil: state.snoozeUntil, fired: state.fired }) : null;
+		if (!due) return null;
+		set({ ...state, fired: markFired(state.fired, due.kind, nowMs), lastReminder: { ...due, atMs: nowMs } });
+		return due;
+	}
+
+	// The computer goes to sleep / wakes up.
+	function suspended() {
+		set({ ...state, suspendedMs: now() });
+	}
+	function resumed() {
+		const from = state.suspendedMs;
+		if (from && state.timer && now() - from >= T.SLEEP_ASK_MS) set(T.away({ ...state, suspendedMs: null }, from, 'sleep', now()));
+		else set({ ...state, suspendedMs: null });
+		sync({ refresh: true });
+	}
+
+	// Snooze 15 min: no reminders until then.
+	function snooze() {
+		return set({ ...state, snoozeUntil: now() + SNOOZE_MS, lastReminder: null });
 	}
 
 	// When to sync next: soon after a failure while something waits (5 s, 15 s, 1 min, 5 min), else in
@@ -172,8 +202,9 @@ export function createController({ store, loadToken, saveToken, device, createAp
 			waiting: T.pending(mine(state)).length,
 			attention: T.attention(state),
 			sync: state.sync,
-			prompts: { ...state.prompts, crash: state.prompts.crash ? { ...state.prompts.crash, label: (T.running(state) || {}).label } : undefined },
+			prompts: { ...state.prompts, crash: state.prompts.crash ? { ...state.prompts.crash, label: (T.running(state) || {}).label } : undefined, away: state.prompts.away ? { ...state.prompts.away, minutes: Math.max(1, Math.round(((state.prompts.away.toMs || nowMs) - state.prompts.away.fromMs) / 60000)) } : undefined },
 			flash: state.sync.flash && now() - state.sync.flash.atMs < 10000 ? state.sync.flash : null,
+			reminder: state.lastReminder && now() - state.lastReminder.atMs < 15 * 60 * 1000 && now() >= state.snoozeUntil ? state.lastReminder : null,
 			snoozeUntil: state.snoozeUntil,
 		};
 	}
@@ -191,6 +222,10 @@ export function createController({ store, loadToken, saveToken, device, createAp
 		dismiss,
 		heartbeat,
 		answer,
+		tick,
+		suspended,
+		resumed,
+		snooze,
 		nextSyncMs,
 		view,
 		hasToken: () => !!token,
