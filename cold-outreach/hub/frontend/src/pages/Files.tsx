@@ -66,6 +66,10 @@ export function Files() {
   const [open, setOpen] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [dragging, setDragging] = useState<HandedInFile | null>(null);
+  const [choosing, setChoosing] = useState<{
+    item: HandedInFile;
+    benchmarks: { id: string; name: string }[];
+  } | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -97,6 +101,25 @@ export function Files() {
   }, [staff]);
 
   if (!user) return null;
+
+  // A ready file goes to the batch it is for, made when there is none (step 38).
+  async function addToItsBatch(item: HandedInFile, benchmarkId?: string) {
+    setError("");
+    setNotice("");
+    try {
+      const added = await api.addToItsBatch(item.id, benchmarkId);
+      setChoosing(null);
+      if (added.batch?.batch_id) navigate(`/batches?batch=${added.batch.batch_id}&tab=files`);
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "choose_benchmark") {
+        const found = (err.details.benchmarks ?? []) as { id: string; name: string }[];
+        setChoosing({ item, benchmarks: found });
+      } else {
+        setError(message(err, "Not added."));
+        load();
+      }
+    }
+  }
 
   async function addToBatch(item: HandedInFile, batch: Batch) {
     setError("");
@@ -167,54 +190,72 @@ export function Files() {
         />
       )}
 
-      <nav className="files-stages" aria-label="Stages">
+      <nav className="files-tabs" aria-label="Stages">
         <button
-          className={`files-stage ${filter === "" ? "on" : ""}`}
+          className={filter === "" ? "on" : undefined}
           aria-pressed={filter === ""}
           onClick={() => setFilter("")}
         >
-          <span className="files-stage-count">{(items ?? []).length}</span>
-          <span>All</span>
+          All{" "}
+          {(items ?? []).length > 0 && (
+            <span className="files-tab-count">{(items ?? []).length}</span>
+          )}
         </button>
-        {STAGES.map((s, index) => (
+        {STAGES.map((s) => (
           <button
             key={s.key}
-            className={`files-stage ${filter === s.key ? "on" : ""}`}
+            className={filter === s.key ? "on" : undefined}
             aria-pressed={filter === s.key}
             onClick={() => setFilter(s.key)}
           >
-            <span className="files-stage-count">{count(s)}</span>
-            <span>
-              <span className="files-stage-number" aria-hidden>
-                {index + 1}
-              </span>{" "}
-              {s.label}
-            </span>
+            {s.label}
+            {count(s) > 0 && (
+              <span className={`files-tab-count ${s.key === "errors" ? "bad" : ""}`}>
+                {count(s)}
+              </span>
+            )}
           </button>
         ))}
       </nav>
 
       <div className={staff ? "files-layout" : undefined}>
-        <div className="stack-tight" aria-label="Files" role="list">
+        <div className="card table-card">
           {items === null ? (
-            <p className="muted">Loading…</p>
+            <p className="muted files-empty">Loading…</p>
           ) : shown.length === 0 ? (
-            <div className="card empty">
-              <p>{items.length === 0 ? "No files yet." : "No file at this stage."}</p>
-            </div>
+            <p className="muted files-empty">
+              {items.length === 0 ? "No files yet." : "No file at this stage."}
+            </p>
           ) : (
-            shown.map((item) => (
-              <FileCard
-                key={item.id}
-                item={item}
-                staff={staff}
-                collector={role === "collector"}
-                onOpen={() => setOpen(item.id)}
-                onDrag={setDragging}
-                onChanged={load}
-                onError={setError}
-              />
-            ))
+            <div className="table-scroll">
+              <table className="table files-table">
+                <thead>
+                  <tr>
+                    <th>Batch name</th>
+                    <th>File</th>
+                    {role !== "collector" && <th>Handed in by</th>}
+                    <th>Stage</th>
+                    <th>Status</th>
+                    <th className="files-next">Next step</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {shown.map((item) => (
+                    <FileRow
+                      key={item.id}
+                      item={item}
+                      staff={staff}
+                      collector={role === "collector"}
+                      onOpen={() => setOpen(item.id)}
+                      onDrag={setDragging}
+                      onChanged={load}
+                      onError={setError}
+                      onAdd={() => void addToItsBatch(item)}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
 
@@ -228,86 +269,88 @@ export function Files() {
           />
         )}
       </div>
+      {choosing && (
+        <BenchmarkChoice
+          item={choosing.item}
+          benchmarks={choosing.benchmarks}
+          onCancel={() => setChoosing(null)}
+          onChoose={(id) => void addToItsBatch(choosing.item, id)}
+        />
+      )}
     </section>
+  );
+}
+
+/** A niche with several benchmarks: which one the new batch is checked against. */
+function BenchmarkChoice({
+  item,
+  benchmarks,
+  onCancel,
+  onChoose,
+}: {
+  item: HandedInFile;
+  benchmarks: { id: string; name: string }[];
+  onCancel: () => void;
+  onChoose: (id: string) => void;
+}) {
+  const [chosen, setChosen] = useState(benchmarks[0]?.id ?? "");
+  return (
+    <Modal title={`Make ${item.batch_label}`} onClose={onCancel}>
+      <div className="stack">
+        <p>
+          There is no batch called <strong>{item.batch_label}</strong> yet. The Hub makes it now:
+          choose its benchmark.
+        </p>
+        <label className="field">
+          <span>Benchmark</span>
+          <select value={chosen} onChange={(e) => setChosen(e.target.value)}>
+            {benchmarks.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="row">
+          <button
+            className="button button-primary"
+            disabled={!chosen}
+            onClick={() => onChoose(chosen)}
+          >
+            Make {item.batch_label} and add the file
+          </button>
+          <button className="link-button" onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
 const NEW_NICHE = "\u0000new";
 
 function HandIn({ onDone }: { onDone: (item: HandedInFileDetail) => void }) {
-  const [niches, setNiches] = useState<string[]>([]);
-  const [niche, setNiche] = useState("");
-  const [adding, setAdding] = useState(false);
-  const [sent, setSent] = useState<number | null>(null);
+  const [file, setFile] = useState<File | null>(null);
   const [over, setOver] = useState(false);
   const [error, setError] = useState("");
   const input = useRef<HTMLInputElement>(null);
 
-  const loadNiches = useCallback((choose?: string) => {
-    api
-      .fileNiches()
-      .then((found) => {
-        setNiches(found);
-        if (choose) setNiche(choose);
-        else if (found.length === 1) setNiche(found[0]!);
-      })
-      .catch(() => setNiches([]));
-  }, []);
-  useEffect(() => loadNiches(), [loadNiches]);
-
-  async function send(file: File | undefined) {
-    if (!file) return;
-    if (!niche) return setError("Choose the niche first.");
-    if (!file.name.toLowerCase().endsWith(".xlsx"))
-      return setError("Hand in an Excel file (.xlsx).");
-    setSent(0);
-    setError("");
-    try {
-      // Uploading is shown as it goes; the check then runs on the server (step 33).
-      onDone(await api.handIn(file, niche, setSent));
-    } catch (err) {
-      setError(message(err, "Not uploaded."));
-    } finally {
-      setSent(null);
-      if (input.current) input.current.value = "";
+  function take(chosen: File | undefined) {
+    if (input.current) input.current.value = "";
+    if (!chosen) return;
+    if (!chosen.name.toLowerCase().endsWith(".xlsx")) {
+      setError("Hand in an Excel file (.xlsx).");
+      return;
     }
+    setError("");
+    setFile(chosen); // the niche is asked for next (step 38)
   }
 
   return (
     <section className="card stack-tight" aria-label="Hand in a lead file">
-      <div className="files-hand-in-head">
-        <h2>Hand in a lead file</h2>
-        <label className="field files-niche">
-          <span>Niche</span>
-          <select
-            value={niche}
-            onChange={(e) => {
-              if (e.target.value === NEW_NICHE) setAdding(true);
-              else setNiche(e.target.value);
-            }}
-            required
-          >
-            <option value="">Choose…</option>
-            {niches.map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-            <option value={NEW_NICHE}>+ New niche…</option>
-          </select>
-        </label>
-      </div>
-      {adding && (
-        <NewNiche
-          onCancel={() => setAdding(false)}
-          onAdded={(name) => {
-            setAdding(false);
-            loadNiches(name);
-          }}
-        />
-      )}
       <div
-        className={`files-drop ${over ? "over" : ""} ${sent !== null ? "busy" : ""}`}
+        className={`files-drop files-drop-row ${over ? "over" : ""}`}
         onDragOver={(e) => {
           e.preventDefault();
           setOver(true);
@@ -316,43 +359,142 @@ function HandIn({ onDone }: { onDone: (item: HandedInFileDetail) => void }) {
         onDrop={(e) => {
           e.preventDefault();
           setOver(false);
-          if (sent === null) void send(e.dataTransfer.files[0]);
+          take(e.dataTransfer.files[0]);
         }}
       >
-        {sent === null ? (
-          <>
-            <span className="files-drop-icon" aria-hidden>
-              ⬆
-            </span>
-            <p>
-              <strong>Drop your Excel file here</strong>, or{" "}
-              <label className="link-button files-choose">
-                choose a file
-                <input
-                  ref={input}
-                  className="sr-only"
-                  type="file"
-                  accept=".xlsx"
-                  aria-label="Excel file (.xlsx), one tab per city"
-                  onChange={(e) => void send(e.target.files?.[0])}
-                />
-              </label>
-            </p>
-            <p className="small muted">
-              .xlsx, one tab per city. It is checked as soon as it is uploaded.
-            </p>
-          </>
-        ) : (
-          <div className="stack-tight files-drop-progress">
-            <p>
-              <strong>Uploading {sent}%</strong>: keep this page open until it is done.
-            </p>
+        <span className="files-drop-icon" aria-hidden>
+          ⬆
+        </span>
+        <div className="stack-tight">
+          <p>
+            <strong>Drop your Excel file here</strong>, or{" "}
+            <label className="link-button files-choose">
+              choose a file
+              <input
+                ref={input}
+                className="sr-only"
+                type="file"
+                accept=".xlsx"
+                aria-label="Excel file (.xlsx), one tab per city"
+                onChange={(e) => take(e.target.files?.[0])}
+              />
+            </label>
+          </p>
+          <p className="small muted">
+            .xlsx, one tab per city. You choose its niche next; it is checked as soon as it is
+            uploaded.
+          </p>
+        </div>
+      </div>
+      {error && <p className="field-error">{error}</p>}
+      {file && (
+        <NicheDialog
+          file={file}
+          onClose={() => setFile(null)}
+          onDone={(item) => {
+            setFile(null);
+            onDone(item);
+          }}
+        />
+      )}
+    </section>
+  );
+}
+
+const NEW_NICHE_OPTION = NEW_NICHE;
+
+/** After a file is dropped: its niche, then the upload (step 38). No niche, no upload. */
+function NicheDialog({
+  file,
+  onClose,
+  onDone,
+}: {
+  file: File;
+  onClose: () => void;
+  onDone: (item: HandedInFileDetail) => void;
+}) {
+  const [niches, setNiches] = useState<string[]>([]);
+  const [niche, setNiche] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [sent, setSent] = useState<number | null>(null);
+  const [error, setError] = useState("");
+
+  const loadNiches = useCallback((choose?: string) => {
+    api
+      .fileNiches()
+      .then((found) => {
+        setNiches(found);
+        if (choose) setNiche(choose);
+      })
+      .catch(() => setNiches([]));
+  }, []);
+  useEffect(() => loadNiches(), [loadNiches]);
+
+  async function upload() {
+    if (!niche) return;
+    setSent(0);
+    setError("");
+    try {
+      onDone(await api.handIn(file, niche, setSent));
+    } catch (err) {
+      setError(message(err, "Not uploaded."));
+      setSent(null);
+    }
+  }
+
+  return (
+    <Modal title="Which niche is this file for?" onClose={() => sent === null && onClose()}>
+      <div className="stack">
+        <p className="muted">{file.name}</p>
+        <label className="field">
+          <span>Niche</span>
+          <select
+            value={niche}
+            disabled={sent !== null}
+            onChange={(e) => {
+              if (e.target.value === NEW_NICHE_OPTION) setAdding(true);
+              else setNiche(e.target.value);
+            }}
+          >
+            <option value="">Choose…</option>
+            {niches.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+            <option value={NEW_NICHE_OPTION}>+ New niche…</option>
+          </select>
+        </label>
+        {adding && (
+          <NewNiche
+            onCancel={() => setAdding(false)}
+            onAdded={(name) => {
+              setAdding(false);
+              loadNiches(name);
+            }}
+          />
+        )}
+        {sent !== null && (
+          <div className="stack-tight">
+            <span>Uploading {sent}%: keep this page open until it is done.</span>
             <ProgressBar percent={sent} label="Uploading" />
           </div>
         )}
+        {error && <p className="field-error">{error}</p>}
+        <div className="row">
+          <button
+            className="button button-primary"
+            disabled={!niche || sent !== null}
+            onClick={() => void upload()}
+          >
+            Upload and check
+          </button>
+          <button className="link-button" disabled={sent !== null} onClick={onClose}>
+            Cancel
+          </button>
+        </div>
       </div>
-      {error && <p className="field-error">{error}</p>}
-    </section>
+    </Modal>
   );
 }
 
@@ -599,26 +741,8 @@ function minutesLeft(until: string): string {
   return left <= 0 ? "any moment" : `${left} min`;
 }
 
-/** Where a file is on its way: a dot per stage. */
-function StageTrack({ status }: { status: HandedInFile["status"] }) {
-  const at = stageOf(status);
-  return (
-    <ol className="stage-track" aria-label={`Stage ${at + 1} of ${STAGES.length}`}>
-      {STAGES.map((s, index) => (
-        <li
-          key={s.key}
-          className={index < at ? "done" : index === at ? "now" : undefined}
-          title={s.label}
-        >
-          <span className="sr-only">{s.label}</span>
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-/** One file: where it is, and what to do next there (step 36). */
-function FileCard({
+/** One file as a row (step 38): its batch, who, its stage and what to do next there. */
+function FileRow({
   item,
   staff,
   collector,
@@ -626,6 +750,7 @@ function FileCard({
   onDrag,
   onChanged,
   onError,
+  onAdd,
 }: {
   item: HandedInFile;
   staff: boolean;
@@ -634,6 +759,7 @@ function FileCard({
   onDrag: (item: HandedInFile | null) => void;
   onChanged: () => void;
   onError: (text: string) => void;
+  onAdd: () => void;
 }) {
   const [fixing, setFixing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -655,10 +781,8 @@ function FileCard({
   }
 
   return (
-    <article
-      role="listitem"
-      aria-label={item.file_name}
-      className={`card file-card ${movable ? "file-draggable" : ""}`}
+    <tr
+      className={movable ? "file-draggable" : undefined}
       draggable={movable}
       onDragStart={(e) => {
         e.dataTransfer.setData(DRAG_TYPE, item.id);
@@ -668,71 +792,54 @@ function FileCard({
       onDragEnd={() => onDrag(null)}
       title={movable ? "Drag onto a batch" : undefined}
     >
-      <div className="file-card-head">
-        <div className="stack-tight">
-          <div>
-            {movable && (
-              <span className="drag-handle" aria-hidden>
-                ⠿{" "}
-              </span>
-            )}
-            <button className="link-button cell-strong" onClick={onOpen}>
-              {item.file_name}
-            </button>
-          </div>
-          <span className="small muted">
-            {item.niche} · {item.businesses.toLocaleString()} businesses · version {item.version}
-            {!collector && item.uploaded_by && ` · ${item.uploaded_by}`} · {day(item.updated_at)}
-          </span>
-          {item.same_as && <span className="small files-same">⚠ {item.same_as}</span>}
+      <td className="nowrap">
+        <strong>{item.batch_label}</strong>
+      </td>
+      <td>
+        <button className="link-button cell-strong" onClick={onOpen}>
+          {item.file_name}
+        </button>
+        <div className="small muted">
+          {item.niche} · {item.businesses.toLocaleString()} businesses · version {item.version}
         </div>
-        <div className="file-card-stage">
-          <StageTrack status={item.status} />
-          <span className="small">
-            {stageOf(item.status) + 1}. {stage?.label}
-          </span>
-        </div>
-      </div>
-
-      <div className="file-card-body">
+        {item.same_as && <div className="small files-same">⚠ {item.same_as}</div>}
+      </td>
+      {!collector && (
+        <td>
+          {item.uploaded_by ?? "—"}
+          <div className="small muted">{day(item.created_at)}</div>
+        </td>
+      )}
+      <td className="nowrap">{stage?.label}</td>
+      <td>
         {item.status === "checking" && (
-          <div className="stack-tight file-card-progress">
-            <span>Checking {item.progress}%</span>
+          <div className="stack-tight file-row-progress">
+            <span className="small">Checking {item.progress}%</span>
             <ProgressBar percent={item.progress} label={`Checking ${item.file_name}`} />
           </div>
         )}
-        {item.status === "failed" && (
-          <span className="field-error">Couldn't read it: {item.error}</span>
-        )}
+        {item.status === "failed" && <span className="field-error small">Couldn't read it</span>}
         {item.status === "errors" && (
-          <span>
-            <span className="badge badge-error">
-              🔴 {item.errors.toLocaleString()} {item.errors === 1 ? "error" : "errors"}
-            </span>{" "}
-            to fix
+          <span className="badge badge-error">
+            {item.errors.toLocaleString()} {item.errors === 1 ? "error" : "errors"} to fix
           </span>
         )}
         {item.status === "final_check" && (
-          <span>
-            <span className="badge badge-ok">✓ No errors</span> Goes to Top Review in{" "}
-            {item.sends_at ? minutesLeft(item.sends_at) : "an hour"}
+          <span className="badge badge-ok">
+            No errors · {item.sends_at ? minutesLeft(item.sends_at) : "an hour"} left
           </span>
         )}
         {item.status === "needs_top" && (
-          <span>
-            Waiting for Top Review: {item.cities_topped} of {item.cities_on}{" "}
+          <span className="badge badge-warning">
+            {item.cities_topped} of {item.cities_on}{" "}
             {item.cities_on === 1 ? "city has" : "cities have"} a Top
           </span>
         )}
-        {item.status === "ready" && (
-          <span>
-            <span className="badge badge-ok">✅ Ready</span>{" "}
-            {staff ? "Drag it onto a batch of its niche." : "Waiting to be added to a batch."}
-          </span>
-        )}
+        {item.status === "ready" && <span className="badge badge-ok">Ready</span>}
         {(item.status === "adding" || item.status === "used") && <UsedIn item={item} />}
-
-        <div className="file-card-actions">
+      </td>
+      <td>
+        <div className="file-row-actions">
           {["errors", "final_check"].includes(item.status) && (
             <button
               className="button button-small"
@@ -744,12 +851,16 @@ function FileCard({
                 )
               }
             >
-              <span aria-hidden>⬇</span> Download problems to fix
+              Download problems
             </button>
           )}
           {mayChange && ["failed", "errors", "final_check"].includes(item.status) && (
-            <button className="button button-small" disabled={busy} onClick={() => setFixing(true)}>
-              <span aria-hidden>⬆</span> Upload fixes
+            <button
+              className={`button button-small ${item.status === "final_check" ? "" : "button-primary"}`}
+              disabled={busy}
+              onClick={() => setFixing(true)}
+            >
+              Upload fixes
             </button>
           )}
           {mayChange && item.status === "final_check" && (
@@ -761,22 +872,33 @@ function FileCard({
               Send to Top Review now
             </button>
           )}
+          {item.status === "needs_top" && (
+            <span className="small muted">Waiting for the reviewer</span>
+          )}
+          {staff && item.status === "ready" && (
+            <button className="button button-small button-primary" disabled={busy} onClick={onAdd}>
+              Add to {item.batch_label}
+            </button>
+          )}
+          {!staff && item.status === "ready" && (
+            <span className="small muted">Waiting to be added to {item.batch_label}</span>
+          )}
           <button className="button button-small" onClick={onOpen}>
             Open
           </button>
         </div>
-      </div>
-      {fixing && (
-        <FileFixDialog
-          id={item.id}
-          onClose={() => setFixing(false)}
-          onSaved={() => {
-            setFixing(false);
-            onChanged();
-          }}
-        />
-      )}
-    </article>
+        {fixing && (
+          <FileFixDialog
+            id={item.id}
+            onClose={() => setFixing(false)}
+            onSaved={() => {
+              setFixing(false);
+              onChanged();
+            }}
+          />
+        )}
+      </td>
+    </tr>
   );
 }
 

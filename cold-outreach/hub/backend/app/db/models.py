@@ -296,6 +296,9 @@ class Niche(TimestampMixin, Base):
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL")
     )
+    # How many files of it were ever handed in (step 38): the next is "<niche> <files + 1>",
+    # so a number is never given twice, even after a file is deleted.
+    files: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     __table_args__ = (Index("uq_niches_name", func.lower(name), unique=True),)
 
@@ -308,6 +311,9 @@ class Submission(TimestampMixin, Base):
     __tablename__ = "submissions"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    # The batch it is for (step 38): its niche and number, "Cleaning 01"; when it is ready it
+    # is added to the batch of that name (made then if there is none).
+    batch_name: Mapped[str] = mapped_column(String(120), default="", server_default="")
     # The file's number (step 35): its businesses' File IDs are F<number>-0001, F<number>-0002…
     number: Mapped[int] = mapped_column(Integer, unique=True)
     file_name: Mapped[str] = mapped_column(String(255))

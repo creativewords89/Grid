@@ -12,6 +12,7 @@ const me = (user: typeof owner) => [200, { user, csrf_token: "t" }] as [number, 
 function file(overrides: Partial<HandedInFile> = {}): HandedInFile {
   return {
     id: "f1",
+    batch_label: "Cleaning 01",
     number: 12,
     file_name: "tulsa.xlsx",
     niche: "Cleaning",
@@ -124,10 +125,13 @@ test("a collector lands on Files whatever the address, hands in a file and sees 
 
   expect(await screen.findByRole("heading", { name: "Files" })).toBeVisible();
   expect(calls.some((c) => c.path.startsWith("/batches"))).toBe(false);
-  await screen.findByRole("option", { name: "Cleaning" }); // the niches are loaded
-  await userEvent.selectOptions(screen.getByLabelText("Niche"), "Cleaning");
-  // Choosing (or dropping) the file uploads it at once.
+  // Choosing (or dropping) the file asks for its niche; no niche, no upload (step 38).
   await userEvent.upload(screen.getByLabelText(/Excel file/), new File(["x"], "tulsa.xlsx"));
+  const asked = await screen.findByRole("dialog", { name: "Which niche is this file for?" });
+  expect(within(asked).getByRole("button", { name: "Upload and check" })).toBeDisabled();
+  await within(asked).findByRole("option", { name: "Cleaning" });
+  await userEvent.selectOptions(within(asked).getByLabelText("Niche"), "Cleaning");
+  await userEvent.click(within(asked).getByRole("button", { name: "Upload and check" }));
 
   expect(await screen.findByText(/is uploaded and being checked/)).toBeVisible();
   expect(await screen.findByText("Checking 40%")).toBeVisible();
@@ -154,7 +158,9 @@ test("a new niche, with a close spelling asked about", async () => {
   });
   render(<App />);
 
+  await userEvent.upload(await screen.findByLabelText(/Excel file/), new File(["x"], "tulsa.xlsx"));
   const niche = await screen.findByLabelText("Niche");
+  await screen.findByRole("option", { name: "Cleaning" });
   await userEvent.selectOptions(niche, "+ New niche…");
   await userEvent.type(screen.getByLabelText("New niche"), "Cleanning");
   await userEvent.click(screen.getByRole("button", { name: "Add" }));
@@ -342,18 +348,19 @@ test("a file without errors waits in its Final check, and can be sent on now", a
   });
   render(<App />);
 
-  const card = await screen.findByRole("listitem", { name: "tulsa.xlsx" });
-  expect(within(card).getByText(/Goes to Top Review in 4[12] min/)).toBeVisible();
+  const card = await screen.findByRole("row", { name: /tulsa\.xlsx/ });
+  expect(within(card).getByText("Cleaning 01")).toBeVisible();
+  expect(within(card).getByText(/No errors · 4[12] min left/)).toBeVisible();
   // The stages count the files; one shows just the files at that stage.
   const stages = screen.getByRole("navigation", { name: "Stages" });
   await userEvent.click(within(stages).getByRole("button", { name: /Final check/ }));
-  expect(screen.queryByRole("listitem", { name: "other.xlsx" })).toBeNull();
+  expect(screen.queryByRole("row", { name: /other\.xlsx/ })).toBeNull();
 
   await userEvent.click(within(card).getByRole("button", { name: "Send to Top Review now" }));
   expect(calls.some((c) => c.method === "POST" && c.path === "/submissions/f1/send")).toBe(true);
   await userEvent.click(within(stages).getByRole("button", { name: /Top Review/ }));
-  const sent = await screen.findByRole("listitem", { name: "tulsa.xlsx" });
-  expect(within(sent).getByText(/Waiting for Top Review/)).toBeVisible();
+  const sent = await screen.findByRole("row", { name: /tulsa\.xlsx/ });
+  expect(within(sent).getByText(/Waiting for the reviewer/)).toBeVisible();
 });
 
 test("a whole new file through Upload fixes replaces the file once confirmed", async () => {
@@ -393,4 +400,61 @@ test("a whole new file through Upload fixes replaces the file once confirmed", a
   expect(screen.queryByRole("dialog", { name: "Upload fixes" })).toBeNull();
   const sent = calls.filter((c) => c.path === "/submissions/f1/fixes").map((c) => c.body);
   expect(sent.map((b) => (b as { confirm: string }).confirm)).toEqual(["false", "true"]);
+});
+
+test("an owner adds a ready file to its batch, choosing the benchmark of a new one", async () => {
+  const ready = file({ status: "ready", errors: 0, warnings: 0 });
+  let tries = 0;
+  const calls = mockApi({
+    "GET /auth/me": me(owner),
+    "GET /submissions": [200, [ready]],
+    "GET /submissions/niches": [200, ["Cleaning"]],
+    "GET /batches": [200, []],
+    "POST /submissions/f1/add": () => {
+      tries += 1;
+      return tries === 1
+        ? [
+            409,
+            {
+              error: {
+                code: "choose_benchmark",
+                message: "Choose the benchmark of Cleaning 01.",
+                details: {
+                  benchmarks: [
+                    { id: "k1", name: "Cleaning Benchmark 1" },
+                    { id: "k2", name: "Cleaning Benchmark 2" },
+                  ],
+                },
+              },
+            },
+          ]
+        : [
+            200,
+            {
+              ...ready,
+              status: "adding",
+              batch: {
+                batch_id: "b9",
+                batch_name: "Cleaning 01",
+                import_id: "i1",
+                at: null,
+                by: "Olivia",
+              },
+            },
+          ];
+    },
+  });
+  render(<App />);
+
+  const row = await screen.findByRole("row", { name: /tulsa\.xlsx/ });
+  expect(within(row).getByText("Cal")).toBeVisible(); // who handed it in
+  await userEvent.click(within(row).getByRole("button", { name: "Add to Cleaning 01" }));
+  const dialog = await screen.findByRole("dialog", { name: "Make Cleaning 01" });
+  await userEvent.selectOptions(within(dialog).getByLabelText("Benchmark"), "k2");
+  await userEvent.click(
+    within(dialog).getByRole("button", { name: "Make Cleaning 01 and add the file" }),
+  );
+  const sent = calls.filter((c) => c.path === "/submissions/f1/add").map((c) => c.body);
+  expect(sent).toEqual([{}, { benchmark_id: "k2" }]);
+  expect(window.location.search).toBe("?batch=b9&tab=files");
 });

@@ -3321,3 +3321,89 @@ textarea {
 .file-card-head .link-button {
   display: inline;
 }
+
+/* Files (step 38): tabs with counts, one table of the files. */
+.files-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+}
+
+.files-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.files-tabs button:hover {
+  color: var(--text);
+}
+
+.files-tabs button.on {
+  color: var(--brand);
+  font-weight: 600;
+  border-bottom-color: var(--brand);
+}
+
+.files-tab-count {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.files-tab-count.bad {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.files-table td {
+  vertical-align: middle;
+}
+
+.files-table th.files-next {
+  text-align: right;
+}
+
+.file-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+}
+
+.file-row-progress {
+  min-width: 140px;
+}
+
+.files-drop.files-drop-row {
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 16px;
+  min-height: 0;
+  padding: 16px 20px;
+  text-align: left;
+}
+
+.files-empty {
+  padding: 24px;
+  margin: 0;
+}
+
+.files-table th,
+.files-table td .small.muted {
+  white-space: nowrap;
+}

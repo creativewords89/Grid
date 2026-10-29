@@ -23,7 +23,7 @@ from app.api.imports import MAX_BYTES, NicheName
 from app.api.niches import niche_names
 from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
-from app.db.models import ImportStatus, Submission, User
+from app.db.models import Batch, Benchmark, ImportStatus, Niche, Submission, User
 from app.errors import ApiError
 from app.imports import check, fixes, service
 from app.imports import submissions as files
@@ -48,6 +48,7 @@ class BatchRef(BaseModel):
 
 class FileOut(BaseModel):
     id: uuid.UUID
+    batch_label: str  # the batch it is for: its niche and number, "Cleaning 01" (step 38)
     number: int  # its businesses' File IDs are F<number>-0001… (step 35)
     file_name: str
     niche: str
@@ -135,6 +136,7 @@ def _out(db: Session, me: User, sub: Submission) -> FileOut:
     on = files.cities_on(files.cities(sub))
     return FileOut(
         id=sub.id,
+        batch_label=sub.batch_name,
         number=sub.number,
         file_name=sub.file_name,
         niche=sub.niche,
@@ -253,11 +255,20 @@ def hand_in(
     # One file at a time takes the next number (its File IDs start with it, step 35).
     db.execute(text("SELECT pg_advisory_xact_lock(4242002)"))
     number = (db.scalar(select(func.max(Submission.number))) or 0) + 1
+    # Its batch name: the niche and the next number of the niche (step 38).
+    niche_row = db.scalar(
+        select(Niche).where(func.lower(Niche.name) == chosen.lower()).with_for_update()
+    )
+    if niche_row is None:
+        niche_row = Niche(name=chosen, files=0)
+        db.add(niche_row)
+    niche_row.files = (niche_row.files or 0) + 1
     sub = Submission(
         file_name=(file.filename or "leads.xlsx")[:255],
         niche=chosen,
         uploaded_by=me.id,
         number=number,
+        batch_name=f"{chosen} {niche_row.files:02d}",
     )
     _store(sub, content)
     db.add(sub)
@@ -504,12 +515,8 @@ class UseIn(Strict):
     batch_id: uuid.UUID
 
 
-@router.post("/submissions/{file_id}/use", response_model=FileOut)
-def use(file_id: uuid.UUID, body: UseIn, me: CurrentUser, db: Db) -> FileOut:
-    """Add a ready file to a batch of its niche: its preview waits in the batch, as if it
-    were uploaded there. Once that preview is confirmed the file is used, for good."""
-    ensure(me, Action.USE_FILES)
-    ensure(me, Action.IMPORT_LEADS)
+def _usable(db: Session, file_id: uuid.UUID) -> Submission:
+    """A ready file, locked, that may be added to a batch now."""
     sub = db.scalar(select(Submission).where(Submission.id == file_id).with_for_update())
     if sub is None:
         raise ApiError(404, "not_found", "That file doesn't exist.")
@@ -522,19 +529,12 @@ def use(file_id: uuid.UUID, body: UseIn, me: CurrentUser, db: Db) -> FileOut:
         raise ApiError(
             409, "adding", "This file is already being added to a batch: confirm or discard it."
         )
-    if status == "errors":
-        raise ApiError(409, "not_ready", "This file still has errors: it has to be fixed first.")
     if status == "needs_top":
         raise ApiError(
             409, "needs_top", "Top isn't chosen in every city of this file yet (Top Review)."
         )
-    batch = get_batch(db, body.batch_id)
-    if batch.niche.strip().lower() != sub.niche.strip().lower():
-        raise ApiError(
-            409,
-            "other_niche",
-            f"This file is for {sub.niche}; {batch.name} is a {batch.niche} batch.",
-        )
+    if status != "ready":
+        raise ApiError(409, "not_ready", "This file isn't ready yet: it has to be fixed first.")
     twin = [
         other
         for other in db.scalars(
@@ -551,6 +551,17 @@ def use(file_id: uuid.UUID, body: UseIn, me: CurrentUser, db: Db) -> FileOut:
             409,
             "same_leads_used",
             f'The same leads were already used ("{twin[0].file_name}" in {name or "a batch"}).',
+        )
+    return sub
+
+
+def _add(db: Session, me: User, sub: Submission, batch: Batch) -> FileOut:
+    """Make the batch's import of the file: its preview waits in the batch."""
+    if batch.niche.strip().lower() != sub.niche.strip().lower():
+        raise ApiError(
+            409,
+            "other_niche",
+            f"This file is for {sub.niche}; {batch.name} is a {batch.niche} batch.",
         )
     tops = {key for chosen in sub.tops.values() for key in chosen}
     imp = service.preview(db, me, sub.file_name, sub.content, batch, tops)
@@ -569,6 +580,66 @@ def use(file_id: uuid.UUID, body: UseIn, me: CurrentUser, db: Db) -> FileOut:
     db.commit()
     db.refresh(sub)
     return _out(db, me, sub)
+
+
+@router.post("/submissions/{file_id}/use", response_model=FileOut)
+def use(file_id: uuid.UUID, body: UseIn, me: CurrentUser, db: Db) -> FileOut:
+    """Add a ready file to a batch of its niche: its preview waits in the batch, as if it
+    were uploaded there. Once that preview is confirmed the file is used, for good."""
+    ensure(me, Action.USE_FILES)
+    ensure(me, Action.IMPORT_LEADS)
+    sub = _usable(db, file_id)
+    return _add(db, me, sub, get_batch(db, body.batch_id))
+
+
+class AddIn(Strict):
+    benchmark_id: uuid.UUID | None = None
+
+
+@router.post("/submissions/{file_id}/add", response_model=FileOut)
+def add_to_its_batch(file_id: uuid.UUID, body: AddIn, me: CurrentUser, db: Db) -> FileOut:
+    """Add a ready file to the batch it is for, its batch name ("Cleaning 01", step 38),
+    making that batch first when there is none: with the niche's benchmark, or the one
+    chosen when the niche has several."""
+    ensure(me, Action.USE_FILES)
+    ensure(me, Action.IMPORT_LEADS)
+    sub = _usable(db, file_id)
+    batch = db.scalar(select(Batch).where(func.lower(Batch.name) == sub.batch_name.lower()))
+    if batch is None:
+        choices = list(
+            db.scalars(
+                select(Benchmark)
+                .where(func.lower(func.trim(Benchmark.niche)) == sub.niche.strip().lower())
+                .order_by(Benchmark.name)
+            )
+        )
+        chosen = next((b for b in choices if b.id == body.benchmark_id), None)
+        if chosen is None and len(choices) == 1 and body.benchmark_id is None:
+            chosen = choices[0]
+        if not choices:
+            raise ApiError(
+                409,
+                "no_benchmark",
+                f"There is no {sub.niche} benchmark yet: make one on Benchmarks first.",
+            )
+        if chosen is None:
+            raise ApiError(
+                409,
+                "choose_benchmark",
+                f"Choose the benchmark of {sub.batch_name}.",
+                details={"benchmarks": [{"id": str(b.id), "name": b.name} for b in choices]},
+            )
+        batch = Batch(
+            name=sub.batch_name,
+            niche=sub.niche,
+            benchmark_id=chosen.id,
+            created_by=me.id,
+            position=(db.scalar(select(func.max(Batch.position))) or 0) + 1,
+        )
+        db.add(batch)
+        db.flush()
+        audit.record(db, me, "create", "batch", batch.id, batch.name, [])
+    return _add(db, me, sub, batch)
 
 
 @router.post("/submissions/{file_id}/reopen", response_model=FileOut)
