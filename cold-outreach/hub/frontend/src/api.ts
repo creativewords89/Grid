@@ -420,37 +420,50 @@ export function leadQuery(filters: Record<string, string | number | undefined>):
 
 export type BatchStatus = "not_started" | "running" | "paused";
 
+export type FileStatus =
+  "checking" | "failed" | "errors" | "final_check" | "top_review" | "in_batch";
+
+/** A city of a handed-in file (step 39). */
+export type CityState = "muted" | "in_batch" | "ready" | "needs_top" | "small";
+
+export type FileCity = {
+  key: string;
+  name: string;
+  businesses: number;
+  state: CityState;
+  tops: number;
+  muted: string; // why, when it is muted
+  moves_at: string | null; // a ready city goes on to the batch then
+  moved_at: string | null;
+};
+
 /** A lead file handed in on the Files screen (step 31). */
 export type HandedInFile = {
   id: string;
-  batch_label: string; // the batch it is for: its niche and number, "Cleaning 01" (step 38)
   number: number; // its businesses' File IDs are F<number>-0001… (step 35)
   file_name: string;
   niche: string;
+  batch_name: string; // the niche's batch its cities go to (step 39)
   version: number;
   businesses: number;
   errors: number;
   warnings: number;
-  status:
-    "checking" | "failed" | "errors" | "final_check" | "needs_top" | "ready" | "adding" | "used";
+  status: FileStatus;
   uploaded_by: string | null;
   mine: boolean;
   created_at: string;
   updated_at: string;
-  batch: {
-    batch_id: string | null;
-    batch_name: string | null;
-    import_id: string;
-    at: string | null;
-    by: string | null;
-  } | null;
   same_as: string | null;
-  cities_on: number;
-  cities_topped: number;
+  // Its cities (step 39): those going on to the batch, and how many are in it, ready or muted.
+  cities_going: number;
+  cities_in_batch: number;
+  cities_ready: number;
+  cities_muted: number;
   // Checked in the background (step 33): how far, and why it couldn't be read.
   progress: number;
   error: string | null;
   sends_at: string | null; // in its Final check: when it goes on to Top Review (step 36)
+  can_send_cities: boolean; // may send its ready cities to the batch now
 };
 
 /** A business of a handed-in file, for the Files table (step 33). */
@@ -500,28 +513,31 @@ export type FileFixResult = {
 
 export type NicheRow = { id: string; name: string; uses: number };
 
-/** A file in Top Review (step 32). */
-export type ReviewFile = {
-  id: string;
+/** A city in Top Review (steps 32 and 39). */
+export type ReviewShown = "needs_top" | "ready" | "small";
+
+export type ReviewRow = {
+  file_id: string;
   file_name: string;
+  number: number;
   niche: string;
+  key: string;
+  name: string;
   businesses: number;
-  created_at: string;
-  state: "needs_top" | "done";
-  cities_on: number;
-  cities_topped: number;
+  tops: number;
+  state: ReviewShown;
+  moves_at: string | null;
 };
 
-export type ReviewCityState = "ready" | "needs_top" | "off";
-
-export type ReviewFileDetail = ReviewFile & {
-  cities: { key: string; name: string; businesses: number; tops: number; state: ReviewCityState }[];
-};
+export type ReviewList = { counts: Record<ReviewShown, number>; cities: ReviewRow[] };
 
 export type ReviewCity = {
   key: string;
   name: string;
-  state: ReviewCityState;
+  state: ReviewShown;
+  moves_at: string | null;
+  file_id: string;
+  file_name: string;
   columns: { key: string; label: string }[];
   businesses: {
     key: string;
@@ -549,6 +565,7 @@ export type HandedInFileDetail = HandedInFile & {
     { errors: number; warnings: number; columns: { field: string; message: string }[] }
   >;
   problems: FileProblem[];
+  cities: FileCity[];
 };
 
 export type Batch = {
@@ -952,25 +969,23 @@ export const api = {
   renameNiche: (id: string, name: string) => request<NicheRow>("PATCH", `/niches/${id}`, { name }),
   deleteNiche: (id: string) => request<void>("DELETE", `/niches/${id}`),
   deleteFile: (id: string) => request<void>("DELETE", `/submissions/${id}`),
-  addToItsBatch: (id: string, benchmarkId?: string) =>
-    request<HandedInFile>(
-      "POST",
-      `/submissions/${id}/add`,
-      benchmarkId ? { benchmark_id: benchmarkId } : {},
-    ),
   sendToReview: (id: string) => request<HandedInFile>("POST", `/submissions/${id}/send`),
-  reopenFile: (id: string) => request<HandedInFile>("POST", `/submissions/${id}/reopen`),
-  // Top Review (step 32).
-  reviewFiles: () => request<ReviewFile[]>("GET", "/review/files"),
-  reviewFile: (id: string) => request<ReviewFileDetail>("GET", `/review/files/${id}`),
+  // A file's ready cities (or one) to their batch now (step 39).
+  sendCities: (id: string, city?: string) =>
+    request<HandedInFileDetail>("POST", `/submissions/${id}/to-batch`, city ? { city } : {}),
+  unmuteCity: (id: string, city: string) =>
+    request<HandedInFileDetail>(
+      "POST",
+      `/submissions/${id}/cities/${encodeURIComponent(city)}/unmute`,
+    ),
+  // Top Review (steps 32 and 39).
+  reviewCities: (show: ReviewShown) => request<ReviewList>("GET", `/review/cities?show=${show}`),
   reviewCity: (id: string, city: string) =>
     request<ReviewCity>("GET", `/review/files/${id}/cities/${encodeURIComponent(city)}`),
   saveTops: (id: string, city: string, tops: string[]) =>
-    request<ReviewFileDetail>("PUT", `/review/files/${id}/cities/${encodeURIComponent(city)}`, {
+    request<ReviewRow>("PUT", `/review/files/${id}/cities/${encodeURIComponent(city)}`, {
       tops,
     }),
-  useFile: (id: string, batchId: string) =>
-    request<HandedInFile>("POST", `/submissions/${id}/use`, { batch_id: batchId }),
   benchmarks: () => request<Benchmark[]>("GET", "/benchmarks"),
   createBenchmark: (body: BenchmarkIn) => request<Benchmark>("POST", "/benchmarks", body),
   saveBenchmark: (id: string, body: BenchmarkIn) =>

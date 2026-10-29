@@ -64,6 +64,10 @@ CODES: dict[str, tuple[Severity, str]] = {
     "RATING_NOT_NUMBER": ("error", "Rating isn't a number"),
     "RATING_OUT_OF_RANGE": ("error", "Rating isn't between 0 and 5"),
     "REVIEWS_RATING_SWAPPED": ("error", "Reviews and Rating look swapped"),
+    # The same business twice (step 39): on two rows of a file, or already in another file
+    # handed in earlier or in a batch. Its message says where.
+    "SAME_IN_FILE": ("error", "Same business on another row of this file"),
+    "SAME_ELSEWHERE": ("error", "Same business already handed in"),
     # A tab (city) of the file. (Every problem is an error since step 36.)
     "MISSING_COLUMN": ("error", "Column missing"),
     "DUPLICATE_COLUMN": ("error", "Column twice: the first one is used"),

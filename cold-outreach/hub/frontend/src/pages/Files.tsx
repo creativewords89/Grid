@@ -3,7 +3,7 @@ import {
   api,
   ApiError,
   download,
-  type Batch,
+  type FileCity,
   type FileFixResult,
   type FileLead,
   type FileLeadFilters,
@@ -16,23 +16,20 @@ import { useAuth } from "../auth";
 import { FIELD_NAMES } from "../checkLabels";
 import { Alert, Modal } from "../components/ui";
 import { day } from "../format";
-import { navigate } from "../router";
 import { CheckBadge, Pager } from "./Leads";
 
 /** The Files screen (step 31): the external team (Collectors) hand in lead files, see what
- * Lead Check finds and upload revised versions until it has no error; Reviewers then choose
- * each city's Top (Top Review, step 32); an Owner or Admin drags the ready file onto a batch
- * of its niche. A file is used once. */
+ * Lead Check finds and fix them until it has no error; after the Final check Reviewers choose
+ * each city's Top (Top Review), and each city with a Top goes on to its niche's batch (step
+ * 39). A city another file of the niche already has is muted. */
 
 const STATUS: Record<HandedInFile["status"], [string, string]> = {
   checking: ["badge-warning", "Checking"],
   failed: ["badge-error", "Couldn't read"],
   errors: ["badge-error", "Needs fixing"],
   final_check: ["badge-ok", "Final check"],
-  needs_top: ["badge-warning", "Needs Top"],
-  ready: ["badge-ok", "Ready"],
-  adding: ["badge-warning", "Being added"],
-  used: ["badge", "Used"],
+  top_review: ["badge-warning", "Top Review"],
+  in_batch: ["badge", "In the batch"],
 };
 
 // The way a file goes (step 36), each stage with the states it holds.
@@ -41,9 +38,8 @@ const STAGES: Stage[] = [
   { key: "checking", label: "Checking", statuses: ["checking", "failed"] },
   { key: "errors", label: "Fix errors", statuses: ["errors"] },
   { key: "final_check", label: "Final check", statuses: ["final_check"] },
-  { key: "needs_top", label: "Top Review", statuses: ["needs_top"] },
-  { key: "ready", label: "Ready", statuses: ["ready"] },
-  { key: "batch", label: "In a batch", statuses: ["adding", "used"] },
+  { key: "top_review", label: "Top Review", statuses: ["top_review"] },
+  { key: "in_batch", label: "In the batch", statuses: ["in_batch"] },
 ];
 const stageOf = (status: HandedInFile["status"]) =>
   STAGES.findIndex((stage) => stage.statuses.includes(status));
@@ -54,20 +50,11 @@ function message(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
 }
 
-function sameNiche(a: string, b: string): boolean {
-  return a.trim().toLowerCase() === b.trim().toLowerCase();
-}
-
 export function Files() {
   const { user } = useAuth();
   const [items, setItems] = useState<HandedInFile[] | null>(null);
-  const [batches, setBatches] = useState<Batch[]>([]);
   const [open, setOpen] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
-  const [choosing, setChoosing] = useState<{
-    item: HandedInFile;
-    benchmarks: { id: string; name: string }[];
-  } | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -84,57 +71,13 @@ export function Files() {
   useEffect(load, [load]);
   // Files are checked on the server (step 33): look again while one is being checked.
   const checking = (items ?? []).some((f) => f.status === "checking");
-  const waiting = (items ?? []).some((f) => f.status === "final_check");
+  const waiting = (items ?? []).some((f) => ["final_check", "top_review"].includes(f.status));
   useEffect(() => {
     if ((!checking && !waiting) || open) return;
     const timer = window.setTimeout(load, checking ? POLL_MS : FINAL_POLL_MS);
     return () => window.clearTimeout(timer);
   }, [checking, waiting, items, open, load]);
-  useEffect(() => {
-    if (staff)
-      api
-        .batches()
-        .then(setBatches)
-        .catch(() => setBatches([]));
-  }, [staff]);
-
   if (!user) return null;
-
-  // A ready file goes to the batch it is for, made when there is none (step 38).
-  async function addToItsBatch(item: HandedInFile, benchmarkId?: string) {
-    setError("");
-    setNotice("");
-    try {
-      const added = await api.addToItsBatch(item.id, benchmarkId);
-      setChoosing(null);
-      if (added.batch?.batch_id) navigate(`/batches?batch=${added.batch.batch_id}&tab=files`);
-    } catch (err) {
-      if (err instanceof ApiError && err.code === "choose_benchmark") {
-        const found = (err.details.benchmarks ?? []) as { id: string; name: string }[];
-        setChoosing({ item, benchmarks: found });
-      } else {
-        setError(message(err, "Not added."));
-        load();
-      }
-    }
-  }
-
-  async function addToBatch(item: HandedInFile, batch: Batch) {
-    setError("");
-    setNotice("");
-    if (!sameNiche(item.niche, batch.niche)) {
-      setError(`${item.file_name} is for ${item.niche}; ${batch.name} is a ${batch.niche} batch.`);
-      return;
-    }
-    try {
-      await api.useFile(item.id, batch.id);
-      // The batch shows the file's preview: confirm it there.
-      navigate(`/batches?batch=${batch.id}&tab=files`);
-    } catch (err) {
-      setError(message(err, "Not added."));
-      load();
-    }
-  }
 
   if (open) {
     return (
@@ -143,14 +86,12 @@ export function Files() {
         <FileView
           id={open}
           staff={staff}
-          batches={batches}
           onClose={() => {
             setOpen(null);
             setNotice("");
             load();
           }}
           onChanged={load}
-          onAdd={(item, batch) => void addToBatch(item, batch)}
         />
       </section>
     );
@@ -168,7 +109,7 @@ export function Files() {
           <p className="muted files-intro">
             {role === "collector"
               ? "Hand in your lead files. Lead Check marks every error: fix them and upload the fixes. With no error left the file goes on to Top Review."
-              : "Lead files handed in by the team: checked, fixed, given their Top, then added to a batch of their niche, once."}
+              : "Lead files handed in by the team: checked and fixed, then each city gets its Top and goes on to its niche's batch."}
           </p>
         </div>
         {staff && <NichesButton />}
@@ -247,7 +188,6 @@ export function Files() {
                       onOpen={() => setOpen(item.id)}
                       onChanged={load}
                       onError={setError}
-                      onAdd={() => void addToItsBatch(item)}
                     />
                   ))}
                 </tbody>
@@ -256,62 +196,7 @@ export function Files() {
           )}
         </div>
       </div>
-      {choosing && (
-        <BenchmarkChoice
-          item={choosing.item}
-          benchmarks={choosing.benchmarks}
-          onCancel={() => setChoosing(null)}
-          onChoose={(id) => void addToItsBatch(choosing.item, id)}
-        />
-      )}
     </section>
-  );
-}
-
-/** A niche with several benchmarks: which one the new batch is checked against. */
-function BenchmarkChoice({
-  item,
-  benchmarks,
-  onCancel,
-  onChoose,
-}: {
-  item: HandedInFile;
-  benchmarks: { id: string; name: string }[];
-  onCancel: () => void;
-  onChoose: (id: string) => void;
-}) {
-  const [chosen, setChosen] = useState(benchmarks[0]?.id ?? "");
-  return (
-    <Modal title={`Make ${item.batch_label}`} onClose={onCancel}>
-      <div className="stack">
-        <p>
-          There is no batch called <strong>{item.batch_label}</strong> yet. The Hub makes it now:
-          choose its benchmark.
-        </p>
-        <label className="field">
-          <span>Benchmark</span>
-          <select value={chosen} onChange={(e) => setChosen(e.target.value)}>
-            {benchmarks.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="row">
-          <button
-            className="button button-primary"
-            disabled={!chosen}
-            onClick={() => onChoose(chosen)}
-          >
-            Make {item.batch_label} and add the file
-          </button>
-          <button className="link-button" onClick={onCancel}>
-            Cancel
-          </button>
-        </div>
-      </div>
-    </Modal>
   );
 }
 
@@ -710,15 +595,19 @@ function CheckCell({ item }: { item: HandedInFile }) {
   );
 }
 
-function UsedIn({ item }: { item: HandedInFile }) {
-  if (!item.batch) return <span className="muted">—</span>;
-  const when = item.batch.at ? day(item.batch.at) : "";
-  const verb = item.status === "used" ? "Used in" : "Waiting in";
+/** How far its cities are (step 39): "3 of 8 cities in the batch". */
+function InBatch({ item }: { item: HandedInFile }) {
+  if (!["top_review", "in_batch"].includes(item.status)) return <span className="muted">—</span>;
+  if (item.cities_going === 0)
+    return <span className="small muted">No city goes on (all under 10)</span>;
   return (
     <span className="small">
-      {verb} <strong>{item.batch.batch_name ?? "a batch"}</strong>
-      {when && ` · ${when}`}
-      {item.batch.by && ` · by ${item.batch.by}`}
+      <strong>
+        {item.cities_in_batch} of {item.cities_going}
+      </strong>{" "}
+      {item.cities_going === 1 ? "city" : "cities"} in the batch
+      {item.cities_ready > 0 && ` · ${item.cities_ready} ready`}
+      {item.cities_muted > 0 && ` · ${item.cities_muted} muted`}
     </span>
   );
 }
@@ -736,7 +625,6 @@ function FileRow({
   onOpen,
   onChanged,
   onError,
-  onAdd,
 }: {
   item: HandedInFile;
   staff: boolean;
@@ -744,7 +632,6 @@ function FileRow({
   onOpen: () => void;
   onChanged: () => void;
   onError: (text: string) => void;
-  onAdd: () => void;
 }) {
   const [fixing, setFixing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -767,7 +654,7 @@ function FileRow({
   return (
     <tr>
       <td className="nowrap">
-        <strong>{item.batch_label}</strong>
+        <strong>{item.batch_name}</strong>
       </td>
       <td>
         <button className="link-button cell-strong" onClick={onOpen}>
@@ -803,18 +690,17 @@ function FileRow({
             No errors · {item.sends_at ? minutesLeft(item.sends_at) : "an hour"} left
           </span>
         )}
-        {item.status === "needs_top" && (
+        {item.status === "top_review" && (
           <span className="badge badge-warning">
-            {item.cities_topped} of {item.cities_on}{" "}
-            {item.cities_on === 1 ? "city has" : "cities have"} a Top
+            {item.cities_ready > 0
+              ? `${item.cities_ready} ${item.cities_ready === 1 ? "city" : "cities"} ready`
+              : "Waiting for Top"}
           </span>
         )}
-        {item.status === "ready" && <span className="badge badge-ok">Ready</span>}
-        {item.status === "adding" && <span className="badge badge-warning">Being added</span>}
-        {item.status === "used" && <span className="badge">Used</span>}
+        {item.status === "in_batch" && <span className="badge badge-ok">Done</span>}
       </td>
       <td>
-        <UsedIn item={item} />
+        <InBatch item={item} />
       </td>
       <td>
         <div className="file-row-actions">
@@ -850,16 +736,17 @@ function FileRow({
               Send to Top Review now
             </button>
           )}
-          {item.status === "needs_top" && (
+          {item.status === "top_review" && !item.can_send_cities && (
             <span className="small muted">Waiting for the reviewer</span>
           )}
-          {staff && item.status === "ready" && (
-            <button className="button button-small button-primary" disabled={busy} onClick={onAdd}>
-              Add to {item.batch_label}
+          {item.can_send_cities && (
+            <button
+              className="button button-small button-primary"
+              disabled={busy}
+              onClick={() => void act(() => api.sendCities(item.id), "not sent.")}
+            >
+              Send ready cities to {item.batch_name} now
             </button>
-          )}
-          {!staff && item.status === "ready" && (
-            <span className="small muted">Waiting to be added to {item.batch_label}</span>
           )}
           <button className="button button-small" onClick={onOpen}>
             Open
@@ -884,22 +771,17 @@ function FileRow({
 function FileView({
   id,
   staff,
-  batches,
   onClose,
   onChanged,
-  onAdd,
 }: {
   id: string;
   staff: boolean;
-  batches: Batch[];
   onClose: () => void;
   onChanged: () => void;
-  onAdd: (item: HandedInFile, batch: Batch) => void;
 }) {
   const [item, setItem] = useState<HandedInFileDetail | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [target, setTarget] = useState("");
 
   const load = useCallback(() => {
     api
@@ -943,13 +825,14 @@ function FileView({
     }
   }
 
-  // Once a file has no error the Collectors are done: only Owners and Admins delete it then.
+  // Sent on to Top Review, a file is done for its sender: only Owners and Admins delete it
+  // then, until a city of it is in the batch (step 39).
   const fixing = ["checking", "failed", "errors", "final_check"];
   const revisable = item && (item.mine || staff) && fixing.includes(item.status);
   const deletable =
     item &&
-    (staff ? [...fixing, "needs_top", "ready"] : fixing).includes(item.status) &&
-    (item.mine || staff);
+    (item.mine || staff) &&
+    (fixing.includes(item.status) || (staff && item.cities_in_batch === 0));
 
   async function sendOn() {
     setBusy(true);
@@ -965,20 +848,18 @@ function FileView({
     }
   }
 
-  async function reopen() {
+  async function cityAction(action: () => Promise<HandedInFileDetail>, failed: string) {
     setBusy(true);
     setError("");
     try {
-      await api.reopenFile(id);
-      setItem(await api.file(id));
+      setItem(await action());
       onChanged();
     } catch (err) {
-      setError(message(err, "Not reopened."));
+      setError(message(err, failed));
     } finally {
       setBusy(false);
     }
   }
-  const fitting = item ? batches.filter((b) => sameNiche(b.niche, item.niche)) : [];
   const columnWarnings = item
     ? Object.entries(item.tabs).flatMap(([tab, t]) => t.columns.map((c) => ({ tab, ...c })))
     : [];
@@ -1011,11 +892,6 @@ function FileView({
             </span>
           </div>
           {item.same_as && <Alert kind="info">⚠ {item.same_as}</Alert>}
-          {item.batch && (
-            <p>
-              <UsedIn item={item} />
-            </p>
-          )}
           {item.status === "checking" && (
             <div className="stack-tight">
               <p>
@@ -1033,8 +909,8 @@ function FileView({
           {item.status === "errors" && (
             <p>
               🔴 {item.errors} {item.errors === 1 ? "error" : "errors"} to fix before this file can
-              go into a batch. Download the problems, fix them in Excel, then send the file back
-              with Upload fixes.
+              go on. Download the problems, fix them in Excel, then send the file back with Upload
+              fixes.
             </p>
           )}
           {item.status === "final_check" && (
@@ -1044,17 +920,18 @@ function FileView({
               <strong>Send to Top Review now</strong>. Until then it can still be fixed.
             </p>
           )}
-          {item.status === "needs_top" && (
+          {item.status === "top_review" && (
             <p>
-              🟡 No errors. Waiting for Top Review: {item.cities_topped} of {item.cities_on}{" "}
-              {item.cities_on === 1 ? "city has" : "cities have"} a Top.
+              🟡 In Top Review. A city goes on to <strong>{item.batch_name}</strong> an hour after
+              it gets its Top, or at once with <strong>Send to batch now</strong>.
             </p>
           )}
-          {item.status === "ready" && (
+          {item.status === "in_batch" && (
             <p>
-              ✅ No errors and every city has a Top
-              {item.cities_on === 0 && " (no city has 10 businesses, so none needs one)"}: this file
-              is ready to be added to a batch.
+              ✅ Done:{" "}
+              {item.cities_going === 0
+                ? "no city has 10 businesses, so none goes on unless a Reviewer gives it a Top."
+                : `its cities are in ${item.batch_name}.`}
             </p>
           )}
 
@@ -1083,9 +960,13 @@ function FileView({
                 Send to Top Review now
               </button>
             )}
-            {staff && item.status === "ready" && (
-              <button className="button" disabled={busy} onClick={() => void reopen()}>
-                Reopen for Top Review
+            {item.can_send_cities && (
+              <button
+                className="button button-primary"
+                disabled={busy}
+                onClick={() => void cityAction(() => api.sendCities(id), "Not sent.")}
+              >
+                Send ready cities to {item.batch_name} now
               </button>
             )}
             {deletable && (
@@ -1099,30 +980,16 @@ function FileView({
             )}
           </div>
 
-          {staff && item.status === "ready" && (
-            <div className="row">
-              <label className="field">
-                <span>Add to batch</span>
-                <select value={target} onChange={(e) => setTarget(e.target.value)}>
-                  <option value="">Choose a {item.niche} batch…</option>
-                  {fitting.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button
-                className="button button-primary"
-                disabled={!target}
-                onClick={() => {
-                  const batch = fitting.find((b) => b.id === target);
-                  if (batch) onAdd(item, batch);
-                }}
-              >
-                Add to batch
-              </button>
-            </div>
+          {item.cities.length > 0 && (
+            <FileCities
+              item={item}
+              staff={staff}
+              busy={busy}
+              onSend={(city) => void cityAction(() => api.sendCities(id, city.key), "Not sent.")}
+              onUnmute={(city) =>
+                void cityAction(() => api.unmuteCity(id, city.key), "Not unmuted.")
+              }
+            />
           )}
 
           {columnWarnings.length > 0 && (
@@ -1151,6 +1018,93 @@ function FileView({
         </div>
       )}
     </>
+  );
+}
+
+const CITY_STATE: Record<FileCity["state"], [string, string]> = {
+  needs_top: ["badge-warning", "Not ready"],
+  ready: ["badge-ok", "Ready"],
+  small: ["badge", "Under 10"],
+  muted: ["badge-error", "Muted"],
+  in_batch: ["badge-ok", "In the batch"],
+};
+
+/** The file's cities (step 39): each needs a Top, is ready (it goes on to the batch an hour
+ * later), under 10 businesses, muted (another file or the batch has it) or in the batch. */
+function FileCities({
+  item,
+  staff,
+  busy,
+  onSend,
+  onUnmute,
+}: {
+  item: HandedInFileDetail;
+  staff: boolean;
+  busy: boolean;
+  onSend: (city: FileCity) => void;
+  onUnmute: (city: FileCity) => void;
+}) {
+  const sent = ["top_review", "in_batch"].includes(item.status);
+  return (
+    <div className="card table-card">
+      <div className="table-scroll">
+        <table className="table">
+          <caption className="table-caption">
+            Cities · they go on to {item.batch_name} one by one, once they have a Top
+          </caption>
+          <thead>
+            <tr>
+              <th>City</th>
+              <th>Businesses</th>
+              <th>State</th>
+              <th>Top</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {item.cities.map((city) => (
+              <tr key={city.key}>
+                <td className="cell-strong">{city.name}</td>
+                <td>{city.businesses.toLocaleString()}</td>
+                <td>
+                  <span className={`badge ${CITY_STATE[city.state][0]}`}>
+                    {CITY_STATE[city.state][1]}
+                  </span>
+                  {city.state === "muted" && <div className="small muted">{city.muted}</div>}
+                  {city.state === "ready" && city.moves_at && sent && (
+                    <div className="small muted">Goes on in {minutesLeft(city.moves_at)}</div>
+                  )}
+                  {city.state === "in_batch" && city.moved_at && (
+                    <div className="small muted">{day(city.moved_at)}</div>
+                  )}
+                </td>
+                <td>{city.tops > 0 ? city.tops : "—"}</td>
+                <td>
+                  {city.state === "ready" && sent && item.can_send_cities && (
+                    <button
+                      className="button button-small"
+                      disabled={busy}
+                      onClick={() => onSend(city)}
+                    >
+                      Send to batch now
+                    </button>
+                  )}
+                  {city.state === "muted" && staff && (
+                    <button
+                      className="button button-small"
+                      disabled={busy}
+                      onClick={() => onUnmute(city)}
+                    >
+                      Unmute
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 

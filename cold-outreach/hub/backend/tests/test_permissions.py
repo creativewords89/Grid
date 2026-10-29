@@ -48,6 +48,8 @@ SPEC_TABLE: dict[Action, tuple[bool, bool, bool, bool, bool]] = {
     Action.REVIEW_TOPS: (Y, Y, N, N, Y),
     # Add a niche (step 33)
     Action.ADD_NICHES: (Y, Y, N, Y, N),
+    # Send a file's ready cities to their batch now (step 39)
+    Action.SEND_TO_BATCH: (Y, Y, N, Y, Y),
     # Rename or delete a niche
     Action.MANAGE_NICHES: (Y, Y, N, N, N),
 }

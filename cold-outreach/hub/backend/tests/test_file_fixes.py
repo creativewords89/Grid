@@ -198,7 +198,7 @@ def test_only_who_may_change_the_file_uploads_fixes(cal: TestClient, person: Per
     assert send(viewer, file_id, book).status_code == 403
     clean_id = hand_in(cal, {"Dallas": [STANDARD, FILE["Dallas"][1]]}, name="d.xlsx")["id"]
     done = send(cal, clean_id, fix_file(cal, clean_id))
-    assert done.json()["error"]["code"] == "no_errors"
+    assert done.json()["error"]["code"] == "sent_on"
 
 
 def test_every_business_can_not_be_taken_out(cal: TestClient) -> None:
@@ -219,3 +219,19 @@ def test_the_file_made_again_keeps_its_other_columns(cal: TestClient) -> None:
     assert lead["values"]["phone"] == "(918) 555-2222"
     assert lead["extra"] == {"Owner": "Kevin"}
     assert lead["values"]["website"] == "https://facebook.com/bc"  # left as it was
+
+
+def test_a_business_on_two_rows_is_kept_once_by_upload_fixes(cal: TestClient) -> None:
+    """Step 39: the same business twice in a file is an error; the fix file back, even
+    unchanged, makes the file again with one row for it."""
+    twice = row("Sparkle", "https://share.google/sp", "214 555 0100", city="Dallas")
+    sub = hand_in(cal, {"Dallas": [STANDARD, twice, twice]})
+    assert sub["status"] == "errors" and sub["problems"][0]["code"] == "SAME_IN_FILE"
+    preview = send(cal, sub["id"], fix_file(cal, sub["id"])).json()
+    assert [c["changes"] for c in preview["changed"]] == [
+        [{"field": "Rows", "from": "Dallas row 2, Dallas row 3", "to": "one row"}]
+    ]
+    assert send(cal, sub["id"], fix_file(cal, sub["id"]), confirm=True).json()["saved"] is True
+    run_file_checker()
+    after = cal.get(f"/api/submissions/{sub['id']}").json()
+    assert (after["errors"], after["businesses"]) == (0, 1)

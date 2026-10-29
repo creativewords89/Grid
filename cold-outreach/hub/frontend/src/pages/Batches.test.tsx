@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, vi } from "vitest";
 import type { Batch, Benchmark, ImportSheet, LeadImport } from "../api";
@@ -91,143 +91,27 @@ const as = (role: "owner" | "admin" | "viewer") =>
 beforeEach(() => window.history.pushState(null, "", "/batches"));
 afterEach(() => vi.unstubAllGlobals());
 
-test("make a batch: a name, its niche and a benchmark of that niche", async () => {
-  let made = false;
-  const calls = mockApi({
-    "GET /auth/me": as("admin"),
-    "GET /batches": () => [200, made ? [batch({ name: "Texas November" })] : []],
-    "GET /lists": [200, []],
-    "GET /benchmarks": [
-      200,
-      [
-        benchmark("m1", "Cleaning Benchmark 1"),
-        benchmark("m2", "Cleaning Benchmark 2"),
-        benchmark("m3", "Roofing Benchmark 1", "Roofing"),
-      ],
-    ],
-    "GET /imports?batch_id=b1": [200, []],
-    "POST /batches": () => {
-      made = true;
-      return [201, batch({ name: "Texas November" })];
-    },
-  });
-  render(<App />);
-
-  await userEvent.click(await screen.findByRole("button", { name: "+ New batch" }));
-  const form = screen.getByRole("form", { name: "New batch" });
-  await userEvent.type(within(form).getByLabelText("Batch name"), "Texas November");
-  await userEvent.type(within(form).getByLabelText("Niche (one per batch)"), "cleaning");
-  const select = within(form).getByLabelText("Benchmark");
-  // Only this niche's benchmarks are offered.
-  expect(
-    within(select)
-      .getAllByRole("option")
-      .map((o) => o.textContent),
-  ).toEqual(["Choose…", "Cleaning Benchmark 1", "Cleaning Benchmark 2"]);
-  await userEvent.selectOptions(select, "m2");
-  await userEvent.click(within(form).getByRole("button", { name: "Make the batch" }));
-
-  expect(await screen.findByRole("heading", { name: "Texas November" })).toBeVisible();
-  expect(screen.getByRole("form", { name: "Add a lead file" })).toBeVisible();
-  expect(calls.find((c) => c.path === "/batches" && c.method === "POST")?.body).toEqual({
-    name: "Texas November",
-    niche: "cleaning",
-    benchmark_id: "m2",
-  });
-});
-
-test("a niche without a benchmark points to the Benchmarks screen", async () => {
-  mockApi({
-    "GET /auth/me": as("owner"),
-    "GET /batches": [200, []],
-    "GET /lists": [200, []],
-    "GET /benchmarks": [200, [benchmark("m1", "Cleaning Benchmark 1")]],
-  });
-  render(<App />);
-
-  await userEvent.click(await screen.findByRole("button", { name: "+ New batch" }));
-  await userEvent.type(screen.getByLabelText("Niche (one per batch)"), "Plumbing");
-
-  expect(screen.getByText(/No benchmark for this niche yet/)).toBeVisible();
-  expect(screen.getByRole("link", { name: "Make one on Benchmarks" })).toBeVisible();
-  expect(screen.getByLabelText("Benchmark")).toBeDisabled();
-});
-
-test("add a file to a batch, read the preview, save it", async () => {
-  const calls = mockApi({
-    "GET /auth/me": as("admin"),
-    "GET /batches": [200, [batch({ leads: 12, files: 1, can_rename: false, can_delete: false })]],
-    "GET /lists": [200, []],
-    "GET /benchmarks": [200, [benchmark("m1", "Cleaning Benchmark 1")]],
-    "GET /imports?batch_id=b1": [200, []],
-    "POST /imports": [201, preview()],
-    "POST /imports/i1/confirm": [
-      200,
-      preview({
-        status: "confirmed",
-        counts: { ...preview().counts, saved_new: 3990, saved_updated: 5 },
-      }),
-    ],
-  });
-  render(<App />);
-
-  await userEvent.click(await screen.findByRole("button", { name: "Batch 1" }));
-  await userEvent.click(screen.getByRole("tab", { name: "Lead files" }));
-  await userEvent.click(screen.getByRole("tab", { name: "Files" }));
-  const form = await screen.findByRole("form", { name: "Add a lead file" });
-  fireEvent.change(within(form).getByLabelText("Excel file"), {
-    target: { files: [new File(["xlsx"], "GBP_Data_2.xlsx")] },
-  });
-  await userEvent.click(within(form).getByRole("button", { name: "Read the file" }));
-
-  const card = await screen.findByRole("article", { name: "Preview" });
-  expect(within(card).getByText("3,995", { selector: ".count-value" })).toBeVisible();
-  expect(within(card).getByText("already in another batch").previousSibling).toHaveTextContent("5");
-  await userEvent.click(within(card).getByText(/Already in another batch/));
-  expect(within(card).getByText("Sparkle (L-000004, in Spring batch)")).toBeVisible();
-  expect(within(card).getByText("without a GBP link").previousSibling).toHaveTextContent("2");
-  expect(within(card).getByText(/Top is chosen in the Hub/)).toBeVisible();
-  await userEvent.click(within(card).getByText("Other columns (kept with the leads)"));
-  expect(within(card).getByText("Operation Hour (in 1 tab)")).toBeVisible();
-  await userEvent.click(within(card).getByRole("button", { name: "Save 3,995 businesses" }));
-
-  expect(await screen.findByText(/Saved: 3990 new and 5 updated/)).toBeVisible();
-  const posted = calls.find((c) => c.path === "/imports" && c.method === "POST");
-  expect(posted?.csrf).toBe("t");
-  expect((posted?.body as { batch_id: string }).batch_id).toBe("b1");
-  // A batch with leads keeps its name and can't be deleted.
-  expect(screen.queryByRole("button", { name: "Rename" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: /Delete/ })).not.toBeInTheDocument();
-});
-
-test("an unreadable file shows why", async () => {
+test("batches are made by the Hub, one per niche: no New batch, no upload in a batch", async () => {
   mockApi({
     "GET /auth/me": as("owner"),
     "GET /batches": [200, [batch()]],
     "GET /lists": [200, []],
     "GET /benchmarks": [200, []],
     "GET /imports?batch_id=b1": [200, []],
-    "POST /imports": [
-      422,
-      {
-        error: {
-          code: "unreadable",
-          message: "This isn't an Excel file (.xlsx).",
-          fields: { file: "This isn't an Excel file (.xlsx)." },
-        },
-      },
-    ],
+    "GET /batches/b1/pipeline": [200, emptyPipeline],
+    "GET /batches/b1/cities": [200, []],
   });
   render(<App />);
 
+  expect(await screen.findByText(/One batch per niche/)).toBeVisible();
+  expect(screen.queryByRole("button", { name: "+ New batch" })).not.toBeInTheDocument();
   await userEvent.click(await screen.findByRole("button", { name: "Batch 1" }));
-  const form = await screen.findByRole("form", { name: "Add a lead file" });
-  fireEvent.change(within(form).getByLabelText("Excel file"), {
-    target: { files: [new File(["a,b"], "leads.csv")] },
-  });
-  await userEvent.click(within(form).getByRole("button", { name: "Read the file" }));
-
-  expect(await within(form).findAllByText("This isn't an Excel file (.xlsx).")).toHaveLength(2);
+  // A batch opens on its cities: they come from Top Review.
+  expect(await screen.findByRole("tab", { name: "Cities", selected: true })).toBeVisible();
+  await userEvent.click(screen.getByRole("tab", { name: "Lead files" }));
+  await userEvent.click(screen.getByRole("tab", { name: "Files" }));
+  expect(screen.queryByRole("form", { name: "Add a lead file" })).not.toBeInTheDocument();
+  expect(screen.getByText(/No files yet/)).toBeVisible();
 });
 
 test("change a batch's benchmark, and delete an empty batch", async () => {
@@ -318,7 +202,7 @@ test("a waiting preview opens again and can be discarded", async () => {
   const card = await screen.findByRole("article", { name: "Preview" });
   await userEvent.click(within(card).getByRole("button", { name: "Discard" }));
 
-  expect(await screen.findByRole("form", { name: "Add a lead file" })).toBeVisible();
+  expect(await screen.findByText(/No files yet|Past imports/)).toBeVisible();
   expect(calls.some((c) => c.path === "/imports/i1/discard")).toBe(true);
 });
 
@@ -604,7 +488,7 @@ test("a saved file is deleted with its leads, but not while the batch runs", asy
   expect(dialog).toHaveTextContent("5 businesses that came from earlier files stay");
   await userEvent.click(within(dialog).getByRole("button", { name: "Delete the file" }));
 
-  await screen.findByRole("form", { name: "Add a lead file" });
+  await screen.findByText(/No files yet/);
   expect(calls.some((c) => c.method === "DELETE" && c.path === "/imports/i1")).toBe(true);
   expect(screen.queryByText("Past imports")).not.toBeInTheDocument();
 });
@@ -651,7 +535,7 @@ test("find a business in every batch", async () => {
   await userEvent.click(within(results).getByRole("button", { name: "Batch 2" }));
 
   expect(await screen.findByRole("heading", { name: "Batch 2" })).toBeVisible();
-  expect(window.location.search).toBe("?batch=b2&tab=files");
+  expect(window.location.search).toBe("?batch=b2&tab=cities");
 });
 
 test("the cities show 20 a page", async () => {

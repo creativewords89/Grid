@@ -128,6 +128,7 @@ test("a batch's tasks: add another agent to a task, choose how they share, then 
   render(<App />);
 
   await userEvent.click(await screen.findByRole("button", { name: "Texas November" }));
+  await userEvent.click(await screen.findByRole("tab", { name: "Tasks" })); // opens on Cities
   const gbp = await screen.findByRole("article", { name: "GBP Audit" });
   expect(within(gbp).getByText(/2,800 done · 10 ready · avg score 54/)).toBeVisible();
   const opportunity = screen.getByRole("article", { name: "Opportunity Finder" });
@@ -164,6 +165,7 @@ test("an agent from the library is added to its task, and the task first when mi
   render(<App />);
 
   await userEvent.click(await screen.findByRole("button", { name: "Texas November" }));
+  await userEvent.click(await screen.findByRole("tab", { name: "Tasks" })); // opens on Cities
   expect(await screen.findByText(/To start: Add a task first/)).toBeVisible();
   expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
   const library = screen.getByRole("region", { name: "Agent library" });
@@ -213,6 +215,7 @@ test("each agent's results: counts, filters and its leads", async () => {
   render(<App />);
 
   await userEvent.click(await screen.findByRole("button", { name: "Texas November" }));
+  await userEvent.click(await screen.findByRole("tab", { name: "Tasks" })); // opens on Cities
   expect(screen.queryByRole("button", { name: "Start" })).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole("tab", { name: "Results" }));
   expect(await screen.findByText("Sparkle Home Cleaning")).toBeVisible();
@@ -265,6 +268,7 @@ test("add a task: its job, its name and what it needs first in this batch", asyn
   render(<App />);
 
   await userEvent.click(await screen.findByRole("button", { name: "Texas November" }));
+  await userEvent.click(await screen.findByRole("tab", { name: "Tasks" })); // opens on Cities
   await userEvent.click(await screen.findByRole("button", { name: /\+ Add a task to this batch/ }));
   const form = screen.getByRole("form", { name: "Add a task" });
   // Only jobs the batch doesn't have yet.
@@ -320,6 +324,7 @@ test("a new batch starts from the standard steps, before any agent exists", asyn
   render(<App />);
 
   await userEvent.click(await screen.findByRole("button", { name: "Texas November" }));
+  await userEvent.click(await screen.findByRole("tab", { name: "Tasks" })); // opens on Cities
   const library = await screen.findByRole("region", { name: "Agent library" });
   expect(within(library).getByText(/No agents yet/)).toBeVisible();
   expect(within(library).getByRole("link", { name: "Add one on Agents" })).toHaveAttribute(

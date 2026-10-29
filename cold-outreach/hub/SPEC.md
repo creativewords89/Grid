@@ -105,11 +105,11 @@ cold-outreach/
 | Manage users (invite, deactivate, change role) | ✔ | ✘ | ✘ | ✘ | ✘ |
 | See the History (audit log) | ✔ | ✘ | ✘ | ✘ | ✘ |
 | Own profile, password, alert channels | ✔ | ✔ | ✔ | ✔ | ✔ |
-| Files (step 31): hand in a lead file, see its problems, upload a revised version, delete it before it is used (Collectors: their own files only) | ✔ | ✔ | ✘ | ✔ | ✘ |
+| Files (step 31): hand in a lead file, see its problems, fix it and delete it until it is sent on to Top Review (Collectors: their own files only) | ✔ | ✔ | ✘ | ✔ | ✘ |
 | See every file handed in on Files | ✔ | ✔ | ✔ | ✘ | ✘ |
-| Add a ready file to a batch | ✔ | ✔ | ✘ | ✘ | ✘ |
-| Top Review (step 32): choose each city's Top businesses in a file without errors, until every city has one | ✔ | ✔ | ✘ | ✘ | ✔ |
-| Reopen a ready file for Top Review | ✔ | ✔ | ✘ | ✘ | ✘ |
+| Delete a file sent on to Top Review (until a city of it is in its batch); unmute a muted city (step 39) | ✔ | ✔ | ✘ | ✘ | ✘ |
+| Top Review (steps 32 and 39): choose each city's Top businesses, until the city is in its batch | ✔ | ✔ | ✘ | ✘ | ✔ |
+| Send a file's ready cities to their batch now (step 39; Collectors: their own files only) | ✔ | ✔ | ✘ | ✔ | ✔ |
 | Add a niche (step 33) | ✔ | ✔ | ✘ | ✔ | ✘ |
 | Rename a niche or delete an unused one | ✔ | ✔ | ✘ | ✘ | ✘ |
 
@@ -290,7 +290,7 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 
 ### 6.4 Batches and import
 
-0. **Batches** (Owners and Admins make them): a **name** typed by the team (unique, case
+0. **Batches** (since step 39 one per niche, made by the Hub when the niche's first city comes from Top Review; before, Owners and Admins made them): a **name** typed by the team (unique, case
    ignored), **one niche** (typed or picked; a different case uses the existing spelling) and
    **one benchmark of that niche** (required). The order of work is: make a benchmark, make a
    batch with it, add files. Files can be added to a batch at any time, also to old batches.
@@ -997,3 +997,34 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     file has its Add to button; another batch is chosen on the file's page. The table has an
     **In a batch** column before Next step: the batch the file is used in, or waits in, with
     the date and who.)
+39. **Cities go on to their niche's batch** (asked for after step 38): each niche has **one
+    batch, named after it** ("Cleaning"), made when its first city comes, with the niche's
+    benchmark when it has exactly one (else without: it can't be started until one is
+    chosen in its Settings). Files no longer go into a batch whole: **each city does**. A
+    file's cities are kept (`file_cities`). After the Final check the file is **sent on**
+    and its sender can only look at it (Owners and Admins can still delete it until a city
+    of it is in the batch). In **Top Review** a Reviewer sees cities, not files, in three
+    lists: **Not ready** (10 businesses or more, no Top yet), **Ready** (a Top is chosen)
+    and **Cities under 10** (they stay out unless given a Top). A ready city goes on to the
+    batch **an hour after** it got its Top (the scheduler), or at once with **Send to batch
+    now** (anyone but a Viewer; a Collector only for their own file); only its businesses
+    are saved there, as an import named "file · city", its Top as Top. A city in the batch
+    is out of Top Review and its Top is changed in the batch from then on. **The same
+    business twice is an error**: on two rows of a file (Upload fixes, even with the fix
+    file unchanged, keeps it once) or already handed in (in a batch, or in a file handed in
+    earlier, of any niche); it has to be taken out before the file goes on. **The same city
+    twice is muted**: a city another file of the niche has (handed in earlier, or already in
+    the batch), or the batch has, is muted at once with why ("Chicago is already in file F2
+    (…)"): its businesses aren't checked, it isn't in Top Review and never goes to the batch.
+    An Owner or Admin can **Unmute** it once nothing else has it (the file is checked again).
+    A city taken out of the batch (its import deleted) is muted too. **Files**: tabs All ·
+    Checking · Fix errors · Final check · Top Review · In the batch; Batch name is the
+    niche's batch; **In a batch** shows "3 of 8 cities in the batch" (and how many are ready
+    or muted); a file's page lists its cities with their state, Send to batch now and
+    Unmute. **Batches**: no New batch and no upload in a batch any more (the API keeps
+    them for Owners and Admins); a batch opens on its Cities. Migration `0027` deletes the
+    batches made before with their leads, imports, cities, agents' results, tasks and Top
+    do-not-contact entries (files, niches, benchmarks, agents and people stay; files agents
+    saved on disk are left there), moves each file's Tops to its cities (those with a Top
+    are ready from then) and checks every file again; files' batch names and per-niche
+    numbers go.

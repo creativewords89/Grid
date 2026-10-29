@@ -296,24 +296,18 @@ class Niche(TimestampMixin, Base):
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL")
     )
-    # How many files of it were ever handed in (step 38): the next is "<niche> <files + 1>",
-    # so a number is never given twice, even after a file is deleted.
-    files: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     __table_args__ = (Index("uq_niches_name", func.lower(name), unique=True),)
 
 
 class Submission(TimestampMixin, Base):
-    """A lead file handed in on the Files screen (SPEC step 31), before it is in a batch:
-    checked by Lead Check, revised by its sender until it is ready, then added to a batch
-    by an Owner or Admin (which makes an import of it). A file is used once."""
+    """A lead file handed in on the Files screen (SPEC step 31): checked by Lead Check,
+    fixed by its sender until it has no error, then each of its cities goes on to its niche's
+    batch once it has a Top (step 39, `FileCity`)."""
 
     __tablename__ = "submissions"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
-    # The batch it is for (step 38): its niche and number, "Cleaning 01"; when it is ready it
-    # is added to the batch of that name (made then if there is none).
-    batch_name: Mapped[str] = mapped_column(String(120), default="", server_default="")
     # The file's number (step 35): its businesses' File IDs are F<number>-0001, F<number>-0002…
     number: Mapped[int] = mapped_column(Integer, unique=True)
     file_name: Mapped[str] = mapped_column(String(255))
@@ -328,15 +322,11 @@ class Submission(TimestampMixin, Base):
     # Lead Check: errors and warnings by tab, and every problem (tab, row, column, value).
     check: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
     problems: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, server_default="[]")
-    # Top Review (step 32): each city's Top businesses, by the city (lower case) -> the first
-    # row of each ("Tulsa row 14"). `topped_at` is set when every city that is on has a Top:
-    # the file is then ready and locked (an Owner or Admin can reopen it).
     # Final check (step 36): since when the file has had no error (`clean_since`), and when it
     # went on to Top Review (`sent_at`): by its sender, or an hour after it had no error.
+    # From then on its sender can't change it.
     clean_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    tops: Mapped[dict[str, list[str]]] = mapped_column(JSONB, default=dict, server_default="{}")
-    topped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Checked in the background (step 33): "checking" (with its progress, 0-100) until the
     # scheduler's file checker is done, then "checked", or "failed" (unreadable, `error`).
     # `claimed_at` is when the checker last worked on it (a stale claim is taken over).
@@ -346,13 +336,49 @@ class Submission(TimestampMixin, Base):
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Each business of the file for the Files table (step 33): tab, row, values, problems.
     leads: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, server_default="[]")
-    # The import that added it to a batch; it is used once that import is saved.
+    uploader: Mapped[User | None] = relationship()
+    cities: Mapped[list["FileCity"]] = relationship(
+        back_populates="file",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="FileCity.name",
+    )
+
+
+class FileCity(Base):
+    """A city of a file handed in (step 39). The Lead Check finds it; a city that another
+    file of the niche already has (handed in earlier) or that is in the niche's batch is
+    muted with why. A Reviewer chooses its Top businesses (Top Review): from then on it is
+    ready and goes on to its niche's batch an hour later, or when someone sends it now."""
+
+    __tablename__ = "file_cities"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    submission_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("submissions.id", ondelete="CASCADE")
+    )
+    key: Mapped[str] = mapped_column(String(120))  # the city, lower case
+    name: Mapped[str] = mapped_column(String(120))
+    businesses: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Why it is muted ("Chicago is already in file F2 …"); empty when it isn't.
+    muted: Mapped[str] = mapped_column(String(300), default="", server_default="")
+    # Its Top businesses, by the first row of each ("Tulsa row 14").
+    tops: Mapped[list[str]] = mapped_column(JSONB, default=list, server_default="[]")
+    # Ready since (it has a Top): it goes on to the batch an hour later.
+    topped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # In the batch: when, and the import that saved its businesses there.
+    moved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     import_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("imports.id", ondelete="SET NULL")
     )
 
-    uploader: Mapped[User | None] = relationship()
+    file: Mapped[Submission] = relationship(back_populates="cities")
     imp: Mapped["Import | None"] = relationship()
+
+    __table_args__ = (
+        Index("uq_file_cities_file_key", "submission_id", "key", unique=True),
+        Index("ix_file_cities_key", "key"),
+    )
 
 
 class Lead(TimestampMixin, Base):

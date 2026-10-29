@@ -77,7 +77,7 @@ def test_benchmarks_and_leads_move_into_named_benchmarks_and_batches(
                 "('L-000001', 'CLEANING', 'Tulsa', 'A'), ('L-000002', 'Plumbing', 'Tulsa', 'B')",
             ):
                 conn.execute(text(sql))
-        command.upgrade(cfg, "head")
+        command.upgrade(cfg, "0026")
         with engine.connect() as conn:
             benchmarks = conn.execute(text("SELECT name, gbp, website FROM benchmarks")).all()
             batches = conn.execute(
@@ -150,7 +150,7 @@ def test_agents_batch_lists_become_pipelines(fresh_database_url: str) -> None:
                 ),
                 {"ids": f'["{c}", "{a}", "00000000-0000-0000-0000-0000000000ff"]'},
             )
-        command.upgrade(cfg, "head")
+        command.upgrade(cfg, "0026")
         with engine.connect() as conn:
             tasks = conn.execute(text("SELECT key, name FROM tasks")).all()
             batches = conn.execute(
@@ -333,3 +333,66 @@ def test_each_jobs_needs_move_into_the_batches_that_use_it(fresh_database_url: s
         ("Two", "Opportunity Finder", ["gbp-audit"]),  # Two has no Website Audit
     ]
     assert "needs" not in columns and "about" not in columns
+
+
+def test_old_batches_go_and_tops_move_to_the_files_cities(fresh_database_url: str) -> None:
+    """Step 39: the batches made before go with their leads; a file's Tops move to its
+    cities (those with a Top are ready), and the files are checked again."""
+    cfg = alembic_config(fresh_database_url)
+    command.upgrade(cfg, "0026")
+    engine = create_engine(fresh_database_url)
+    sub = "00000000-0000-0000-0000-0000000000a1"
+    cities = (
+        '{"tulsa": {"name": "Tulsa", "businesses": 12},'
+        ' "dallas": {"name": "Dallas", "businesses": 2}}'
+    )
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO batches (id, name, niche) VALUES "
+                    "('00000000-0000-0000-0000-0000000000b1', 'Batch 01', 'Cleaning')"
+                )
+            )
+            conn.execute(
+                text(
+                    "INSERT INTO leads (lead_id, batch_id, niche, city, business_name) VALUES "
+                    "('L-000001', '00000000-0000-0000-0000-0000000000b1', 'Cleaning', 'Tulsa', "
+                    "'Shine')"
+                )
+            )
+            conn.execute(
+                text(
+                    "INSERT INTO submissions (id, number, file_name, niche, content, sha256,"
+                    " \"check\", tops, state, batch_name) VALUES (:id, 1, 'a.xlsx',"
+                    " 'Cleaning', 'x', 'h', CAST(:check AS jsonb), CAST(:tops AS jsonb),"
+                    " 'checked', 'Cleaning 01')"
+                ),
+                {
+                    "id": sub,
+                    "check": f'{{"errors": 0, "cities": {cities}}}',
+                    "tops": '{"tulsa": ["Tulsa row 2"]}',
+                },
+            )
+        command.upgrade(cfg, "0027")
+        with engine.connect() as conn:
+            found = conn.execute(
+                text(
+                    "SELECT name, businesses, tops, topped_at IS NOT NULL, muted FROM file_cities"
+                    " ORDER BY name"
+                )
+            ).all()
+            left = conn.execute(
+                text("SELECT (SELECT count(*) FROM batches), (SELECT count(*) FROM leads)")
+            ).one()
+            state = conn.execute(text("SELECT state FROM submissions")).scalar()
+        command.downgrade(cfg, "0026")
+        with engine.connect() as conn:
+            back = conn.execute(text("SELECT tops FROM submissions")).scalar()
+    finally:
+        engine.dispose()
+
+    assert found == [("Dallas", 2, [], False, ""), ("Tulsa", 12, ["Tulsa row 2"], True, "")]
+    assert tuple(left) == (0, 0)
+    assert state == "checking"
+    assert back == {"dallas": [], "tulsa": ["Tulsa row 2"]}

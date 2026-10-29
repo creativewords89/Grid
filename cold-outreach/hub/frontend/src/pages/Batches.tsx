@@ -77,7 +77,6 @@ export function Batches() {
   const [batches, setBatches] = useState<Batch[] | null>(null);
   const [open, setOpen] = useState<string | null>(() => fromAddress().batch);
   const [startTab] = useState<Tab | null>(() => fromAddress().tab);
-  const [adding, setAdding] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -136,28 +135,19 @@ export function Batches() {
   return (
     <section className="page">
       <div className="page-head">
-        <h1>Batches</h1>
-        {staff && !adding && (
-          <button className="button button-primary" onClick={() => setAdding(true)}>
-            + New batch
-          </button>
-        )}
+        <div className="stack-tight">
+          <h1>Batches</h1>
+          <p className="muted">
+            One batch per niche, named after it: its cities come from the Files screen once they
+            have their Top (Top Review).
+          </p>
+        </div>
       </div>
       {error && <Alert kind="error">{error}</Alert>}
-      {adding && (
-        <NewBatch
-          onCancel={() => setAdding(false)}
-          onMade={(made) => {
-            setAdding(false);
-            load();
-            openBatch(made.id);
-          }}
-        />
-      )}
       <FindBusiness batches={batches ?? []} onOpenBatch={openBatch} />
-      {batches?.length === 0 && !adding && (
+      {batches?.length === 0 && (
         <p className="muted">
-          No batches yet. Make one: give it a name, its niche and a benchmark, then add files.
+          No batches yet. A niche's batch is made when its first city comes from Top Review.
         </p>
       )}
       {batches && batches.length > 0 && (
@@ -243,125 +233,6 @@ function sameNiche(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
-function NewBatch({ onCancel, onMade }: { onCancel: () => void; onMade: (b: Batch) => void }) {
-  const [name, setName] = useState("");
-  const [niche, setNiche] = useState("");
-  const [benchmarkId, setBenchmarkId] = useState("");
-  const [benchmarks, setBenchmarks] = useState<Benchmark[]>([]);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    api
-      .benchmarks()
-      .then(setBenchmarks)
-      .catch(() => setBenchmarks([]));
-  }, []);
-
-  const niches = [...new Set(benchmarks.map((b) => b.niche))];
-  const choices = benchmarks.filter((b) => niche.trim() && sameNiche(b.niche, niche));
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-    setErrors({});
-    try {
-      onMade(await api.createBatch({ name, niche, benchmark_id: benchmarkId || null }));
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setErrors(err.fields);
-        setError(err.message);
-      }
-      setBusy(false);
-    }
-  }
-
-  return (
-    <form className="card stack" onSubmit={submit} aria-label="New batch" noValidate>
-      <h2>New batch</h2>
-      {error && <Alert kind="error">{error}</Alert>}
-      <div className="connection-fields">
-        <Field
-          label="Batch name"
-          placeholder="Cleaning – Texas – November"
-          value={name}
-          error={errors.name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <div className="field">
-          <label htmlFor="batch-niche">Niche (one per batch)</label>
-          <input
-            id="batch-niche"
-            list="batch-niches"
-            placeholder="Cleaning"
-            value={niche}
-            aria-invalid={errors.niche ? true : undefined}
-            onChange={(e) => {
-              setNiche(e.target.value);
-              setBenchmarkId("");
-            }}
-          />
-          <datalist id="batch-niches">
-            {niches.map((n) => (
-              <option key={n} value={n} />
-            ))}
-          </datalist>
-          {errors.niche && <p className="field-error">{errors.niche}</p>}
-        </div>
-        <div className="field">
-          <label htmlFor="batch-benchmark">Benchmark</label>
-          <select
-            id="batch-benchmark"
-            value={benchmarkId}
-            disabled={choices.length === 0}
-            aria-invalid={errors.benchmark_id ? true : undefined}
-            onChange={(e) => setBenchmarkId(e.target.value)}
-          >
-            <option value="">Choose…</option>
-            {choices.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-          {errors.benchmark_id ? (
-            <p className="field-error">{errors.benchmark_id}</p>
-          ) : (
-            niche.trim() &&
-            choices.length === 0 && (
-              <p className="hint">
-                No benchmark for this niche yet.{" "}
-                <a
-                  href="/benchmarks"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    navigate("/benchmarks");
-                  }}
-                >
-                  Make one on Benchmarks
-                </a>{" "}
-                first.
-              </p>
-            )
-          )}
-        </div>
-      </div>
-      <div className="row">
-        <button className="button button-primary" disabled={busy}>
-          Make the batch
-        </button>
-        <button type="button" className="button" disabled={busy} onClick={onCancel}>
-          Cancel
-        </button>
-      </div>
-    </form>
-  );
-}
-
-// --- one batch ----------------------------------------------------------------------------------
-
 function BatchView({
   batch,
   staff,
@@ -378,8 +249,8 @@ function BatchView({
   const [imports, setImports] = useState<LeadImport[]>([]);
   const [current, setCurrent] = useState<LeadImport | null>(null);
   const [error, setError] = useState("");
-  // A new batch starts with its files; one with leads with its tasks and agents.
-  const [tab, setTabState] = useState<Tab>(startTab ?? (batch.leads === 0 ? "files" : "tasks"));
+  // A batch opens on its cities (step 39): they come from Top Review.
+  const [tab, setTabState] = useState<Tab>(startTab ?? "cities");
   const [city, setCity] = useState("");
   const setTab = useCallback(
     (next: Tab) => {
@@ -556,15 +427,6 @@ function BatchView({
       {tab === "settings" && (
         <BatchSettings batch={batch} staff={staff} onChanged={onChanged} onDeleted={onBack} />
       )}
-      {tab === "files" && staff && !current && (
-        <UploadForm
-          batch={batch}
-          onRead={(item) => {
-            setCurrent(item);
-            load();
-          }}
-        />
-      )}
       {tab === "files" && current && (
         <PreviewCard
           item={current}
@@ -577,6 +439,11 @@ function BatchView({
           }}
           onClose={() => setCurrent(null)}
         />
+      )}
+      {tab === "files" && imports.length === 0 && !current && (
+        <p className="muted">
+          No files yet: each city comes here from Top Review, as its file and city.
+        </p>
       )}
       {tab === "files" && (
         <History
@@ -707,58 +574,6 @@ function BatchSettings({
         </div>
       )}
     </div>
-  );
-}
-
-function UploadForm({ batch, onRead }: { batch: Batch; onRead: (item: LeadImport) => void }) {
-  const [file, setFile] = useState<File | null>(null);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState(false);
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!file) {
-      setErrors({ file: "Choose the Excel file." });
-      return;
-    }
-    setBusy(true);
-    setErrors({});
-    try {
-      onRead(await api.uploadLeads(file, batch.id));
-    } catch (err) {
-      if (err instanceof ApiError) setErrors({ form: err.message, ...err.fields });
-      setBusy(false);
-    }
-  }
-
-  return (
-    <form className="card stack" onSubmit={submit} aria-label="Add a lead file" noValidate>
-      <h2>Add a lead file</h2>
-      <p className="muted">
-        An Excel file (.xlsx) of {batch.niche} businesses with one tab per city, as you build them
-        now: Business name, MAP, Address, City, Website, Phone, WA, Facebook, Instagram, Email,
-        Reviews, Average. Top businesses (never contacted) are chosen in the Hub, on each city: a
-        Level column is kept as another column. A business already in another batch stays there.
-        Nothing is saved until you confirm the preview.
-      </p>
-      {errors.form && <Alert kind="error">{errors.form}</Alert>}
-      <div className="field">
-        <label htmlFor="import-file">Excel file</label>
-        <input
-          id="import-file"
-          type="file"
-          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          aria-invalid={errors.file ? true : undefined}
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-        />
-        {errors.file && <p className="field-error">{errors.file}</p>}
-      </div>
-      <div>
-        <button className="button button-primary" disabled={busy}>
-          {busy ? "Reading the file… (a big file takes up to a minute)" : "Read the file"}
-        </button>
-      </div>
-    </form>
   );
 }
 
