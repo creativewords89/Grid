@@ -220,19 +220,18 @@ def send_on(sub: Submission) -> None:
     sub.sent_at = now()
 
 
-def city_businesses(content: bytes, niche: str, key: str) -> list[dict[str, Any]]:
-    """The businesses of one city of the file, as they will be saved: each with its key
-    (the first row it is on), its values and its other columns."""
-    report = reader.read(content, niche)
+def city_businesses(leads: list[dict[str, Any]], key: str) -> list[dict[str, Any]]:
+    """The businesses of one city of a checked file (its saved `leads`, so the file isn't read
+    again): each with its key (the first row it is on), its values and its other columns."""
     return [
         {
-            "key": lead.rows[0],
-            "rows": lead.rows,
-            "values": {k: v for k, v in lead.values.items() if v and k not in ("niche", "level")},
-            "extra": lead.extra,
+            "key": lead["rows"][0],
+            "rows": lead["rows"],
+            "values": dict(lead["values"]),
+            "extra": dict(lead.get("extra", {})),
         }
-        for lead in report.leads
-        if city_key(lead.values.get("city", "")) == key
+        for lead in leads
+        if lead.get("rows") and city_key(lead["values"].get("city", "")) == key
     ]
 
 

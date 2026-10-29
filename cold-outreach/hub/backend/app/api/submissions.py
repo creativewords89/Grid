@@ -16,7 +16,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, File, Form, Query, Response, UploadFile
 from pydantic import BaseModel, StringConstraints
 from sqlalchemy import func, select, text
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, defer, selectinload
 
 from app import audit
 from app.api.imports import MAX_BYTES, NicheName
@@ -277,7 +277,14 @@ def list_files(me: CurrentUser, db: Db) -> list[FileOut]:
         ensure(me, Action.SUBMIT_FILES)
     query = (
         select(Submission)
-        .options(selectinload(Submission.cities), selectinload(Submission.uploader))
+        .options(
+            selectinload(Submission.cities),
+            selectinload(Submission.uploader),
+            # Not the file itself nor its businesses: a list never needs them.
+            defer(Submission.content),
+            defer(Submission.leads),
+            defer(Submission.problems),
+        )
         .order_by(Submission.created_at.desc())
         .limit(500)
     )
