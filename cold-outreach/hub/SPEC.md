@@ -1080,3 +1080,4 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     (Corrected after step 42: the niche changes also when a city of the file is already in a
     batch: that city stays there, with its leads and their results; the other cities go to
     the new niche's batch. **Change niche** is on the file's row too.)
+    (And: the Change niche box offers **+ New niche…** too, as handing in does.)

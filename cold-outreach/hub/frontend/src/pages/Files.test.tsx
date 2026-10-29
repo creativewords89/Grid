@@ -508,7 +508,7 @@ test("an owner moves a file in Top Review to another niche", async () => {
   await userEvent.click(await screen.findByRole("button", { name: "Change niche" }));
   const dialog = screen.getByRole("dialog", { name: "Change the niche" });
   expect(dialog).toHaveTextContent(/its cities go to the new niche's batch/);
-  const select = within(dialog).getByLabelText("New niche");
+  const select = within(dialog).getByLabelText("Move to niche");
   await within(select).findByRole("option", { name: "Roofing" });
   expect(within(select).queryByRole("option", { name: "Cleaning" })).toBeNull();
   await userEvent.selectOptions(select, "Roofing");
@@ -548,9 +548,39 @@ test("a file with a city already in its batch still changes niche, from its row"
   expect(dialog).toHaveTextContent(
     "1 city is already in Cleaning: it stays there, with its leads and results.",
   );
-  const select = within(dialog).getByLabelText("New niche");
+  const select = within(dialog).getByLabelText("Move to niche");
   await within(select).findByRole("option", { name: "Construction" });
   await userEvent.selectOptions(select, "Construction");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Move to Construction" }));
+  expect(calls.find((c) => c.path === "/submissions/f1/niche")?.body).toEqual({
+    niche: "Construction",
+  });
+});
+
+test("a new niche is added from Change niche, then chosen", async () => {
+  let niches = ["Cleaning"];
+  const calls = mockApi({
+    "GET /auth/me": me(owner),
+    "GET /submissions": [200, [file({ status: "top_review", errors: 0 })]],
+    "GET /submissions/niches": () => [200, niches],
+    "POST /niches": () => {
+      niches = ["Cleaning", "Construction"];
+      return [200, { name: "Construction", created: true }];
+    },
+    "PATCH /submissions/f1/niche": [200, { ...detail, niche: "Construction" }],
+  });
+  render(<App />);
+
+  const row = await screen.findByRole("row", { name: /tulsa\.xlsx/ });
+  await userEvent.click(within(row).getByRole("button", { name: "Change niche" }));
+  const dialog = screen.getByRole("dialog", { name: "Change the niche" });
+  const select = within(dialog).getByLabelText("Move to niche");
+  await within(select).findByRole("option", { name: "+ New niche…" });
+  await userEvent.selectOptions(select, "+ New niche…");
+  await userEvent.type(within(dialog).getByLabelText("New niche"), "Construction");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Add" }));
+  await within(select).findByRole("option", { name: "Construction" });
+  expect(select).toHaveValue("Construction");
   await userEvent.click(within(dialog).getByRole("button", { name: "Move to Construction" }));
   expect(calls.find((c) => c.path === "/submissions/f1/niche")?.body).toEqual({
     niche: "Construction",
