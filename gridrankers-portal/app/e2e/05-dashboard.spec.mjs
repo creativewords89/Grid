@@ -22,7 +22,7 @@ test('dashboard, project lifecycle and per-project Recent Activities', async ({ 
 	// button on My day any more.
 	await expect(page.locator('.md-acts').getByRole('button', { name: 'Team', exact: true })).toHaveCount(0);
 	await page.locator('.me-btn').click();
-	await expect(page.locator('nav.ttabs').getByRole('tab')).toHaveText(['Calendar', 'Team', /^Leave/, 'My leave', 'Profile settings', 'Recent Activity']);
+	await expect(page.locator('nav.ttabs').getByRole('tab')).toHaveText(['Calendar', 'Team', /^Leave/, 'My leave', 'My time', 'Profile settings', 'Recent Activity']);
 	await page.locator('nav.ttabs').getByRole('tab', { name: 'Recent Activity' }).click();
 	await expect(page.locator('.act-who select')).toBeVisible();
 	await page.locator('aside .side-link', { hasText: 'My day' }).click();

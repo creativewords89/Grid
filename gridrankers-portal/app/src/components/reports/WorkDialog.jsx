@@ -3,6 +3,7 @@ import { usePortal } from '../../context.js';
 import { rowsOf } from '../../lib/store.js';
 import { FILE_ACCEPT, MAX_ATTACH, MAX_FILE_BYTES } from '../../lib/files.js';
 import { OTHER_PROJECTS, TIME_CHIPS, cleanLink, entryError, fmtMinutes, toMinutes } from '../../lib/reports.js';
+import { isTracked } from '../../lib/timer.js';
 import Modal from '../Modal.jsx';
 import { FileChip, LinkChip } from './parts.jsx';
 
@@ -35,6 +36,7 @@ function WorkForm({ entry, onClose, onSave, onRemove }) {
 	const [linkName, setLinkName] = useState('');
 	const [busy, setBusy] = useState(0);
 	const [error, setError] = useState('');
+	const tracked = isTracked(entry);
 	const picker = useRef(null);
 
 	const projects = rowsOf(data, 'projects')
@@ -85,7 +87,8 @@ function WorkForm({ entry, onClose, onSave, onRemove }) {
 
 	const submit = (e) => {
 		e.preventDefault();
-		const next = { id: entry ? entry.id : newId(), title: title.trim(), details: details.trim(), project, minutes: spent, files, links };
+		// A tracked line (SPEC.md 6.21) keeps its task, project and minutes: they follow the timer.
+		const next = tracked ? { ...entry, details: details.trim(), files, links } : { id: entry ? entry.id : newId(), title: title.trim(), details: details.trim(), project, minutes: spent, files, links };
 		const err = entryError(next) || (busy ? 'Wait for the files to finish uploading.' : '');
 		if (err) {
 			setError(err);
@@ -102,11 +105,11 @@ function WorkForm({ entry, onClose, onSave, onRemove }) {
 					×
 				</button>
 			</div>
-			<input className="dr-in" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} placeholder="What did you do?" aria-label="What did you do?" autoFocus />
+			<input className="dr-in" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} placeholder="What did you do?" aria-label="What did you do?" autoFocus={!tracked} disabled={tracked} />
 			<textarea className="dr-in" rows={3} value={details} onChange={(e) => setDetails(e.target.value)} maxLength={2000} placeholder="Add details — what you did, results (optional)" aria-label="Details" />
 			<label className="dr-lab">
 				Project
-				<select className="dr-in" value={project} onChange={(e) => setProject(e.target.value)} aria-label="Project">
+				<select className="dr-in" value={project} onChange={(e) => setProject(e.target.value)} aria-label="Project" disabled={tracked}>
 					<option value="">No project</option>
 					{projects.map((p) => (
 						<option key={p.id} value={p.id}>
@@ -120,6 +123,11 @@ function WorkForm({ entry, onClose, onSave, onRemove }) {
 					))}
 				</select>
 			</label>
+			{tracked ? (
+				<p className="dr-tracked-note">
+					⏱ <b>{fmtMinutes(entry.minutes)}</b> tracked by the timer. Fix the time in the timer — typed time can’t replace it.
+				</p>
+			) : (
 			<div className="dr-lab" role="group" aria-label="Time spent">
 				Time spent
 				<div className="dr-chips">
@@ -139,6 +147,7 @@ function WorkForm({ entry, onClose, onSave, onRemove }) {
 					</div>
 				)}
 			</div>
+			)}
 			<div className="dr-lab">
 				Files and links
 				{(files.length > 0 || links.length > 0) && (
@@ -187,7 +196,7 @@ function WorkForm({ entry, onClose, onSave, onRemove }) {
 				{error}
 			</p>
 			<div className="dlg-acts">
-				{editing && onRemove && (
+				{editing && onRemove && !tracked && (
 					<button type="button" className="btn danger-soft dr-remove" onClick={() => onRemove(entry)}>
 						Remove
 					</button>

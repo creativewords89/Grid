@@ -36,6 +36,7 @@ class GRP_Import {
 		'posts'        => 'grp_posts',
 		'keywords'     => 'grp_keywords',
 		'dailyReports' => 'grp_daily_reports',
+		'timeEntries'  => 'grp_time_entries',
 	);
 
 	/**
@@ -51,7 +52,7 @@ class GRP_Import {
 	/**
 	 * Member fields an import fills in but never empties.
 	 */
-	const KEEP_PROFILE = array( 'photo', 'phone', 'email', 'address', 'title', 'drive_url', 'notes', 'birthday', 'birth_year', 'location', 'weekly_off' );
+	const KEEP_PROFILE = array( 'photo', 'phone', 'email', 'address', 'title', 'drive_url', 'notes', 'birthday', 'birth_year', 'location', 'weekly_off', 'work_start' );
 
 	/**
 	 * Trash types in the export => tables.
@@ -180,6 +181,8 @@ class GRP_Import {
 				return self::wrap( self::keyword( $doc ) );
 			case 'dailyReports':
 				return self::wrap( self::daily_report( $doc ) );
+			case 'timeEntries':
+				return self::wrap( self::time_entry( $doc ) );
 		}
 
 		return array();
@@ -220,6 +223,7 @@ class GRP_Import {
 			'birth_year'  => ! empty( $d['birthYear'] ) ? (int) $d['birthYear'] : null,
 			'location'    => isset( $d['location'] ) ? mb_substr( (string) $d['location'], 0, 191 ) : null,
 			'weekly_off'  => GRP_People::weekdays( $d['weeklyOff'] ?? null ),
+			'work_start'  => GRP_Time::start_time( $d['workStart'] ?? null ),
 			'created_at'  => self::time( $d['createdAt'] ?? null ),
 		);
 	}
@@ -353,6 +357,43 @@ class GRP_Import {
 	}
 
 	/**
+	 * `timeEntries` → grp_time_entries (SPEC.md 6.21).
+	 *
+	 * @param array $d Document.
+	 * @return array|null
+	 */
+	public static function time_entry( array $d ) {
+		$id      = self::id( $d['id'] ?? '' );
+		$member  = self::id( $d['memberId'] ?? '' );
+		$started = self::time( $d['startedAt'] ?? null );
+		if ( ! $id || ! $member || ! $started ) {
+			return null;
+		}
+		$ended = self::time( $d['endedAt'] ?? null );
+
+		return array(
+			'id'           => $id,
+			'member_id'    => $member,
+			'day'          => self::ymd( $d['day'] ?? null ) ?? GRP_Time::day_of( $started ),
+			'project_id'   => ! empty( $d['projectId'] ) ? (string) $d['projectId'] : null,
+			'ref_kind'     => in_array( $d['refKind'] ?? '', array( 'item', 'record' ), true ) ? $d['refKind'] : 'none',
+			'ref_id'       => ! empty( $d['refId'] ) ? mb_substr( (string) $d['refId'], 0, 128 ) : null,
+			'period_key'   => ! empty( $d['periodKey'] ) ? mb_substr( (string) $d['periodKey'], 0, 32 ) : null,
+			'started_at'   => $started,
+			'ended_at'     => $ended,
+			'seconds'      => $ended ? GRP_Time::seconds( $started, $ended ) : 0,
+			'idle_seconds' => max( 0, (int) ( $d['idleSeconds'] ?? 0 ) ),
+			'source'       => 'desktop' === ( $d['source'] ?? '' ) ? 'desktop' : 'web',
+			'note'         => mb_substr( (string) ( $d['note'] ?? '' ), 0, 500 ),
+			'flags'        => is_array( $d['flags'] ?? null ) ? $d['flags'] : null,
+			'synced_at'    => self::time( $d['syncedAt'] ?? null ),
+			'edited_by'    => ! empty( $d['editedBy'] ) ? (string) $d['editedBy'] : null,
+			'deleted_at'   => self::time( $d['deletedAt'] ?? null ),
+			'created_at'   => self::time( $d['createdAt'] ?? null ),
+		);
+	}
+
+	/**
 	 * `dailyReports` → grp_daily_reports (SPEC.md 6.18).
 	 *
 	 * @param array $d Document.
@@ -391,6 +432,15 @@ class GRP_Import {
 				'files'   => self::files( $e['files'] ?? null ) ?? array(),
 				'links'   => $links,
 			);
+			// Tracked time stays tracked (SPEC.md 6.21), or it would come back as handwritten.
+			if ( 'tracked' === ( $e['source'] ?? '' ) ) {
+				$entries[ count( $entries ) - 1 ] += array(
+					'source'   => 'tracked',
+					'time_ids' => array_values( array_map( 'strval', array_filter( (array) ( $e['time_ids'] ?? array() ), 'is_scalar' ) ) ),
+					'ref_kind' => in_array( $e['ref_kind'] ?? '', array( 'item', 'record' ), true ) ? $e['ref_kind'] : 'none',
+					'ref_id'   => (string) ( $e['ref_id'] ?? '' ),
+				);
+			}
 		}
 
 		return array(

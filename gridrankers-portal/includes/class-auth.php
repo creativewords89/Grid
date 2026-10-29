@@ -26,6 +26,16 @@ class GRP_Auth {
 	const SESSION_TTL = 30 * DAY_IN_SECONDS;
 
 	/**
+	 * Desktop tracker device token lifetime in seconds (30 days, renewed on use; SPEC.md 6.21).
+	 */
+	const DEVICE_TTL = 30 * DAY_IN_SECONDS;
+
+	/**
+	 * A device's last-seen time and expiry are renewed at most this often.
+	 */
+	const DEVICE_TOUCH_SECONDS = 5 * MINUTE_IN_SECONDS;
+
+	/**
 	 * Failed attempts allowed before a lockout.
 	 */
 	const MAX_ATTEMPTS = 5;
@@ -63,6 +73,21 @@ class GRP_Auth {
 	 * @var string|null
 	 */
 	private static $request_token = null;
+
+	/**
+	 * Device token sent with this request (`Authorization: Bearer`): null when none was sent,
+	 * '' when the header held no valid token.
+	 *
+	 * @var string|null
+	 */
+	private static $bearer = null;
+
+	/**
+	 * Device the current request signed in with (desktop tracker), or null.
+	 *
+	 * @var array|null
+	 */
+	private static $device = null;
 
 	/**
 	 * Signs a member in with their code.
@@ -132,6 +157,156 @@ class GRP_Auth {
 	}
 
 	/**
+	 * Signs the desktop tracker in with a code (SPEC.md 6.21): same lockout and error as login(),
+	 * but no cookie — the app gets a device token, stored only as its hash in `grp_devices`.
+	 * Someone who hasn't set up their pay (6.19) is told to do it on the portal first.
+	 *
+	 * @param string $code        Code as typed.
+	 * @param string $ip          Client IP address.
+	 * @param string $name        Device name (e.g. the computer's name).
+	 * @param string $platform    Platform (win32, darwin…).
+	 * @param string $app_version App version.
+	 * @return array|WP_Error `{member, token, device}` on success.
+	 */
+	public static function device_login( $code, $ip, $name = '', $platform = '', $app_version = '' ) {
+		global $wpdb;
+
+		$code = trim( (string) $code );
+		if ( self::is_locked( $ip ) ) {
+			return new WP_Error(
+				'grp_locked',
+				__( 'Too many attempts. Try again in 15 minutes.', 'gridrankers-portal' ),
+				array( 'status' => 429 )
+			);
+		}
+
+		$member = '' === $code ? null : self::find_member_by_code( $code );
+		if ( ! $member ) {
+			self::record_failure( $ip );
+			return new WP_Error(
+				'grp_invalid_code',
+				__( "That code doesn't match anyone.", 'gridrankers-portal' ),
+				array( 'status' => 401 )
+			);
+		}
+		self::clear_failures( $ip );
+
+		if ( GRP_Pay::needs_setup( $member ) ) {
+			return new WP_Error( 'grp_pay_needed', __( 'Set up your working hours, salary and payment details on the portal first.', 'gridrankers-portal' ), array( 'status' => 403 ) );
+		}
+
+		$now   = GRP_Ids::now();
+		$token = bin2hex( random_bytes( 32 ) );
+		$id    = GRP_Ids::ulid();
+		$wpdb->insert( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			self::table( 'grp_devices' ),
+			array(
+				'id'           => $id,
+				'member_id'    => $member['id'],
+				'name'         => self::clip( $name, 191 ),
+				'platform'     => self::clip( $platform, 32 ),
+				'app_version'  => self::clip( $app_version, 32 ),
+				'token_hash'   => self::hash_token( $token ),
+				'expires_at'   => GRP_Ids::now( time() + self::DEVICE_TTL ),
+				'last_seen_at' => $now,
+				'ip'           => substr( (string) $ip, 0, 45 ),
+				'created_at'   => $now,
+				'updated_at'   => $now,
+			)
+		);
+
+		return array(
+			'member' => $member,
+			'token'  => $token,
+			'device' => self::public_device( GRP_Store::get( 'grp_devices', $id ) ),
+		);
+	}
+
+	/**
+	 * Uses the device token of this request instead of the session cookie (the REST guard calls it
+	 * for `Authorization: Bearer`). A malformed token signs nobody in.
+	 *
+	 * @param string $token Raw token.
+	 */
+	public static function use_bearer( $token ) {
+		self::$bearer  = preg_match( '/^[a-f0-9]{64}$/', (string) $token ) ? (string) $token : '';
+		self::$device  = null;
+		self::$current = false;
+	}
+
+	/**
+	 * Whether this request came with a device token.
+	 *
+	 * @return bool
+	 */
+	public static function uses_device() {
+		return null !== self::$bearer;
+	}
+
+	/**
+	 * The device the current request signed in with, or null.
+	 *
+	 * @return array|null
+	 */
+	public static function current_device() {
+		self::current_member();
+
+		return self::$device;
+	}
+
+	/**
+	 * Revokes one device: its token stops working at once.
+	 *
+	 * @param string $device_id Device id.
+	 */
+	public static function revoke_device( $device_id ) {
+		global $wpdb;
+
+		$now = GRP_Ids::now();
+		$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$wpdb->prepare( 'UPDATE %i SET revoked_at = %s, updated_at = %s WHERE id = %s AND revoked_at IS NULL', self::table( 'grp_devices' ), $now, $now, $device_id )
+		);
+		self::$current = false;
+	}
+
+	/**
+	 * A person's signed-in devices: not revoked and not expired, newest first.
+	 *
+	 * @param string $member_id Member id.
+	 * @return array[]
+	 */
+	public static function devices( $member_id ) {
+		global $wpdb;
+
+		$rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$wpdb->prepare(
+				'SELECT * FROM %i WHERE member_id = %s AND revoked_at IS NULL AND expires_at > %s ORDER BY created_at DESC, id DESC',
+				self::table( 'grp_devices' ),
+				$member_id,
+				GRP_Ids::now()
+			),
+			ARRAY_A
+		);
+
+		return array_map( array( __CLASS__, 'public_device' ), (array) $rows );
+	}
+
+	/**
+	 * Device row without its token hash.
+	 *
+	 * @param array|null $device Device row.
+	 * @return array|null
+	 */
+	public static function public_device( $device ) {
+		if ( ! $device ) {
+			return null;
+		}
+		unset( $device['token_hash'] );
+
+		return $device;
+	}
+
+	/**
 	 * The team member making this request, or null.
 	 *
 	 * @return array|null
@@ -150,6 +325,8 @@ class GRP_Auth {
 	public static function reset() {
 		self::$current       = false;
 		self::$request_token = null;
+		self::$bearer        = null;
+		self::$device        = null;
 	}
 
 	/**
@@ -269,7 +446,7 @@ class GRP_Auth {
 	}
 
 	/**
-	 * Deletes every session of a member.
+	 * Deletes every session of a member and revokes their desktop devices (SPEC.md 6.21).
 	 *
 	 * @param string $member_id Member id.
 	 */
@@ -277,6 +454,10 @@ class GRP_Auth {
 		global $wpdb;
 
 		$wpdb->delete( self::table( 'grp_sessions' ), array( 'member_id' => $member_id ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$now = GRP_Ids::now();
+		$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$wpdb->prepare( 'UPDATE %i SET revoked_at = %s, updated_at = %s WHERE member_id = %s AND revoked_at IS NULL', self::table( 'grp_devices' ), $now, $now, $member_id )
+		);
 		self::$current = false;
 	}
 
@@ -324,6 +505,10 @@ class GRP_Auth {
 	private static function resolve_current_member() {
 		global $wpdb;
 
+		if ( null !== self::$bearer ) {
+			return self::resolve_device();
+		}
+
 		$wp_user_id = get_current_user_id();
 		if ( $wp_user_id && user_can( $wp_user_id, 'manage_options' ) ) {
 			$member = self::member_for_wp_user( $wp_user_id );
@@ -353,6 +538,67 @@ class GRP_Auth {
 		);
 
 		return $member ? $member : null;
+	}
+
+	/**
+	 * Resolves the device token: an active Team Leader or Team Member on a device that is neither
+	 * revoked nor expired. Renews the device's expiry and last-seen time every few minutes.
+	 *
+	 * @return array|null
+	 */
+	private static function resolve_device() {
+		global $wpdb;
+
+		if ( '' === self::$bearer ) {
+			return null;
+		}
+
+		$now = GRP_Ids::now();
+		$row = $wpdb->get_row( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$wpdb->prepare(
+				'SELECT d.id AS grp_device_id, d.last_seen_at AS grp_device_seen, m.* FROM %i m INNER JOIN %i d ON d.member_id = m.id
+				WHERE d.token_hash = %s AND d.revoked_at IS NULL AND d.expires_at > %s AND m.active = 1 AND m.role <> %s',
+				self::table( 'grp_members' ),
+				self::table( 'grp_devices' ),
+				self::hash_token( self::$bearer ),
+				$now,
+				GRP_Permissions::ROLE_ADMIN
+			),
+			ARRAY_A
+		);
+		if ( ! $row ) {
+			return null;
+		}
+
+		$device_id = $row['grp_device_id'];
+		$seen      = $row['grp_device_seen'] ? strtotime( $row['grp_device_seen'] . ' UTC' ) : 0;
+		unset( $row['grp_device_id'], $row['grp_device_seen'] );
+		if ( time() - $seen >= self::DEVICE_TOUCH_SECONDS ) {
+			$wpdb->update( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+				self::table( 'grp_devices' ),
+				array(
+					'last_seen_at' => $now,
+					'expires_at'   => GRP_Ids::now( time() + self::DEVICE_TTL ),
+					'ip'           => substr( self::client_ip(), 0, 45 ),
+					'updated_at'   => $now,
+				),
+				array( 'id' => $device_id )
+			);
+		}
+		self::$device = self::public_device( GRP_Store::get( 'grp_devices', $device_id ) );
+
+		return $row;
+	}
+
+	/**
+	 * A single-line text, trimmed to a length.
+	 *
+	 * @param mixed $value Value.
+	 * @param int   $max   Most characters.
+	 * @return string
+	 */
+	private static function clip( $value, $max ) {
+		return mb_substr( sanitize_text_field( (string) $value ), 0, $max );
 	}
 
 	/**

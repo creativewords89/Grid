@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { usePortal } from '../../context.js';
 import { ROLE } from '../../lib/roles.js';
 import { dayTitle, fmtMinutes, missLine, nextDay, teamTotals } from '../../lib/reports.js';
+import { isTracked, splitMinutes } from '../../lib/timer.js';
 import Avatar from '../Avatar.jsx';
 import { sentTime } from './DailyReports.jsx';
 import { FileChip, LinkChip, ProjectTag } from './parts.jsx';
@@ -179,6 +180,7 @@ export default function TeamReports({ onOpenPerson, slot }) {
 															<b>{fmtMinutes(r.minutes)}</b>
 															{p.day_minutes ? <span> of {fmtMinutes(p.day_minutes)}</span> : null}
 														</div>
+														<HandSplit entries={r.entries} />
 														<div className={'tg-sent' + (p.state === 'late' ? ' late' : '')}>{p.state === 'late' ? `Late · sent ${sentTime(r.sent_at)}` : `Sent ${sentTime(r.sent_at)}`}</div>
 													</th>
 												)}
@@ -189,7 +191,10 @@ export default function TeamReports({ onOpenPerson, slot }) {
 												<td>
 													<ProjectTag project={e.project} />
 												</td>
-												<td className="tg-time">{fmtMinutes(e.minutes)}</td>
+												<td className="tg-time">
+													{fmtMinutes(e.minutes)}
+													<span className={'dr-src ' + (isTracked(e) ? 'tracked' : 'hand')}>{isTracked(e) ? '⏱ Tracked' : '✍ by hand'}</span>
+												</td>
 												<td>
 													<div className="tg-links">
 														{(e.files || []).map((f) => (
@@ -308,3 +313,14 @@ export default function TeamReports({ onOpenPerson, slot }) {
 	);
 }
 
+
+// A day's tracked and handwritten time (SPEC.md 6.21), when there is any handwritten time.
+export function HandSplit({ entries }) {
+	const split = splitMinutes(entries);
+	if (!split.hand) return null;
+	return (
+		<div className="dr-split">
+			⏱ {fmtMinutes(split.tracked)} · <b>✍ {fmtMinutes(split.hand)} by hand</b>
+		</div>
+	);
+}

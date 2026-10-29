@@ -370,7 +370,8 @@ class Test_GRP_Daily_Reports extends GRP_REST_TestCase {
 		$this->assertSame( array( $this->team['other']['id'], $this->lead2['id'] ), $res->get_data()['reminded'] );
 		$this->assertSame( array( $this->team['member']['id'] ), $res->get_data()['skipped'] );
 
-		$posts = GRP_Store::find( 'grp_posts', array( 'kind' => 'notice' ) );
+		// Sending a handwritten report also tells the Super Admin (SPEC.md 6.21); that notice is not a reminder.
+		$posts = array_filter( GRP_Store::find( 'grp_posts', array( 'kind' => 'notice' ) ), static fn ( $p ) => ! str_starts_with( (string) $p['title'], '✍' ) );
 		$this->assertCount( 3, $posts );
 		$leads = array_values(
 			array_filter(
@@ -388,7 +389,7 @@ class Test_GRP_Daily_Reports extends GRP_REST_TestCase {
 
 		// Without tell_leads only the people are reminded.
 		$this->api_as( 'lead', 'POST', '/daily-reports/remind', array( 'member_ids' => array( $this->team['other']['id'] ) ) );
-		$this->assertCount( 4, GRP_Store::find( 'grp_posts', array( 'kind' => 'notice' ) ) );
+		$this->assertCount( 4, array_filter( GRP_Store::find( 'grp_posts', array( 'kind' => 'notice' ) ), static fn ( $p ) => ! str_starts_with( (string) $p['title'], '✍' ) ) );
 	}
 
 	public function test_reports_are_exported_and_imported() {

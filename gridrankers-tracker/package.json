@@ -1,0 +1,98 @@
+{
+	"name": "gridrankers-tracker",
+	"productName": "GridRankers Tracker",
+	"description": "GridRankers desktop time tracker (SPEC.md 6.21).",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"main": "electron/main.js",
+	"author": "GridRankers",
+	"license": "UNLICENSED",
+	"scripts": {
+		"dev": "vite build --watch & electron .",
+		"build": "vite build",
+		"start": "vite build && electron .",
+		"test": "vitest run",
+		"dist": "vite build && electron-builder --publish never",
+		"dist:win": "vite build && electron-builder --win --publish never",
+		"dist:mac": "vite build && electron-builder --mac --publish never"
+	},
+	"dependencies": {
+		"electron-updater": "^6.6.2"
+	},
+	"devDependencies": {
+		"@playwright/test": "^1.55.0",
+		"@vitejs/plugin-react": "^4.3.4",
+		"electron": "^38.2.0",
+		"electron-builder": "^26.0.12",
+		"react": "^19.0.0",
+		"react-dom": "^19.0.0",
+		"vite": "^6.0.0",
+		"vitest": "^2.1.8"
+	},
+	"build": {
+		"appId": "com.gridrankers.tracker",
+		"productName": "GridRankers Tracker",
+		"copyright": "GridRankers",
+		"directories": {
+			"buildResources": "build",
+			"output": "release"
+		},
+		"files": [
+			"package.json",
+			"dist/**",
+			"electron/**",
+			"src/core/**",
+			"assets/**"
+		],
+		"publish": [
+			{
+				"provider": "generic",
+				"url": "https://github.com/creativewords89/grid/releases/download/tracker-latest"
+			}
+		],
+		"win": {
+			"target": [
+				{
+					"target": "nsis",
+					"arch": [
+						"x64"
+					]
+				}
+			],
+			"artifactName": "GridRankers-Tracker-Setup.${ext}"
+		},
+		"nsis": {
+			"oneClick": true,
+			"perMachine": false,
+			"runAfterFinish": true,
+			"deleteAppDataOnUninstall": false
+		},
+		"mac": {
+			"target": [
+				{
+					"target": "dmg",
+					"arch": [
+						"universal"
+					]
+				},
+				{
+					"target": "zip",
+					"arch": [
+						"universal"
+					]
+				}
+			],
+			"category": "public.app-category.productivity",
+			"hardenedRuntime": true,
+			"artifactName": "GridRankers-Tracker-mac.${ext}"
+		},
+		"linux": {
+			"target": [
+				"AppImage"
+			],
+			"category": "Office",
+			"artifactName": "GridRankers-Tracker.${ext}"
+		}
+	}
+}

@@ -1711,3 +1711,55 @@ button.hol-day:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .share-btn{white-space:nowrap}
 .mcard.flash{animation:task-flash 1.2s ease-in-out 3;box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 45%,transparent)}
 @keyframes task-flash{50%{box-shadow:0 0 0 6px color-mix(in srgb,var(--accent) 25%,transparent)}}
+
+/* Time tracker (SPEC.md 6.21): the timer in the top bar, tracked / handwritten time in reports and pay. */
+.tm{position:relative;display:inline-flex;align-items:center;gap:6px}
+.tm.on{border:1px solid color-mix(in srgb, var(--done) 45%, var(--line));background:var(--done-bg);border-radius:10px;padding:3px 4px 3px 10px}
+.tm-dot{width:8px;height:8px;border-radius:50%;background:var(--done);animation:tm-pulse 1.6s ease-in-out infinite}
+@keyframes tm-pulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.tm-dot{animation:none}}
+.tm-what{display:flex;align-items:baseline;gap:8px;border:0;background:none;padding:2px 4px;border-radius:6px;min-width:0;max-width:260px;color:var(--ink)}
+.tm-clock{font-variant-numeric:tabular-nums;font-size:.92rem}
+.tm-label{font-size:.8rem;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tm-pop{position:absolute;top:calc(100% + 6px);right:0;z-index:60;width:min(320px,calc(100vw - 32px));background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(15,23,36,.18);padding:8px}
+.tm-h{margin:4px 8px 6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-2)}
+.tm-empty{margin:8px;color:var(--ink-2);font-size:.85rem}
+.tm-list{list-style:none;margin:0;padding:0;max-height:min(360px,60vh);overflow:auto}
+.tm-list button{display:flex;flex-direction:column;align-items:flex-start;width:100%;text-align:left;border:0;background:none;padding:8px 10px;border-radius:8px;color:var(--ink)}
+.tm-list button:hover,.tm-list button:focus-visible{background:var(--panel-2)}
+.tm-list b{font-size:.88rem;font-weight:600}
+.tm-list span{font-size:.75rem;color:var(--ink-2)}
+@media (max-width:600px){.tm-label{display:none}}
+.dr-src{display:inline-flex;align-items:center;font-size:.7rem;font-weight:700;border-radius:99px;padding:2px 8px;white-space:nowrap}
+.dr-src.tracked{color:var(--done);background:var(--done-bg)}
+.dr-src.hand{color:var(--doing);background:var(--doing-bg)}
+.tg-time .dr-src{margin-left:6px}
+.dr-split{font-size:.75rem;color:var(--ink-2);margin-top:2px}
+.dr-split b{color:var(--doing)}
+.dr-tracked-note{margin:0;padding:10px 12px;border-radius:10px;background:var(--done-bg);color:var(--ink);font-size:.85rem}
+.pay-who .pay-hand{display:block;font-size:.72rem;color:var(--doing);font-weight:600}
+/* Time tab (SPEC.md 6.21): a week of time entries, the working day and desktop computers. */
+.tt{display:flex;flex-direction:column;gap:14px}
+.tt h3{margin:0 0 8px;font-family:var(--display);font-size:1.05rem}
+.tt-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+.tt-head h3{margin:0 auto 0 0}
+.tt-nav{display:flex;align-items:center;gap:6px;font-size:.85rem;font-weight:600;color:var(--ink-2)}
+.tt-total{font-variant-numeric:tabular-nums;font-size:1.05rem}
+.tt-day{border-top:1px solid var(--line);padding-top:8px;margin-top:8px}
+.tt-dayh{display:flex;justify-content:space-between;font-size:.82rem;color:var(--ink-2);margin-bottom:4px}
+.tt-dayh b{color:var(--ink)}
+.tt-list{list-style:none;margin:0;padding:0}
+.tt-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px dashed var(--line);flex-wrap:wrap}
+.tt-row:last-child{border-bottom:0}
+.tt-when{font-variant-numeric:tabular-nums;font-size:.85rem;color:var(--ink-2);min-width:112px}
+.tt-what{display:flex;flex-direction:column;flex:1;min-width:160px}
+.tt-what small{color:var(--ink-2);font-size:.78rem}
+.tt-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
+.tt-src,.tt-flag{font-size:.7rem;font-weight:700;border-radius:99px;padding:1px 8px;background:var(--panel-2);color:var(--ink-2)}
+.tt-flag{background:var(--doing-bg);color:var(--doing)}
+.tt-dur{font-variant-numeric:tabular-nums}
+.tt-acts{display:flex;gap:10px}
+.linkbtn.danger{color:var(--urgent)}
+.tt-edit{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tt-edit input,.tt-startf input{border:1px solid var(--line);background:var(--panel-2);border-radius:8px;padding:6px 8px}
+.tt-startf{display:flex;align-items:center;gap:8px;flex-wrap:wrap}

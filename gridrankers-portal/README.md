@@ -89,6 +89,20 @@ page and on every `/wp-json/gr-portal/*` response, but server caches must also s
   or add the same URL exclusions there and purge the cache after updating the plugin.
 - Do not put the portal behind a CDN page cache (Hostinger CDN: exclude the same paths, or turn it off).
 
+### Desktop time tracker (SPEC.md 6.21)
+
+The desktop tracker signs in with the employee code and then sends a device token as
+`Authorization: Bearer …` to `/wp-json/gr-portal/v1/`. LiteSpeed (Hostinger) passes that header on. On
+Apache with PHP as CGI/FastCGI, which can drop it, add this to `.htaccess` above the WordPress block:
+
+```
+SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+```
+
+A person's signed-in computers are listed (and revoked) through `/devices`; **Set code**, a role change
+and removing someone sign their computers out too. The app itself, its installers and its releases:
+`gridrankers-tracker/README.md`.
+
 ### Backups
 
 Rely on Hostinger's daily backups and download a JSON export regularly

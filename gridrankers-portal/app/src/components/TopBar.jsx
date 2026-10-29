@@ -2,6 +2,7 @@ import { usePortal } from '../context.js';
 import { ROLE } from '../lib/roles.js';
 import { GENERAL_NAME } from '../lib/tasks.js';
 import Avatar from './Avatar.jsx';
+import TimerChip from './TimerChip.jsx';
 
 export const TABS = [
 	{ view: 'board', label: 'Meeting Minutes' },
@@ -40,6 +41,7 @@ export default function TopBar({ onSignOut }) {
 					))}
 				</div>
 			)}
+			<TimerChip />
 			<div className="me">
 				<span>
 					<button type="button" className="me-btn" title="Open my page" onClick={() => (setTeamPerson(me.id), setView('team'))}>

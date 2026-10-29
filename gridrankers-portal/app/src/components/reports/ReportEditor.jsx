@@ -23,16 +23,25 @@ export default function ReportEditor({ day, report, onSaved, compact = false, se
 	const latest = useRef({ entries, blocking, tomorrow });
 	latest.current = { entries, blocking, tomorrow };
 	const sent = !!(report && report.sent_at);
+	// Tracked time (SPEC.md 6.21) changes the report on the server: take in its lines when it does.
+	const stamp = report && report.updated_at;
+	useEffect(() => {
+		if (report && Array.isArray(report.entries)) setEntries(report.entries);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [stamp]);
 
 	const save = async (body, send = false) => {
 		const res = await api.put(`daily-reports/${day}`, { ...body, ...(send ? { send: true } : {}) });
 		if (onSaved) onSaved(res);
 		return res;
 	};
+	// The server keeps tracked lines as the timer has them (SPEC.md 6.21): show what it saved.
 	const saveNow = (next) =>
-		save(next).catch((err) => {
-			setError(err.message);
-		});
+		save(next)
+			.then((res) => res && Array.isArray(res.entries) && setEntries(res.entries))
+			.catch((err) => {
+				setError(err.message);
+			});
 
 	// Notes save a moment after typing stops.
 	const later = (next) => {

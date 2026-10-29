@@ -118,6 +118,11 @@ export default function PaySheet() {
 									<span className="pay-who" role="cell">
 										<Avatar person={person} />
 										<b>{person.name}</b>
+										{r.summary && r.summary.hand > 0 && (
+											<small className="pay-hand" title="Both are paid">
+												⏱ {hours(r.summary.tracked)} tracked · ✍ {hours(r.summary.hand)} by hand
+											</small>
+										)}
 									</span>
 									{!n ? (
 										<span className="pay-unset" role="cell">

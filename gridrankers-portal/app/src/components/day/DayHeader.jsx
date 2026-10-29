@@ -7,6 +7,7 @@ import { weekdayDate } from '../../lib/format.js';
 import { MEMBER_TAB_KEY, greeting } from '../../lib/people.js';
 import { ROLE } from '../../lib/roles.js';
 import Avatar from '../Avatar.jsx';
+import TimerChip from '../TimerChip.jsx';
 
 const ICON = {
 	announcement: 'M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1zM15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12',
@@ -230,6 +231,7 @@ export default function DayHeader({ onSignOut }) {
 						{!viewOnly && <Weather />}
 					</span>
 				</div>
+				<TimerChip />
 				{!viewOnly && <Bell />}
 				<div className="md-me">
 					<button type="button" className="me-btn" title="Open my page" onClick={() => (setTeamPerson(me.id), setView('team'))}>
