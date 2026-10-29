@@ -56,3 +56,6 @@ input{width:100%;border:1px solid var(--line);background:var(--panel-2);border-r
 .pick li button.cur{background:var(--done-bg)}
 .pick li span{font-size:.78rem;color:var(--ink-2)}
 .foot{display:flex;justify-content:space-between;gap:8px;font-size:.85rem}
+.prompt{background:var(--doing-bg);border:1px solid color-mix(in srgb,var(--doing) 40%,var(--line));border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.prompt p{margin:0}
+.prompt .acts{display:flex;gap:6px;flex-wrap:wrap}

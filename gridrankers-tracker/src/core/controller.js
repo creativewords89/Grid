@@ -10,6 +10,8 @@ export const REFRESH_MS = 5 * 60 * 1000;
 
 export function createController({ store, loadToken, saveToken, device, createApi = createClient, now = () => Date.now(), onChange = () => {} }) {
 	let state = { ...T.emptyState(DEFAULT_SERVER), ...(store.load(null) || {}) };
+	// A timer left running by a crash, a power cut or a killed app: ask what to do with it.
+	state = T.checkCrash(state, now());
 	let token = loadToken() || null;
 	let tail = Promise.resolve();
 	let queued = null;
@@ -91,12 +93,16 @@ export function createController({ store, loadToken, saveToken, device, createAp
 
 	async function run(refresh) {
 		const client = api();
+		const wasDown = state.sync.failures > 0 || state.sync.online === false;
+		let uploaded = 0;
 		try {
-			const sent = T.pending(mine(state)).slice(0, 200);
-			if (sent.length) {
+			// In batches of 200 until nothing is left (a refused entry waits for the person).
+			for (let round = 0; round < 50; round++) {
+				const sent = T.pending(mine(state)).slice(0, 200);
+				if (!sent.length) break;
 				const res = await client.batch(sent, state.clockOffset);
 				state = T.applyResults(state, res.results, sent);
-				state = { ...state, sync: { ...state.sync, lastSent: sent.length } };
+				uploaded += sent.length;
 			}
 			const t0 = now();
 			const timer = await client.timer();
@@ -107,7 +113,9 @@ export function createController({ store, loadToken, saveToken, device, createAp
 				lastRefresh = now();
 				state = { ...state, workDay: schedule.work_day, schedule: schedule.schedule, tasks };
 			}
-			state = T.prune({ ...state, sync: { ...state.sync, online: true, failures: 0, lastOkAt: now() } }, now());
+			// Back online after a while: "Synced N entries".
+			const flash = wasDown && uploaded ? { n: uploaded, atMs: now() } : state.sync.flash;
+			state = T.prune({ ...state, sync: { ...state.sync, online: true, failures: 0, lastOkAt: now(), lastSent: uploaded, error: null, flash } }, now());
 		} catch (e) {
 			if (e.signedOut) {
 				// Revoked, a new code, removed: sign in again; time not sent yet stays here.
@@ -124,6 +132,26 @@ export function createController({ store, loadToken, saveToken, device, createAp
 
 	function dismiss(id) {
 		return set(T.dismiss(state, id));
+	}
+
+	// Saved every 30 s while a timer runs.
+	function heartbeat() {
+		if (state.timer) set(T.heartbeat(state, now()));
+		return state;
+	}
+
+	// The person's answer to a question the tracker asked.
+	function answer(prompt, choice) {
+		if (prompt === 'crash') set(T.resolveCrash(state, choice, now()));
+		sync();
+		return state;
+	}
+
+	// When to sync next: soon after a failure while something waits (5 s, 15 s, 1 min, 5 min), else in
+	// a minute.
+	function nextSyncMs() {
+		const waiting = T.pending(mine(state)).length;
+		return waiting && state.sync.failures ? T.retryDelayMs(state.sync.failures) : 60 * 1000;
 	}
 
 	// What the window and the tray show.
@@ -144,7 +172,8 @@ export function createController({ store, loadToken, saveToken, device, createAp
 			waiting: T.pending(mine(state)).length,
 			attention: T.attention(state),
 			sync: state.sync,
-			prompts: state.prompts,
+			prompts: { ...state.prompts, crash: state.prompts.crash ? { ...state.prompts.crash, label: (T.running(state) || {}).label } : undefined },
+			flash: state.sync.flash && now() - state.sync.flash.atMs < 10000 ? state.sync.flash : null,
 			snoozeUntil: state.snoozeUntil,
 		};
 	}
@@ -160,6 +189,9 @@ export function createController({ store, loadToken, saveToken, device, createAp
 		stop,
 		sync,
 		dismiss,
+		heartbeat,
+		answer,
+		nextSyncMs,
 		view,
 		hasToken: () => !!token,
 	};

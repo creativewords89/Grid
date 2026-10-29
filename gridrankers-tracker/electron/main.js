@@ -1,7 +1,7 @@
 // GridRankers Tracker — the Electron main process (SPEC.md 6.21). It wires the controller (src/core) to
 // the window, the tray, the operating system's keychain and the network.
 
-import { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, net, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, net, powerMonitor, safeStorage, shell } from 'electron';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -135,6 +135,7 @@ app.whenReady().then(() => {
 	ipcMain.handle('stop', () => (ctl.stop(), { ok: true }));
 	ipcMain.handle('sync', () => ctl.sync({ refresh: true }).then(() => ({ ok: true })));
 	ipcMain.handle('dismiss', (_e, id) => (ctl.dismiss(id), { ok: true }));
+	ipcMain.handle('answer', (_e, { prompt, choice }) => (ctl.answer(prompt, choice), { ok: true }));
 	ipcMain.handle('openPortal', () => shell.openExternal(ctl.state.server));
 
 	tray = new Tray(nativeImage.createFromPath(asset('tray-idle.png')));
@@ -142,14 +143,25 @@ app.whenReady().then(() => {
 	createWindow();
 	updateTray();
 
-	// The tray's clock ticks; uploads and refreshes run every minute (and at once after a change).
+	// The tray's clock ticks; the state is saved every 30 s while a timer runs (a crash loses at most
+	// that); uploads run every minute, sooner after a failure (5 s, 15 s, 1 min, 5 min), and at once
+	// after a change.
 	setInterval(updateTray, 1000);
-	setInterval(() => ctl.sync(), 60 * 1000);
-	ctl.sync({ refresh: true });
+	setInterval(() => ctl.heartbeat(), 30 * 1000);
+	const loop = () => ctl.sync().finally(() => setTimeout(loop, ctl.nextSyncMs()));
+	ctl.sync({ refresh: true }).finally(() => setTimeout(loop, ctl.nextSyncMs()));
+	// The computer shutting down: the timer stops now (a power cut is caught by the heartbeat instead).
+	powerMonitor.on('shutdown', () => ctl.stop());
+	// Back on the network: send what is waiting.
+	powerMonitor.on('resume', () => ctl.sync({ refresh: true }));
 });
 
 app.on('second-instance', showWindow);
 app.on('activate', showWindow);
-app.on('before-quit', () => (quitting = true));
+// Quitting the tracker stops the timer at that moment.
+app.on('before-quit', () => {
+	quitting = true;
+	if (ctl && ctl.view().running) ctl.stop();
+});
 // The tracker lives in the tray: closing every window doesn't quit it.
 app.on('window-all-closed', () => {});

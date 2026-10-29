@@ -198,3 +198,53 @@ export function todaySeconds(state, nowMs) {
 		.filter((e) => !e.error && localDay(fromUtc(e.started_at)) === today)
 		.reduce((s, e) => s + Math.max(0, ((e.ended_at ? fromUtc(e.ended_at) : nowMs) - fromUtc(e.started_at)) / 1000), 0);
 }
+
+// --- Heartbeat and crash recovery ---------------------------------------------------------------
+
+// While a timer runs the state is saved every 30 s with this time, so a crash loses at most that.
+export const HEARTBEAT_MS = 30 * 1000;
+
+// A heartbeat older than this when the app starts means it stopped without stopping the timer.
+export const CRASH_GAP_MS = 2 * 60 * 1000;
+
+export function heartbeat(state, nowMs) {
+	return state.timer ? { ...state, timer: { ...state.timer, heartbeatMs: nowMs } } : state;
+}
+
+// On start: a timer whose last heartbeat is long gone asks the person what to do (SPEC.md 6.21).
+export function checkCrash(state, nowMs) {
+	if (!state.timer || nowMs - (state.timer.heartbeatMs || 0) < CRASH_GAP_MS || state.prompts.crash) return state;
+	return { ...state, prompts: { ...state.prompts, crash: { atMs: state.timer.heartbeatMs } } };
+}
+
+// "Your timer stopped unexpectedly at {time} — Keep until {time} / Discard / Keep running".
+export function resolveCrash(state, choice, nowMs) {
+	const crash = state.prompts.crash;
+	if (!crash) return state;
+	const prompts = { ...state.prompts };
+	delete prompts.crash;
+	let next = { ...state, prompts };
+	if (choice === 'keep') next = stop(next, crash.atMs);
+	else if (choice === 'discard') next = discardRunning(next);
+	else next = heartbeat(next, nowMs);
+	return next;
+}
+
+// Throws the running entry away: forgotten when the portal never had it, else ended a second after it
+// began (under half a minute makes no report line).
+export function discardRunning(state) {
+	const entry = running(state);
+	if (!entry) return state;
+	if (entry.synced === 'none') {
+		const entries = { ...state.entries };
+		delete entries[entry.id];
+		return { ...state, timer: null, entries };
+	}
+	return stop(state, fromUtc(entry.started_at) + 1000);
+}
+
+// --- Retries ----------------------------------------------------------------------------------------
+
+// Waits between uploads that failed: 5 s, 15 s, 1 min, then every 5 min.
+export const RETRY_SECONDS = [5, 15, 60, 300];
+export const retryDelayMs = (failures) => RETRY_SECONDS[Math.min(Math.max(failures, 1), RETRY_SECONDS.length) - 1] * 1000;

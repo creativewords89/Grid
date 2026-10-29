@@ -40,3 +40,45 @@ test('sign in, start and stop the timer, sign out', async () => {
 	await expect(win.getByLabel('Your code')).toBeVisible();
 	await app.close();
 });
+
+test('a crash with the timer running asks on the next start', async () => {
+	const data = fs.mkdtempSync(path.join(os.tmpdir(), 'grt-e2e-'));
+	const launch = () =>
+		electron.launch({
+			args: [...(process.getuid && process.getuid() === 0 ? ['--no-sandbox'] : []), '.'],
+			cwd: path.resolve(import.meta.dirname, '..'),
+			env: { ...process.env, GRT_USER_DATA: data },
+		});
+
+	let app = await launch();
+	let win = await app.firstWindow();
+	await win.getByRole('button', { name: 'Another portal address?' }).click();
+	await win.getByLabel('Portal address').fill(url);
+	await win.getByLabel('Your code').fill(code);
+	await win.getByRole('button', { name: 'Sign in' }).click();
+	await expect(win.getByRole('status')).toContainText('Online');
+	const stop = win.getByRole('button', { name: 'Stop', exact: true });
+	if (await stop.isVisible()) await stop.click();
+	await win.getByRole('button', { name: /^No task/ }).click();
+	await expect(win.getByLabel('Timer running')).toBeVisible();
+	await win.waitForTimeout(1000);
+
+	// The app dies (no chance to stop the timer); its last save was 10 minutes ago.
+	app.process().kill('SIGKILL');
+	await new Promise((r) => setTimeout(r, 500));
+	const file = path.join(data, 'tracker.json');
+	const state = JSON.parse(fs.readFileSync(file, 'utf8'));
+	state.timer.heartbeatMs = Date.now() - 10 * 60000;
+	fs.writeFileSync(file, JSON.stringify(state));
+
+	app = await launch();
+	win = await app.firstWindow();
+	const prompt = win.getByRole('alertdialog', { name: 'Timer stopped unexpectedly' });
+	await expect(prompt).toBeVisible();
+	await prompt.getByRole('button', { name: /^Keep until/ }).click();
+	await expect(prompt).toHaveCount(0);
+	await expect(win.getByText('No timer running.', { exact: false })).toBeVisible();
+	await win.getByRole('button', { name: 'Sign out' }).click();
+	await expect(win.getByLabel('Your code')).toBeVisible();
+	await app.close();
+});

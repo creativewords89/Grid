@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DEFAULT_SERVER } from '../core/api.js';
-import { fmtClock, fmtMinutes } from '../core/clock.js';
+import { fmtClock, fmtMinutes, fmtTime } from '../core/clock.js';
 
 const tracker = window.tracker;
 
@@ -87,12 +87,32 @@ function Main({ view }) {
 					<b>{view.member.name}</b>
 					<span className={'status ' + status} role="status">
 						<i aria-hidden="true" />
-						{status === 'offline' ? `Offline · ${view.waiting} entr${view.waiting === 1 ? 'y' : 'ies'} waiting to sync` : view.waiting ? `Syncing ${view.waiting}…` : 'Online'}
+						{status === 'offline' ? `Offline · ${view.waiting} entr${view.waiting === 1 ? 'y' : 'ies'} waiting to sync` : view.flash ? `Synced ${view.flash.n} entr${view.flash.n === 1 ? 'y' : 'ies'}` : view.waiting ? `Syncing ${view.waiting}…` : 'Online'}
 					</span>
 				</div>
 				<span className="today">Today {fmtMinutes(view.todaySeconds / 60)}</span>
 			</header>
 			{view.today && <p className="day">{view.today.working ? `Working day ${view.today.start}–${view.today.end}` : `${view.today.label || 'Day off'} — no reminders today`}</p>}
+
+			{view.prompts.crash && (
+				<section className="prompt" role="alertdialog" aria-label="Timer stopped unexpectedly">
+					<p>
+						Your timer stopped unexpectedly at <b>{fmtTime(view.prompts.crash.atMs)}</b>
+						{view.prompts.crash.label ? ` (${view.prompts.crash.label})` : ''}.
+					</p>
+					<div className="acts">
+						<button type="button" className="btn small primary" onClick={() => tracker.answer('crash', 'keep')}>
+							Keep until {fmtTime(view.prompts.crash.atMs)}
+						</button>
+						<button type="button" className="btn small" onClick={() => tracker.answer('crash', 'discard')}>
+							Discard
+						</button>
+						<button type="button" className="btn small" onClick={() => tracker.answer('crash', 'running')}>
+							Keep running
+						</button>
+					</div>
+				</section>
+			)}
 
 			<section className={'timer' + (run ? ' on' : '')} aria-label="Timer">
 				{run ? (
