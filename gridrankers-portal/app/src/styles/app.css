@@ -1787,3 +1787,14 @@ button.hol-day:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .trk-person{display:inline-flex;align-items:center;gap:8px;font-weight:600}
 .trk-ok{color:var(--done,green);font-weight:700}
 @media (max-width:640px){.trk-top,.trk-tabs,.trk-body{padding-left:16px;padding-right:16px}}
+/* Screenshots (SPEC.md 6.23) */
+.shots .tt-head{flex-wrap:wrap;gap:12px}
+.shots-f{display:flex;align-items:center;gap:8px;font-size:.85rem;font-weight:600}
+.shots-f select,.shots-f input{border:1px solid var(--line);background:var(--panel-2);border-radius:8px;padding:6px 8px}
+.shots-grid{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.shots-item{display:flex;flex-direction:column;gap:6px;width:100%;border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:6px;cursor:pointer;text-align:left}
+.shots-img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:6px;background:var(--panel-2)}
+.shots-img.big{aspect-ratio:auto;max-height:70vh;object-fit:contain}
+.shots-cap{font-size:.8rem;color:var(--ink-2)}
+.shots-big{max-width:min(1100px,94vw)}
+.shots-big .acts{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}

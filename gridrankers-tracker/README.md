@@ -4,7 +4,8 @@ The desktop time tracker for the GridRankers portal (SPEC.md 6.21). It signs in 
 **tracker.gridrankers.com** — a WordPress site running the GridRankers Portal plugin (`gridrankers-portal/`),
 where the team's codes, tasks, daily reports and pay live. Team Leaders and Team Members sign
 in with their **employee code**, start a timer on a task, and the time goes into their daily report on
-the portal — where it is paid (SPEC.md 6.19). Time only: no screenshots, keystrokes, apps or websites.
+the portal — where it is paid (SPEC.md 6.19). Time, plus screenshots when the Super Admin turns them on
+(SPEC.md 6.23); never keystrokes, apps or websites.
 
 ## For the team
 
@@ -37,6 +38,14 @@ away. Quitting the tracker or shutting the computer down stops the timer then.
 hours from Pay), never on a day off or leave, worked out even offline: start your timer (5 minutes in,
 then every 15), not connected (every 15), and the end of the day. **Snooze 15 min** on each.
 
+**Screenshots** — off unless the Super Admin turns them on (tracker portal → Settings: every 5, 10, 15 or
+30 minutes). The tracker says so once, before your first one. While your timer runs it takes one at a
+random moment in each period — all your screens side by side, JPEG — and shows "Screenshot taken".
+None are taken without a timer. Offline they wait on your computer with your time. You, your Team
+Leader and the Super Admin see them on the tracker portal; they are deleted after 30 days. On macOS,
+allow **Screen Recording** for GridRankers Tracker (System Settings → Privacy & Security) the first time
+macOS asks, or the pictures come out blank.
+
 **Sign out** — sends what's waiting first. A Super Admin or Team Leader can sign a computer out from the
 portal (the person's **Time** tab → Desktop tracker → **Revoke**); so does setting a new code.
 
@@ -51,8 +60,9 @@ npm test             # Vitest: the core, with a fake portal
 
 - `src/core/` — everything that isn't Electron, unit-tested: the API client (`api.js`, device token as
   `Authorization: Bearer`, `?rest_route=` URLs), the state (`tracker.js`: start / stop / switch, the
-  outbox, answers, crash and away prompts), reminders (`reminders.js`), the atomic file store
-  (`store.js`) and `controller.js`, which ties them together.
+  outbox, answers, crash and away prompts), reminders (`reminders.js`), screenshots (`shots.js`: when to
+  take one, the upload queue), the atomic file store (`store.js`) and `controller.js`, which ties them
+  together.
 - `electron/main.js` — window, tray, notifications, the OS keychain for the token (`safeStorage`),
   idle / sleep / shutdown, start with the computer, auto-update. `electron/preload.cjs` is the
   window's only door in.

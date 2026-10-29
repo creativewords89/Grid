@@ -6,11 +6,13 @@ import { hostOf } from '../lib/site.js';
 import { rowsOf } from '../lib/store.js';
 import { addDays } from '../lib/timer.js';
 import Avatar from './Avatar.jsx';
+import Screenshots, { ScreenshotSettings } from './Screenshots.jsx';
 import TimeTab from './team/TimeTab.jsx';
 
-// The tracker portal (SPEC.md 6.22): Hours (who you may see, a week each), a person's Time, and a
-// note that profiles, leave and pay are on the main portal. No projects, boards, reports or pay.
-export default function TrackerPortal({ onSignOut, extraTabs = [] }) {
+// The tracker portal (SPEC.md 6.22): Hours (who you may see, a week each), a person's Time,
+// Screenshots (6.23), Settings for the Super Admin, and a note that profiles, leave and pay are on
+// the main portal. No projects, boards, reports or pay.
+export default function TrackerPortal({ onSignOut }) {
 	const { data, me, today, config } = usePortal();
 	const main = config.site.mainUrl;
 	const mainHost = hostOf(main);
@@ -21,10 +23,10 @@ export default function TrackerPortal({ onSignOut, extraTabs = [] }) {
 	const tabs = [
 		...(me.role !== 'member' ? [{ id: 'hours', label: 'Hours' }] : []),
 		...(tracks ? [{ id: 'mine', label: 'My time' }] : []),
-		...extraTabs.map((t) => ({ id: t.id, label: t.label })),
+		{ id: 'shots', label: 'Screenshots' },
+		...(me.role === 'admin' ? [{ id: 'settings', label: 'Settings' }] : []),
 	];
 	const open = (p) => (setPerson(p), setTab('person'));
-	const extra = extraTabs.find((t) => t.id === tab);
 
 	return (
 		<div className="trk">
@@ -64,7 +66,8 @@ export default function TrackerPortal({ onSignOut, extraTabs = [] }) {
 						<TimeTab key={person.id} person={person} />
 					</>
 				)}
-				{extra && extra.render()}
+				{tab === 'shots' && <Screenshots />}
+				{tab === 'settings' && <ScreenshotSettings />}
 			</section>
 		</div>
 	);

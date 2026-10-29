@@ -1,7 +1,7 @@
 // GridRankers Tracker — the Electron main process (SPEC.md 6.21). It wires the controller (src/core) to
 // the window, the tray, the operating system's keychain and the network.
 
-import { app, BrowserWindow, Menu, Notification, Tray, ipcMain, nativeImage, net, powerMonitor, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, Menu, Notification, Tray, desktopCapturer, ipcMain, nativeImage, net, powerMonitor, safeStorage, screen, shell } from 'electron';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -118,6 +118,60 @@ function remind({ title, body }, snoozable = true) {
 	n.show();
 }
 
+// Screenshots (SPEC.md 6.23): every screen side by side, at most 1920 px wide, as a JPEG, saved in
+// the tracker's folder until the portal has it.
+const shotsDir = () => path.join(app.getPath('userData'), 'shots');
+const MAX_WIDTH = 1920;
+let composer = null;
+
+// Several screens are drawn side by side on a canvas in a hidden window with no access to anything.
+async function compose(images) {
+	if (images.length === 1) return images[0];
+	if (!composer || composer.isDestroyed()) {
+		composer = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, javascript: true } });
+		await composer.loadURL('about:blank');
+	}
+	const urls = images.map((img) => img.toDataURL());
+	const js = `(async (urls) => {
+		const imgs = await Promise.all(urls.map((u) => new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.src = u; })));
+		const c = document.createElement('canvas');
+		c.width = imgs.reduce((w, i) => w + i.width, 0);
+		c.height = Math.max(...imgs.map((i) => i.height));
+		const g = c.getContext('2d');
+		let x = 0;
+		for (const i of imgs) { g.drawImage(i, x, 0); x += i.width; }
+		return c.toDataURL('image/png');
+	})(${JSON.stringify(urls)})`;
+	return nativeImage.createFromDataURL(await composer.webContents.executeJavaScript(js));
+}
+
+async function takeShot(take) {
+	try {
+		const displays = screen.getAllDisplays();
+		const per = Math.max(320, Math.floor(MAX_WIDTH / Math.max(1, displays.length)));
+		const biggest = displays.reduce((m, d) => Math.max(m, d.size.width * d.scaleFactor), 1);
+		const scale = Math.min(1, per / biggest);
+		const tallest = displays.reduce((m, d) => Math.max(m, d.size.height * d.scaleFactor), 1);
+		const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: Math.round(biggest * scale), height: Math.round(tallest * scale) } });
+		const images = sources.map((s) => s.thumbnail).filter((img) => !img.isEmpty());
+		if (!images.length) return;
+		let picture = await compose(images);
+		if (picture.getSize().width > MAX_WIDTH) picture = picture.resize({ width: MAX_WIDTH });
+		const jpeg = picture.toJPEG(70);
+		fs.mkdirSync(shotsDir(), { recursive: true });
+		const file = path.join(shotsDir(), `${take.id}.jpg`);
+		fs.writeFileSync(file, jpeg, { mode: 0o600 });
+		ctl.addShot(take, file);
+		if (Notification.isSupported()) {
+			const n = new Notification({ title: 'Screenshot taken', body: 'For your tracked time. Your manager can see it.', icon: picture.resize({ width: 256 }), silent: true });
+			n.on('click', showWindow);
+			n.show();
+		}
+	} catch (e) {
+		console.error('Screenshot failed', e.message);
+	}
+}
+
 function push() {
 	if (win && !win.isDestroyed()) win.webContents.send('view', ctl.view());
 	updateTray();
@@ -132,6 +186,14 @@ app.whenReady().then(() => {
 		// Chromium's network stack: uses the computer's proxy settings.
 		createApi: (opts) => createClient({ ...opts, fetchImpl: (url, init) => net.fetch(url, init) }),
 		onChange: push,
+		readShot: (file) => {
+			try {
+				return fs.readFileSync(file);
+			} catch (e) {
+				return null;
+			}
+		},
+		removeShot: (file) => fs.rmSync(file, { force: true }),
 	});
 
 	ipcMain.handle('view', () => ctl.view());
@@ -184,6 +246,12 @@ app.whenReady().then(() => {
 	let asked = false;
 	setInterval(check, 30 * 1000);
 	check();
+
+	// A screenshot due while a timer runs (checked every 15 s).
+	setInterval(() => {
+		const take = ctl.shotDue();
+		if (take) takeShot(take);
+	}, 15 * 1000);
 
 	// Starts with the computer (installed app only), quietly in the tray.
 	if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: true, openAsHidden: true, args: ['--hidden'] });

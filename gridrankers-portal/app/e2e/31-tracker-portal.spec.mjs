@@ -28,7 +28,7 @@ async function setPart(page, label, fields = {}) {
 	await page.locator('.notice').first().waitFor();
 }
 
-test('tracker portal: hours, marks and the main portal', async ({ page }) => {
+test('tracker portal: hours, marks, screenshots and the main portal', async ({ page, browser }) => {
 	// 503: the main portal can't be reached to check a code (expected below).
 	const noErrors = watchErrors(page, /401|403|503/);
 
@@ -39,6 +39,10 @@ test('tracker portal: hours, marks and the main portal', async ({ page }) => {
 	});
 	expect(y.json.results[0].status).toBe('saved');
 	await signOut(page);
+	// Max stays signed in on another computer (his session outlives the switch below).
+	const maxContext = await browser.newContext();
+	const maxPage = await maxContext.newPage();
+	await signIn(maxPage, MAX);
 
 	// The Super Admin makes this site the tracker portal.
 	await ownerToSettings(page);
@@ -60,6 +64,39 @@ test('tracker portal: hours, marks and the main portal', async ({ page }) => {
 	await max.getByRole('button', { name: /Max Member/ }).click();
 	await expect(page.locator('.tt-row', { hasText: 'Backlinks' })).toContainText('Not on 127.0.0.1:9 yet');
 	await expect(page.locator('.tt-start')).toHaveCount(0);
+
+	// Screenshots: the Super Admin turns them on; Max's desktop app sends one of his running timer.
+	await page.getByRole('button', { name: '‹ Hours' }).click();
+	await page.getByRole('tab', { name: 'Settings' }).click();
+	await page.getByLabel('Screenshots').selectOption('10');
+	await expect(page.getByText('A screenshot every 10 minutes while a timer runs')).toBeVisible();
+	const started = await apiCall(maxPage, 'POST', 'timer/start', { note: 'On calls' });
+	expect(started.status).toBe(200);
+	const sent = await maxPage.evaluate(async (entryId) => {
+		const cfg = window.GRP_CONFIG;
+		const c = document.createElement('canvas');
+		c.width = 320;
+		c.height = 180;
+		c.getContext('2d').fillRect(0, 0, 100, 100);
+		const blob = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.8));
+		const form = new FormData();
+		form.append('id', 'E2ESHOT00000000000000001');
+		form.append('taken_at', new Date().toISOString().slice(0, 19).replace('T', ' '));
+		form.append('file', blob, 'shot.jpg');
+		const res = await fetch(new URL(cfg.restRoot + `time-entries/${entryId}/screenshots`, location.href), { method: 'POST', credentials: 'same-origin', headers: { 'X-WP-Nonce': cfg.nonce }, body: form });
+		return res.status;
+	}, started.json.timer.id);
+	expect(sent).toBe(201);
+	await page.getByRole('tab', { name: 'Screenshots' }).click();
+	await page.getByLabel('Person').selectOption({ label: 'Max Member' });
+	const shot = page.locator('.shots-item');
+	await expect(shot).toHaveCount(1);
+	await expect(shot.locator('img')).toBeVisible();
+	await shot.click();
+	await page.locator('.shots-big').getByRole('button', { name: 'Delete' }).click();
+	await expect(page.getByText('No screenshots this day.')).toBeVisible();
+	await apiCall(maxPage, 'POST', 'timer/stop');
+	await maxContext.close();
 
 	// A code sign-in asks the main portal.
 	await page.context().clearCookies();

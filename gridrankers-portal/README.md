@@ -120,6 +120,13 @@ and tasks every 5 minutes (WP-Cron `grp_link_sync`, run by the real cron above),
 at once. Codes, salary, payment details and leave reasons never leave the main portal. On the tracker
 portal all of these are read-only: change them on the main portal.
 
+People sign in to the tracker portal with their main portal code (the main portal checks it; the
+tracker portal keeps no codes). The Super Admin signs in to the tracker portal's WordPress with the same
+email as on the main portal, or picks their profile under Set up. Tracked hours go back to the main
+portal's daily reports and pay within a minute; on the main portal the timer and time changes are then
+closed ("Time is tracked on tracker.gridrankers.com"). Screenshots (off by default) are turned on in the
+tracker portal's Settings tab and stay on the tracker portal (`uploads/grp-private/shots/`, 30 days).
+
 Both sites need HTTPS. The link key reaches only `/link/*` on the main portal, and wrong keys lock the
 caller's IP for 15 minutes like wrong codes. **Make a link key** again (or **Unlink**) ends the old key.
 The Authorization note above applies to the main portal too.
