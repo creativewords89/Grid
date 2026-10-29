@@ -16,7 +16,7 @@ class Test_GRP_Install extends WP_UnitTestCase {
 	 * @var array<string, string[]>
 	 */
 	const EXPECTED_COLUMNS = array(
-		'grp_members'          => array( 'id', 'name', 'role', 'color', 'photo', 'title', 'email', 'phone', 'address', 'drive_url', 'notes', 'code_hash', 'code_salt', 'code_set_at', 'wp_user_id', 'active', 'birthday', 'birth_year', 'location', 'weekly_off' ),
+		'grp_members'          => array( 'id', 'name', 'role', 'color', 'photo', 'title', 'email', 'phone', 'address', 'drive_url', 'notes', 'code_hash', 'code_salt', 'code_set_at', 'wp_user_id', 'active', 'birthday', 'birth_year', 'location', 'weekly_off', 'work_start' ),
 		'grp_sessions'         => array( 'id', 'member_id', 'token_hash', 'expires_at', 'ip', 'user_agent' ),
 		'grp_projects'         => array( 'id', 'name', 'state', 'cycle_day', 'cycle_set', 'cycle_changes', 'cycle_log', 'std_cycle', 'cycle_reviews', 'details', 'kw_columns' ),
 		'grp_meeting_tasks'    => array( 'id', 'project_id', 'title', 'notes', 'url', 'priority', 'status', 'meeting_date', 'done_at', 'target', 'assignees', 'team', 'progress', 'deadline', 'review', 'completion', 'undo_request', 'created_by' ),
@@ -42,6 +42,8 @@ class Test_GRP_Install extends WP_UnitTestCase {
 		'grp_pay'              => array( 'id', 'member_id', 'day_minutes', 'salary', 'method', 'bank_name', 'branch', 'account_name', 'account_number', 'routing' ),
 		'grp_payslips'         => array( 'id', 'member_id', 'month', 'salary', 'day_minutes', 'worked', 'extra', 'extra_pay', 'leave_taken', 'leave_pay', 'deducted_days', 'deducted', 'total', 'account', 'paid_at', 'paid_by' ),
 		'grp_report_changes'   => array( 'id', 'member_id', 'member_role', 'day', 'entries', 'from_minutes', 'to_minutes', 'reason', 'status', 'decided_by', 'decided_at', 'message', 'created_by' ),
+		'grp_time_entries'     => array( 'id', 'member_id', 'day', 'project_id', 'ref_kind', 'ref_id', 'period_key', 'started_at', 'ended_at', 'seconds', 'idle_seconds', 'source', 'note', 'device_id', 'flags', 'synced_at', 'edited_by', 'deleted_at' ),
+		'grp_devices'          => array( 'id', 'member_id', 'name', 'platform', 'app_version', 'token_hash', 'expires_at', 'last_seen_at', 'ip', 'revoked_at' ),
 	);
 
 	/**
@@ -275,5 +277,18 @@ class Test_GRP_Install extends WP_UnitTestCase {
 				)
 			)
 		);
+	}
+
+	public function test_schema_24_starts_the_tracker_today_once() {
+		delete_option( GRP_Time::SINCE_OPTION );
+		update_option( GRP_Install::DB_VERSION_OPTION, 23 );
+
+		GRP_Install::install();
+		$this->assertSame( GRP_Cycles::today(), get_option( GRP_Time::SINCE_OPTION ) );
+
+		update_option( GRP_Time::SINCE_OPTION, '2026-01-01' );
+		update_option( GRP_Install::DB_VERSION_OPTION, 23 );
+		GRP_Install::install();
+		$this->assertSame( '2026-01-01', get_option( GRP_Time::SINCE_OPTION ), 'an earlier start is kept' );
 	}
 }

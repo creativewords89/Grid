@@ -248,6 +248,28 @@ class GRP_Permissions {
 	/** Set a person's employment type: intern, full-time, part-time or contractual (SPEC.md 6.10). Context: `{member_id, role}` of that person. Super Admin, for Team Leaders and Team Members. */
 	const SET_EMPLOYMENT = 'set_employment';
 
+	/** Start, stop or switch one's own timer and send offline entries (SPEC.md 6.21). Context: `{member_id}`. Team Leaders and Team Members, self only. */
+	const TRACK_TIME = 'track_time';
+
+	/**
+	 * Edit or delete a time entry (SPEC.md 6.21). Context: `{member_id, role, day, today?}` of the entry and
+	 * its person. The Super Admin anyone's; a Team Leader Team Members'; a Team Leader or Team Member their
+	 * own on the same day only (later: Ask to change, RC-1).
+	 */
+	const EDIT_TIME = 'edit_time';
+
+	/** See a person's time entries (SPEC.md 6.21). Context: `{member_id, role}`. As VIEW_DAILY_REPORT. */
+	const VIEW_TIME = 'view_time';
+
+	/**
+	 * Set the start of the working day (SPEC.md 6.21). Context: `{member_id, role}` of the person, or nothing
+	 * for the team's. The Super Admin the team's and anyone's; a Team Leader Team Members'.
+	 */
+	const SET_WORK_START = 'set_work_start';
+
+	/** See or revoke a person's signed-in desktop devices (SPEC.md 6.21). Context: `{member_id, role}`. As VIEW_MEMBER_PAGE. */
+	const MANAGE_DEVICES = 'manage_devices';
+
 	/**
 	 * Task work that is locked while a Team Leader's or Team Member's required profile is
 	 * incomplete (SPEC.md section 3, Profile lock).
@@ -278,6 +300,8 @@ class GRP_Permissions {
 		self::DELETE_CLIENT_REQUEST,
 		self::TICK_STEP,
 		self::HAND_IN_STEP,
+		self::TRACK_TIME,
+		self::EDIT_TIME,
 	);
 
 	/**
@@ -350,7 +374,25 @@ class GRP_Permissions {
 				return $admin ? in_array( $context['role'] ?? '', array( self::ROLE_LEAD, self::ROLE_MEMBER ), true ) : $manager && self::ROLE_MEMBER === ( $context['role'] ?? '' );
 
 			case self::VIEW_DAILY_REPORT:
+			case self::VIEW_TIME:
 				return self::is_self( $user, $context['member_id'] ?? null ) || $admin || ( $manager && in_array( $context['role'] ?? '', array( self::ROLE_LEAD, self::ROLE_MEMBER ), true ) );
+
+			case self::TRACK_TIME:
+				// Time is tracked to be paid: the Super Admin has no salary in the portal (SPEC.md 6.21).
+				return ! $admin && self::is_self( $user, $context['member_id'] ?? null );
+
+			case self::EDIT_TIME:
+				if ( self::is_self( $user, $context['member_id'] ?? null ) ) {
+					// Like a sent report: the same day only (SPEC.md 6.18, RC-1).
+					return ! $admin && GRP_Time::owner_may_edit( (string) ( $context['day'] ?? '' ), (string) ( $context['today'] ?? GRP_Cycles::today() ) );
+				}
+				return $admin ? in_array( $context['role'] ?? '', array( self::ROLE_LEAD, self::ROLE_MEMBER ), true ) : $manager && self::ROLE_MEMBER === ( $context['role'] ?? '' );
+
+			case self::SET_WORK_START:
+				if ( $admin ) {
+					return true;
+				}
+				return $manager && ! self::is_self( $user, $context['member_id'] ?? null ) && self::ROLE_MEMBER === ( $context['role'] ?? '' );
 
 			case self::SET_OWN_PAY:
 				// The Super Admin has no salary in the portal (SPEC.md 6.19).
@@ -433,6 +475,7 @@ class GRP_Permissions {
 				return false;
 
 			case self::VIEW_MEMBER_PAGE:
+			case self::MANAGE_DEVICES:
 				return self::is_self( $user, $context['member_id'] ?? null ) || $admin || ( $manager && self::ROLE_MEMBER === ( $context['role'] ?? '' ) );
 
 			case self::TOUR_MEMBER:

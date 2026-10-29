@@ -15,7 +15,7 @@ class GRP_Install {
 	/**
 	 * Current schema version. Bump it whenever get_schema() or migrations() changes.
 	 */
-	const DB_VERSION = 23;
+	const DB_VERSION = 24;
 
 	/**
 	 * Option that stores the installed schema version.
@@ -43,6 +43,7 @@ class GRP_Install {
  * Schema 21 adds `grp_report_changes`: asking to change the time of a past daily report (6.18).
  * Schema 23 adds `carried` to meeting tasks: one moved into the next cycle, or a catch-up task made from an unfinished monthly task (6.11).
  * Schema 22 adds `handins` (files and links handed in on a step's checklist, 6.16) to meeting tasks and cycle records.
+ * Schema 24 adds the time tracker (6.21): `grp_time_entries`, `grp_devices` and members' `work_start`.
 	 *
 	 * @var string[]
 	 */
@@ -73,6 +74,8 @@ class GRP_Install {
 		'grp_pay',
 		'grp_payslips',
 		'grp_report_changes',
+		'grp_time_entries',
+		'grp_devices',
 	);
 
 	/**
@@ -142,6 +145,7 @@ class GRP_Install {
 			12 => array( __CLASS__, 'sync_breakdown_people' ),
 			17 => array( 'GRP_Daily_Reports', 'start' ),
 			18 => array( 'GRP_Pay', 'start' ),
+			24 => array( 'GRP_Time', 'start' ),
 		);
 	}
 
@@ -305,6 +309,7 @@ class GRP_Install {
 				weekly_off json NULL,
 				employment varchar(16) NOT NULL DEFAULT 'full_time',
 				employment_since date NULL,
+				work_start varchar(5) NULL,
 				created_at datetime NOT NULL,
 				updated_at datetime NOT NULL,
 				PRIMARY KEY  (id),
@@ -785,6 +790,52 @@ class GRP_Install {
 				KEY day (day),
 				KEY status (status),
 				KEY updated_at (updated_at)
+			) $collate;",
+
+			"CREATE TABLE {$t['grp_time_entries']} (
+				id varchar(64) NOT NULL,
+				member_id varchar(64) NOT NULL,
+				day date NOT NULL,
+				project_id varchar(64) NULL,
+				ref_kind enum('item','record','none') NOT NULL DEFAULT 'none',
+				ref_id varchar(128) NULL,
+				period_key varchar(32) NULL,
+				started_at datetime NOT NULL,
+				ended_at datetime NULL,
+				seconds int(11) NOT NULL DEFAULT 0,
+				idle_seconds int(11) NOT NULL DEFAULT 0,
+				source enum('desktop','web') NOT NULL DEFAULT 'web',
+				note text NULL,
+				device_id varchar(64) NULL,
+				flags json NULL,
+				synced_at datetime NULL,
+				edited_by varchar(64) NULL,
+				deleted_at datetime NULL,
+				created_at datetime NOT NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				KEY member_day (member_id,day),
+				KEY member_started (member_id,started_at),
+				KEY ended_at (ended_at),
+				KEY updated_at (updated_at)
+			) $collate;",
+
+			"CREATE TABLE {$t['grp_devices']} (
+				id varchar(64) NOT NULL,
+				member_id varchar(64) NOT NULL,
+				name varchar(191) NOT NULL DEFAULT '',
+				platform varchar(32) NOT NULL DEFAULT '',
+				app_version varchar(32) NOT NULL DEFAULT '',
+				token_hash char(64) NOT NULL,
+				expires_at datetime NOT NULL,
+				last_seen_at datetime NULL,
+				ip varchar(45) NOT NULL DEFAULT '',
+				revoked_at datetime NULL,
+				created_at datetime NOT NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				UNIQUE KEY token_hash (token_hash),
+				KEY member_id (member_id)
 			) $collate;",
 		);
 	}

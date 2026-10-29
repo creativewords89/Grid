@@ -34,6 +34,7 @@ class GRP_Store {
 		'grp_billing'          => array( 'payments' ),
 		'grp_request_messages' => array( 'files' ),
 		'grp_daily_reports'    => array( 'entries' ),
+		'grp_time_entries'     => array( 'flags' ),
 	);
 
 	/**
@@ -73,6 +74,8 @@ class GRP_Store {
 		'deducted_days',
 		'deducted',
 		'total',
+		'seconds',
+		'idle_seconds',
 	);
 
 	/**
