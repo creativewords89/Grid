@@ -100,9 +100,18 @@ test("a batch is made and a lead file is read, checked and saved in the Hub", as
   await expect(file.getByRole("tab", { name: /All tabs \(5\)/ })).toBeVisible();
   await expect(file.getByRole("row").first()).toContainText("Business name");
   await expect(file.getByText("Sparkle Home Cleaning").first()).toBeVisible();
+  // Lead Check runs on the file before it is saved (step 26): this one has no errors.
+  await expect(
+    preview.getByRole("region", { name: "Lead Check" }),
+  ).toContainText("🔴 0 errors");
 
   await preview.getByRole("button", { name: "Save 4 businesses" }).click();
   await expect(preview.getByText("Saved: 4 new and 0 updated.")).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: "Lead Check report of cleaning-leads.xlsx",
+    }),
+  ).toHaveText("✅ Clear");
   await expect(
     preview
       .getByRole("region", { name: "The file, tab by tab" })
@@ -162,7 +171,7 @@ test("the leads are in their batch and download as Excel", async () => {
   // Every field of the file side by side.
   await expect(
     page.getByRole("row", {
-      name: /Lead ID Business name GBP link Address City Website Phone WhatsApp Email Facebook Instagram Reviews Rating Top Notes Level Batch/,
+      name: /Lead ID Business name Check GBP link Address City Website Phone WhatsApp Email Facebook Instagram Reviews Rating Top Notes Level Batch/,
     }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Sparkle Home Cleaning" }).click();

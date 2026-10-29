@@ -679,3 +679,80 @@ test("the cities show 20 a page", async () => {
   await userEvent.type(screen.getByLabelText("Find a city"), "City 0");
   expect(screen.queryByText(/Page \d of/)).not.toBeInTheDocument(); // 9 match: one page
 });
+
+test("Lead Check: a held file in Past imports, its report and the cities' problems (step 26)", async () => {
+  window.history.pushState(null, "", "/batches?batch=b1&tab=files");
+  const saved = { ...preview({ status: "confirmed" }), check_errors: 2 };
+  const calls = mockApi({
+    "GET /auth/me": as("admin"),
+    "GET /batches": [200, [batch({ leads: 12 })]],
+    "GET /benchmarks": [200, []],
+    "GET /imports?batch_id=b1": [200, [saved]],
+    "GET /batches/b1/pipeline": [200, emptyPipeline],
+    "GET /imports/i1/check": [
+      200,
+      {
+        import_id: "i1",
+        file_name: "GBP_Data_2.xlsx",
+        held: true,
+        errors: 2,
+        warnings: 1,
+        cities: [{ city: "Tulsa", errors: 2, warnings: 1 }],
+        tabs: {
+          Dallas: [
+            {
+              code: "MISSING_COLUMN",
+              field: "instagram",
+              severity: "warning",
+              message: "Column missing",
+            },
+          ],
+        },
+        issues: [
+          {
+            code: "ADDRESS_HAS_PHONE",
+            field: "address",
+            severity: "error",
+            message: "Address holds a phone number",
+            lead_id: "L-000003",
+            business_name: "Sparkle",
+            city: "Tulsa",
+            value: "9 Elm St (918) 555-0300",
+          },
+        ],
+      },
+    ],
+    "GET /batches/b1/cities": [
+      200,
+      [
+        { ...city("c1", "Tulsa"), errors: 2, warnings: 1 },
+        { ...city("c2", "Dallas"), errors: 0, warnings: 0 },
+      ],
+    ],
+  });
+  render(<App />);
+
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Lead Check report of GBP_Data_2.xlsx" }),
+  );
+  const dialog = await screen.findByRole("dialog", { name: "Lead Check: GBP_Data_2.xlsx" });
+  expect(within(dialog).getByText(/agents wait for every lead of this file/)).toBeVisible();
+  expect(within(dialog).getByRole("table", { name: "Problems by city" })).toHaveTextContent(
+    "Tulsa",
+  );
+  expect(within(dialog).getByText("Address holds a phone number")).toBeVisible();
+  expect(within(dialog).getByText(/Dallas:/)).toBeVisible();
+  expect(within(dialog).getByRole("link", { name: "Download Excel" })).toHaveAttribute(
+    "href",
+    "/api/imports/i1/check.xlsx",
+  );
+  await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+
+  // The Cities tab: problems by city, and a filter for them.
+  await userEvent.click(screen.getByRole("tab", { name: "Cities" }));
+  const tulsa = await screen.findByRole("row", { name: /Tulsa/ });
+  expect(tulsa).toHaveTextContent("🔴 2 · 🟠 1");
+  await userEvent.selectOptions(screen.getByLabelText("Problems"), "errors");
+  expect(screen.queryByRole("row", { name: /Dallas/ })).not.toBeInTheDocument();
+  expect(calls.some((c) => c.path === "/imports/i1/check")).toBe(true);
+});

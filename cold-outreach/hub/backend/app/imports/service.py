@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.auth.tokens import now
 from app.db.models import Batch, DoNotContact, Import, ImportStatus, Lead, LeadList, User
 from app.errors import ApiError
-from app.imports import reader
+from app.imports import check, reader
 
 SAMPLE = 25  # how many rows each preview list shows
 SMALL_CITY = 10  # a batch's city with fewer businesses is switched off (SPEC 6.4 item 8)
@@ -109,6 +109,7 @@ def _sheet(report: reader.Report, rows: list[dict[str, Any]], batch: Batch) -> d
     counts: dict[str, int] = {}
     out = []
     for item in report.sheet:
+        found = [] if item.skipped else check.check_lead(item.values)
         index = lead_of.get(f"{item.tab} row {item.line}")
         row = rows[index] if index is not None else None
         if row is None:
@@ -129,6 +130,8 @@ def _sheet(report: reader.Report, rows: list[dict[str, Any]], batch: Batch) -> d
                 "extra": item.extra,
                 "raw": item.raw,
                 "bad_emails": item.bad_emails,
+                # Lead Check (step 26): what is wrong in this row, by column.
+                "issues": [i.as_dict() for i in found],
             }
         )
     return {
@@ -214,8 +217,30 @@ def preview(db: Session, user: User, file_name: str, content: bytes, batch: Batc
         rows=rows,
         sheet=_sheet(report, rows, batch),
     )
+    imp.preview = imp.preview | {"check": _preview_check(report, imp.sheet["rows"])}
     db.add(imp)
     return imp
+
+
+def _preview_check(report: reader.Report, sheet_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Lead Check on the file before it is saved (step 26): errors and warnings by tab, the
+    tabs' column problems, and whether saving it would hold its leads."""
+    tabs: dict[str, dict[str, Any]] = {}
+    for name in report.tab_names:
+        layout = report.tab_columns.get(name)
+        columns = (
+            check.check_tab(layout["fields"], layout["duplicates"], layout["city_not_tab"])
+            if layout
+            else []
+        )
+        tabs[name] = {"errors": 0, "warnings": 0, "columns": [i.as_dict() for i in columns]}
+    for row in sheet_rows:
+        tab = tabs.setdefault(row["tab"], {"errors": 0, "warnings": 0, "columns": []})
+        for item in row.get("issues", []):
+            tab["errors" if item["severity"] == "error" else "warnings"] += 1
+    errors = sum(t["errors"] for t in tabs.values())
+    warnings = sum(t["warnings"] + len(t["columns"]) for t in tabs.values())
+    return {"errors": errors, "warnings": warnings, "tabs": tabs}
 
 
 # --- confirm --------------------------------------------------------------------------------
@@ -261,7 +286,13 @@ def _apply(db: Session, imp: Import, row: dict[str, Any], lead: Lead | None, num
     lead.data = dict(lead.data or {}) | {f: values[f] for f in DATA_FIELDS if values.get(f)}
     lead.extra = dict(lead.extra or {}) | {k: v for k, v in row.get("extra", {}).items() if v}
     lead.last_import_id = imp.id
+    recheck(lead)
     return lead
+
+
+def recheck(lead: Lead) -> None:
+    """Lead Check on the lead's current values (step 26), after a file or an edit."""
+    lead.check = [i.as_dict() for i in check.check_lead(check.lead_values(lead))]
 
 
 def sync_do_not_contact(db: Session, lead: Lead) -> None:
@@ -326,6 +357,27 @@ def confirm(db: Session, imp: Import, user: User) -> Import:
     ]
     imp.sheet = sheet
     return imp
+
+
+def sync_cities(db: Session, batch_id: Any) -> None:
+    """After a lead moved to another city: the batch has a city for each city of its leads
+    and none without leads; then the small-city rule (step 27)."""
+    used = {
+        city.lower(): city
+        for city in db.scalars(select(Lead.city).where(Lead.batch_id == batch_id).distinct())
+    }
+    batch = db.get(Batch, batch_id)
+    have = set()
+    for item in db.scalars(select(LeadList).where(LeadList.batch_id == batch_id)):
+        if item.city.lower() in used:
+            have.add(item.city.lower())
+        else:
+            db.delete(item)
+    for key, city in used.items():
+        if key not in have and batch is not None:
+            db.add(LeadList(batch_id=batch_id, city=city, niche=batch.niche))
+    db.flush()
+    mute_small_cities(db, batch_id)
 
 
 def mute_small_cities(db: Session, batch_id: Any) -> None:

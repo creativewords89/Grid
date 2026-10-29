@@ -11,7 +11,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, true
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -27,6 +27,7 @@ from app.db.models import (
     ShareMode,
     Task,
 )
+from app.imports.lead_check import held_leads
 
 FINISHED = ("done", "skipped")
 
@@ -181,8 +182,10 @@ class Pipeline:
                 self.keys[agent_id] = agent.key
 
     def leads(self) -> list[Lead]:
-        """The batch's leads agents may work on: not Top, in a city switched on, and in a
-        ready city (one with a Top chosen, SPEC step 20)."""
+        """The batch's leads agents may work on: not Top, in a city switched on, in a ready
+        city (one with a Top chosen, SPEC step 20), and not from a file Lead Check holds
+        back (a lead of it has an error, step 26)."""
+        held = held_leads(self.db, self.batch.id)
         off = select(func.lower(LeadList.city)).where(
             LeadList.batch_id == self.batch.id, LeadList.active.is_(False)
         )
@@ -197,6 +200,7 @@ class Pipeline:
                     Lead.level != "Top",
                     func.lower(Lead.city).not_in(off),
                     func.lower(Lead.city).in_(ready),
+                    Lead.lead_id.not_in(held) if held else true(),
                 )
                 .order_by(Lead.lead_id)
             )

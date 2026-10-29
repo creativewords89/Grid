@@ -65,6 +65,7 @@ export function PipelineTab({
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState(false);
   const [find, setFind] = useState("");
+  const [held, setHeld] = useState(0); // leads with an error in held files (Lead Check)
   const staff = pipeline.batch.can_run;
 
   useEffect(() => {
@@ -72,7 +73,11 @@ export function PipelineTab({
       .tasks()
       .then(setTasks)
       .catch(() => setTasks([]));
-  }, [pipeline]);
+    api
+      .imports(batchId)
+      .then((files) => setHeld(files.reduce((sum, f) => sum + (f.check_errors ?? 0), 0)))
+      .catch(() => setHeld(0));
+  }, [pipeline, batchId]);
 
   const slots = pipeline.steps.flatMap((s) => s.tasks);
   const inBatch = new Map(slots.map((slot) => [slot.key, slot]));
@@ -214,6 +219,12 @@ export function PipelineTab({
               </span>
             ) : (
               <span className="warn-text">None yet: add one on Lead files</span>
+            )}
+            {held > 0 && (
+              <span className="field-error">
+                · Lead Check: 🔴 {held} {held === 1 ? "lead" : "leads"} with errors hold their file
+                back. Agents wait for those files: see Lead files → Files.
+              </span>
             )}
           </div>
           {pipeline.steps.map((step) => (

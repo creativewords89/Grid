@@ -2799,3 +2799,17 @@ textarea {
   font-size: 14px;
   cursor: pointer;
 }
+
+/* Lead Check (steps 26–27): a cell holding wrong data, and a lead's list of problems. */
+.cell-problem {
+  box-shadow: inset 0 0 0 2px var(--error);
+  background: var(--error-bg);
+}
+
+.check-list {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}

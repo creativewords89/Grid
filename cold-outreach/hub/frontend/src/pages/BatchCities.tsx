@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type LeadList } from "../api";
 import { Alert } from "../components/ui";
+import { problemCount } from "../checkLabels";
 import { day } from "../format";
 
 // A batch's cities (SPEC section 6.4 item 8): switched off, a city's businesses in this batch
@@ -47,6 +48,7 @@ export function BatchCities({
   const [typed, setTyped] = useState("");
   const [tab, setTab] = useState<CityTab>("ready");
   const [fromFile, setFromFile] = useState(""); // a file's id: only the cities it brought
+  const [problems, setProblems] = useState<"" | "any" | "errors">(""); // Lead Check (step 26)
   const [page, setPage] = useState(1);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -86,7 +88,9 @@ export function BatchCities({
       cities.flatMap((c) => (c.added_from ? [[c.added_from.id, c.added_from] as const] : [])),
     ).values(),
   ].sort((a, b) => (a.confirmed_at ?? "").localeCompare(b.confirmed_at ?? ""));
-  const inFile = fromFile ? cities.filter((c) => c.added_from?.id === fromFile) : cities;
+  const inFile = (fromFile ? cities.filter((c) => c.added_from?.id === fromFile) : cities).filter(
+    (c) => !problems || c.errors > 0 || (problems === "any" && c.warnings > 0),
+  );
   const onTab = inFile.filter((c) => tabOf(c) === tab);
   const shown = wanted ? onTab.filter((c) => c.city.toLowerCase().includes(wanted)) : onTab;
   const off = onTab.filter((c) => !c.active).length;
@@ -157,6 +161,23 @@ export function BatchCities({
               </select>
             </div>
           )}
+          <div className="field">
+            <label className="sr-only" htmlFor={`cities-problems-${batchId}`}>
+              Problems
+            </label>
+            <select
+              id={`cities-problems-${batchId}`}
+              value={problems}
+              onChange={(e) => {
+                setProblems(e.target.value as typeof problems);
+                setPage(1);
+              }}
+            >
+              <option value="">All cities</option>
+              <option value="any">With problems</option>
+              <option value="errors">With errors (hold their file)</option>
+            </select>
+          </div>
           {/* Not ready cities have no switch: they wait for a Top (step 21). */}
           {staff && tab !== "not_ready" && (
             <div className="field field-buttons">
@@ -194,6 +215,7 @@ export function BatchCities({
               <th>Added from</th>
               <th>Businesses</th>
               <th>Top</th>
+              <th>Problems</th>
               {tab === "small" && <th>Ready</th>}
               {tab !== "not_ready" && <th>Set</th>}
               <th>On</th>
@@ -227,6 +249,9 @@ export function BatchCities({
                 </td>
                 <td>{item.leads.toLocaleString()}</td>
                 <td>{item.top}</td>
+                <td className="nowrap">
+                  {problemCount(item.errors, item.warnings) || <span className="muted">✓</span>}
+                </td>
                 {tab === "small" && <td>{item.ready ? "Ready" : "Not ready"}</td>}
                 {tab !== "not_ready" && (
                   <td className="small muted">{item.set_by_hand ? "Set by hand" : "By the Hub"}</td>

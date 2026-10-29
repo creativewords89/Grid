@@ -2,19 +2,24 @@
 they bring (SPEC sections 6.4 and 7). Owners and Admins upload, confirm and delete files and
 switch cities; everyone sees the files and the cities."""
 
+import io
+import re
 import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, File, Form, Query, UploadFile
+from fastapi import APIRouter, File, Form, Query, Response, UploadFile
+from openpyxl import Workbook
 from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import audit
+from app.alerts import service as alerts
 from app.api.batches import get_batch
 from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
+from app.config import get_settings
 from app.db.models import (
     Batch,
     BatchStatus,
@@ -26,7 +31,7 @@ from app.db.models import (
     LeadList,
 )
 from app.errors import ApiError
-from app.imports import service
+from app.imports import check, lead_check, service
 from app.leads import files
 from app.permissions import Action, ensure
 
@@ -47,9 +52,11 @@ class ImportOut(BaseModel):
     confirmed_at: datetime | None
     counts: dict[str, Any]
     preview: dict[str, Any]
+    # Lead Check of a saved file (step 26): leads of it with an error now; held while > 0.
+    check_errors: int | None = None
 
     @classmethod
-    def of(cls, imp: Import) -> "ImportOut":
+    def of(cls, imp: Import, check_errors: int | None = None) -> "ImportOut":
         return cls(
             id=imp.id,
             file_name=imp.file_name,
@@ -62,7 +69,15 @@ class ImportOut(BaseModel):
             confirmed_at=imp.confirmed_at,
             counts=imp.counts,
             preview=imp.preview,
+            check_errors=check_errors,
         )
+
+
+def _out(db: Session, imp: Import) -> ImportOut:
+    """The file with its Lead Check state when it is saved."""
+    if imp.status != ImportStatus.CONFIRMED or imp.batch_id is None:
+        return ImportOut.of(imp)
+    return ImportOut.of(imp, lead_check.held(db, imp.batch_id).get(imp.id, 0))
 
 
 @router.post("/imports", response_model=ImportOut, status_code=201)
@@ -90,9 +105,14 @@ def list_imports(
 ) -> list[ImportOut]:
     ensure(me, Action.VIEW_HUB)
     query = select(Import).order_by(Import.created_at.desc()).limit(30)
-    if batch_id is not None:
-        query = query.where(Import.batch_id == batch_id)
-    return [ImportOut.of(imp) for imp in db.scalars(query)]
+    if batch_id is None:
+        return [ImportOut.of(imp) for imp in db.scalars(query)]
+    held = lead_check.held(db, batch_id)
+    db.commit()  # leads saved before Lead Check were checked just now
+    return [
+        ImportOut.of(imp, held.get(imp.id, 0) if imp.status == ImportStatus.CONFIRMED else None)
+        for imp in db.scalars(query.where(Import.batch_id == batch_id))
+    ]
 
 
 def _get(db: Session, import_id: uuid.UUID) -> Import:
@@ -105,7 +125,7 @@ def _get(db: Session, import_id: uuid.UUID) -> Import:
 @router.get("/imports/{import_id}", response_model=ImportOut)
 def get_import(import_id: uuid.UUID, me: CurrentUser, db: Db) -> ImportOut:
     ensure(me, Action.VIEW_HUB)
-    return ImportOut.of(_get(db, import_id))
+    return _out(db, _get(db, import_id))
 
 
 @router.get("/imports/{import_id}/sheet")
@@ -130,9 +150,104 @@ def confirm(import_id: uuid.UUID, me: CurrentUser, db: Db) -> ImportOut:
     ensure(me, Action.IMPORT_LEADS)
     imp = service.confirm(db, _get(db, import_id), me)
     audit.record(db, me, "confirm", "import", imp.id, imp.file_name, [])
+    db.flush()
+    _announce(db, imp)
     db.commit()
     db.refresh(imp)
-    return ImportOut.of(imp)
+    return _out(db, imp)
+
+
+def _announce(db: Session, imp: Import) -> None:
+    """Lead Check's report is ready as soon as the file is saved: tell the team (step 26)."""
+    found = lead_check.report(db, imp)
+    batch = imp.batch.name if imp.batch else "no batch"
+    link = get_settings().link(f"/batches?batch={imp.batch_id}&tab=files")
+    if found["held"]:
+        cities = ", ".join(f"{c['city']} {c['errors']}" for c in found["cities"] if c["errors"])
+        title = f"Lead Check: {found['errors']} errors in {imp.file_name}"
+        body = (
+            f"{batch}: agents wait for every lead of this file until the errors are fixed. "
+            f"Errors by city: {cities}. {found['warnings']} warnings. Report: {link}"
+        )
+    else:
+        title = f"Lead Check: {imp.file_name} is clear"
+        body = (
+            f"{batch}: no errors, {found['warnings']} warnings. Agents can work on its "
+            f"leads. Report: {link}"
+        )
+    alerts.raise_alert(db, "lead_check", f"lead_check:{imp.id}:{found['errors']}", title, body)
+
+
+@router.get("/imports/{import_id}/check")
+def check_report(import_id: uuid.UUID, me: CurrentUser, db: Db) -> dict[str, Any]:
+    """A saved file's Lead Check report (step 26)."""
+    ensure(me, Action.VIEW_HUB)
+    imp = _saved(db, import_id)
+    found = lead_check.report(db, imp)
+    db.commit()
+    return found
+
+
+@router.post("/imports/{import_id}/check")
+def check_again(import_id: uuid.UUID, me: CurrentUser, db: Db) -> dict[str, Any]:
+    """Check the file's leads again, as they are now."""
+    ensure(me, Action.EDIT_LEADS)
+    imp = _saved(db, import_id)
+    ids = lead_check.file_leads(imp)
+    for lead in db.scalars(select(Lead).where(Lead.lead_id.in_(ids))):
+        service.recheck(lead)
+    db.flush()
+    found = lead_check.report(db, imp)
+    db.commit()
+    return found
+
+
+@router.get("/imports/{import_id}/check.xlsx")
+def check_excel(import_id: uuid.UUID, me: CurrentUser, db: Db) -> Response:
+    """The report as an Excel file: one row per problem."""
+    ensure(me, Action.VIEW_HUB)
+    imp = _saved(db, import_id)
+    found = lead_check.report(db, imp)
+    book = Workbook()
+    sheet = book.active
+    assert sheet is not None
+    sheet.title = "Lead Check"
+    sheet.append(["Severity", "City", "Lead ID", "Business name", "Column", "Problem", "Value"])
+    for item in found["issues"]:
+        row = [
+            "Error" if item["severity"] == "error" else "Warning",
+            item["city"],
+            item["lead_id"],
+            item["business_name"],
+            check.STANDARD.get(item["field"], item["field"]),
+            item["message"],
+            item["value"],
+        ]
+        sheet.append(row)
+    for tab, columns in found["tabs"].items():
+        for item in columns:
+            column = check.STANDARD.get(item["field"], item["field"])
+            sheet.append(["Warning", tab, "", "", column, item["message"], ""])
+    for line in sheet.iter_rows(min_row=2):
+        for cell in line:
+            if isinstance(cell.value, str):
+                cell.data_type = "s"  # stored as text: a value starting with = never runs
+    out = io.BytesIO()
+    book.save(out)
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "-", imp.file_name.rsplit(".", 1)[0])[:80]
+    name = f"lead-check-{stem or 'file'}.xlsx"
+    return Response(
+        out.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
+def _saved(db: Session, import_id: uuid.UUID) -> Import:
+    imp = _get(db, import_id)
+    if imp.status != ImportStatus.CONFIRMED:
+        raise ApiError(409, "not_saved", "Lead Check reports are for saved files.")
+    return imp
 
 
 @router.post("/imports/{import_id}/discard", response_model=ImportOut)
@@ -252,6 +367,8 @@ class ListOut(BaseModel):
     ready: bool  # a Top chosen: agents may work on it (SPEC step 20); Not ready otherwise
     added_from: FileRef | None  # the file the city first came with (step 22)
     new: bool  # it came with the batch's latest file
+    errors: int  # Lead Check (step 26): problems of its leads that hold their file back
+    warnings: int
 
 
 def _cities(db: Session, batch_id: uuid.UUID) -> list[ListOut]:
@@ -283,11 +400,20 @@ def _cities(db: Session, batch_id: uuid.UUID) -> list[ListOut]:
         .order_by(Import.confirmed_at.desc(), Import.created_at.desc())
         .limit(1)
     )
+    lead_check.ensure_checked(db, batch_id)
+    problems: dict[str, list[int]] = {}
+    for city, found in db.execute(
+        select(Lead.city, Lead.check).where(Lead.batch_id == batch_id, Lead.check.is_not(None))
+    ):
+        tally = problems.setdefault(city.lower(), [0, 0])
+        for item in found or []:
+            tally[0 if item.get("severity") == "error" else 1] += 1
     out = []
     for item in db.scalars(
         select(LeadList).where(LeadList.batch_id == batch_id).order_by(func.lower(LeadList.city))
     ):
         total, top = counts.get(item.city.lower(), (0, 0))
+        errors, warnings = problems.get(item.city.lower(), [0, 0])
         origin = first.get(item.city.lower())
         out.append(
             ListOut(
@@ -304,6 +430,8 @@ def _cities(db: Session, batch_id: uuid.UUID) -> list[ListOut]:
                 ready=top > 0,
                 added_from=origin,
                 new=origin is not None and origin.id == latest,
+                errors=errors,
+                warnings=warnings,
             )
         )
     return out
@@ -312,7 +440,9 @@ def _cities(db: Session, batch_id: uuid.UUID) -> list[ListOut]:
 @router.get("/batches/{batch_id}/cities", response_model=list[ListOut])
 def batch_cities(batch_id: uuid.UUID, me: CurrentUser, db: Db) -> list[ListOut]:
     ensure(me, Action.VIEW_HUB)
-    return _cities(db, get_batch(db, batch_id).id)
+    cities = _cities(db, get_batch(db, batch_id).id)
+    db.commit()  # leads saved before Lead Check were checked just now
+    return cities
 
 
 class AllCitiesIn(Strict):
