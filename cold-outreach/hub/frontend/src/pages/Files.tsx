@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
   ApiError,
@@ -47,7 +47,6 @@ const STAGES: Stage[] = [
 ];
 const stageOf = (status: HandedInFile["status"]) =>
   STAGES.findIndex((stage) => stage.statuses.includes(status));
-const DRAG_TYPE = "application/x-hub-file";
 const POLL_MS = 2000; // how often a file being checked is looked at again
 const FINAL_POLL_MS = 30_000; // and a file in its Final check (the scheduler sends it on)
 
@@ -65,7 +64,6 @@ export function Files() {
   const [batches, setBatches] = useState<Batch[]>([]);
   const [open, setOpen] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
-  const [dragging, setDragging] = useState<HandedInFile | null>(null);
   const [choosing, setChoosing] = useState<{
     item: HandedInFile;
     benchmarks: { id: string; name: string }[];
@@ -161,7 +159,6 @@ export function Files() {
   const stage = STAGES.find((s) => s.key === filter);
   const shown = (items ?? []).filter((f) => !stage || stage.statuses.includes(f.status));
   const count = (s: Stage) => (items ?? []).filter((f) => s.statuses.includes(f.status)).length;
-  const readyCount = (items ?? []).filter((f) => f.status === "ready").length;
 
   return (
     <section className="page page-wide">
@@ -218,7 +215,7 @@ export function Files() {
         ))}
       </nav>
 
-      <div className={staff ? "files-layout" : undefined}>
+      <div>
         <div className="card table-card">
           {items === null ? (
             <p className="muted files-empty">Loading…</p>
@@ -236,6 +233,7 @@ export function Files() {
                     {role !== "collector" && <th>Handed in by</th>}
                     <th>Stage</th>
                     <th>Status</th>
+                    <th>In a batch</th>
                     <th className="files-next">Next step</th>
                   </tr>
                 </thead>
@@ -247,7 +245,6 @@ export function Files() {
                       staff={staff}
                       collector={role === "collector"}
                       onOpen={() => setOpen(item.id)}
-                      onDrag={setDragging}
                       onChanged={load}
                       onError={setError}
                       onAdd={() => void addToItsBatch(item)}
@@ -258,16 +255,6 @@ export function Files() {
             </div>
           )}
         </div>
-
-        {staff && (
-          <BatchTargets
-            batches={batches}
-            dragging={dragging}
-            ready={readyCount}
-            onDrop={(item, batch) => void addToBatch(item, batch)}
-            files={items ?? []}
-          />
-        )}
       </div>
       {choosing && (
         <BenchmarkChoice
@@ -747,7 +734,6 @@ function FileRow({
   staff,
   collector,
   onOpen,
-  onDrag,
   onChanged,
   onError,
   onAdd,
@@ -756,14 +742,12 @@ function FileRow({
   staff: boolean;
   collector: boolean;
   onOpen: () => void;
-  onDrag: (item: HandedInFile | null) => void;
   onChanged: () => void;
   onError: (text: string) => void;
   onAdd: () => void;
 }) {
   const [fixing, setFixing] = useState(false);
   const [busy, setBusy] = useState(false);
-  const movable = staff && item.status === "ready";
   const mayChange = item.mine || staff;
   const stage = STAGES[stageOf(item.status)];
 
@@ -781,17 +765,7 @@ function FileRow({
   }
 
   return (
-    <tr
-      className={movable ? "file-draggable" : undefined}
-      draggable={movable}
-      onDragStart={(e) => {
-        e.dataTransfer.setData(DRAG_TYPE, item.id);
-        e.dataTransfer.effectAllowed = "copy";
-        onDrag(item);
-      }}
-      onDragEnd={() => onDrag(null)}
-      title={movable ? "Drag onto a batch" : undefined}
-    >
+    <tr>
       <td className="nowrap">
         <strong>{item.batch_label}</strong>
       </td>
@@ -836,7 +810,11 @@ function FileRow({
           </span>
         )}
         {item.status === "ready" && <span className="badge badge-ok">Ready</span>}
-        {(item.status === "adding" || item.status === "used") && <UsedIn item={item} />}
+        {item.status === "adding" && <span className="badge badge-warning">Being added</span>}
+        {item.status === "used" && <span className="badge">Used</span>}
+      </td>
+      <td>
+        <UsedIn item={item} />
       </td>
       <td>
         <div className="file-row-actions">
@@ -899,64 +877,6 @@ function FileRow({
         )}
       </td>
     </tr>
-  );
-}
-
-function BatchTargets({
-  batches,
-  dragging,
-  ready,
-  files,
-  onDrop,
-}: {
-  batches: Batch[];
-  dragging: HandedInFile | null;
-  ready: number;
-  files: HandedInFile[];
-  onDrop: (item: HandedInFile, batch: Batch) => void;
-}) {
-  const [over, setOver] = useState<string | null>(null);
-
-  function drop(event: DragEvent, batch: Batch) {
-    event.preventDefault();
-    setOver(null);
-    const id = event.dataTransfer.getData(DRAG_TYPE);
-    const item = files.find((f) => f.id === id);
-    if (item) onDrop(item, batch);
-  }
-
-  return (
-    <aside className="card stack-tight files-batches" aria-label="Batches">
-      <h2>Batches</h2>
-      <p className="small muted">
-        {ready
-          ? `${ready} ready ${ready === 1 ? "file" : "files"}: drag one onto a batch of its niche.`
-          : "When a file is Ready, drag it here onto a batch of its niche."}
-      </p>
-      {batches.length === 0 && <p className="muted">No batch yet.</p>}
-      {batches.map((batch) => {
-        const fits = !dragging || sameNiche(dragging.niche, batch.niche);
-        return (
-          <div
-            key={batch.id}
-            className={`file-target ${over === batch.id ? "over" : ""} ${fits ? "" : "no-fit"}`}
-            onDragOver={(e) => {
-              if (!fits) return;
-              e.preventDefault();
-              e.dataTransfer.dropEffect = "copy";
-              setOver(batch.id);
-            }}
-            onDragLeave={() => setOver((o) => (o === batch.id ? null : o))}
-            onDrop={(e) => drop(e, batch)}
-          >
-            <strong>{batch.name}</strong>
-            <span className="small muted">
-              {batch.niche} · {batch.leads.toLocaleString()} businesses · {batch.files} files
-            </span>
-          </div>
-        );
-      })}
-    </aside>
   );
 }
 

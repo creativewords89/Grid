@@ -993,3 +993,7 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     no longer chosen above the drop zone: dropping (or choosing) a file asks **Which niche is
     this file for?**, and it is uploaded only once one is chosen. Only Owners and Admins see
     **Niches** (rename, delete). Migration `0026` names the files already handed in.
+    (Corrected after step 38: the Batches panel to drag files onto is gone, as every ready
+    file has its Add to button; another batch is chosen on the file's page. The table has an
+    **In a batch** column before Next step: the batch the file is used in, or waits in, with
+    the date and who.)
