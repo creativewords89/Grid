@@ -415,8 +415,8 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    column's city (a town around it doesn't count); a GBP link that isn't Google Maps; a link or a
    phone number as the business name; numbers in the City; a Facebook column that isn't
    Facebook and the same for Instagram; Reviews not a count; Rating not a number or
-   outside 0–5; Reviews and Rating swapped; Reviews may be written 1204, 1,204 or 1.4k for
-   1,400, and sort that way); a **warning** (🟠) is missing or doubtful data (no GBP link, a
+   outside 0–5; Reviews and Rating swapped; Reviews written in thousands, such as 1.4k: the
+   Hub never changes it, the file is fixed (1400) and added again; 1204 and 1,204 are fine); a **warning** (🟠) is missing or doubtful data (no GBP link, a
    made-up email). An empty phone and a long business name are normal. When the rules change, a migration clears the
    saved checks so every lead is checked again under the new rules. The **preview** shows errors and warnings by tab and marks each wrong cell; saving
    a file checks its leads. **A file with an error is held**: while any lead it brought or
@@ -819,8 +819,10 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     a preview saving nothing, rows left out, a refused value, a file without Lead ID,
     rights, the WhatsApp rule.
 29. **Lead Check corrections** (asked for after step 28): an empty phone and a long name are
-    normal; reviews as 1.4k are 1,400 (also when sorting); WhatsApp Yes without a phone, an
+    normal; (reviews as 1.4k: see below); WhatsApp Yes without a phone, an
     empty address and an address that doesn't name the City column's city are errors.
-    Migration `0019` clears saved checks. The preview checks each business as it will be
+    Migration `0019` clears saved checks. (Changed right after: reviews written as 1.4k are
+    an **error**, never converted by the Hub; migration `0020` clears saved checks again.)
+    The preview checks each business as it will be
     saved (its rows merged first, so an empty cell filled from another row isn't an error)
     and counts it once. **Tests:** each corrected rule, sorting by 1.4k, merged rows.

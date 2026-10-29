@@ -57,7 +57,9 @@ CODES: dict[str, tuple[Severity, str]] = {
     "FACEBOOK_NOT_FACEBOOK": ("error", "Facebook isn't a Facebook link"),
     "INSTAGRAM_IS_FACEBOOK": ("error", "Instagram is a Facebook link"),
     "INSTAGRAM_NOT_INSTAGRAM": ("error", "Instagram isn't an Instagram link"),
-    "REVIEWS_NOT_NUMBER": ("error", "Reviews isn't a number (1204, 1,204 or 1.4k)"),
+    "REVIEWS_NOT_NUMBER": ("error", "Reviews isn't a whole number"),
+    # The Hub never changes it: the file is fixed (1400) and added again.
+    "REVIEWS_IN_THOUSANDS": ("error", "Reviews is written in thousands (1.4k): write 1400"),
     "RATING_NOT_NUMBER": ("error", "Rating isn't a number"),
     "RATING_OUT_OF_RANGE": ("error", "Rating isn't between 0 and 5"),
     "REVIEWS_RATING_SWAPPED": ("error", "Reviews and Rating look swapped"),
@@ -83,7 +85,8 @@ REVIEWS = re.compile(r"^(\d+(?:\.\d+)?)\s*(k)?$", re.IGNORECASE)
 
 
 def reviews_count(text: str) -> float | None:
-    """How many reviews a cell says: "1204", "1,204", or "1.4k" (1,400); None if not a count."""
+    """How many reviews a cell says: "1204", "1,204", or "1.4k" (1,400, which Lead Check
+    marks as an error to fix in the file); None if not a count."""
     found = REVIEWS.match(text.replace(",", "").strip())
     if not found:
         return None
@@ -212,7 +215,9 @@ def check_lead(values: dict[str, str]) -> list[Issue]:
     if swapped:
         add(issue("REVIEWS_RATING_SWAPPED", "reviews"))
         return found
-    if not reviews_ok:
+    if count is not None and re.search(r"k$", reviews, re.IGNORECASE):
+        add(issue("REVIEWS_IN_THOUSANDS", "reviews"))
+    elif not reviews_ok:
         add(issue("REVIEWS_NOT_NUMBER", "reviews"))
     if not rating_ok:
         add(issue("RATING_NOT_NUMBER", "rating"))
