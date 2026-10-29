@@ -390,6 +390,7 @@ def test_sort_by_rating_and_reviews_with_odd_values(
 ) -> None:
     for lead_id, rating, reviews in (
         ("L-000001", "4.9", "1,204"),
+        ("L-000002", "4.2", "1.4K"),
         ("L-000003", "n/a", "88"),
         ("L-000004", "3.5", ""),
     ):
@@ -403,4 +404,4 @@ def test_sort_by_rating_and_reviews_with_odd_values(
 
     assert by_rating[0] == "L-000001"
     assert by_rating.index("L-000004") < by_rating.index("L-000003")  # "n/a" goes last
-    assert by_reviews[0] == "L-000001"  # 1,204 is a number
+    assert by_reviews[:2] == ["L-000002", "L-000001"]  # 1.4K is 1,400; 1,204 is a number

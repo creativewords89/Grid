@@ -20,16 +20,15 @@ export const CHECK_CODES: [string, string][] = [
   ["INSTAGRAM_IS_FACEBOOK", "Instagram is a Facebook link"],
   ["INSTAGRAM_NOT_INSTAGRAM", "Instagram isn't an Instagram link"],
   ["REVIEWS_NOT_NUMBER", "Reviews isn't a whole number"],
+  ["REVIEWS_IN_THOUSANDS", "Reviews written in thousands (1.4k)"],
+  ["NO_ADDRESS", "No address"],
+  ["ADDRESS_OTHER_CITY", "Address doesn't name the city"],
+  ["WHATSAPP_NO_PHONE", "WhatsApp is Yes but there is no phone"],
   ["RATING_NOT_NUMBER", "Rating isn't a number"],
   ["RATING_OUT_OF_RANGE", "Rating isn't between 0 and 5"],
   ["REVIEWS_RATING_SWAPPED", "Reviews and Rating look swapped"],
   ["NO_GBP_LINK", "No GBP link (warning)"],
-  ["NO_PHONE", "No phone (warning)"],
-  ["NO_ADDRESS", "No address (warning)"],
-  ["ADDRESS_OTHER_CITY", "Address doesn't mention the city (warning)"],
   ["EMAIL_PLACEHOLDER", "Email looks made up (warning)"],
-  ["WHATSAPP_NO_PHONE", "WhatsApp Yes but no phone (warning)"],
-  ["NAME_TOO_LONG", "Business name unusually long (warning)"],
 ];
 
 export const FIELD_NAMES: Record<string, string> = {

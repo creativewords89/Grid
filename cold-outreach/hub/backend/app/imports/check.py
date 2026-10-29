@@ -33,15 +33,15 @@ STANDARD: dict[str, str] = {
 CODES: dict[str, tuple[Severity, str]] = {
     "NAME_IS_LINK": ("error", "Business name is a link"),
     "NAME_IS_PHONE": ("error", "Business name is a phone number"),
-    "NAME_TOO_LONG": ("warning", "Business name is unusually long"),
     "NO_NAME": ("warning", "No business name"),
     "GBP_NOT_MAPS": ("error", "GBP link isn't a Google Maps link"),
     "NO_GBP_LINK": ("warning", "No GBP link"),
     "ADDRESS_HAS_PHONE": ("error", "Address holds a phone number"),
     "ADDRESS_HAS_EMAIL": ("error", "Address holds an email"),
     "ADDRESS_HAS_LINK": ("error", "Address holds a link"),
-    "NO_ADDRESS": ("warning", "No address"),
-    "ADDRESS_OTHER_CITY": ("warning", "Address doesn't mention the city"),
+    "NO_ADDRESS": ("error", "No address"),
+    # The address must name the City column's city (not a town around it).
+    "ADDRESS_OTHER_CITY": ("error", "Address doesn't name the city"),
     "CITY_HAS_NUMBERS": ("error", "City holds numbers (an address?)"),
     "WEBSITE_IS_FACEBOOK": ("error", "Website is a Facebook link"),
     "WEBSITE_IS_INSTAGRAM": ("error", "Website is an Instagram link"),
@@ -49,16 +49,17 @@ CODES: dict[str, tuple[Severity, str]] = {
     "WEBSITE_NOT_LINK": ("error", "Website isn't a link"),
     "PHONE_HAS_LETTERS": ("error", "Phone holds letters"),
     "PHONE_WRONG_LENGTH": ("error", "Phone isn't a 10-digit US number"),
-    "NO_PHONE": ("warning", "No phone"),
     # WhatsApp says whether the Phone number has WhatsApp: Yes, or empty when it hasn't.
     "WHATSAPP_NOT_YES": ("error", "WhatsApp should be Yes or empty"),
-    "WHATSAPP_NO_PHONE": ("warning", "WhatsApp is Yes but there is no phone"),
+    "WHATSAPP_NO_PHONE": ("error", "WhatsApp is Yes but there is no phone"),
     "EMAIL_PLACEHOLDER": ("warning", "Email looks made up (test@, example.com)"),
     "FACEBOOK_IS_INSTAGRAM": ("error", "Facebook is an Instagram link"),
     "FACEBOOK_NOT_FACEBOOK": ("error", "Facebook isn't a Facebook link"),
     "INSTAGRAM_IS_FACEBOOK": ("error", "Instagram is a Facebook link"),
     "INSTAGRAM_NOT_INSTAGRAM": ("error", "Instagram isn't an Instagram link"),
     "REVIEWS_NOT_NUMBER": ("error", "Reviews isn't a whole number"),
+    # The Hub never changes it: the file is fixed (1400) and added again.
+    "REVIEWS_IN_THOUSANDS": ("error", "Reviews is written in thousands (1.4k): write 1400"),
     "RATING_NOT_NUMBER": ("error", "Rating isn't a number"),
     "RATING_OUT_OF_RANGE": ("error", "Rating isn't between 0 and 5"),
     "REVIEWS_RATING_SWAPPED": ("error", "Reviews and Rating look swapped"),
@@ -80,6 +81,22 @@ MAPS = re.compile(
 PLACEHOLDER_EMAIL = re.compile(r"^(test|example|none|noemail|no-reply|noreply)@|@example\.")
 NUMBER = re.compile(r"^\d+(\.\d+)?$")
 YES = ("yes",)
+REVIEWS = re.compile(r"^(\d+(?:\.\d+)?)\s*(k)?$", re.IGNORECASE)
+
+
+def reviews_count(text: str) -> float | None:
+    """How many reviews a cell says: "1204", "1,204", or "1.4k" (1,400, which Lead Check
+    marks as an error to fix in the file); None if not a count."""
+    found = REVIEWS.match(text.replace(",", "").strip())
+    if not found:
+        return None
+    number = float(found[1])
+    return float(round(number * 1000)) if found[2] else number
+
+
+def _words(text: str) -> str:
+    """Lower-case words only, so "St. Louis," and "st louis" compare equal."""
+    return " ".join(re.findall(r"[a-z0-9]+", text.lower()))
 
 
 @dataclass(frozen=True)
@@ -134,8 +151,6 @@ def check_lead(values: dict[str, str]) -> list[Issue]:
         add(issue("NAME_IS_LINK", "business_name"))
     elif PHONE_IN_TEXT.fullmatch(name):
         add(issue("NAME_IS_PHONE", "business_name"))
-    elif len(name) > 80:
-        add(issue("NAME_TOO_LONG", "business_name"))
 
     gbp = v["gbp_link"]
     if not gbp:
@@ -152,7 +167,7 @@ def check_lead(values: dict[str, str]) -> list[Issue]:
         add(issue("ADDRESS_HAS_EMAIL", "address"))
     elif LINK_IN_TEXT.search(address):
         add(issue("ADDRESS_HAS_LINK", "address"))
-    elif city and city.lower() not in address.lower():
+    elif city and f" {_words(city)} " not in f" {_words(address)} ":
         add(issue("ADDRESS_OTHER_CITY", "address"))
     if re.search(r"\d", city):
         add(issue("CITY_HAS_NUMBERS", "city"))
@@ -168,10 +183,10 @@ def check_lead(values: dict[str, str]) -> list[Issue]:
         elif "@" in website or not LINK.match(website):
             add(issue("WEBSITE_NOT_LINK", "website"))
 
-    phone = v["phone"]
-    if not phone:
-        add(issue("NO_PHONE", "phone"))
-    elif problem := _phone_problem(phone, "phone", "PHONE_HAS_LETTERS", "PHONE_WRONG_LENGTH"):
+    phone = v["phone"]  # an empty phone is normal
+    if phone and (
+        problem := _phone_problem(phone, "phone", "PHONE_HAS_LETTERS", "PHONE_WRONG_LENGTH")
+    ):
         add(problem)
     whatsapp = v["whatsapp"].lower().rstrip(".")
     if whatsapp and whatsapp not in YES:
@@ -191,7 +206,8 @@ def check_lead(values: dict[str, str]) -> list[Issue]:
         add(issue(code or "INSTAGRAM_NOT_INSTAGRAM", "instagram"))
 
     reviews, rating = v["reviews"].replace(",", ""), v["rating"]
-    reviews_ok = not reviews or reviews.isdigit()
+    count = reviews_count(reviews)
+    reviews_ok = not reviews or (count is not None and count.is_integer())
     rating_ok = not rating or bool(NUMBER.match(rating))
     swapped = (
         reviews and rating and NUMBER.match(reviews) and rating_ok and float(rating) > 5
@@ -199,7 +215,9 @@ def check_lead(values: dict[str, str]) -> list[Issue]:
     if swapped:
         add(issue("REVIEWS_RATING_SWAPPED", "reviews"))
         return found
-    if not reviews_ok:
+    if count is not None and re.search(r"k$", reviews, re.IGNORECASE):
+        add(issue("REVIEWS_IN_THOUSANDS", "reviews"))
+    elif not reviews_ok:
         add(issue("REVIEWS_NOT_NUMBER", "reviews"))
     if not rating_ok:
         add(issue("RATING_NOT_NUMBER", "rating"))
