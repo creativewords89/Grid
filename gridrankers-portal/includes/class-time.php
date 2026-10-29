@@ -307,13 +307,16 @@ class GRP_Time {
 				continue;
 			}
 			$key = self::tracked_key( $entry );
-			if ( isset( $groups[ $key ] ) ) {
+			if ( isset( $groups[ $key ] ) && $groups[ $key ]['seconds'] >= 30 ) {
 				$out[] = self::tracked_entry( $entry, $groups[ $key ], $titles, $key );
 				unset( $groups[ $key ] );
 			}
 		}
 		foreach ( $groups as $key => $group ) {
-			$out[] = self::tracked_entry( array( 'id' => 'tr_' . md5( $key ) ), $group, $titles, $key );
+			// Under half a minute rounds to 0: no line until there is a minute to report.
+			if ( $group['seconds'] >= 30 ) {
+				$out[] = self::tracked_entry( array( 'id' => 'tr_' . md5( $key ) ), $group, $titles, $key );
+			}
 		}
 
 		return $out;

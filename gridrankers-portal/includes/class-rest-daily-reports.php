@@ -251,7 +251,9 @@ class GRP_REST_Daily_Reports extends GRP_REST_Controller {
 		if ( is_wp_error( $entries ) ) {
 			return $entries;
 		}
-		$send = ! empty( $request['send'] ) || ( $existing && ! empty( $existing['sent_at'] ) );
+		// Tracked time (SPEC.md 6.21) stays tracked: its minutes follow the timer, not what was typed.
+		$entries = GRP_Time_Entries::keep_tracked( $entries, array_values( (array) ( $existing['entries'] ?? array() ) ), $actor['id'], $day );
+		$send    = ! empty( $request['send'] ) || ( $existing && ! empty( $existing['sent_at'] ) );
 		if ( $send && ! $entries ) {
 			return self::invalid( __( 'Add at least one thing you did.', 'gridrankers-portal' ), 'grp_report_empty' );
 		}

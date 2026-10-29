@@ -265,7 +265,10 @@ class GRP_REST_Auth {
 			array(
 				'token'  => $result['token'],
 				'device' => $result['device'],
-			) + self::device_payload( $result['member'] )
+			) + self::device_payload( $result['member'] ) + array(
+				'tasks' => GRP_Time_Entries::tasks_for( $result['member'] ),
+				'timer' => GRP_Time_Entries::running( (string) $result['member']['id'] ),
+			)
 		);
 	}
 
@@ -289,9 +292,10 @@ class GRP_REST_Auth {
 	 * their working day and their schedule (working or not, and why — never a leave type or reason).
 	 *
 	 * @param array $member Member row.
+	 * @param int   $days   Days of schedule.
 	 * @return array `{member, work_day, schedule}`.
 	 */
-	public static function device_payload( array $member ) {
+	public static function device_payload( array $member, $days = self::DEVICE_SCHEDULE_DAYS ) {
 		$start    = (array) GRP_REST_People::setting( GRP_Time::START_KEY );
 		$work_day = GRP_Time::work_day( $member, $start['start'] ?? null, GRP_Store::get( 'grp_pay', (string) $member['id'] ) );
 		$leaves   = GRP_Store::find(
@@ -305,7 +309,7 @@ class GRP_REST_Auth {
 		return array(
 			'member'   => self::me_payload( $member ),
 			'work_day' => $work_day,
-			'schedule' => GRP_Time::schedule( GRP_Cycles::today(), self::DEVICE_SCHEDULE_DAYS, $member, GRP_REST_People::team_weekly(), GRP_REST_People::days_off(), $leaves, $work_day ),
+			'schedule' => GRP_Time::schedule( GRP_Cycles::today(), $days, $member, GRP_REST_People::team_weekly(), GRP_REST_People::days_off(), $leaves, $work_day ),
 		);
 	}
 

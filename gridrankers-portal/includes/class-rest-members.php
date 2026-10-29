@@ -229,6 +229,25 @@ class GRP_REST_Members extends GRP_REST_Controller {
 			$changes['birth_year'] = '' === $year ? null : (int) $year;
 		}
 
+		// Start of the working day (SPEC.md 6.21); empty = the team's.
+		if ( null !== $request->get_param( 'work_start' ) ) {
+			if ( ! self::can(
+				GRP_Permissions::SET_WORK_START,
+				array(
+					'member_id' => $member['id'],
+					'role'      => GRP_Permissions::effective_role( $member ),
+				)
+			) ) {
+				return self::forbidden( __( 'Only the Super Admin, or a Team Leader for Team Members, sets when someone’s day starts.', 'gridrankers-portal' ) );
+			}
+			$raw   = trim( (string) $request['work_start'] );
+			$start = GRP_Time::start_time( $raw );
+			if ( '' !== $raw && null === $start ) {
+				return self::invalid( __( 'Pick a time like 09:00.', 'gridrankers-portal' ) );
+			}
+			$changes['work_start'] = $start;
+		}
+
 		$employment = self::employment(
 			$request,
 			array(

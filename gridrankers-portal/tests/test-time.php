@@ -448,4 +448,9 @@ class Test_GRP_Time extends WP_UnitTestCase {
 		$shorter[1] = $this->hand( 'h1', 'Client call', 60 );
 		$this->assertSame( 0, GRP_Time::hand_added( $sent, $shorter )['minutes'], 'less handwritten time is no notice' );
 	}
+
+	public function test_under_half_a_minute_makes_no_report_line() {
+		$this->assertSame( array(), GRP_Time::with_tracked( array(), array( $this->time( 't1', '2026-10-29 03:00:00', '2026-10-29 03:00:29' ) ), array() ) );
+		$this->assertSame( 1, GRP_Time::with_tracked( array(), array( $this->time( 't1', '2026-10-29 03:00:00', '2026-10-29 03:00:30' ) ), array() )[0]['minutes'] );
+	}
 }
