@@ -1,6 +1,8 @@
 # GridRankers Tracker (desktop app)
 
-The desktop time tracker for the GridRankers portal (SPEC.md 6.21). Team Leaders and Team Members sign
+The desktop time tracker for the GridRankers portal (SPEC.md 6.21). It signs in to
+**tracker.gridrankers.com** — a WordPress site running the GridRankers Portal plugin (`gridrankers-portal/`),
+where the team's codes, tasks, daily reports and pay live. Team Leaders and Team Members sign
 in with their **employee code**, start a timer on a task, and the time goes into their daily report on
 the portal — where it is paid (SPEC.md 6.19). Time only: no screenshots, keystrokes, apps or websites.
 
@@ -14,7 +16,7 @@ the portal — where it is paid (SPEC.md 6.19). Time only: no screenshots, keyst
 
 **Use**
 
-1. Sign in with your code (the same one as the portal). Another portal address? *Another portal
+1. Sign in with your code (the same one as on tracker.gridrankers.com). Another portal address? *Another portal
    address?* under the code.
 2. Pick what you're working on: your tasks (recent first, search), **No task**, or a project. Picking
    another one switches; **Stop** stops. The tray icon shows the time and has Stop and your recent tasks.

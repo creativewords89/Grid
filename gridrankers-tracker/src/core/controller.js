@@ -14,6 +14,8 @@ export function createController({ store, loadToken, saveToken, device, createAp
 	// A timer left running by a crash, a power cut or a killed app: ask what to do with it.
 	state = T.checkCrash(state, now());
 	let token = loadToken() || null;
+	// The first build (1.0.3) pointed at portal.gridrankers.com; the tracker's portal is DEFAULT_SERVER.
+	if (!token && state.server === 'https://portal.gridrankers.com') state = { ...state, server: DEFAULT_SERVER };
 	let tail = Promise.resolve();
 	let queued = null;
 	let lastRefresh = 0;

@@ -17,8 +17,9 @@ export class ApiError extends Error {
 	}
 }
 
-// The team's portal (SPEC.md section 2): its own WordPress site, where the sign-in codes live.
-export const DEFAULT_SERVER = 'https://portal.gridrankers.com';
+// The time tracker's portal (SPEC.md 6.21): a WordPress site with the GridRankers Portal plugin, where
+// the sign-in codes live.
+export const DEFAULT_SERVER = 'https://tracker.gridrankers.com';
 
 // A clean portal address: https:// added when missing, no trailing slash.
 export function cleanServer(value) {
