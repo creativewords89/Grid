@@ -90,28 +90,32 @@ cold-outreach/
 
 ## 3. Roles and permissions
 
-| Action | Owner | Admin | Viewer | Collector |
-|---|---|---|---|---|
-| See Overview, Runs, Agents, Batches, Benchmarks, Leads; download leads as Excel | ✔ | ✔ | ✔ | ✘ |
-| Make, rename or delete a batch; add and confirm its files | ✔ | ✔ | ✘ | ✘ |
-| Choose a batch's tasks and agents, start or pause it, change the batches' running order | ✔ | ✔ | ✘ | ✘ |
-| Change any standard field of a lead or its notes; mark Top in a city; delete a lead | ✔ | ✔ | ✘ | ✘ |
-| Switch an agent on/off, press Run now or Stop | ✔ | ✔ | ✘ | ✘ |
-| Change an agent's batches, limit, run time, budget and settings | ✔ | ✔ | ✘ | ✘ |
-| Make, change or delete a benchmark | ✔ | ✔ | ✘ | ✘ |
-| See or change Connections (keys, accounts) | ✔ | ✘ | ✘ | ✘ |
-| Change the total daily budget | ✔ | ✘ | ✘ | ✘ |
-| Add an agent, show or replace an agent's token | ✔ | ✘ | ✘ | ✘ |
-| Manage users (invite, deactivate, change role) | ✔ | ✘ | ✘ | ✘ |
-| See the History (audit log) | ✔ | ✘ | ✘ | ✘ |
-| Own profile, password, alert channels | ✔ | ✔ | ✔ | ✔ |
-| Files (step 31): hand in a lead file, see its problems, upload a revised version, delete it before it is used (Collectors: their own files only) | ✔ | ✔ | ✘ | ✔ |
-| See every file handed in on Files | ✔ | ✔ | ✔ | ✘ |
-| Add a ready file to a batch | ✔ | ✔ | ✘ | ✘ |
+| Action | Owner | Admin | Viewer | Collector | Reviewer |
+|---|---|---|---|---|---|
+| See Overview, Runs, Agents, Batches, Benchmarks, Leads; download leads as Excel | ✔ | ✔ | ✔ | ✘ | ✘ |
+| Make, rename or delete a batch; add and confirm its files | ✔ | ✔ | ✘ | ✘ | ✘ |
+| Choose a batch's tasks and agents, start or pause it, change the batches' running order | ✔ | ✔ | ✘ | ✘ | ✘ |
+| Change any standard field of a lead or its notes; mark Top in a city; delete a lead | ✔ | ✔ | ✘ | ✘ | ✘ |
+| Switch an agent on/off, press Run now or Stop | ✔ | ✔ | ✘ | ✘ | ✘ |
+| Change an agent's batches, limit, run time, budget and settings | ✔ | ✔ | ✘ | ✘ | ✘ |
+| Make, change or delete a benchmark | ✔ | ✔ | ✘ | ✘ | ✘ |
+| See or change Connections (keys, accounts) | ✔ | ✘ | ✘ | ✘ | ✘ |
+| Change the total daily budget | ✔ | ✘ | ✘ | ✘ | ✘ |
+| Add an agent, show or replace an agent's token | ✔ | ✘ | ✘ | ✘ | ✘ |
+| Manage users (invite, deactivate, change role) | ✔ | ✘ | ✘ | ✘ | ✘ |
+| See the History (audit log) | ✔ | ✘ | ✘ | ✘ | ✘ |
+| Own profile, password, alert channels | ✔ | ✔ | ✔ | ✔ | ✔ |
+| Files (step 31): hand in a lead file, see its problems, upload a revised version, delete it before it is used (Collectors: their own files only) | ✔ | ✔ | ✘ | ✔ | ✘ |
+| See every file handed in on Files | ✔ | ✔ | ✔ | ✘ | ✘ |
+| Add a ready file to a batch | ✔ | ✔ | ✘ | ✘ | ✘ |
+| Top Review (step 32): choose each city's Top businesses in a file without errors, until every city has one | ✔ | ✔ | ✘ | ✘ | ✔ |
+| Reopen a ready file for Top Review | ✔ | ✔ | ✘ | ✘ | ✘ |
 
 - There can be more than one Owner; the last active Owner can't be removed or demoted.
 - A **Collector** (step 31) is the external team that collects leads: they see the **Files**
-  screen only, and only the files they handed in (someone else's file is "not found").
+  screen only, and only the files they handed in (someone else's file is "not found"),
+  and change a file only while it has errors. A **Reviewer** (step 32) sees **Top Review**
+  only: never batches, the leads list or a whole file.
 - Every endpoint calls `permissions.can(user, action)`. **pytest covers every row**, for each
   role allowed and refused.
 - Agents are not users: they authenticate with their own token and can only reach the agent
@@ -619,6 +623,16 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
     its niche (or **Add to batch** in the file), which opens that batch with the file's
     preview to confirm. A file handed in again with the same leads says so ("Same leads as
     …, used in Batch 01").
+    (Step 32: the states are 🔴 **Needs fixing**, 🟡 **Needs Top** (no error: the
+    Collectors are done, the file is waiting for Top Review; only Owners and Admins delete
+    it), ✅ **Ready** (no error and every city with 10 businesses or more has a Top; Owners
+    and Admins can **Reopen for Top Review**), **Being added** and **Used**. Only a Ready
+    file is added to a batch.)
+11. **Top Review** (step 32; a Reviewer's only screen, also for Owners and Admins): the
+    files waiting for their Top, each with how many of its cities have one, and the done
+    ones (**Done ✓**, not opened again). A file opens to its cities (Ready, Needs a Top,
+    or Off · under 10); a city opens to its businesses with every column and a Top tick
+    box each, saved with **Save the Top of <city>**.
 
 ## 8. REST API (`/api`, JSON)
 
@@ -632,7 +646,8 @@ agents), `/imports`
 `DELETE /{id}` and `/{id}/deletion` (what would go)), `/niches`, `/leads` (+ `/export`,
 `/{lead_id}`, `/{lead_id}/files/{id}`), `/batches/{id}/cities` (+ `PUT` all on or off),
 `/lists/{id}`, `/alerts`, `/submissions` (the Files screen: `POST` to hand in, `/niches`,
-`/{id}`, `/{id}/version`, `/{id}/marked.xlsx`, `/{id}/use`, `DELETE /{id}`),
+`/{id}`, `/{id}/version`, `/{id}/marked.xlsx`, `/{id}/use`, `/{id}/reopen`, `DELETE /{id}`),
+`/review/files` (Top Review: `/{id}`, `/{id}/cities/{city}` and `PUT` its Tops),
 `/alert-settings`, `/history`, and the agent API (section 6.2). Every user endpoint checks
 `permissions.can`; every write checks CSRF.
 
@@ -868,3 +883,18 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     files, the check by tab and row, the marked file and its marks taken out, versions,
     niche match, used once, same leads, delete rules; vitest for the menu and the Files
     screen; e2e: a Collector invited, hands in a file, the Owner drags it onto the batch.
+32. **Top Review and Reviewers** (asked for after step 31): Top is chosen in the file
+    before it goes into a batch. Once a file has no error the Collectors are done (it can't
+    be revised, and only Owners and Admins delete it) and it **Needs Top**. A **Reviewer**
+    (a new role: Top Review only, enforced on the server) chooses each city's Top
+    businesses, one city at a time; a city with fewer than 10 businesses in the file is off
+    and needs none. A city's Tops are saved together (`submissions.tops`: city → the first
+    row of each business); when every city that is on has a Top the file is **Ready** and
+    locked (`topped_at`): Reviewers can't open or change it any more, Owners and Admins can
+    reopen it (its Tops kept). Only a Ready file is added to a batch; its Tops are Top
+    there on confirm (so their cities are Ready, and never contacted). Files of step 31
+    without Tops need Top. Migration `0022`. **Tests:** every permission row for five
+    roles, a Reviewer refused everywhere but Top Review, files with errors not shown, city
+    by city with the off city and businesses of another city refused, the lock and reopen,
+    the Tops being Top in the batch, a file of small cities ready at once; vitest for the
+    menus and Top Review; e2e: a Reviewer invited chooses the Top and the file is ready.

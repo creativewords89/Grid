@@ -25,6 +25,8 @@ function file(overrides: Partial<HandedInFile> = {}): HandedInFile {
     updated_at: "2026-10-29T10:00:00Z",
     batch: null,
     same_as: null,
+    cities_on: 1,
+    cities_topped: 0,
     ...overrides,
   };
 }

@@ -5,6 +5,7 @@ export const ROLE_NAMES: Record<Role, string> = {
   admin: "Admin",
   viewer: "Viewer",
   collector: "Collector",
+  reviewer: "Reviewer",
 };
 
 export const ROLE_HINTS: Record<Role, string> = {
@@ -12,6 +13,7 @@ export const ROLE_HINTS: Record<Role, string> = {
   admin: "Imports, agents (on/off, settings, run) and benchmarks.",
   viewer: "Can look at everything, change nothing.",
   collector: "External team: only Files. Hands in lead files and fixes their own.",
+  reviewer: "Only Top Review: chooses each city's Top businesses in the files.",
 };
 
 export const RUN_STATUS: Record<Run["status"], string> = {

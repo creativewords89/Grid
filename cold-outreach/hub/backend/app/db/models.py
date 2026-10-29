@@ -32,6 +32,8 @@ class Role(enum.StrEnum):
     VIEWER = "viewer"
     # The external team that collects leads (step 31): only the Files screen, own files.
     COLLECTOR = "collector"
+    # The team that chooses each city's Top businesses in a file (step 32): only Top Review.
+    REVIEWER = "reviewer"
 
 
 class RunTrigger(enum.StrEnum):
@@ -303,6 +305,11 @@ class Submission(TimestampMixin, Base):
     # Lead Check: errors and warnings by tab, and every problem (tab, row, column, value).
     check: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
     problems: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, server_default="[]")
+    # Top Review (step 32): each city's Top businesses, by the city (lower case) -> the first
+    # row of each ("Tulsa row 14"). `topped_at` is set when every city that is on has a Top:
+    # the file is then ready and locked (an Owner or Admin can reopen it).
+    tops: Mapped[dict[str, list[str]]] = mapped_column(JSONB, default=dict, server_default="{}")
+    topped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # The import that added it to a batch; it is used once that import is saved.
     import_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("imports.id", ondelete="SET NULL")

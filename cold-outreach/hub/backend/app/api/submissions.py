@@ -1,10 +1,11 @@
-"""`/api/submissions`: the Files screen (SPEC step 31). The external team (Collectors) hand in
-lead files, see Lead Check's problems and upload revised versions until a file is ready;
-an Owner or Admin adds a ready file to a batch of its niche, once.
+"""`/api/submissions`: the Files screen (SPEC steps 31 and 32). The external team
+(Collectors) hand in lead files, see Lead Check's problems and upload revised versions until
+there is no error; then Reviewers choose each city's Top businesses (Top Review,
+`app/api/review`); an Owner or Admin adds the ready file to a batch of its niche, once.
 
-A Collector sees and changes only their own files; Owners, Admins and Viewers see every file.
-A file being added to a batch (its preview waits) or used (saved in a batch) can't be
-changed or deleted."""
+A Collector sees only their own files and changes them only while they have errors;
+Owners, Admins and Viewers see every file. A file being added to a batch (its preview waits)
+or used (saved in a batch) can't be changed or deleted."""
 
 import re
 import uuid
@@ -21,6 +22,7 @@ from app.api.batches import get_batch
 from app.api.imports import MAX_BYTES, NicheName
 from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
+from app.auth.tokens import now
 from app.db.models import Batch, Benchmark, ImportStatus, Submission, User
 from app.errors import ApiError
 from app.imports import reader, service
@@ -29,7 +31,8 @@ from app.permissions import Action, can, ensure
 
 router = APIRouter(tags=["files"])
 
-Status = Literal["errors", "ready", "adding", "used"]
+# errors (Collectors fix them) → needs_top (Top Review) → ready → adding → used
+Status = Literal["errors", "needs_top", "ready", "adding", "used"]
 
 
 class BatchRef(BaseModel):
@@ -57,6 +60,10 @@ class FileOut(BaseModel):
     batch: BatchRef | None
     # The same leads were handed in before as another file (a warning on the screen).
     same_as: str | None = None
+    # Top Review (step 32): the cities that need a Top (10 businesses or more) and how many
+    # of them have one.
+    cities_on: int = 0
+    cities_topped: int = 0
 
 
 class FileDetail(FileOut):
@@ -64,13 +71,33 @@ class FileDetail(FileOut):
     problems: list[dict[str, Any]]
 
 
-def _status(sub: Submission) -> Status:
+def status_of(sub: Submission) -> Status:
     imp = sub.imp
     if imp is not None and imp.status == ImportStatus.CONFIRMED:
         return "used"
     if imp is not None and imp.status == ImportStatus.PREVIEW:
         return "adding"
-    return "errors" if sub.check.get("errors") else "ready"
+    if sub.check.get("errors"):
+        return "errors"
+    return "needs_top" if sub.topped_at is None else "ready"
+
+
+def cities(sub: Submission) -> dict[str, dict[str, Any]]:
+    """The file's cities; read from the file once for files handed in before step 32."""
+    if "cities" not in sub.check:
+        found = files.run(sub.content, sub.niche)
+        sub.check = dict(sub.check, cities=found.check["cities"])
+    found_cities: dict[str, dict[str, Any]] = sub.check["cities"]
+    return found_cities
+
+
+def lock_if_topped(sub: Submission) -> None:
+    """A file without errors whose every city that is on has a Top is ready, and locked
+    for Top Review."""
+    if sub.check.get("errors") or sub.topped_at is not None:
+        return
+    if files.all_topped(cities(sub), sub.tops):
+        sub.topped_at = now()
 
 
 def _batch(sub: Submission) -> BatchRef | None:
@@ -100,14 +127,15 @@ def _same_as(db: Session, me: User, sub: Submission) -> str | None:
     shown = [o for o in others if _may_see(me, o)]
     if not shown:
         return "The same leads were handed in before as another file."
-    first = next((o for o in shown if _status(o) == "used"), shown[0])
+    first = next((o for o in shown if status_of(o) == "used"), shown[0])
     where = _batch(first)
-    if where and _status(first) == "used":
+    if where and status_of(first) == "used":
         return f'Same leads as "{first.file_name}", used in {where.batch_name or "a batch"}.'
     return f'Same leads as "{first.file_name}".'
 
 
 def _out(db: Session, me: User, sub: Submission) -> FileOut:
+    on = files.cities_on(cities(sub))
     return FileOut(
         id=sub.id,
         file_name=sub.file_name,
@@ -116,13 +144,15 @@ def _out(db: Session, me: User, sub: Submission) -> FileOut:
         businesses=sub.businesses,
         errors=int(sub.check.get("errors", 0)),
         warnings=int(sub.check.get("warnings", 0)),
-        status=_status(sub),
+        status=status_of(sub),
         uploaded_by=sub.uploader.name if sub.uploader else None,
         mine=sub.uploaded_by == me.id,
         created_at=sub.created_at,
         updated_at=sub.updated_at,
         batch=_batch(sub),
         same_as=_same_as(db, me, sub),
+        cities_on=len(on),
+        cities_topped=sum(1 for key in on if sub.tops.get(key)),
     )
 
 
@@ -148,20 +178,23 @@ def _get(db: Session, me: User, file_id: uuid.UUID) -> Submission:
     return sub
 
 
-def _changeable(db: Session, me: User, file_id: uuid.UUID) -> Submission:
-    """A file the person may revise or delete: their own (or any, for Owners and Admins),
-    while it isn't being added to a batch or used."""
+def _changeable(db: Session, me: User, file_id: uuid.UUID, revise: bool) -> Submission:
+    """A file the person may revise or delete: their own (or any, for Owners and Admins).
+    Once it has no error it is done for the Collectors (step 32): it is only revised while it
+    has errors, and only Owners and Admins delete it then, until it is added to a batch."""
     sub = _get(db, me, file_id)
     ensure(me, Action.SUBMIT_FILES)
     if sub.uploaded_by != me.id and not can(me, Action.USE_FILES):
         raise ApiError(403, "forbidden", "Only the person who handed it in can change it.")
-    status = _status(sub)
+    status = status_of(sub)
     if status == "used":
         raise ApiError(409, "used", "This file is used in a batch: it can't be changed.")
     if status == "adding":
         raise ApiError(
             409, "adding", "This file is being added to a batch: confirm or discard it there."
         )
+    if status != "errors" and (revise or not can(me, Action.USE_FILES)):
+        raise ApiError(409, "no_errors", "This file has no errors: it can't be changed any more.")
     return sub
 
 
@@ -191,6 +224,9 @@ def _check(sub: Submission, content: bytes) -> None:
     sub.businesses = found.businesses
     sub.check = found.check
     sub.problems = found.problems
+    sub.tops = {}
+    sub.topped_at = None
+    lock_if_topped(sub)
 
 
 @router.get("/submissions/niches", response_model=list[NicheName])
@@ -207,7 +243,9 @@ def list_files(me: CurrentUser, db: Db) -> list[FileOut]:
     query = select(Submission).order_by(Submission.created_at.desc()).limit(500)
     if not can(me, Action.VIEW_ALL_FILES):
         query = query.where(Submission.uploaded_by == me.id)
-    return [_out(db, me, sub) for sub in db.scalars(query)]
+    found = [_out(db, me, sub) for sub in db.scalars(query)]
+    db.commit()  # the cities of files handed in before step 32 were read just now
+    return found
 
 
 @router.post("/submissions", response_model=FileDetail, status_code=201)
@@ -237,7 +275,9 @@ def hand_in(
 
 @router.get("/submissions/{file_id}", response_model=FileDetail)
 def get_file(file_id: uuid.UUID, me: CurrentUser, db: Db) -> FileDetail:
-    return _detail(db, me, _get(db, me, file_id))
+    found = _detail(db, me, _get(db, me, file_id))
+    db.commit()
+    return found
 
 
 @router.post("/submissions/{file_id}/version", response_model=FileDetail)
@@ -245,7 +285,7 @@ def revise(
     file_id: uuid.UUID, me: CurrentUser, db: Db, file: Annotated[UploadFile, File()]
 ) -> FileDetail:
     """A revised version replaces the file and is checked again."""
-    sub = _changeable(db, me, file_id)
+    sub = _changeable(db, me, file_id, revise=True)
     _check(sub, _read(file))
     sub.version += 1
     sub.import_id = None  # a discarded preview of the old version is forgotten
@@ -283,7 +323,7 @@ def marked(file_id: uuid.UUID, me: CurrentUser, db: Db) -> Response:
 @router.delete("/submissions/{file_id}", status_code=204)
 def delete_file(file_id: uuid.UUID, me: CurrentUser, db: Db) -> None:
     """Delete a file before it is added to a batch."""
-    sub = _changeable(db, me, file_id)
+    sub = _changeable(db, me, file_id, revise=False)
     audit.record(db, me, "delete", "file", sub.id, sub.file_name, [])
     db.delete(sub)
     db.commit()
@@ -302,7 +342,7 @@ def use(file_id: uuid.UUID, body: UseIn, me: CurrentUser, db: Db) -> FileOut:
     sub = db.scalar(select(Submission).where(Submission.id == file_id).with_for_update())
     if sub is None:
         raise ApiError(404, "not_found", "That file doesn't exist.")
-    status = _status(sub)
+    status = status_of(sub)
     if status == "used":
         where = _batch(sub)
         name = where.batch_name if where else None
@@ -313,6 +353,10 @@ def use(file_id: uuid.UUID, body: UseIn, me: CurrentUser, db: Db) -> FileOut:
         )
     if status == "errors":
         raise ApiError(409, "not_ready", "This file still has errors: it has to be fixed first.")
+    if status == "needs_top":
+        raise ApiError(
+            409, "needs_top", "Top isn't chosen in every city of this file yet (Top Review)."
+        )
     batch = get_batch(db, body.batch_id)
     if batch.niche.strip().lower() != sub.niche.strip().lower():
         raise ApiError(
@@ -325,7 +369,7 @@ def use(file_id: uuid.UUID, body: UseIn, me: CurrentUser, db: Db) -> FileOut:
         for other in db.scalars(
             select(Submission).where(Submission.sha256 == sub.sha256, Submission.id != sub.id)
         )
-        if _status(other) == "used"
+        if status_of(other) == "used"
     ]
     if twin:
         where = _batch(twin[0])
@@ -335,7 +379,8 @@ def use(file_id: uuid.UUID, body: UseIn, me: CurrentUser, db: Db) -> FileOut:
             "same_leads_used",
             f'The same leads were already used ("{twin[0].file_name}" in {name or "a batch"}).',
         )
-    imp = service.preview(db, me, sub.file_name, sub.content, batch)
+    tops = {key for chosen in sub.tops.values() for key in chosen}
+    imp = service.preview(db, me, sub.file_name, sub.content, batch, tops)
     db.flush()
     sub.import_id = imp.id
     audit.record(db, me, "upload", "import", imp.id, imp.file_name, [])
@@ -348,6 +393,20 @@ def use(file_id: uuid.UUID, body: UseIn, me: CurrentUser, db: Db) -> FileOut:
         sub.file_name,
         [{"field": "batch", "from": None, "to": batch.name}],
     )
+    db.commit()
+    db.refresh(sub)
+    return _out(db, me, sub)
+
+
+@router.post("/submissions/{file_id}/reopen", response_model=FileOut)
+def reopen(file_id: uuid.UUID, me: CurrentUser, db: Db) -> FileOut:
+    """Give a ready file back to Top Review (its Tops are kept), before it is used."""
+    ensure(me, Action.USE_FILES)
+    sub = _get(db, me, file_id)
+    if status_of(sub) != "ready":
+        raise ApiError(409, "not_ready", "Only a ready file that isn't in a batch is reopened.")
+    sub.topped_at = None
+    audit.record(db, me, "reopen for Top Review", "file", sub.id, sub.file_name, [])
     db.commit()
     db.refresh(sub)
     return _out(db, me, sub)

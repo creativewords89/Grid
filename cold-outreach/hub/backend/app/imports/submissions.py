@@ -1,6 +1,7 @@
 """Files handed in on the Files screen (SPEC step 31): Lead Check on a whole file before it
 is in a batch, the file with each wrong cell marked, and a fingerprint of its content so the
-same leads are never added to a batch twice. Pure functions over the workbook."""
+same leads are never added to a batch twice; its cities and their Top businesses for Top
+Review (step 32). Pure functions over the workbook."""
 
 import hashlib
 import io
@@ -15,6 +16,7 @@ from openpyxl.styles import Font, PatternFill
 from openpyxl.utils.exceptions import InvalidFileException
 
 from app.imports import check, reader
+from app.imports.service import SMALL_CITY
 
 REPORT_TAB = "Lead Check"  # the tab the marked file opens on; taken out again on upload
 REPORT_HEADER = ["Severity", "Tab", "Row", "Column", "Business", "Problem", "Value"]
@@ -28,7 +30,8 @@ NO_FILL = PatternFill(fill_type=None)
 class Checked:
     businesses: int
     fingerprint: str
-    check: dict[str, Any]  # errors, warnings and each tab's counts and column problems
+    # errors, warnings, each tab's counts and column problems, and the cities (step 32)
+    check: dict[str, Any]
     problems: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -83,9 +86,52 @@ def run(content: bytes, niche: str) -> Checked:
     return Checked(
         businesses=len(report.leads),
         fingerprint=_fingerprint(report),
-        check={"errors": errors, "warnings": warnings, "tabs": tabs},
+        check={"errors": errors, "warnings": warnings, "tabs": tabs, "cities": _cities(report)},
         problems=problems,
     )
+
+
+# --- Top Review (step 32) -------------------------------------------------------------------
+
+
+def city_key(city: str) -> str:
+    return city.strip().lower()
+
+
+def _cities(report: reader.Report) -> dict[str, dict[str, Any]]:
+    """Each city of the file (lower case) -> its name and how many businesses it has."""
+    found: dict[str, dict[str, Any]] = {}
+    for lead in report.leads:
+        city = lead.values.get("city", "")
+        item = found.setdefault(city_key(city), {"name": city, "businesses": 0})
+        item["businesses"] += 1
+    return found
+
+
+def cities_on(cities: dict[str, dict[str, Any]]) -> list[str]:
+    """The cities that need a Top: those with fewer than 10 businesses are off, as in a
+    batch (SPEC section 6.4 item 8)."""
+    return [key for key, item in cities.items() if item["businesses"] >= SMALL_CITY]
+
+
+def all_topped(cities: dict[str, dict[str, Any]], tops: dict[str, list[str]]) -> bool:
+    return all(tops.get(key) for key in cities_on(cities))
+
+
+def city_businesses(content: bytes, niche: str, key: str) -> list[dict[str, Any]]:
+    """The businesses of one city of the file, as they will be saved: each with its key
+    (the first row it is on), its values and its other columns."""
+    report = reader.read(content, niche)
+    return [
+        {
+            "key": lead.rows[0],
+            "rows": lead.rows,
+            "values": {k: v for k, v in lead.values.items() if v and k not in ("niche", "level")},
+            "extra": lead.extra,
+        }
+        for lead in report.leads
+        if city_key(lead.values.get("city", "")) == key
+    ]
 
 
 def _open(content: bytes) -> Any:
