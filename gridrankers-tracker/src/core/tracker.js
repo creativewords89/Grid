@@ -35,7 +35,23 @@ export function signedIn(state, payload) {
 		schedule: payload.schedule || state.schedule,
 		tasks: payload.tasks || state.tasks,
 	};
+	if (Array.isArray(payload.profile_missing)) Object.assign(next, profileFrom(state, payload.profile_missing));
 	return payload.timer !== undefined ? adoptServerTimer(next, payload.timer, Date.now()) : next;
+}
+
+// The person's profile fields still missing on the portal (section 3, Profile lock): no time is
+// accepted until they are filled in. Once they are, time refused for that reason is sent again.
+function profileFrom(state, missing) {
+	const out = { profileMissing: missing };
+	if (missing.length) return out;
+	const entries = { ...state.entries };
+	Object.values(entries).forEach((e) => {
+		if (e.error && e.error.code === 'grp_profile_incomplete') entries[e.id] = { ...e, error: null };
+	});
+	return { ...out, entries };
+}
+export function withProfile(state, missing) {
+	return Array.isArray(missing) ? { ...state, ...profileFrom(state, missing) } : state;
 }
 
 // A task as the timer shows it: `{key, ref_kind, ref_id, period_key, project_id, label, sub}`.

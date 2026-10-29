@@ -35,7 +35,7 @@ function fakePortal() {
 				};
 			},
 			timer: async () => (guard('timer'), { timer: portal.running ? portal.entries[portal.running] : null, now: new Date().toISOString().slice(0, 19).replace('T', ' ') }),
-			schedule: async () => (guard('schedule'), { work_day: { start: '09:00', end: '17:00', minutes: 480 }, schedule: [] }),
+			schedule: async () => (guard('schedule'), { work_day: { start: '09:00', end: '17:00', minutes: 480 }, schedule: [], profile_missing: portal.missing || [] }),
 			tasks: async () => (guard('tasks'), { projects: [], tasks: [] }),
 		};
 	};
@@ -120,6 +120,34 @@ describe('controller', () => {
 		await ctl.signIn('https://p.example', 'MAXCODE11');
 		await ctl.sync();
 		expect(Object.values(portal.entries)[0].ended_at).not.toBeNull();
+	});
+
+	it('waits for a finished profile, then sends the time it held', async () => {
+		const portal = fakePortal();
+		const { ctl, tick } = setup(portal);
+		await ctl.signIn('https://p.example', 'MAXCODE11');
+		ctl.start(ctl.view().choices[0]);
+		tick(60000);
+		ctl.stop();
+		const id = Object.keys(ctl.state.entries)[0];
+		ctl.set({ ...ctl.state, entries: { ...ctl.state.entries, [id]: { ...ctl.state.entries[id], error: { code: 'grp_profile_incomplete', message: 'Finish your profile' } } } });
+		expect(ctl.view().waiting).toBe(0);
+
+		// The portal says the phone number is missing: nothing starts.
+		portal.missing = ['Phone number'];
+		await ctl.sync({ refresh: true });
+		expect(ctl.view().profileMissing).toEqual(['Phone number']);
+		ctl.start(ctl.view().choices[0]);
+		expect(ctl.view().running).toBeNull();
+
+		// Filled in: the held entry goes up and the timer starts again.
+		portal.missing = [];
+		await ctl.sync({ refresh: true });
+		await ctl.sync();
+		expect(ctl.view().profileMissing).toEqual([]);
+		expect(portal.entries[id]).toBeTruthy();
+		ctl.start(ctl.view().choices[0]);
+		expect(ctl.view().running).not.toBeNull();
 	});
 
 	it('moves a signed-out app from the first build’s address to the tracker’s portal', () => {

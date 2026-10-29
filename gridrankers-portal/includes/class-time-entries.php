@@ -57,7 +57,12 @@ class GRP_Time_Entries {
 			return self::refused( 'grp_time_invalid', __( 'That entry has no valid id.', 'gridrankers-portal' ) );
 		}
 		if ( ! GRP_Permissions::can( $member, GRP_Permissions::TRACK_TIME, array( 'member_id' => $member['id'] ) ) ) {
-			return self::refused( GRP_Permissions::missing_profile( $member ) ? 'grp_profile_incomplete' : 'grp_forbidden', __( 'You can’t track time.', 'gridrankers-portal' ) );
+			$missing = GRP_Permissions::ROLE_ADMIN === GRP_Permissions::effective_role( $member ) ? array() : GRP_Permissions::missing_profile( $member );
+			if ( $missing ) {
+				/* translators: %s: missing profile fields, e.g. "Location, Phone number". */
+				return self::refused( 'grp_profile_incomplete', sprintf( __( 'Finish your profile on the portal first (your page → Settings). Missing: %s.', 'gridrankers-portal' ), implode( ', ', $missing ) ) );
+			}
+			return self::refused( 'grp_forbidden', GRP_Permissions::ROLE_ADMIN === GRP_Permissions::effective_role( $member ) ? __( 'The Super Admin doesn’t track time.', 'gridrankers-portal' ) : __( 'You can’t track time.', 'gridrankers-portal' ) );
 		}
 
 		$known = GRP_Store::get( self::TABLE, $id );

@@ -94,6 +94,21 @@ function Main({ view }) {
 			</header>
 			{view.today && <p className="day">{view.today.working ? `Working day ${view.today.start}–${view.today.end}` : `${view.today.label || 'Day off'} — no reminders today`}</p>}
 
+			{view.profileMissing.length > 0 && (
+				<div className="prompt" role="alert" aria-label="Finish your profile">
+					<p>
+						Finish your profile on the portal before you track time (your page → Settings). Missing: <b>{view.profileMissing.join(', ')}</b>.
+					</p>
+					<div className="acts">
+						<button type="button" className="btn small primary" onClick={() => tracker.openPortal()}>
+							Open the portal
+						</button>
+						<button type="button" className="btn small" onClick={() => tracker.sync()}>
+							I’ve done it
+						</button>
+					</div>
+				</div>
+			)}
 			{view.screenshots > 0 && !view.prompts.shots && <p className="day">📷 A screenshot every {view.screenshots} min while your timer runs{view.shotsWaiting ? ` · ${view.shotsWaiting} waiting to upload` : ''}</p>}
 			{view.prompts.shots && (
 				<div className="prompt" role="alertdialog" aria-label="Screenshots">
@@ -195,7 +210,7 @@ function Main({ view }) {
 				<ul>
 					{list.map((c) => (
 						<li key={c.key}>
-							<button type="button" className={run && run.ref_kind === c.ref_kind && (run.ref_id || null) === (c.ref_id || null) && (run.project_id || null) === (c.project_id || null) ? 'cur' : ''} onClick={() => tracker.start(c)}>
+							<button type="button" className={run && run.ref_kind === c.ref_kind && (run.ref_id || null) === (c.ref_id || null) && (run.project_id || null) === (c.project_id || null) ? 'cur' : ''} disabled={view.profileMissing.length > 0} onClick={() => tracker.start(c)}>
 								<b>{c.label}</b>
 								<span>{c.sub}</span>
 							</button>
