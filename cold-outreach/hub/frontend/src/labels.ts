@@ -4,12 +4,14 @@ export const ROLE_NAMES: Record<Role, string> = {
   owner: "Owner",
   admin: "Admin",
   viewer: "Viewer",
+  collector: "Collector",
 };
 
 export const ROLE_HINTS: Record<Role, string> = {
   owner: "Everything, including API keys, budgets and people.",
   admin: "Imports, agents (on/off, settings, run) and benchmarks.",
   viewer: "Can look at everything, change nothing.",
+  collector: "External team: only Files. Hands in lead files and fixes their own.",
 };
 
 export const RUN_STATUS: Record<Run["status"], string> = {

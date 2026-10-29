@@ -2987,3 +2987,83 @@ textarea {
   white-space: nowrap;
   vertical-align: bottom;
 }
+
+/* The Files screen (step 31). */
+.files-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .files-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.files-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip.chip-on {
+  background: var(--info-bg);
+  border-color: var(--brand);
+  color: var(--brand);
+  font-weight: 600;
+}
+
+.files-hand-in {
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.files-hand-in .field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+}
+
+.files-hand-in select,
+.files-batches select {
+  min-height: 40px;
+}
+
+.files-same {
+  color: var(--warn);
+}
+
+.file-draggable {
+  cursor: grab;
+}
+
+.drag-handle {
+  color: var(--muted);
+}
+
+.files-batches {
+  position: sticky;
+  top: 16px;
+}
+
+.file-target {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.file-target.over {
+  border-color: var(--brand);
+  background: var(--info-bg);
+}
+
+.file-target.no-fit {
+  opacity: 0.45;
+}

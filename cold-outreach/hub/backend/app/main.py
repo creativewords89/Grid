@@ -24,6 +24,7 @@ from app.api import (
     me,
     runs,
     setup,
+    submissions,
     tasks,
     users,
 )
@@ -81,6 +82,7 @@ def create_app() -> FastAPI:
         tasks,
         leads,
         fixes,
+        submissions,
         benchmarks,
         alerts,
         history,

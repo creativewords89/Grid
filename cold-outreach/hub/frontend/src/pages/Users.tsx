@@ -4,7 +4,7 @@ import { useAuth } from "../auth";
 import { Alert, CopyLink, Field, Modal } from "../components/ui";
 import { ROLE_HINTS, ROLE_NAMES } from "../labels";
 
-const ROLES: Role[] = ["viewer", "admin", "owner"];
+const ROLES: Role[] = ["viewer", "collector", "admin", "owner"];
 
 function status(user: User): string {
   if (!user.active) return "Deactivated";
