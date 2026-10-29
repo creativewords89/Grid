@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   api,
   ApiError,
@@ -10,7 +10,7 @@ import {
   type LeadPatch,
 } from "../api";
 import { useAuth } from "../auth";
-import { CHECK_CODES, FIELD_NAMES, problemCount } from "../checkLabels";
+import { CHECK_CODES, FIELD_NAMES } from "../checkLabels";
 import { FixFileButtons } from "../components/FixFile";
 import { Alert, Field, Modal } from "../components/ui";
 import { when } from "../format";
@@ -63,6 +63,41 @@ export function BatchLeads({ batchId, city = "" }: { batchId: string; city?: str
     change({ q: typed.q.trim(), city: typed.city.trim() });
   }
 
+  // Search as you type: the words and the city are applied a moment after the last key.
+  useEffect(() => {
+    const q = typed.q.trim();
+    const place = typed.city.trim();
+    if (q === (filters.q ?? "") && place === (filters.city ?? "")) return;
+    const timer = window.setTimeout(() => change({ q, city: place }), 400);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typed]);
+
+  const menu = useRef<HTMLDetailsElement>(null);
+  const closeMenu = () => menu.current?.removeAttribute("open");
+
+  // The filters that are on, each a chip that takes it off.
+  const chips: [keyof LeadFilters, string][] = [];
+  if (filters.q) chips.push(["q", `“${filters.q}”`]);
+  if (filters.city && !city) chips.push(["city", `City: ${filters.city}`]);
+  if (filters.level) chips.push(["level", filters.level === "top" ? "Top only" : "Not Top"]);
+  if (filters.website)
+    chips.push(["website", filters.website === "yes" ? "Has a website" : "No website"]);
+  if (filters.problems) {
+    const name =
+      filters.problems === "any"
+        ? "Any problem"
+        : filters.problems === "errors"
+          ? "Errors only"
+          : (CHECK_CODES.find(([code]) => code === filters.problems)?.[1] ?? filters.problems);
+    chips.push(["problems", `Problems: ${name}`]);
+  }
+
+  function clear(key: keyof LeadFilters) {
+    if (key === "q" || key === "city") setTyped((t) => ({ ...t, [key]: "" }));
+    change({ [key]: undefined });
+  }
+
   const agents = Object.entries(data?.agents ?? {});
   const onPage = data?.leads.map((l) => l.lead_id) ?? [];
   const allChosen = onPage.length > 0 && onPage.every((id) => chosen.has(id));
@@ -96,121 +131,153 @@ export function BatchLeads({ batchId, city = "" }: { batchId: string; city?: str
 
   return (
     <div className="stack">
-      <form className="filters-row" onSubmit={search} aria-label="Find leads">
-        <Field
-          label="Search"
-          placeholder="Name, email, phone, website…"
-          value={typed.q}
-          onChange={(e) => setTyped((t) => ({ ...t, q: e.target.value }))}
-        />
-        <Field
-          label="City"
+      <form className="leads-toolbar" onSubmit={search} aria-label="Find leads">
+        <div className="toolbar-search">
+          <label className="sr-only" htmlFor="leads-q">
+            Search
+          </label>
+          <input
+            id="leads-q"
+            type="search"
+            placeholder="🔍 Search name, email, phone, website…"
+            value={typed.q}
+            onChange={(e) => setTyped((t) => ({ ...t, q: e.target.value }))}
+          />
+        </div>
+        <label className="sr-only" htmlFor="leads-city">
+          City
+        </label>
+        <input
+          id="leads-city"
+          className="toolbar-city"
+          placeholder="City"
           value={typed.city}
           onChange={(e) => setTyped((t) => ({ ...t, city: e.target.value }))}
         />
-        <div className="field">
-          <label htmlFor="leads-level">Top</label>
-          <select
-            id="leads-level"
-            value={filters.level ?? ""}
-            onChange={(e) => change({ level: e.target.value as LeadFilters["level"] })}
-          >
-            <option value="">All</option>
-            <option value="top">Top only</option>
-            <option value="not_top">Not Top</option>
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="leads-website">Website</label>
-          <select
-            id="leads-website"
-            value={filters.website ?? ""}
-            onChange={(e) => change({ website: e.target.value as LeadFilters["website"] })}
-          >
-            <option value="">All</option>
-            <option value="yes">Has a website</option>
-            <option value="no">No website</option>
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="leads-problems">Problems</label>
-          <select
-            id="leads-problems"
-            value={filters.problems ?? ""}
-            onChange={(e) => change({ problems: e.target.value })}
-          >
-            <option value="">All leads</option>
-            <option value="any">Any problem</option>
-            <option value="errors">Errors only (hold the file)</option>
-            {CHECK_CODES.map(([code, label]) => (
-              <option key={code} value={code}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="leads-sort">Sort by</label>
-          <select
-            id="leads-sort"
-            value={sortValue}
-            onChange={(e) => {
-              const value = e.target.value;
-              if (value.startsWith("score:")) {
-                change({ sort: "score", score_of: value.slice(6) });
-              } else {
-                change({ sort: value as LeadFilters["sort"], score_of: undefined });
-              }
-            }}
-          >
-            {SORTS.map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-            {agents.map(([key, label]) => (
-              <option key={key} value={`score:${key}`}>
-                {label} score (best first)
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <span className="label-spacer" aria-hidden="true">
-            &nbsp;
-          </span>
-          <button className="button">Search</button>
-        </div>
-        <div className="field">
-          <span className="label-spacer" aria-hidden="true">
-            &nbsp;
-          </span>
-          <a className="button" href={`/api/leads/export${leadQuery(shown)}`} download>
-            Download Excel
-          </a>
+        <label className="sr-only" htmlFor="leads-level">
+          Top
+        </label>
+        <select
+          id="leads-level"
+          value={filters.level ?? ""}
+          onChange={(e) => change({ level: e.target.value as LeadFilters["level"] })}
+        >
+          <option value="">Top: all</option>
+          <option value="top">Top only</option>
+          <option value="not_top">Not Top</option>
+        </select>
+        <label className="sr-only" htmlFor="leads-website">
+          Website
+        </label>
+        <select
+          id="leads-website"
+          value={filters.website ?? ""}
+          onChange={(e) => change({ website: e.target.value as LeadFilters["website"] })}
+        >
+          <option value="">Website: all</option>
+          <option value="yes">Has a website</option>
+          <option value="no">No website</option>
+        </select>
+        <label className="sr-only" htmlFor="leads-problems">
+          Problems
+        </label>
+        <select
+          id="leads-problems"
+          value={filters.problems ?? ""}
+          onChange={(e) => change({ problems: e.target.value })}
+        >
+          <option value="">Problems: all leads</option>
+          <option value="any">Any problem</option>
+          <option value="errors">Errors only (hold the file)</option>
+          {CHECK_CODES.map(([code, label]) => (
+            <option key={code} value={code}>
+              {label}
+            </option>
+          ))}
+        </select>
+        <label className="sr-only" htmlFor="leads-sort">
+          Sort by
+        </label>
+        <select
+          id="leads-sort"
+          value={sortValue}
+          onChange={(e) => {
+            const value = e.target.value;
+            if (value.startsWith("score:")) {
+              change({ sort: "score", score_of: value.slice(6) });
+            } else {
+              change({ sort: value as LeadFilters["sort"], score_of: undefined });
+            }
+          }}
+        >
+          {SORTS.map(([value, label]) => (
+            <option key={value} value={value}>
+              Sort: {label}
+            </option>
+          ))}
+          {agents.map(([key, label]) => (
+            <option key={key} value={`score:${key}`}>
+              Sort: {label} score (best first)
+            </option>
+          ))}
+        </select>
+        <button className="sr-only" tabIndex={-1}>
+          Search
+        </button>
+        <div className="toolbar-actions">
+          <details className="menu" ref={menu}>
+            <summary className="button">
+              <span aria-hidden="true">⬇</span> Download
+            </summary>
+            <div className="menu-list">
+              <a href={`/api/leads/export${leadQuery(shown)}`} download onClick={closeMenu}>
+                Download Excel
+                <span className="muted small">The leads shown, every column</span>
+              </a>
+              <a href={`/api/batches/${batchId}/fixes.xlsx`} download onClick={closeMenu}>
+                Download problems to fix
+                <span className="muted small">Wrong cells marked, to fix in Excel</span>
+              </a>
+            </div>
+          </details>
+          <FixFileButtons
+            href={`/api/batches/${batchId}/fixes.xlsx`}
+            batchId={batchId}
+            staff={staff}
+            onSaved={load}
+            download={false}
+          />
         </div>
       </form>
-      {/* Lead Check (step 28): fix the problems offline and upload them back. */}
-      <div className="row">
-        <FixFileButtons
-          href={`/api/batches/${batchId}/fixes.xlsx`}
-          batchId={batchId}
-          staff={staff}
-          onSaved={load}
-        />
-      </div>
       {error && <Alert kind="error">{error}</Alert>}
-      {data && (
-        <p className="muted small">
-          {data.total.toLocaleString()} {data.total === 1 ? "lead" : "leads"}
-          {data.pages > 1 && ` · page ${data.page} of ${data.pages}`}
-        </p>
-      )}
       {notice && <Alert kind="success">{notice}</Alert>}
-      {staff && !city && (
-        <p className="muted small">
-          Top is chosen in a city: open one on the Cities tab and tick its leads.
-        </p>
+      {data && (
+        <div className="leads-summary">
+          <span className="cell-strong">
+            {data.total.toLocaleString()} {data.total === 1 ? "lead" : "leads"}
+          </span>
+          {chips.map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              className="chip"
+              title="Take this filter off"
+              onClick={() => clear(key)}
+            >
+              {label} ×
+            </button>
+          ))}
+          {staff && !city && (
+            <span
+              className="info-dot"
+              title="Top is chosen in a city: open one on the Cities tab and tick its leads."
+              aria-label="Top is chosen in a city: open one on the Cities tab and tick its leads."
+            >
+              ⓘ
+            </span>
+          )}
+          <Pager data={data} onPage={(page) => setFilters((f) => ({ ...f, page }))} />
+        </div>
       )}
       {choosing && chosen.size > 0 && (
         <div className="city-bar" role="region" aria-label="Chosen leads">
@@ -295,11 +362,8 @@ export function BatchLeads({ batchId, city = "" }: { batchId: string; city?: str
                       {lead.business_name || lead.lead_id}
                     </button>
                   </td>
-                  <td className="small nowrap">
-                    {problemCount(
-                      (lead.check ?? []).filter((i) => i.severity === "error").length,
-                      (lead.check ?? []).filter((i) => i.severity === "warning").length,
-                    ) || <span className="muted">✓</span>}
+                  <td className="nowrap">
+                    <CheckBadge issues={lead.check ?? []} />
                   </td>
                   {COLUMNS.map(([key]) => {
                     const found = (lead.check ?? []).filter((i) => i.field === checkField(key));
@@ -337,21 +401,8 @@ export function BatchLeads({ batchId, city = "" }: { batchId: string; city?: str
         </div>
       )}
       {data && data.pages > 1 && (
-        <div className="row">
-          <button
-            className="button"
-            disabled={data.page <= 1}
-            onClick={() => setFilters((f) => ({ ...f, page: data.page - 1 }))}
-          >
-            Previous
-          </button>
-          <button
-            className="button"
-            disabled={data.page >= data.pages}
-            onClick={() => setFilters((f) => ({ ...f, page: data.page + 1 }))}
-          >
-            Next
-          </button>
+        <div className="leads-summary">
+          <Pager data={data} onPage={(page) => setFilters((f) => ({ ...f, page }))} />
         </div>
       )}
       {open && (
@@ -384,6 +435,49 @@ const COLUMNS: [string, string][] = [
 ];
 const LINKS = new Set(["gbp_link", "website", "facebook", "instagram"]);
 
+/** Lead Check of a lead in one badge: green OK, or its errors and warnings. */
+function CheckBadge({ issues }: { issues: { severity: string; message: string }[] }) {
+  const errors = issues.filter((i) => i.severity === "error").length;
+  const warnings = issues.length - errors;
+  if (issues.length === 0) return <span className="badge badge-ok">✓ OK</span>;
+  return (
+    <span title={issues.map((i) => i.message).join("\n")}>
+      {errors > 0 && <span className="badge badge-error">🔴 {errors}</span>}
+      {warnings > 0 && <span className="badge badge-warning">🟠 {warnings}</span>}
+    </span>
+  );
+}
+
+/** ‹ Page 2 of 40 › */
+function Pager({ data, onPage }: { data: LeadPage; onPage: (page: number) => void }) {
+  if (data.pages <= 1) return null;
+  return (
+    <span className="pager">
+      <button
+        type="button"
+        className="button button-small"
+        aria-label="Previous"
+        disabled={data.page <= 1}
+        onClick={() => onPage(data.page - 1)}
+      >
+        ‹
+      </button>
+      <span className="small">
+        Page {data.page} of {data.pages}
+      </span>
+      <button
+        type="button"
+        className="button button-small"
+        aria-label="Next"
+        disabled={data.page >= data.pages}
+        onClick={() => onPage(data.page + 1)}
+      >
+        ›
+      </button>
+    </span>
+  );
+}
+
 /** The Lead Check field of a column of the table. */
 function checkField(column: string): string {
   return column === "emails" ? "email" : column;
@@ -414,8 +508,15 @@ function Cell({ lead, field }: { lead: LeadPage["leads"][number]; field: string 
       </a>
     );
   }
+  if (field === "notes" || field === "address") {
+    return (
+      <span className="cell-clamp" title={value}>
+        {value}
+      </span>
+    );
+  }
   return (
-    <span className={field === "notes" || field === "address" ? "cell-wrap" : "nowrap"}>
+    <span className="cell-trunc" title={value}>
       {value}
     </span>
   );

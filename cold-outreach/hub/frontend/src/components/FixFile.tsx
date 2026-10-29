@@ -12,21 +12,25 @@ export function FixFileButtons({
   batchId,
   staff,
   onSaved,
+  download = true,
 }: {
   href: string;
   batchId: string;
   staff: boolean;
   onSaved: () => void;
+  download?: boolean; // false where a Download menu has it already
 }) {
   const [uploading, setUploading] = useState(false);
   return (
     <>
-      <a className="button" href={href} download>
-        Download problems to fix
-      </a>
+      {download && (
+        <a className="button" href={href} download>
+          Download problems to fix
+        </a>
+      )}
       {staff && (
         <button type="button" className="button" onClick={() => setUploading(true)}>
-          Upload fixes
+          <span aria-hidden="true">⬆</span> Upload fixes
         </button>
       )}
       {uploading && (
