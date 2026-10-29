@@ -409,12 +409,15 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    twice, rows whose City isn't the tab's name. **Per lead**, on its current values: an
    **error** (🔴) is wrong data in a field (a phone number, email or link in the Address; a
    Facebook, Instagram or Google Maps link, or no link, as the Website; letters or not 10
-   digits in the Phone; WhatsApp not a phone; a GBP link that isn't Google Maps; a link or a
+   digits in the Phone; WhatsApp not Yes or empty (it says whether the Phone number has
+   WhatsApp; "No" is a problem too: empty means no WhatsApp, and its one-click fix empties
+   it); a GBP link that isn't Google Maps; a link or a
    phone number as the business name; numbers in the City; a Facebook column that isn't
    Facebook and the same for Instagram; Reviews not a whole number; Rating not a number or
    outside 0–5; Reviews and Rating swapped); a **warning** (🟠) is missing or doubtful data
-   (no GBP link, phone or address, an address without the city, a made-up email, a very long
-   name). The **preview** shows errors and warnings by tab and marks each wrong cell; saving
+   (no GBP link, phone or address, WhatsApp Yes without a phone, an address without the
+   city, a made-up email, a very long name). When the rules change, a migration clears the
+   saved checks so every lead is checked again under the new rules. The **preview** shows errors and warnings by tab and marks each wrong cell; saving
    a file checks its leads. **A file with an error is held**: while any lead it brought or
    updated in its batch has an error, agents get **none** of that file's leads (section 6.7).
    As soon as a file is saved the team is told (alert `lead_check`, email and Telegram): held

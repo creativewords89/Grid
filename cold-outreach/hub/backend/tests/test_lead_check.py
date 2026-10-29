@@ -25,7 +25,7 @@ CLEAN = {
     "city": "Tulsa",
     "website": "https://multiclean1.com/",
     "phone": "(918) 523-8300",
-    "whatsapp": "+1 918 523 8300",
+    "whatsapp": "Yes",
     "email": "kevin@multiclean1.com",
     "facebook": "https://facebook.com/multiclean",
     "instagram": "https://instagram.com/multiclean",
@@ -43,6 +43,8 @@ def codes(**changes: str) -> list[str]:
 
 def test_a_clean_lead_has_no_problem() -> None:
     assert codes() == []
+    # WhatsApp says whether the phone number has WhatsApp.
+    assert codes(whatsapp="yes") == codes(whatsapp="YES") == codes(whatsapp="") == []
     assert codes(phone="918-523-8300 ext 4", gbp_link="https://maps.google.com/?cid=1") == []
 
 
@@ -58,7 +60,9 @@ def test_a_clean_lead_has_no_problem() -> None:
         ({"website": "call us"}, "WEBSITE_NOT_LINK"),
         ({"phone": "call 918 555"}, "PHONE_HAS_LETTERS"),
         ({"phone": "555-0101"}, "PHONE_WRONG_LENGTH"),
-        ({"whatsapp": "yes"}, "WHATSAPP_NOT_PHONE"),
+        ({"whatsapp": "918 523 8300"}, "WHATSAPP_NOT_YES"),
+        ({"whatsapp": "No"}, "WHATSAPP_NOT_YES"),
+        ({"whatsapp": "maybe"}, "WHATSAPP_NOT_YES"),
         ({"gbp_link": "https://multiclean1.com"}, "GBP_NOT_MAPS"),
         ({"business_name": "https://multiclean1.com"}, "NAME_IS_LINK"),
         ({"business_name": "(918) 523-8300"}, "NAME_IS_PHONE"),
@@ -87,6 +91,7 @@ def test_missing_or_doubtful_data_only_warns() -> None:
     assert {i.code for i in found} == {
         "NO_GBP_LINK",
         "NO_PHONE",
+        "WHATSAPP_NO_PHONE",
         "ADDRESS_OTHER_CITY",
         "EMAIL_PLACEHOLDER",
     }
@@ -118,6 +123,11 @@ def test_one_click_fixes() -> None:
         "label": "Move the phone number to Phone",
         "changes": {"address": "5874 S 129th E Ave, Tulsa", "phone": "(918) 555-0101"},
     }
+    assert fix_for("WHATSAPP_NOT_YES", CLEAN | {"whatsapp": "No"}) == {
+        "label": "Clear it (empty means no WhatsApp)",
+        "changes": {"whatsapp": ""},
+    }
+    assert fix_for("WHATSAPP_NOT_YES", CLEAN | {"whatsapp": "918 523 8300"}) is None
     assert fix_for("PHONE_WRONG_LENGTH", CLEAN) is None
 
 

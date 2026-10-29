@@ -10,7 +10,7 @@ export const CHECK_CODES: [string, string][] = [
   ["WEBSITE_NOT_LINK", "Website isn't a link"],
   ["PHONE_HAS_LETTERS", "Phone holds letters"],
   ["PHONE_WRONG_LENGTH", "Phone isn't a 10-digit US number"],
-  ["WHATSAPP_NOT_PHONE", "WhatsApp isn't a phone number"],
+  ["WHATSAPP_NOT_YES", "WhatsApp isn't Yes or empty"],
   ["GBP_NOT_MAPS", "GBP link isn't a Google Maps link"],
   ["NAME_IS_LINK", "Business name is a link"],
   ["NAME_IS_PHONE", "Business name is a phone number"],
@@ -28,6 +28,7 @@ export const CHECK_CODES: [string, string][] = [
   ["NO_ADDRESS", "No address (warning)"],
   ["ADDRESS_OTHER_CITY", "Address doesn't mention the city (warning)"],
   ["EMAIL_PLACEHOLDER", "Email looks made up (warning)"],
+  ["WHATSAPP_NO_PHONE", "WhatsApp Yes but no phone (warning)"],
   ["NAME_TOO_LONG", "Business name unusually long (warning)"],
 ];
 
