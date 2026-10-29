@@ -352,7 +352,7 @@ test("the run is on the Runs screen and the changes are in History", async () =>
   ).toBeVisible();
 });
 
-test("a Collector hands in a file and the Owner drags it onto a batch, once", async ({
+test("a Collector hands in a file and the Owner adds it to a batch, once", async ({
   browser,
 }) => {
   // The Owner invites the external team's Collector (email isn't set up: a link to copy).
@@ -410,7 +410,7 @@ test("a Collector hands in a file and the Owner drags it onto a batch, once", as
   );
   await cal.getByRole("link", { name: "Files" }).first().click();
 
-  // The Owner drags the ready file onto the batch and saves its preview there.
+  // The Owner adds the ready file to a batch and saves its preview there.
   await page
     .getByRole("navigation", { name: "Main" })
     .getByRole("link", { name: "Files" })
@@ -420,11 +420,12 @@ test("a Collector hands in a file and the Owner drags it onto a batch, once", as
   await expect(
     row.getByRole("button", { name: "Add to Cleaning 01" }),
   ).toBeVisible();
-  await row.dragTo(
-    page
-      .getByRole("complementary", { name: "Batches" })
-      .getByText("Texas November"),
-  );
+  // Another batch than its own: from the file's page.
+  await row.getByRole("button", { name: "Open" }).click();
+  await page
+    .getByLabel("Add to batch")
+    .selectOption({ label: "Texas November" });
+  await page.getByRole("button", { name: "Add to batch" }).click();
   const preview = page.getByRole("article", { name: "Preview" });
   await preview.getByRole("button", { name: "Save 4 businesses" }).click();
   await expect(preview.getByText(/Saved: 0 new and 4 updated/)).toBeVisible();

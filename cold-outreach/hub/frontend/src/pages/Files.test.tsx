@@ -246,6 +246,14 @@ test("a used file says where, and can't be changed", async () => {
 
   expect(await screen.findByText("Batch 01")).toBeVisible();
   expect(screen.getByText(/Used in/)).toBeVisible();
+  expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual([
+    "Batch name",
+    "File",
+    "Stage",
+    "Status",
+    "In a batch",
+    "Next step",
+  ]); // a Collector's own files: no Handed in by
   await userEvent.click(screen.getByRole("button", { name: "tulsa.xlsx" }));
   expect(await screen.findByRole("heading", { name: "tulsa.xlsx" })).toBeVisible();
   expect(screen.queryByRole("button", { name: /Upload fixes/ })).toBeNull();
@@ -265,10 +273,10 @@ test("an owner adds a ready file to a batch of its niche", async () => {
   });
   render(<App />);
 
-  const aside = await screen.findByRole("complementary", { name: "Batches" });
-  expect(await within(aside).findByText("Batch 01")).toBeVisible();
-  expect(screen.getByRole("button", { name: "Niches" })).toBeVisible();
-  await userEvent.click(screen.getByRole("button", { name: "tulsa.xlsx" }));
+  // No drag-and-drop panel any more: a file goes to another batch from its own page.
+  expect(await screen.findByRole("button", { name: "Niches" })).toBeVisible();
+  await userEvent.click(await screen.findByRole("button", { name: "tulsa.xlsx" }));
+  expect(screen.queryByRole("complementary", { name: "Batches" })).toBeNull();
   const select = await screen.findByLabelText("Add to batch");
   expect(within(select).queryByRole("option", { name: "Roofs 01" })).toBeNull();
   await userEvent.selectOptions(select, "b1");
