@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEven
 import {
   api,
   ApiError,
+  download,
   type Batch,
   type FileLead,
   type FileLeadFilters,
@@ -692,6 +693,20 @@ function FileView({
     return () => window.clearTimeout(timer);
   }, [item, load]);
 
+  const [downloading, setDownloading] = useState(false);
+
+  async function downloadMarked() {
+    setDownloading(true);
+    setError("");
+    try {
+      await download(`/submissions/${id}/marked.xlsx`, "problems-to-fix.xlsx");
+    } catch (err) {
+      setError(`The file wasn't downloaded: ${message(err, "try again.")}`);
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   async function revise() {
     const file = input.current?.files?.[0];
     if (!file) return;
@@ -820,9 +835,14 @@ function FileView({
 
           <div className="row">
             {!["checking", "failed"].includes(item.status) && (
-              <a className="button" href={`/api/submissions/${item.id}/marked.xlsx`} download>
-                <span aria-hidden>⬇</span> Download problems to fix
-              </a>
+              <button
+                className="button"
+                disabled={busy || downloading}
+                onClick={() => void downloadMarked()}
+              >
+                <span aria-hidden>⬇</span>{" "}
+                {downloading ? "Preparing the file…" : "Download problems to fix"}
+              </button>
             )}
             {revisable && (
               <label className={`button ${busy ? "disabled" : ""}`}>
@@ -978,9 +998,12 @@ function FileLeads({ id }: { id: string }) {
             value={filters.problems ?? ""}
             onChange={(e) => set({ problems: e.target.value as FileLeadFilters["problems"] })}
           >
-            <option value="">Problems: all ({data?.counts.all ?? 0})</option>
+            <option value="">All ({data?.counts.all ?? 0})</option>
+            <option value="problems">
+              Problems: errors and warnings ({data?.counts.problems ?? 0})
+            </option>
             <option value="errors">🔴 Errors ({data?.counts.errors ?? 0})</option>
-            <option value="warnings">🟠 Warnings only ({data?.counts.warnings ?? 0})</option>
+            <option value="warnings">🟠 Warnings ({data?.counts.warnings ?? 0})</option>
             <option value="ok">✓ OK ({data?.counts.ok ?? 0})</option>
           </select>
         </label>

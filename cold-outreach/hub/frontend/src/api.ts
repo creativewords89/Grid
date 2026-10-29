@@ -462,7 +462,7 @@ export type FileLeadsPage = {
   total: number;
   page: number;
   pages: number;
-  counts: { all: number; errors: number; warnings: number; ok: number };
+  counts: { all: number; problems: number; errors: number; warnings: number; ok: number };
   cities: string[];
   leads: FileLead[];
 };
@@ -470,7 +470,7 @@ export type FileLeadsPage = {
 export type FileLeadFilters = {
   search?: string;
   city?: string;
-  problems?: "" | "errors" | "warnings" | "ok";
+  problems?: "" | "problems" | "errors" | "warnings" | "ok";
   sort?: "row" | "name" | "city" | "reviews" | "rating" | "problems";
   page?: number;
 };
@@ -784,6 +784,30 @@ function uploadWithProgress<T>(
     };
     xhr.send(form);
   });
+}
+
+/** Download a file from the API, saying why when it can't be had (step 33). */
+export async function download(path: string, fallbackName: string): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch(`/api${path}`, { credentials: "same-origin" });
+  } catch {
+    throw new ApiError(0, "network", "The server can't be reached. Check your connection.");
+  }
+  if (!response.ok) {
+    const data: unknown = await response.json().catch(() => null);
+    throw toApiError(response.status, data);
+  }
+  const blob = await response.blob();
+  const named = /filename="([^"]+)"/.exec(response.headers.get("Content-Disposition") ?? "");
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = named?.[1] ?? fallbackName;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 export async function getHealth(signal?: AbortSignal): Promise<Health> {
