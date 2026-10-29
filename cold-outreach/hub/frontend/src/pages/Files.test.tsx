@@ -76,7 +76,7 @@ const leads = {
   total: 2,
   page: 1,
   pages: 1,
-  counts: { all: 2, errors: 1, warnings: 0, ok: 1 },
+  counts: { all: 2, problems: 1, errors: 1, warnings: 0, ok: 1 },
   cities: ["Tulsa"],
   leads: [
     {
@@ -169,6 +169,10 @@ test("a file opens to its businesses, the wrong cells marked", async () => {
     "GET /submissions": [200, [file()]],
     "GET /submissions/niches": [200, ["Cleaning"]],
     "GET /submissions/f1": [200, detail],
+    "GET /submissions/f1/marked.xlsx": [
+      404,
+      { error: { code: "not_found", message: "That file doesn't exist." } },
+    ],
     "GET /submissions/f1/leads?page=1&sort=row": [200, leads],
     "GET /submissions/f1/leads?page=1&sort=row&problems=errors": [
       200,
@@ -180,10 +184,11 @@ test("a file opens to its businesses, the wrong cells marked", async () => {
   await userEvent.click(await screen.findByRole("button", { name: "tulsa.xlsx" }));
   expect(await screen.findByRole("heading", { name: "tulsa.xlsx" })).toBeVisible();
   expect(screen.getByText(/2 errors to fix/)).toBeVisible();
-  expect(screen.getByRole("link", { name: /Download problems to fix/ })).toHaveAttribute(
-    "href",
-    "/api/submissions/f1/marked.xlsx",
-  );
+  // A download that fails says why.
+  await userEvent.click(screen.getByRole("button", { name: /Download problems to fix/ }));
+  expect(
+    await screen.findByText("The file wasn't downloaded: That file doesn't exist."),
+  ).toBeVisible();
   expect(screen.getByText(/Upload revised version/)).toBeVisible();
   const table = await screen.findByRole("region", { name: "Businesses in this file" });
   const wrong = await within(table).findByText("call us");
@@ -192,7 +197,19 @@ test("a file opens to its businesses, the wrong cells marked", async () => {
   expect(within(table).getByText("Tulsa · 14")).toBeVisible();
   // Only to look at: no editing in the table.
   expect(within(table).queryByRole("textbox", { name: /Phone/ })).toBeNull();
-  await userEvent.selectOptions(within(table).getByLabelText("Problems"), "errors");
+  const problems = within(table).getByLabelText("Problems");
+  expect(
+    within(problems)
+      .getAllByRole("option")
+      .map((o) => o.textContent),
+  ).toEqual([
+    "All (2)",
+    "Problems: errors and warnings (1)",
+    "🔴 Errors (1)",
+    "🟠 Warnings (0)",
+    "✓ OK (1)",
+  ]);
+  await userEvent.selectOptions(problems, "errors");
   expect(await within(table).findByText("1 businesses")).toBeVisible();
   expect(
     calls.some((c) => c.path === "/submissions/f1/leads?page=1&sort=row&problems=errors"),

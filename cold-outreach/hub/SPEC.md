@@ -926,3 +926,8 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     the stale claim, a version during a check, the table's filters, who adds and manages
     niches, close spellings, renaming that carries everything, deleting only unused ones;
     vitest for uploading, a new niche and the file's table; e2e: checked after a reload.
+    (Corrected after step 33: the table's Problems filter is **All**, **Problems** (errors
+    and warnings), **Errors**, **Warnings** and **OK**, each with its count. **Download
+    problems to fix** fetches the file and says why when it can't; a workbook the Hub can
+    read but not mark in place is made again from what it read: a tab per tab, the row each
+    business was on, every standard column and the same marks.)

@@ -395,6 +395,12 @@ test("a Collector hands in a file and the Owner drags it onto a batch, once", as
   await expect(
     businesses.getByText("Sparkle Home Cleaning").first(),
   ).toBeVisible();
+  // The file with its problems marked downloads.
+  const downloaded = cal.waitForEvent("download");
+  await cal.getByRole("button", { name: /Download problems to fix/ }).click();
+  expect((await downloaded).suggestedFilename()).toBe(
+    "cleaning-leads-v1-to-fix.xlsx",
+  );
   await cal.getByRole("link", { name: "Files" }).first().click();
 
   // The Owner drags the ready file onto the batch and saves its preview there.

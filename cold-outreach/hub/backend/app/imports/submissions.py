@@ -6,12 +6,13 @@ Review (step 32). Pure functions over the workbook."""
 import hashlib
 import io
 import json
+import re
 import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 from openpyxl.comments import Comment
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils.exceptions import InvalidFileException
@@ -240,12 +241,58 @@ def marked(content: bytes, problems: list[dict[str, Any]], tab_check: dict[str, 
         column = layout[1].get(item["field"]) if layout else None
         if sheet is None or column is None:
             continue
-        cell = sheet.cell(item["line"], column)
+        _mark(sheet.cell(item["line"], column), [item])
+    return _finish(book, problems, tab_check)
+
+
+def rebuilt(
+    leads: list[dict[str, Any]], problems: list[dict[str, Any]], tab_check: dict[str, Any]
+) -> bytes:
+    """The file made again from what the Hub read of it, for a file the Hub can't mark in
+    place (step 33): one tab per tab of the file, with the row each business was on, every
+    standard column and each wrong cell marked the same way."""
+    book = Workbook()
+    first = book.active
+    header = ["Row in your file", *(LABELS[f] for f in TABLE_FIELDS)]
+    sheets: dict[str, Any] = {}
+    for lead in leads:
+        tab = lead["tab"] or "File"
+        if tab not in sheets:
+            title = re.sub(r"[\[\]:*?/\\]", " ", tab).strip()[:31] or "File"
+            while title in book.sheetnames:
+                title = f"{title[:28]} {len(sheets) + 1}"
+            sheets[tab] = book.create_sheet(title)
+            sheets[tab].append(header)
+            for cell in sheets[tab][1]:
+                cell.font = Font(bold=True)
+        sheet = sheets[tab]
+        sheet.append([lead["line"], *(lead["values"].get(f, "") for f in TABLE_FIELDS)])
+        line = sheet.max_row
+        for cell in sheet[line][1:]:
+            if isinstance(cell.value, str):
+                cell.data_type = "s"
+        for item in lead["issues"]:
+            if item["field"] in TABLE_FIELDS:
+                _mark(sheet.cell(line, TABLE_FIELDS.index(item["field"]) + 2), [item])
+    if first is not None:
+        book.remove(first)
+    return _finish(book, problems, tab_check)
+
+
+LABELS = {**check.STANDARD, "notes": "Notes"}
+
+
+def _mark(cell: Any, issues: list[dict[str, Any]]) -> None:
+    for item in issues:
         error = item["severity"] == "error"
         if error or cell.fill != RED:
             cell.fill = RED if error else YELLOW
         old = cell.comment.text + "\n" if cell.comment else ""
         cell.comment = Comment(f"{old}{'Error' if error else 'Warning'}: {item['message']}", AUTHOR)
+
+
+def _finish(book: Any, problems: list[dict[str, Any]], tab_check: dict[str, Any]) -> bytes:
+    """Add the first tab listing every problem, and save."""
     report = book.create_sheet(REPORT_TAB, 0)
     report.append(REPORT_HEADER)
     for cell in report[1]:

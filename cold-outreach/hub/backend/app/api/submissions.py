@@ -7,6 +7,7 @@ A Collector sees only their own files and changes them only while they have erro
 Owners, Admins and Viewers see every file. A file being added to a batch (its preview waits)
 or used (saved in a batch) can't be changed or deleted."""
 
+import logging
 import re
 import uuid
 from datetime import datetime
@@ -25,11 +26,12 @@ from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
 from app.db.models import ImportStatus, Submission, User
 from app.errors import ApiError
-from app.imports import check, reader, service
+from app.imports import check, service
 from app.imports import submissions as files
 from app.permissions import Action, can, ensure
 
 router = APIRouter(tags=["files"])
+log = logging.getLogger("files")
 
 # checking (or failed: unreadable) → errors (Collectors fix them) → needs_top (Top Review)
 # → ready → adding → used
@@ -287,8 +289,11 @@ def marked(file_id: uuid.UUID, me: CurrentUser, db: Db) -> Response:
         raise ApiError(409, "not_checked", "This file isn't checked yet.")
     try:
         content = files.marked(sub.content, sub.problems, sub.check)
-    except reader.ReadError as error:
-        raise ApiError(422, "unreadable", str(error)) from None
+    except Exception:
+        # Some workbooks open for reading but not for marking: the Hub makes the file again
+        # from what it read, with the same marks, so the download always works.
+        log.exception("file %s couldn't be marked in place", sub.id)
+        content = files.rebuilt(sub.leads, sub.problems, sub.check)
     stem = re.sub(r"[^A-Za-z0-9._-]+", "-", sub.file_name.rsplit(".", 1)[0])[:80]
     name = f"{stem or 'file'}-v{sub.version}-to-fix.xlsx"
     return Response(
@@ -318,7 +323,7 @@ def file_leads(
     db: Db,
     search: Annotated[str, Query(max_length=200)] = "",
     city: Annotated[str, Query(max_length=120)] = "",
-    problems: Annotated[Literal["", "errors", "warnings", "ok"], Query()] = "",
+    problems: Annotated[Literal["", "problems", "errors", "warnings", "ok"], Query()] = "",
     sort: Annotated[
         Literal["row", "name", "city", "reviews", "rating", "problems"], Query()
     ] = "row",
@@ -333,20 +338,21 @@ def file_leads(
     def errors(lead: dict[str, Any]) -> int:
         return sum(1 for i in lead["issues"] if i["severity"] == "error")
 
-    def kind(lead: dict[str, Any]) -> str:
-        if errors(lead):
-            return "errors"
-        return "warnings" if lead["issues"] else "ok"
+    def kinds(lead: dict[str, Any]) -> set[str]:
+        """Errors and Warnings are the businesses with one; Problems those with either."""
+        found = {i["severity"] + "s" for i in lead["issues"]}
+        return found | {"problems"} if found else {"ok"}
 
     if city:
         rows = [r for r in rows if r["values"].get("city", "").lower() == city.strip().lower()]
     if words := search.lower().split():
         rows = [r for r in rows if _matches(r, words)]
-    counts = {"all": len(rows), "errors": 0, "warnings": 0, "ok": 0}
+    counts = {"all": len(rows), "problems": 0, "errors": 0, "warnings": 0, "ok": 0}
     for row in rows:
-        counts[kind(row)] += 1
+        for found in kinds(row):
+            counts[found] += 1
     if problems:
-        rows = [r for r in rows if kind(r) == problems]
+        rows = [r for r in rows if problems in kinds(r)]
     if sort == "name":
         rows.sort(key=lambda r: r["values"].get("business_name", "").lower())
     elif sort == "city":
