@@ -1,0 +1,58 @@
+/* GridRankers Tracker window: the portal's colours, light and dark. */
+:root{
+  --bg:#E9EEF2; --panel:#FFFFFF; --panel-2:#F4F7F9; --ink:#15233A; --ink-2:#4A5A70; --line:#D3DBE3;
+  --accent:#2753C9; --accent-ink:#FFFFFF; --done:#2A7A4B; --done-bg:#E4F4EA; --doing:#B77F00; --doing-bg:#FFF4D6; --urgent:#D3302A;
+  color-scheme:light dark;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#0F1724; --panel:#172233; --panel-2:#1D2A3E; --ink:#E6ECF4; --ink-2:#9AA9BD; --line:#2A3A52;
+    --accent:#7FA2FF; --accent-ink:#0F1724; --done:#5CCB8A; --done-bg:#15331F; --doing:#F2C04A; --doing-bg:#352B12; --urgent:#FF6B61}
+}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 "Segoe UI",system-ui,-apple-system,sans-serif}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+h1,h2{margin:0}
+.muted{color:var(--ink-2)} .small{font-size:.8rem}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:9px 14px;font-weight:600;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.small{padding:5px 10px;font-size:.8rem}
+.btn:disabled{opacity:.6;cursor:default}
+.link{border:0;background:none;color:var(--accent);text-decoration:underline;text-underline-offset:2px;cursor:pointer;padding:2px}
+.err{color:var(--urgent);min-height:1.2em;margin:0;font-size:.85rem}
+.warn{background:var(--doing-bg);color:var(--ink);border-radius:10px;padding:8px 10px;font-size:.85rem}
+input{width:100%;border:1px solid var(--line);background:var(--panel-2);border-radius:10px;padding:9px 11px}
+
+.signin{max-width:340px;margin:0 auto;padding:40px 20px;display:flex;flex-direction:column;gap:12px}
+.signin label{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:.85rem}
+.signin .link{align-self:flex-start}
+.logo{width:48px;height:48px;border-radius:12px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-weight:800}
+
+.main{display:flex;flex-direction:column;gap:12px;padding:16px;min-height:100vh}
+.head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.head>div{display:flex;flex-direction:column}
+.status{display:inline-flex;align-items:center;gap:6px;font-size:.8rem;color:var(--ink-2)}
+.status i{width:8px;height:8px;border-radius:50%;background:var(--done)}
+.status.offline i{background:#E68C14}
+.today{font-weight:700;font-variant-numeric:tabular-nums}
+.day{margin:-6px 0 0;font-size:.8rem;color:var(--ink-2)}
+.timer{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:76px}
+.timer.on{background:var(--done-bg);border-color:color-mix(in srgb,var(--done) 45%,var(--line))}
+.timer p{margin:0}
+.timer>div{display:flex;flex-direction:column;min-width:0}
+.clock{font-size:1.8rem;font-variant-numeric:tabular-nums;line-height:1.1}
+.what{color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.btn.stop{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.attention{background:var(--doing-bg);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.attention h2{font-size:.85rem}
+.att{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.att>div{display:flex;flex-direction:column;font-size:.85rem}
+.att span{color:var(--ink-2)}
+.pick{display:flex;flex-direction:column;gap:8px;flex:1;min-height:0}
+.pick ul{list-style:none;margin:0;padding:0;background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:auto;max-height:52vh}
+.pick li+li{border-top:1px solid var(--line)}
+.pick li button{display:flex;flex-direction:column;align-items:flex-start;width:100%;text-align:left;border:0;background:none;padding:9px 12px;cursor:pointer}
+.pick li button:hover{background:var(--panel-2)}
+.pick li button.cur{background:var(--done-bg)}
+.pick li span{font-size:.78rem;color:var(--ink-2)}
+.foot{display:flex;justify-content:space-between;gap:8px;font-size:.85rem}
