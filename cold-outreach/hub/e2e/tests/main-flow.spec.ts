@@ -160,14 +160,12 @@ test("a Reviewer gives a city its Top and sends it to the niche's batch now", as
   ).toHaveText(["Top Review"]);
   const lists = rita.getByRole("navigation", { name: "Cities" });
   await lists.getByRole("button", { name: /Cities under 10/ }).click();
-  await rita.getByRole("button", { name: "Dallas" }).click();
-  await rita.getByRole("checkbox", { name: "Top: Big Shine Co" }).check();
-  await rita.getByRole("button", { name: "Save the Top of Dallas" }).click();
-  await expect(
-    rita.getByText(
-      /Saved the Top of Dallas: it goes on to its batch in (59|60) min/,
-    ),
-  ).toBeVisible();
+  // The cities under 10 are ticked on one page (step 41), most reviews first.
+  await rita
+    .getByRole("checkbox", { name: "Top: Big Shine Co (Dallas)" })
+    .check();
+  await rita.getByRole("button", { name: "Save the Tops of 1 city" }).click();
+  await expect(rita.getByText(/Saved the Top of 1 city/)).toBeVisible();
   await rita
     .getByRole("navigation", { name: "Cities" })
     .getByRole("button", { name: /^Ready/ })

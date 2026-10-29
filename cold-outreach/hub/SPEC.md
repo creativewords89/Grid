@@ -1052,3 +1052,19 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     (Corrected after step 40: while a file has duplicates, **Download problems to fix** is
     off, on its page and its row, and the server refuses the fix file ("Remove duplicates
     first"): duplicates go first, on the Hub, then the other problems download for Excel.)
+41. **Top Review without waiting** (asked for after step 40): a file is made ready for Top
+    Review **once**, when it is sent on: each city keeps its businesses
+    (`file_cities.items`, migration `0029` fills them for files already sent on), and from
+    then on the file is **never checked again** (a migration that checks files again leaves
+    files sent on alone; unmuting a city of one checks only that city's businesses, there and
+    then, and refuses while one has an error). Top Review reads only those: never the
+    file's content or all its businesses. The screen never shows "Loading": the last lists
+    show at once (kept in the browser) and are brought up to date behind; the first time,
+    grey rows. A city's businesses come **most reviews first**, those meeting the niche's
+    benchmark (its batch's, else the niche's first; GBP reviews and rating) marked **⭐ a
+    likely Top**. **Save & next city** saves and opens the next city of the list at once
+    (fetched while the current one is worked on); the keyboard works (↑ ↓, Space ticks,
+    Enter saves and goes on). Ticks are kept as a draft in the browser until saved, through
+    a reload or going offline. **Cities under 10** are one page (30 cities a page) with their
+    businesses: tick their Tops and **Save the Tops of N cities** at once
+    (`PUT /api/review/tops`).

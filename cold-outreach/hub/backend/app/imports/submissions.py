@@ -225,8 +225,18 @@ def seconds_until(when: datetime | None) -> int | None:
 
 
 def send_on(sub: Submission) -> None:
-    """The Final check is over (step 36): the file goes on to Top Review."""
+    """The Final check is over (step 36): the file goes on to Top Review, its cities made
+    ready for it once (step 41)."""
     sub.sent_at = now()
+    prepare_cities(sub)
+
+
+def prepare_cities(sub: Submission) -> None:
+    """Keep each city's businesses for Top Review (step 41), so it never reads the file or
+    all its businesses again. A city in its batch or muted keeps none."""
+    for city in sub.cities:
+        live = city.moved_at is None and not city.muted
+        city.items = city_businesses(sub.leads, city.key) if live else []
 
 
 def city_businesses(leads: list[dict[str, Any]], key: str) -> list[dict[str, Any]]:

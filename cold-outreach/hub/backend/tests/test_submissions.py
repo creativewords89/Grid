@@ -332,7 +332,7 @@ def test_a_city_handed_in_again_is_muted_until_unmuted(owner: TestClient, person
             row("Bloom", "https://share.google/bl", "512 555 0111", city="Austin"),
         ],
     }
-    second = hand_in(cal, other_dallas, name="dallas-2.xlsx")
+    second = hand_in(cal, other_dallas, name="dallas-2.xlsx", send=False)
     # Dallas is muted (its bad row isn't counted); Austin is checked as usual.
     assert second["errors"] == 0 and second["cities_muted"] == 1
     dallas = next(c for c in second["cities"] if c["name"] == "Dallas")
@@ -356,6 +356,50 @@ def test_a_city_handed_in_again_is_muted_until_unmuted(owner: TestClient, person
     # Checked again: Dallas is on, and its bad row (and Roofing's twins) count now.
     assert again["cities_muted"] == 0
     assert again["status"] == "errors"
+
+
+def test_a_file_in_top_review_is_never_checked_again(owner: TestClient, person: Person) -> None:
+    """Step 41: unmuting a city of a file sent on checks only that city, here and now; with
+    an error in it, it stays muted."""
+    cal, _ = person(Role.COLLECTOR)
+    first = hand_in(cal, BIG_DALLAS, name="dallas.xlsx")
+    clean = {
+        "Dallas": [
+            STANDARD,
+            *(
+                row(f"Shine {n}", f"https://share.google/s{n}", f"(214) 556-{n:04d}", city="Dallas")
+                for n in range(10)
+            ),
+        ],
+        "Austin": [
+            STANDARD,
+            row("Bloom", "https://share.google/bl", "512 555 0111", city="Austin"),
+        ],
+    }
+    second = hand_in(cal, clean, name="dallas-2.xlsx")
+    assert second["status"] == "in_batch" and second["cities_muted"] == 1
+    assert owner.delete(f"/api/submissions/{first['id']}").status_code == 204
+    unmuted = owner.post(f"/api/submissions/{second['id']}/cities/dallas/unmute")
+    assert unmuted.status_code == 200, unmuted.text
+    # Not checked again: Dallas is in Top Review at once, with its 10 businesses.
+    assert unmuted.json()["status"] == "top_review" and unmuted.json()["cities_muted"] == 0
+    assert run_file_checker() == 0
+    rita, _ = person(Role.REVIEWER)
+    city = rita.get(f"/api/review/files/{second['id']}/cities/Dallas").json()
+    assert len(city["businesses"]) == 10
+
+    # A muted city with an error stays muted.
+    waco = [
+        row(f"W {n}", f"https://share.google/w{n}", f"(254) 555-{n:04d}", city="Waco")
+        for n in range(10)
+    ]
+    held = hand_in(cal, {"Waco": [STANDARD, *waco]}, name="waco.xlsx")
+    bad = row("Bad Co", "https://share.google/bc", "call us", city="Waco")
+    later = hand_in(cal, {"Waco": [STANDARD, bad]}, name="waco-2.xlsx")
+    assert later["cities_muted"] == 1
+    assert owner.delete(f"/api/submissions/{held['id']}").status_code == 204
+    refused = owner.post(f"/api/submissions/{later['id']}/cities/waco/unmute")
+    assert refused.json()["error"]["code"] == "city_errors"
 
 
 def test_owners_invite_collectors(owner: TestClient) -> None:

@@ -245,9 +245,68 @@ def test_top_review_never_reads_the_file_again(
         found = db.get(Submission, sub["id"])
         assert found is not None
         found.content = b"not read again"
+        found.leads = []  # its cities were made ready when it was sent on (step 41)
         db.commit()
     assert [c["name"] for c in rita.get("/api/review/cities").json()["cities"]] == ["Tulsa"]
     city = rita.get(city_url(sub["id"], "Tulsa")).json()
     assert len(city["businesses"]) == 12
     saved = rita.put(city_url(sub["id"], "Tulsa"), json={"tops": [city["businesses"][0]["key"]]})
     assert saved.json()["state"] == "ready"
+
+
+def test_a_city_shows_most_reviews_first_and_likely_tops(owner: TestClient, person: Person) -> None:
+    """Step 41: businesses come most reviews first; those meeting the niche's benchmark
+    (150 reviews, 4.8) are marked as likely Tops."""
+    cal, _ = person(Role.COLLECTOR)
+    rita, _ = person(Role.REVIEWER)
+    many = [
+        row(f"Shine {n}", f"https://share.google/s{n}", f"(918) 555-{n:04d}", reviews=str(10 * n))
+        for n in range(12)
+    ]
+    many[3] = row(
+        "Star Co", "https://share.google/star", "(918) 555-9999", reviews="900", rating="4.9"
+    )
+    sub = hand_in(cal, {"Tulsa": [STANDARD, *many]})
+    city = rita.get(city_url(sub["id"], "Tulsa")).json()
+    assert city["businesses"][0]["values"]["business_name"] == "Star Co"
+    assert [b["values"]["business_name"] for b in city["businesses"] if b["likely"]] == ["Star Co"]
+    assert city["benchmark"]["name"] == "Cleaning Benchmark 1"
+
+
+def test_cities_under_10_are_ticked_on_one_page_and_saved_at_once(
+    owner: TestClient, person: Person
+) -> None:
+    cal, _ = person(Role.COLLECTOR)
+    rita, _ = person(Role.REVIEWER)
+    viewer, _ = person(Role.VIEWER)
+    sub = hand_in(cal, FILE)  # Dallas has 2 businesses
+    small = {
+        "Waco": [STANDARD, row("Wave", "https://share.google/wv", "254 555 0100", city="Waco")]
+    }
+    other = hand_in(cal, small, name="waco.xlsx")
+    assert viewer.get("/api/review/small").status_code == 403
+    page = rita.get("/api/review/small").json()
+    assert page["total"] == 2
+    assert [(c["name"], len(c["businesses_list"])) for c in page["cities"]] == [
+        ("Dallas", 2),
+        ("Waco", 1),
+    ]
+    picks = [
+        {
+            "file_id": sub["id"],
+            "city": "Dallas",
+            "tops": [page["cities"][0]["businesses_list"][0]["key"]],
+        },
+        {
+            "file_id": other["id"],
+            "city": "Waco",
+            "tops": [page["cities"][1]["businesses_list"][0]["key"]],
+        },
+    ]
+    saved = rita.put("/api/review/tops", json={"cities": picks})
+    assert saved.json() == {"saved": 2}
+    assert rita.get("/api/review/small").json()["total"] == 0
+    ready = rita.get("/api/review/cities", params={"show": "ready"}).json()["cities"]
+    assert sorted(c["name"] for c in ready) == ["Dallas", "Waco"]
+    wrong = [{"file_id": sub["id"], "city": "Dallas", "tops": ["Nowhere row 9"]}]
+    assert rita.put("/api/review/tops", json={"cities": wrong}).status_code == 422

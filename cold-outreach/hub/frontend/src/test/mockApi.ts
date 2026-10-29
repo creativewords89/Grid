@@ -1,7 +1,9 @@
 import { vi } from "vitest";
 import type { User } from "../api";
 
-type Handler = (body: unknown) => [number, unknown?] | Response;
+// A handler may answer later (a Promise), to test what shows while the server is slow.
+type Answer = [number, unknown?] | Response;
+type Handler = (body: unknown) => Answer | Promise<Answer>;
 export type Call = { method: string; path: string; body: unknown; csrf: string | null };
 
 /** Replace fetch with handlers keyed "METHOD /path" (path without the /api prefix). */
@@ -23,7 +25,7 @@ export function mockApi(routes: Record<string, Handler | [number, unknown?] | Re
       const route = routes[`${method} ${path}`];
       if (!route)
         return new Response(JSON.stringify({ error: { code: "not_found" } }), { status: 404 });
-      const result = typeof route === "function" ? route(body) : route;
+      const result = await (typeof route === "function" ? route(body) : route);
       if (result instanceof Response) return result;
       const [status, data] = result;
       return status === 204
@@ -54,14 +56,13 @@ export function mockApi(routes: Record<string, Handler | [number, unknown?] | Re
       const sent = Object.fromEntries(body.entries());
       calls.push({ method: this.method, path, body: sent, csrf: this.headers.get("X-CSRF-Token") });
       const route = routes[`${this.method} ${path}`];
-      setTimeout(() => {
+      setTimeout(async () => {
         this.upload.onprogress?.({ lengthComputable: true, loaded: 1, total: 1 } as ProgressEvent);
-        const result =
-          route === undefined
-            ? ([404, { error: { code: "not_found" } }] as [number, unknown])
-            : typeof route === "function"
-              ? route(sent)
-              : route;
+        const result = await (route === undefined
+          ? ([404, { error: { code: "not_found" } }] as [number, unknown])
+          : typeof route === "function"
+            ? route(sent)
+            : route);
         if (result instanceof Response) throw new Error("not for uploads");
         this.status = result[0];
         this.responseText = JSON.stringify(result[1] ?? {});

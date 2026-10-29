@@ -654,7 +654,8 @@ def to_batch(file_id: uuid.UUID, body: ToBatchIn, me: CurrentUser, db: Db) -> Fi
 @router.post("/submissions/{file_id}/cities/{city}/unmute", response_model=FileDetail)
 def unmute(file_id: uuid.UUID, city: str, me: CurrentUser, db: Db) -> FileDetail:
     """An Owner or Admin unmutes a muted city once no other file or batch has it (step 39):
-    the file is checked again, the city's businesses too."""
+    the file is checked again, the city's businesses too; a file already in Top Review isn't
+    checked again, only the city's businesses (step 41)."""
     ensure(me, Action.USE_FILES)
     sub = _get(db, me, file_id)
     found = next((c for c in sub.cities if c.key == files.city_key(city)), None)
@@ -667,7 +668,11 @@ def unmute(file_id: uuid.UUID, city: str, me: CurrentUser, db: Db) -> FileDetail
     still = file_cities.others(db, sub).cities.get(found.key)
     if still:
         raise ApiError(409, "still_taken", f"It can't be unmuted: {still}.")
-    sub.state, sub.progress, sub.claimed_at = "checking", 0, None
+    if sub.sent_at is not None:
+        # In Top Review: never checked again (step 41), only this city's businesses.
+        file_cities.unmute_sent(db, sub, found)
+    else:
+        sub.state, sub.progress, sub.claimed_at = "checking", 0, None
     audit.record(db, me, "unmute", "file", sub.id, f"{sub.file_name} · {found.name}", [])
     db.commit()
     db.refresh(sub)

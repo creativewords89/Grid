@@ -93,6 +93,8 @@ def check_one(engine: Engine, file_id: uuid.UUID, version: int) -> None:
             sub.problems = found.problems
             sub.leads = found.leads
             file_cities.sync(sub, found.check["cities"])
+            if sub.sent_at is not None:  # checked again after Top Review: made ready again
+                files.prepare_cities(sub)
             # The Final check's hour starts when the file has no error (step 36).
             if found.check["errors"]:
                 sub.clean_since = None
