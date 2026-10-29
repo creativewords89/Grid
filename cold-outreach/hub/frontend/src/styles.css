@@ -3092,3 +3092,36 @@ textarea {
   width: 20px;
   height: 20px;
 }
+
+/* Files (step 33): upload and check progress, a new niche. */
+.progress {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+  min-width: 120px;
+}
+
+.progress > span {
+  display: block;
+  height: 100%;
+  background: var(--brand);
+  transition: width 0.3s ease;
+}
+
+.files-new-niche {
+  padding: 10px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+
+.files-new-niche .field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+}
+
+.files-new-niche input {
+  min-height: 36px;
+}

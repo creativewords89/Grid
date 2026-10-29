@@ -27,6 +27,7 @@ from app.config import get_settings
 from app.db.base import Base
 from app.db.models import Role, User
 from app.db.session import get_session
+from app.imports import file_checker
 from app.mail import get_mailer
 from app.main import create_app
 
@@ -209,3 +210,18 @@ def person(make_user: UserFactory, app_factory: Callable[[], TestClient]) -> Per
         return client, user
 
     return make
+
+
+# Files handed in are checked by the scheduler's file checker (step 33); tests run it.
+_CHECKER: list[Engine] = []
+
+
+@pytest.fixture
+def files_checked(clean_engine: Engine) -> Iterator[None]:
+    _CHECKER[:] = [clean_engine]
+    yield
+    _CHECKER.clear()
+
+
+def run_file_checker() -> int:
+    return file_checker.run_pending(_CHECKER[0])

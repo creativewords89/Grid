@@ -31,6 +31,8 @@ class Action(enum.StrEnum):
     USE_FILES = "use_files"  # add a ready file to a batch; reopen it for Top Review
     # Top Review (step 32): choose each city's Top businesses in a file before it is used.
     REVIEW_TOPS = "review_tops"
+    ADD_NICHES = "add_niches"  # add a niche (step 33), when handing in a file
+    MANAGE_NICHES = "manage_niches"  # rename or delete a niche
 
 
 _ALL = frozenset(Role)
@@ -57,6 +59,8 @@ _ALLOWED: dict[Action, frozenset[Role]] = {
     Action.VIEW_ALL_FILES: _TEAM,
     Action.USE_FILES: _STAFF,
     Action.REVIEW_TOPS: frozenset({Role.OWNER, Role.ADMIN, Role.REVIEWER}),
+    Action.ADD_NICHES: frozenset({Role.OWNER, Role.ADMIN, Role.COLLECTOR}),
+    Action.MANAGE_NICHES: _STAFF,
 }
 
 

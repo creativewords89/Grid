@@ -5,6 +5,7 @@ workbook, so every rule is easy to test."""
 import io
 import re
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
@@ -215,14 +216,20 @@ def _header_row(rows: list[tuple[Any, ...]]) -> int | None:
     return None
 
 
-def read_rows(content: bytes, report: Report) -> list[Row]:
+def read_rows(
+    content: bytes, report: Report, progress: Callable[[float], None] | None = None
+) -> list[Row]:
+    """`progress` is told the share of tabs read (0 to 1) after each tab."""
     try:
         book = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
     except (InvalidFileException, zipfile.BadZipFile, KeyError, OSError, ValueError) as error:
         message = "This isn't an Excel file (.xlsx). Save it as .xlsx and try again."
         raise ReadError(message) from error
     rows: list[Row] = []
-    for sheet in book.worksheets:
+    total = len(book.worksheets)
+    for done, sheet in enumerate(book.worksheets):
+        if progress is not None:
+            progress(done / total)
         report.tabs += 1
         tab = clean(sheet.title)
         report.tab_names.append(tab)
@@ -354,9 +361,9 @@ def merge(rows: list[Row], niche: str, report: Report) -> list[Lead]:
     return leads
 
 
-def read(content: bytes, niche: str) -> Report:
+def read(content: bytes, niche: str, progress: Callable[[float], None] | None = None) -> Report:
     report = Report(leads=[])
-    rows = read_rows(content, report)
+    rows = read_rows(content, report, progress)
     if report.tabs == len(report.empty_tabs):
         raise ReadError("No tab has a header row with columns such as Business name and MAP.")
     report.leads = merge(rows, niche, report)

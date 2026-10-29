@@ -436,7 +436,7 @@ const COLUMNS: [string, string][] = [
 const LINKS = new Set(["gbp_link", "website", "facebook", "instagram"]);
 
 /** Lead Check of a lead in one badge: green OK, or its errors and warnings. */
-function CheckBadge({ issues }: { issues: { severity: string; message: string }[] }) {
+export function CheckBadge({ issues }: { issues: { severity: string; message: string }[] }) {
   const errors = issues.filter((i) => i.severity === "error").length;
   const warnings = issues.length - errors;
   if (issues.length === 0) return <span className="badge badge-ok">✓ OK</span>;
@@ -449,7 +449,13 @@ function CheckBadge({ issues }: { issues: { severity: string; message: string }[
 }
 
 /** ‹ Page 2 of 40 › */
-function Pager({ data, onPage }: { data: LeadPage; onPage: (page: number) => void }) {
+export function Pager({
+  data,
+  onPage,
+}: {
+  data: { page: number; pages: number };
+  onPage: (page: number) => void;
+}) {
   if (data.pages <= 1) return null;
   return (
     <span className="pager">

@@ -17,13 +17,12 @@ from sqlalchemy.orm import Session
 from app import audit
 from app.alerts import service as alerts
 from app.api.batches import get_batch
+from app.api.niches import niche_names
 from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
 from app.config import get_settings
 from app.db.models import (
-    Batch,
     BatchStatus,
-    Benchmark,
     Import,
     ImportStatus,
     Lead,
@@ -518,8 +517,4 @@ NicheName = Annotated[str, StringConstraints(max_length=80)]
 @router.get("/niches", response_model=list[str])
 def niches(me: CurrentUser, db: Db) -> list[NicheName]:
     ensure(me, Action.VIEW_HUB)
-    known = db.scalars(select(Benchmark.niche).union(select(Batch.niche)))
-    spellings: dict[str, str] = {}
-    for niche in known:
-        spellings.setdefault(niche.lower(), niche)
-    return sorted(spellings.values(), key=str.lower)
+    return sorted(niche_names(db).values(), key=str.lower)

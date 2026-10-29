@@ -285,6 +285,21 @@ class Import(TimestampMixin, Base):
     batch: Mapped["Batch | None"] = relationship()
 
 
+class Niche(TimestampMixin, Base):
+    """A niche files, batches and benchmarks are for (step 33). Anyone who hands in files
+    can add one; Owners and Admins rename or delete them."""
+
+    __tablename__ = "niches"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    name: Mapped[str] = mapped_column(String(80))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+    __table_args__ = (Index("uq_niches_name", func.lower(name), unique=True),)
+
+
 class Submission(TimestampMixin, Base):
     """A lead file handed in on the Files screen (SPEC step 31), before it is in a batch:
     checked by Lead Check, revised by its sender until it is ready, then added to a batch
@@ -310,6 +325,15 @@ class Submission(TimestampMixin, Base):
     # the file is then ready and locked (an Owner or Admin can reopen it).
     tops: Mapped[dict[str, list[str]]] = mapped_column(JSONB, default=dict, server_default="{}")
     topped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Checked in the background (step 33): "checking" (with its progress, 0-100) until the
+    # scheduler's file checker is done, then "checked", or "failed" (unreadable, `error`).
+    # `claimed_at` is when the checker last worked on it (a stale claim is taken over).
+    state: Mapped[str] = mapped_column(String(20), default="checking", server_default="checked")
+    progress: Mapped[int] = mapped_column(Integer, default=0, server_default="100")
+    error: Mapped[str | None] = mapped_column(String(500))
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Each business of the file for the Files table (step 33): tab, row, values, problems.
+    leads: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, server_default="[]")
     # The import that added it to a batch; it is used once that import is saved.
     import_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("imports.id", ondelete="SET NULL")
