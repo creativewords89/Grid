@@ -158,7 +158,16 @@ def run(
     return Checked(
         businesses=len(report.leads),
         fingerprint=_fingerprint(report),
-        check={"errors": errors, "warnings": warnings, "tabs": tabs, "cities": found_cities},
+        check={
+            "errors": errors,
+            "warnings": warnings,
+            "tabs": tabs,
+            "cities": found_cities,
+            # Businesses that are duplicates (step 40): removed on the Hub before the fix file.
+            "duplicates": sum(
+                1 for lead in leads if any(i["code"] in DUPLICATE_CODES for i in lead["issues"])
+            ),
+        },
         problems=problems,
         leads=leads,
     )

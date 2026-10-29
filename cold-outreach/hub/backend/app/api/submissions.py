@@ -78,6 +78,8 @@ class FileOut(BaseModel):
     sends_at: datetime | None = None
     # Seconds until then, by the server's clock: the viewer's clock may be off (at most an hour).
     sends_in: int | None = None
+    # It has duplicates (step 40): Remove duplicates first, then the fix file downloads.
+    has_duplicates: bool = False
     can_send_cities: bool = False  # may send its ready cities to the batch now
 
 
@@ -191,6 +193,7 @@ def _out(db: Session, me: User, sub: Submission, names: dict[str, str] | None = 
         sends_in=files.seconds_until(sub.clean_since + files.FINAL_CHECK)
         if status == "final_check" and sub.clean_since
         else None,
+        has_duplicates=bool(sub.check.get("duplicates")),
         can_send_cities=status == "top_review" and "ready" in states and _may_send_cities(me, sub),
     )
 
@@ -208,6 +211,11 @@ def _detail(db: Session, me: User, sub: Submission) -> FileDetail:
             elsewhere=sum(1 for lead in sub.leads if _elsewhere(lead)),
         ),
     )
+
+
+def _duplicate(lead: dict[str, Any]) -> bool:
+    """On several rows of the file, or already handed in (step 39)."""
+    return any(i["code"] in files.DUPLICATE_CODES for i in lead["issues"])
 
 
 def _elsewhere(lead: dict[str, Any]) -> bool:
@@ -366,6 +374,13 @@ def marked(file_id: uuid.UUID, me: CurrentUser, db: Db) -> Response:
     sub = _get(db, me, file_id)
     if status_of(sub) in ("checking", "failed"):
         raise ApiError(409, "not_checked", "This file isn't checked yet.")
+    # Duplicates first (step 40), on the Hub: then nothing in Excel can be mixed up.
+    if any(_duplicate(lead) for lead in sub.leads):
+        raise ApiError(
+            409,
+            "remove_duplicates_first",
+            "This file has duplicates: press Remove duplicates first, then download the problems.",
+        )
     stem = re.sub(r"[^A-Za-z0-9._-]+", "-", sub.file_name.rsplit(".", 1)[0])[:80]
     name = f"{stem or 'file'}-v{sub.version}-to-fix.xlsx"
     return Response(

@@ -466,6 +466,7 @@ export type HandedInFile = {
   sends_at: string | null; // in its Final check: when it goes on to Top Review (step 36)
   sends_in: number | null; // seconds until then, by the server's clock (the viewer's may be off)
   can_send_cities: boolean; // may send its ready cities to the batch now
+  has_duplicates: boolean; // Remove duplicates first, then the fix file downloads (step 40)
 };
 
 /** A business of a handed-in file, for the Files table (step 33). */

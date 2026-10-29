@@ -696,10 +696,14 @@ function FileRow({
       </td>
       <td>
         <div className="file-row-actions">
+          {item.has_duplicates && (
+            <span className="small field-error">Remove duplicates first</span>
+          )}
           {["errors", "final_check"].includes(item.status) && (
             <button
               className="button button-small"
-              disabled={busy}
+              disabled={busy || item.has_duplicates}
+              title={item.has_duplicates ? "Remove duplicates on the file's page first" : undefined}
               onClick={() =>
                 void act(
                   () => download(`/submissions/${item.id}/marked.xlsx`, "problems-to-fix.xlsx"),
@@ -832,6 +836,9 @@ function FileView({
     }
   }
 
+  // Duplicates are removed on the Hub before the problems download (step 40).
+  const duplicates = !!item && item.duplicates.rows + item.duplicates.elsewhere > 0;
+
   // Step 40: each business keeps its first row; ones handed in before leave this file.
   async function removeDuplicates(found: HandedInFileDetail) {
     const { rows, elsewhere } = found.duplicates;
@@ -938,11 +945,18 @@ function FileView({
             </p>
           )}
 
+          {duplicates && (
+            <p className="field-error">
+              This file has duplicates: press <strong>Remove duplicates</strong> first. Then{" "}
+              <strong>Download problems to fix</strong> gives the other problems.
+            </p>
+          )}
           <div className="row">
             {!["checking", "failed"].includes(item.status) && (
               <button
                 className="button"
-                disabled={busy || downloading}
+                disabled={busy || downloading || duplicates}
+                title={duplicates ? "Remove duplicates first" : undefined}
                 onClick={() => void downloadMarked()}
               >
                 <span aria-hidden>⬇</span>{" "}

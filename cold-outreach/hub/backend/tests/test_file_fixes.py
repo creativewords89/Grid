@@ -221,29 +221,19 @@ def test_the_file_made_again_keeps_its_other_columns(cal: TestClient) -> None:
     assert lead["values"]["website"] == "https://facebook.com/bc"  # left as it was
 
 
-def test_duplicates_are_not_in_the_fix_file_nor_fixed_through_it(cal: TestClient) -> None:
-    """Step 40: duplicates are removed on the Hub only. The fix file leaves them out, and a
-    file saved with other fixes keeps each duplicate's rows."""
+def test_duplicates_are_removed_first_then_the_fix_file_downloads(cal: TestClient) -> None:
+    """Step 40: duplicates are removed on the Hub only. While a file has any, its fix file
+    doesn't download; after Remove duplicates it does, with the other problems."""
     twice = row("Sparkle", "https://share.google/sp", "214 555 0100", city="Dallas")
     tabs = {"Dallas": [STANDARD, twice, twice], "Tulsa": [STANDARD, BAD_ROW]}
     sub = hand_in(cal, tabs)
-    assert {p["code"] for p in sub["problems"]} >= {"SAME_IN_FILE", "PHONE_HAS_LETTERS"}
-    sheet = fix_file(cal, sub["id"])["Problems"]
-    assert [r[1] for r in rows(sheet)[1:]] == ["Bad Co"]  # Sparkle isn't there
-    sheet.cell(2, 6).value = "https://badco.com"
-    sheet.cell(2, 7).value = "(918) 555-2222"
-    book = sheet.parent
-    assert send(cal, sub["id"], book, confirm=True).json()["saved"] is True
+    assert sub["has_duplicates"] is True
+    assert [f["has_duplicates"] for f in cal.get("/api/submissions").json()] == [True]
+    blocked = cal.get(f"/api/submissions/{sub['id']}/marked.xlsx")
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["code"] == "remove_duplicates_first"
+    assert cal.post(f"/api/submissions/{sub['id']}/remove-duplicates").status_code == 200
     run_file_checker()
-    after = cal.get(f"/api/submissions/{sub['id']}").json()
-    assert [p["code"] for p in after["problems"]] == ["SAME_IN_FILE"]
-    assert after["duplicates"] == {"rows": 1, "elsewhere": 0}
-
-
-def test_only_duplicates_left_the_fix_file_says_to_remove_them_on_the_hub(cal: TestClient) -> None:
-    twice = row("Sparkle", "https://share.google/sp", "214 555 0100", city="Dallas")
-    sub = hand_in(cal, {"Dallas": [STANDARD, twice, twice]})
+    assert cal.get(f"/api/submissions/{sub['id']}").json()["has_duplicates"] is False
     sheet = fix_file(cal, sub["id"])["Problems"]
-    assert rows(sheet)[1][1] == (
-        "Nothing to fix here: remove the duplicates on the Hub (Remove duplicates)."
-    )
+    assert [r[1] for r in rows(sheet)[1:]] == ["Bad Co"]
