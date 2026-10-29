@@ -288,14 +288,22 @@ function ChangeNiche({
 }) {
   const [niches, setNiches] = useState<string[]>([]);
   const [niche, setNiche] = useState("");
+  const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  useEffect(() => {
-    api
-      .fileNiches()
-      .then((found) => setNiches(found.filter((n) => n.toLowerCase() !== item.niche.toLowerCase())))
-      .catch(() => setNiches([]));
-  }, [item.niche]);
+  const loadNiches = useCallback(
+    (choose?: string) => {
+      api
+        .fileNiches()
+        .then((found) => {
+          setNiches(found.filter((n) => n.toLowerCase() !== item.niche.toLowerCase()));
+          if (choose) setNiche(choose);
+        })
+        .catch(() => setNiches([]));
+    },
+    [item.niche],
+  );
+  useEffect(() => loadNiches(), [loadNiches]);
 
   async function save() {
     setBusy(true);
@@ -322,16 +330,32 @@ function ChangeNiche({
             ` ${item.cities_in_batch} ${item.cities_in_batch === 1 ? "city is" : "cities are"} already in ${item.batch_name}: ${item.cities_in_batch === 1 ? "it stays" : "they stay"} there, with ${item.cities_in_batch === 1 ? "its" : "their"} leads and results.`}
         </p>
         <label className="field">
-          <span>New niche</span>
-          <select value={niche} onChange={(e) => setNiche(e.target.value)}>
+          <span>Move to niche</span>
+          <select
+            value={niche}
+            onChange={(e) => {
+              if (e.target.value === NEW_NICHE_OPTION) setAdding(true);
+              else setNiche(e.target.value);
+            }}
+          >
             <option value="">Choose a niche…</option>
             {niches.map((n) => (
               <option key={n} value={n}>
                 {n}
               </option>
             ))}
+            <option value={NEW_NICHE_OPTION}>+ New niche…</option>
           </select>
         </label>
+        {adding && (
+          <NewNiche
+            onCancel={() => setAdding(false)}
+            onAdded={(name) => {
+              setAdding(false);
+              loadNiches(name);
+            }}
+          />
+        )}
         <div className="row">
           <button
             className="button button-primary"
