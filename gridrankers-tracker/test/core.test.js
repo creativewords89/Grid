@@ -34,8 +34,8 @@ describe('ids and clock', () => {
 
 describe('api', () => {
 	it('cleans the portal address', () => {
-		expect(cleanServer('bot.gridrankers.com/')).toBe('https://bot.gridrankers.com');
-		expect(cleanServer('')).toBe('https://bot.gridrankers.com');
+		expect(cleanServer('portal.gridrankers.com/')).toBe('https://portal.gridrankers.com');
+		expect(cleanServer('')).toBe('https://portal.gridrankers.com');
 		expect(cleanServer('http://localhost:8090')).toBe('http://localhost:8090');
 	});
 

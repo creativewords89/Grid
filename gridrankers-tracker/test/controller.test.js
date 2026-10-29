@@ -121,11 +121,4 @@ describe('controller', () => {
 		await ctl.sync();
 		expect(Object.values(portal.entries)[0].ended_at).not.toBeNull();
 	});
-
-	it('moves a signed-out app from the old default address to the team’s portal', () => {
-		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'grt-'));
-		createStore(dir).save({ server: 'https://portal.gridrankers.com' });
-		const ctl = createController({ store: createStore(dir), loadToken: () => null, saveToken: () => {}, device: {}, createApi: fakePortal().createApi });
-		expect(ctl.view().server).toBe('https://bot.gridrankers.com');
-	});
 });

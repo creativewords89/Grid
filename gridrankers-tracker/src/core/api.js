@@ -17,8 +17,8 @@ export class ApiError extends Error {
 	}
 }
 
-// Where the team's portal (and their sign-in codes) live.
-export const DEFAULT_SERVER = 'https://bot.gridrankers.com';
+// The team's portal (SPEC.md section 2): its own WordPress site, where the sign-in codes live.
+export const DEFAULT_SERVER = 'https://portal.gridrankers.com';
 
 // A clean portal address: https:// added when missing, no trailing slash.
 export function cleanServer(value) {
