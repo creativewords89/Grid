@@ -4,6 +4,7 @@ import {
   ApiError,
   download,
   type Batch,
+  type FileFixResult,
   type FileLead,
   type FileLeadFilters,
   type FileLeadsPage,
@@ -694,6 +695,7 @@ function FileView({
   }, [item, load]);
 
   const [downloading, setDownloading] = useState(false);
+  const [fixesOpen, setFixesOpen] = useState(false);
 
   async function downloadMarked() {
     setDownloading(true);
@@ -857,6 +859,11 @@ function FileView({
                 />
               </label>
             )}
+            {revisable && item.status === "errors" && (
+              <button className="button" disabled={busy} onClick={() => setFixesOpen(true)}>
+                <span aria-hidden>⬆</span> Upload fixes
+              </button>
+            )}
             {staff && item.status === "ready" && (
               <button className="button" disabled={busy} onClick={() => void reopen()}>
                 Reopen for Top Review
@@ -910,6 +917,17 @@ function FileView({
           )}
           {!["checking", "failed"].includes(item.status) && (
             <FileLeads key={`${item.id}-${item.version}`} id={item.id} />
+          )}
+          {fixesOpen && (
+            <FileFixDialog
+              id={item.id}
+              onClose={() => setFixesOpen(false)}
+              onSaved={() => {
+                setFixesOpen(false);
+                load();
+                onChanged();
+              }}
+            />
           )}
         </div>
       )}
@@ -1095,5 +1113,154 @@ function FileLeads({ id }: { id: string }) {
         </>
       )}
     </section>
+  );
+}
+
+/** The fix file back from Excel (step 34): first what would change, then saved as a new
+ * version of the file, which is checked again. */
+function FileFixDialog({
+  id,
+  onClose,
+  onSaved,
+}: {
+  id: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [result, setResult] = useState<FileFixResult | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function send(confirm: boolean) {
+    if (!file) return setError("Choose the fixed file.");
+    setBusy(true);
+    setError("");
+    try {
+      const found = await api.uploadFileFixes(id, file, confirm);
+      if (found.saved) onSaved();
+      else setResult(found);
+    } catch (err) {
+      setError(message(err, "Didn't work."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const changes = result ? result.changed.reduce((n, r) => n + r.changes.length, 0) : 0;
+  const nothing = result && result.changed.length === 0 && result.removed.length === 0;
+
+  return (
+    <Modal title="Upload fixes" onClose={onClose} wide>
+      <div className="stack">
+        <p className="muted">
+          The file from <strong>Download problems to fix</strong>, fixed in Excel. Each row is found
+          by its Row; an empty cell clears the value; Delete = Yes takes the business out of the
+          file. Nothing changes until you save.
+        </p>
+        <label className="field">
+          <span>Fixed file (.xlsx)</span>
+          <input
+            type="file"
+            accept=".xlsx"
+            onChange={(e) => {
+              setFile(e.target.files?.[0] ?? null);
+              setResult(null);
+            }}
+          />
+        </label>
+        {error && <Alert kind="error">{error}</Alert>}
+        {!result && (
+          <div className="row">
+            <button
+              className="button button-primary"
+              disabled={busy}
+              onClick={() => void send(false)}
+            >
+              {busy ? "Checking…" : "Check the file"}
+            </button>
+          </div>
+        )}
+        {result && (
+          <>
+            <p>
+              <strong>{changes}</strong> {changes === 1 ? "change" : "changes"} in{" "}
+              {result.changed.length} {result.changed.length === 1 ? "business" : "businesses"}
+              {result.removed.length > 0 && (
+                <>
+                  , <strong>{result.removed.length}</strong> taken out
+                </>
+              )}
+              . The file will have {result.businesses_after.toLocaleString()} businesses.
+            </p>
+            {result.removed.length > 0 && (
+              <Alert kind="error">
+                Taken out of the file:{" "}
+                {result.removed.map((r) => `${r.business_name} (${r.row})`).join(", ")}
+              </Alert>
+            )}
+            {result.changed.length > 0 && (
+              <div className="table-scroll">
+                <table className="table compact-table">
+                  <thead>
+                    <tr>
+                      <th>Row</th>
+                      <th>Business</th>
+                      <th>Column</th>
+                      <th>From</th>
+                      <th>To</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.changed.flatMap((r) =>
+                      r.changes.map((c, index) => (
+                        <tr key={`${r.row}-${index}`}>
+                          <td className="nowrap small">{r.row}</td>
+                          <td>{r.business_name}</td>
+                          <td>{c.field}</td>
+                          <td className="small">
+                            <span className="cell-trunc">{c.from || "(empty)"}</span>
+                          </td>
+                          <td className="small">
+                            <span className="cell-trunc">{c.to || "(empty)"}</span>
+                          </td>
+                        </tr>
+                      )),
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {result.skipped.length > 0 && (
+              <ul className="check-list small">
+                {result.skipped.map((r) => (
+                  <li key={`${r.tab}-${r.line}`}>
+                    🟠 {r.tab} row {r.line} ({r.row || "no Row"}): {r.reason}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="row">
+              {nothing ? (
+                <p className="muted">Nothing to change.</p>
+              ) : (
+                <button
+                  className="button button-primary"
+                  disabled={busy}
+                  onClick={() => void send(true)}
+                >
+                  {busy
+                    ? "Saving…"
+                    : `Save ${changes} ${changes === 1 ? "change" : "changes"}${result.removed.length ? ` and take out ${result.removed.length}` : ""}`}
+                </button>
+              )}
+              <button className="link-button" onClick={onClose}>
+                Cancel
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </Modal>
   );
 }

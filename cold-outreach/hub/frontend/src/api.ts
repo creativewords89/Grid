@@ -475,6 +475,22 @@ export type FileLeadFilters = {
   page?: number;
 };
 
+/** A handed-in file's fix file back from Excel (step 34): what changes, or what changed. */
+export type FileFixResult = {
+  saved: boolean;
+  rows: number;
+  changed: {
+    tab: string;
+    line: number;
+    row: string;
+    business_name: string;
+    changes: { field: string; from: string; to: string }[];
+  }[];
+  removed: { tab: string; line: number; row: string; business_name: string }[];
+  skipped: { tab: string; line: number; row: string; reason: string }[];
+  businesses_after: number;
+};
+
 export type NicheRow = { id: string; name: string; uses: number };
 
 /** A file in Top Review (step 32). */
@@ -913,6 +929,12 @@ export const api = {
     const form = new FormData();
     form.append("file", file);
     return uploadWithProgress<HandedInFileDetail>(`/submissions/${id}/version`, form, onProgress);
+  },
+  uploadFileFixes: (id: string, file: File, confirm: boolean) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("confirm", confirm ? "true" : "false");
+    return upload<FileFixResult>(`/submissions/${id}/fixes`, form);
   },
   fileLeads: (id: string, filters: FileLeadFilters) => {
     const params = new URLSearchParams();

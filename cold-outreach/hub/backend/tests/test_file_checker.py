@@ -2,13 +2,11 @@
 their progress saved as it goes, taken over when a checker stopped, and the file's
 businesses kept for the Files table."""
 
-import io
 from datetime import timedelta
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from openpyxl import load_workbook
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
@@ -146,23 +144,3 @@ def test_problems_are_errors_and_warnings(cal: TestClient) -> None:
     assert names("errors") == ["Bad Co"]
     assert names("warnings") == ["No Map Co"]
     assert names("ok") == ["Multi-Clean", "Top Shine"]
-
-
-def test_a_file_that_cant_be_marked_in_place_is_made_again(
-    cal: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    file_id = hand_in(cal, BAD)["id"]
-
-    def broken(*args: Any) -> bytes:
-        raise TypeError("a workbook openpyxl can read but not write")
-
-    monkeypatch.setattr(files, "marked", broken)
-    response = cal.get(f"/api/submissions/{file_id}/marked.xlsx")
-    assert response.status_code == 200
-    book = load_workbook(io.BytesIO(response.content))
-    assert book.sheetnames == ["Lead Check", "Tulsa", "Dallas"]
-    sheet = book["Tulsa"]
-    assert sheet["A1"].value == "Row in your file" and sheet["A4"].value == 4
-    phone = sheet.cell(4, 2 + list(files.TABLE_FIELDS).index("phone"))
-    assert phone.value == "call us" and phone.fill.fgColor.rgb == "00F8C9C9"
-    assert phone.comment is not None and "Phone holds letters" in phone.comment.text

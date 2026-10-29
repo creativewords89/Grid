@@ -7,7 +7,6 @@ A Collector sees only their own files and changes them only while they have erro
 Owners, Admins and Viewers see every file. A file being added to a batch (its preview waits)
 or used (saved in a batch) can't be changed or deleted."""
 
-import logging
 import re
 import uuid
 from datetime import datetime
@@ -26,12 +25,11 @@ from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
 from app.db.models import ImportStatus, Submission, User
 from app.errors import ApiError
-from app.imports import check, service
+from app.imports import check, fixes, service
 from app.imports import submissions as files
 from app.permissions import Action, can, ensure
 
 router = APIRouter(tags=["files"])
-log = logging.getLogger("files")
 
 # checking (or failed: unreadable) → errors (Collectors fix them) → needs_top (Top Review)
 # → ready → adding → used
@@ -283,24 +281,99 @@ def revise(
 
 @router.get("/submissions/{file_id}/marked.xlsx")
 def marked(file_id: uuid.UUID, me: CurrentUser, db: Db) -> Response:
-    """The file with each problem marked, to fix offline and upload as a revised version."""
+    """The fix file (step 34): the businesses with a problem, a tab per city, each wrong
+    cell marked, to fix in Excel and upload back with Upload fixes."""
     sub = _get(db, me, file_id)
     if status_of(sub) in ("checking", "failed"):
         raise ApiError(409, "not_checked", "This file isn't checked yet.")
-    try:
-        content = files.marked(sub.content, sub.problems, sub.check)
-    except Exception:
-        # Some workbooks open for reading but not for marking: the Hub makes the file again
-        # from what it read, with the same marks, so the download always works.
-        log.exception("file %s couldn't be marked in place", sub.id)
-        content = files.rebuilt(sub.leads, sub.problems, sub.check)
     stem = re.sub(r"[^A-Za-z0-9._-]+", "-", sub.file_name.rsplit(".", 1)[0])[:80]
     name = f"{stem or 'file'}-v{sub.version}-to-fix.xlsx"
     return Response(
-        content,
+        files.fix_file(sub.leads),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{name}"'},
     )
+
+
+@router.post("/submissions/{file_id}/fixes")
+def upload_fixes(
+    file_id: uuid.UUID,
+    me: CurrentUser,
+    db: Db,
+    file: Annotated[UploadFile, File()],
+    confirm: Annotated[bool, Form()] = False,
+) -> dict[str, Any]:
+    """The fix file back from Excel (step 34): each row found by its Row, every column of
+    the file changing its value (an empty cell clears it), Delete = Yes taking the business
+    out. Without `confirm` nothing is saved: the answer says what would change. Saved, the
+    file is made again with the fixes, as a new version, and checked again."""
+    sub = _changeable(db, me, file_id, revise=True)
+    try:
+        rows = files.read_fixes(_read(file))
+    except fixes.FixFileError as error:
+        raise ApiError(422, "unreadable", str(error), {"file": str(error)}) from None
+    leads = [dict(lead, values=dict(lead["values"])) for lead in sub.leads]
+    by_key = {files.row_key(lead): lead for lead in leads}
+    changed: list[dict[str, Any]] = []
+    removed: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in rows:
+        where = {"tab": row.tab, "line": row.line, "row": row.key}
+        lead = by_key.get(row.key)
+        if lead is None:
+            skipped.append(where | {"reason": "No business of this file is on that Row."})
+            continue
+        if row.key in seen:
+            skipped.append(where | {"reason": "This Row is on an earlier row too."})
+            continue
+        seen.add(row.key)
+        name = lead["values"].get("business_name") or lead["values"].get("gbp_link", "")
+        if row.delete:
+            removed.append(where | {"business_name": name})
+            lead["removed"] = True
+            continue
+        changes = [
+            {"field": fixes.LABELS[f], "from": lead["values"].get(f, ""), "to": value}
+            for f, value in row.values.items()
+            if value != lead["values"].get(f, "")
+        ]
+        for f, value in row.values.items():
+            if value:
+                lead["values"][f] = value[:500]
+            else:
+                lead["values"].pop(f, None)
+        if changes:
+            changed.append(where | {"business_name": name, "changes": changes})
+    kept = [lead for lead in leads if not lead.get("removed")]
+    if confirm and (changed or removed):
+        if not kept:
+            raise ApiError(409, "empty", "That would take every business out of the file.")
+        _store(sub, files.rebuilt(kept))
+        sub.version += 1
+        sub.import_id = None
+        audit.record(
+            db,
+            me,
+            "fix",
+            "file",
+            sub.id,
+            sub.file_name,
+            [
+                {"field": "version", "from": sub.version - 1, "to": sub.version},
+                {"field": "businesses changed", "from": None, "to": len(changed)},
+                {"field": "businesses taken out", "from": None, "to": len(removed)},
+            ],
+        )
+        db.commit()
+    return {
+        "saved": bool(confirm and (changed or removed)),
+        "rows": len(rows),
+        "changed": changed,
+        "removed": removed,
+        "skipped": skipped,
+        "businesses_after": len(kept),
+    }
 
 
 LEADS_PAGE = 100

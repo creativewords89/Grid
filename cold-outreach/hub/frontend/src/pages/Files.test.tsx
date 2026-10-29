@@ -264,3 +264,52 @@ test("an owner adds a ready file to a batch of its niche", async () => {
   expect(calls.find((c) => c.path === "/submissions/f1/use")?.body).toEqual({ batch_id: "b1" });
   expect(window.location.search).toBe("?batch=b1&tab=files");
 });
+
+test("fixes come back from Excel: shown first, then saved", async () => {
+  const preview = {
+    saved: false,
+    rows: 3,
+    changed: [
+      {
+        tab: "Tulsa",
+        line: 2,
+        row: "Tulsa · 14",
+        business_name: "Bad Co",
+        changes: [
+          { field: "Phone", from: "call us", to: "(918) 555-2222" },
+          { field: "Website", from: "https://facebook.com/bc", to: "https://badco.com" },
+        ],
+      },
+    ],
+    removed: [{ tab: "Tulsa", line: 3, row: "Tulsa · 15", business_name: "Ghost Co" }],
+    skipped: [],
+    businesses_after: 1,
+  };
+  const calls = mockApi({
+    "GET /auth/me": me(collector),
+    "GET /submissions": [200, [file()]],
+    "GET /submissions/niches": [200, ["Cleaning"]],
+    "GET /submissions/f1": [200, detail],
+    "GET /submissions/f1/leads?page=1&sort=row": [200, leads],
+    "POST /submissions/f1/fixes": (body) =>
+      (body as { confirm: string }).confirm === "true"
+        ? [200, { ...preview, saved: true }]
+        : [200, preview],
+  });
+  render(<App />);
+
+  await userEvent.click(await screen.findByRole("button", { name: "tulsa.xlsx" }));
+  await userEvent.click(await screen.findByRole("button", { name: /Upload fixes/ }));
+  const dialog = screen.getByRole("dialog", { name: "Upload fixes" });
+  await userEvent.upload(within(dialog).getByLabelText(/Fixed file/), new File(["x"], "fix.xlsx"));
+  await userEvent.click(within(dialog).getByRole("button", { name: "Check the file" }));
+
+  expect(await within(dialog).findByText(/Taken out of the file: Ghost Co/)).toBeVisible();
+  expect(within(dialog).getByRole("cell", { name: "(918) 555-2222" })).toBeVisible();
+  await userEvent.click(
+    within(dialog).getByRole("button", { name: "Save 2 changes and take out 1" }),
+  );
+  expect(screen.queryByRole("dialog", { name: "Upload fixes" })).toBeNull();
+  const sent = calls.filter((c) => c.path === "/submissions/f1/fixes").map((c) => c.body);
+  expect(sent.map((b) => (b as { confirm: string }).confirm)).toEqual(["false", "true"]);
+});

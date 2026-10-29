@@ -931,3 +931,18 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     problems to fix** fetches the file and says why when it can't; a workbook the Hub can
     read but not mark in place is made again from what it read: a tab per tab, the row each
     business was on, every standard column and the same marks.)
+34. **A handed-in file's fix file** (asked for after step 33): **Download problems to fix**
+    on Files gives the same file as a batch's (step 28): a tab per city, only the
+    businesses with a problem, the columns **Row · Business name · GBP link · Address ·
+    City · Website · Phone · WhatsApp · Email · Facebook · Instagram · Reviews · Rating ·
+    Notes · Problems · Delete** (Row is the tab and row the business is on, "Tulsa · 14",
+    as there is no Lead ID before a batch), each wrong cell red or yellow with a note, the
+    header and first two columns frozen and a filter. **Upload fixes** takes it back: each
+    row found by its Row, every column changing its value (an empty cell clears it), Delete
+    = Yes taking the business out of the file; what would change (and what is taken out,
+    and rows that don't match) is shown first, then **Save**. Saved, the file is made again
+    from its businesses with the fixes (a tab per tab, the standard columns and its other
+    columns) as a new version, checked again. Only while the file has errors, by whoever
+    may revise it. **Upload revised version** stays, for a whole new file. **Tests:** the
+    fix file, preview then save, Delete, rows that don't match, who may, the other columns
+    kept; vitest for the dialog.

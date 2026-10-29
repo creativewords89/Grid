@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
+from openpyxl.comments import Comment
 
 from app.db.models import Role
 from app.imports import submissions
@@ -60,19 +61,15 @@ def test_the_same_leads_have_the_same_fingerprint() -> None:
     assert submissions.run(workbook(BAD), "Cleaning").fingerprint != first
 
 
-def test_the_marked_file_and_taking_the_marks_out_again() -> None:
-    content = workbook(BAD)
-    found = submissions.run(content, "Cleaning")
-    book = load_workbook(io.BytesIO(submissions.marked(content, found.problems, found.check)))
-    assert book.sheetnames == ["Lead Check", "Tulsa", "Dallas"]
-    report = [[c.value for c in line] for line in book["Lead Check"].iter_rows()]
-    assert report[0] == submissions.REPORT_HEADER
-    assert ["Error", "Tulsa", 4, "Phone", "Bad Co", "Phone holds letters", "call us"] in report
+def test_marks_of_an_old_marked_copy_are_taken_out() -> None:
+    """Files handed in before step 34 were downloaded with a Lead Check tab and notes."""
+    book = load_workbook(io.BytesIO(workbook(BAD)))
+    report = book.create_sheet(submissions.REPORT_TAB, 0)
+    report.append(["Severity", "Tab", "Row"])
     phone = book["Tulsa"].cell(4, STANDARD.index("Phone") + 1)
-    assert phone.fill.fgColor.rgb == "00F8C9C9"
-    assert phone.comment is not None and "Phone holds letters" in phone.comment.text
-    # Fixed in the marked copy and handed in again: the marks go, the fix stays.
     phone.value = "(918) 555-2222"
+    phone.fill = submissions.RED
+    phone.comment = Comment("Error: Phone holds letters", submissions.AUTHOR)
     book["Tulsa"].cell(4, STANDARD.index("Website") + 1).value = "https://badco.com"
     out = io.BytesIO()
     book.save(out)
@@ -157,10 +154,10 @@ def test_a_collector_hands_in_fixes_and_sees_only_their_own_files(
     assert revise(dana, bad["id"], GOOD).status_code == 404
     assert dana.delete(f"/api/submissions/{bad['id']}").status_code == 404
     assert [f["file_name"] for f in owner.get("/api/submissions").json()] == ["tulsa.xlsx"]
-    # The marked file, then a revised version: checked again.
+    # The fix file, then a revised version: checked again.
     marked = cal.get(f"/api/submissions/{bad['id']}/marked.xlsx")
     assert marked.status_code == 200
-    assert load_workbook(io.BytesIO(marked.content)).sheetnames[0] == "Lead Check"
+    assert load_workbook(io.BytesIO(marked.content)).sheetnames == ["Tulsa"]
     fixed = revise(cal, bad["id"], GOOD).json()
     assert fixed["status"] == "ready" and fixed["errors"] == 0 and fixed["version"] == 2
     assert fixed["problems"] == []
