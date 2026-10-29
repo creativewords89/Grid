@@ -812,6 +812,22 @@ function History({
     }
   }
 
+  async function sendBack(item: LeadImport) {
+    if (
+      !window.confirm(
+        `Send ${item.file_name} back to Top Review? Its leads in this batch go, with their agents' results; the city is chosen its Top again.`,
+      )
+    )
+      return;
+    setError("");
+    try {
+      await api.sendBackImport(item.id);
+      onDeleted(item);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Not sent back.");
+    }
+  }
+
   async function remove(item: LeadImport) {
     setAsking(null);
     try {
@@ -886,6 +902,16 @@ function History({
                       onClick={() => void ask(item)}
                     >
                       Delete
+                    </button>
+                  )}
+                  {item.from_top_review && item.status === "confirmed" && (
+                    <button
+                      className="link-button nowrap"
+                      disabled={running}
+                      title={running ? "Pause the batch first" : undefined}
+                      onClick={() => void sendBack(item)}
+                    >
+                      Send back to Top Review
                     </button>
                   )}
                 </td>

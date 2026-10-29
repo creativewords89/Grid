@@ -256,6 +256,7 @@ export type LeadImport = {
   counts: ImportCounts;
   preview: ImportPreview;
   check_errors?: number | null; // a saved file: its leads with an error; held while > 0
+  from_top_review?: boolean; // a file's city from Top Review: it can be sent back (step 43)
 };
 
 export type SheetStatus = "new" | "updated" | "other_batch" | "merged" | "top" | "skipped";
@@ -1076,6 +1077,13 @@ export const api = {
       `/imports/${id}/deletion`,
     ),
   deleteImport: (id: string) => request<void>("DELETE", `/imports/${id}`),
+  // A city back from its batch to Top Review, its leads and results gone (step 43).
+  sendBackImport: (id: string) => request<void>("POST", `/imports/${id}/send-back`),
+  sendBackCity: (fileId: string, city: string) =>
+    request<HandedInFileDetail>(
+      "POST",
+      `/submissions/${fileId}/cities/${encodeURIComponent(city)}/send-back`,
+    ),
   checkReport: (id: string) => request<CheckReport>("GET", `/imports/${id}/check`),
   checkAgain: (id: string) => request<CheckReport>("POST", `/imports/${id}/check`),
   updateList: (id: string, patch: { active?: boolean }) =>

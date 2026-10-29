@@ -32,6 +32,7 @@ from app.db.models import (
 )
 from app.errors import ApiError
 from app.imports import check, lead_check, service
+from app.imports.submissions import city_businesses
 from app.leads import files
 from app.permissions import Action, ensure
 
@@ -54,6 +55,8 @@ class ImportOut(BaseModel):
     preview: dict[str, Any]
     # Lead Check of a saved file (step 26): leads of it with an error now; held while > 0.
     check_errors: int | None = None
+    # A city of a file handed in, from Top Review (step 39): it can be sent back (step 43).
+    from_top_review: bool = False
 
     @classmethod
     def of(cls, imp: Import, check_errors: int | None = None) -> "ImportOut":
@@ -109,9 +112,18 @@ def list_imports(
         return [ImportOut.of(imp) for imp in db.scalars(query)]
     held = lead_check.held(db, batch_id)
     db.commit()  # leads saved before Lead Check were checked just now
+    # A niche's batch holds a file per city that came from Top Review: hundreds of them.
+    found = list(db.scalars(query.where(Import.batch_id == batch_id).limit(1000)))
+    cities = set(
+        db.scalars(
+            select(FileCity.import_id).where(FileCity.import_id.in_([imp.id for imp in found]))
+        )
+    )
     return [
-        ImportOut.of(imp, held.get(imp.id, 0) if imp.status == ImportStatus.CONFIRMED else None)
-        for imp in db.scalars(query.where(Import.batch_id == batch_id))
+        ImportOut.of(
+            imp, held.get(imp.id, 0) if imp.status == ImportStatus.CONFIRMED else None
+        ).model_copy(update={"from_top_review": imp.id in cities})
+        for imp in found
     ]
 
 
@@ -296,12 +308,39 @@ def delete_import(import_id: uuid.UUID, me: CurrentUser, db: Db) -> None:
     too), only while its batch isn't running. Do-not-contact entries stay."""
     ensure(me, Action.IMPORT_LEADS)
     imp = _get(db, import_id)
+    stored = remove_import(db, me, imp, send_back=False)
+    db.commit()
+    for lead_id, file_id in stored:
+        files.remove(lead_id, file_id)
+
+
+@router.post("/imports/{import_id}/send-back", status_code=204)
+def send_back_import(import_id: uuid.UUID, me: CurrentUser, db: Db) -> None:
+    """Send a file's city in a batch back to Top Review (step 43): its leads there go, with
+    their agents' results and files, and the city is in Top Review again without a Top."""
+    ensure(me, Action.IMPORT_LEADS)
+    imp = _get(db, import_id)
+    if db.scalar(select(FileCity.id).where(FileCity.import_id == imp.id)) is None:
+        raise ApiError(409, "not_a_city", "This file didn't come from Top Review.")
+    stored = remove_import(db, me, imp, send_back=True)
+    db.commit()
+    for lead_id, file_id in stored:
+        files.remove(lead_id, file_id)
+
+
+def remove_import(
+    db: Session, me: CurrentUser, imp: Import, send_back: bool
+) -> list[tuple[str, uuid.UUID]]:
+    """Take a saved file out of its batch with the leads it brought in first (not while the
+    batch runs). A file's city that came with it is out of the batch again: back in Top
+    Review without a Top (`send_back`, step 43), or muted (deleted on Batches, step 39).
+    Returns the stored files to remove from disk once committed."""
     if imp.status == ImportStatus.PREVIEW:
         raise ApiError(409, "waiting", "This file is waiting for its preview: discard it.")
     what = _deletion(db, imp)
     if what.batch_running:
         raise ApiError(
-            409, "batch_running", "The batch is running: pause the batch first, then delete."
+            409, "batch_running", "The batch is running: pause the batch first, then try again."
         )
     going = list(db.scalars(select(Lead).where(Lead.first_import_id == imp.id)))
     stored = [
@@ -322,20 +361,24 @@ def delete_import(import_id: uuid.UUID, me: CurrentUser, db: Db) -> None:
     audit.record(
         db,
         me,
-        "delete",
+        "send back to Top Review" if send_back else "delete",
         "import",
         imp.id,
         imp.file_name,
         [{"field": "leads deleted", "from": what.leads_going, "to": 0}],
     )
-    # A file's city that came in with it is out of the batch again: muted (step 39).
     for city in db.scalars(select(FileCity).where(FileCity.import_id == imp.id)):
         city.moved_at, city.import_id = None, None
-        city.muted = "Taken out of the batch: an Owner or Admin can unmute it."
+        # Its Top goes too: it is chosen again before the city goes on (never at once).
+        city.tops, city.topped_at = [], None
+        if send_back:
+            city.muted = ""
+            city.items = city_businesses(city.file.leads, city.key)
+        else:
+            city.muted = "Taken out of the batch: an Owner or Admin can unmute it."
+            city.items = []
     db.delete(imp)
-    db.commit()
-    for lead_id, file_id in stored:
-        files.remove(lead_id, file_id)
+    return stored
 
 
 def _drop_empty_cities(db: Session, batch_id: uuid.UUID) -> None:

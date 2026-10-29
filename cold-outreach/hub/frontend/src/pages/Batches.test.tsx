@@ -641,3 +641,33 @@ test("Lead Check: a held file in Past imports, its report and the cities' proble
   expect(screen.queryByRole("row", { name: /Dallas/ })).not.toBeInTheDocument();
   expect(calls.some((c) => c.path === "/imports/i1/check")).toBe(true);
 });
+
+test("a city from Top Review is sent back from the batch's files", async () => {
+  window.history.pushState(null, "", "/batches?batch=b1&tab=files");
+  let sent = false;
+  const city = preview({
+    status: "confirmed",
+    file_name: "GBP Data.xlsx · Austin",
+    from_top_review: true,
+  });
+  vi.stubGlobal(
+    "confirm",
+    vi.fn(() => true),
+  );
+  const calls = mockApi({
+    "GET /auth/me": as("owner"),
+    "GET /batches": [200, [batch({ leads: 12, status: "paused" })]],
+    "GET /benchmarks": [200, []],
+    "GET /imports?batch_id=b1": () => [200, sent ? [] : [city]],
+    "GET /batches/b1/pipeline": [200, emptyPipeline],
+    "POST /imports/i1/send-back": () => {
+      sent = true;
+      return [204];
+    },
+  });
+  render(<App />);
+
+  await userEvent.click(await screen.findByRole("button", { name: "Send back to Top Review" }));
+  expect(calls.some((c) => c.path === "/imports/i1/send-back")).toBe(true);
+  expect(await screen.findByText(/No files yet/)).toBeVisible();
+});

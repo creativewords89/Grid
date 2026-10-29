@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.tokens import now
 from app.db.models import FileCity, Role, Submission
-from app.imports import file_checker
+from app.imports import file_checker, file_cities
 from tests.conftest import Person
 from tests.hub_data import make_benchmark
 from tests.test_imports import STANDARD, row
@@ -310,3 +310,73 @@ def test_cities_under_10_are_ticked_on_one_page_and_saved_at_once(
     assert sorted(c["name"] for c in ready) == ["Dallas", "Waco"]
     wrong = [{"file_id": sub["id"], "city": "Dallas", "tops": ["Nowhere row 9"]}]
     assert rita.put("/api/review/tops", json={"cities": wrong}).status_code == 422
+
+
+def test_a_city_in_its_batch_is_sent_back_to_top_review(
+    owner: TestClient, person: Person, clean_engine: Engine
+) -> None:
+    """Step 43: an Owner or Admin sends a city in its batch back to Top Review: its leads in
+    the batch go with their results, and it comes back without a Top (it goes on only once
+    a Top is chosen again)."""
+    cal, _ = person(Role.COLLECTOR)
+    rita, _ = person(Role.REVIEWER)
+    sub = hand_in(cal, FILE)
+    key = rita.get(city_url(sub["id"], "Tulsa")).json()["businesses"][0]["key"]
+    rita.put(city_url(sub["id"], "Tulsa"), json={"tops": [key]})
+    rita.post(f"/api/submissions/{sub['id']}/to-batch", json={"city": "tulsa"})
+    [batch] = owner.get("/api/batches").json()
+    assert batch["leads"] == 12
+    url = f"/api/submissions/{sub['id']}/cities/tulsa/send-back"
+    assert cal.post(url).status_code == 403
+    assert rita.post(url).status_code == 403
+
+    back = owner.post(url)
+    assert back.status_code == 200, back.text
+    assert back.json()["cities_in_batch"] == 0
+    assert owner.get("/api/batches").json()[0]["leads"] == 0
+    assert owner.get(f"/api/batches/{batch['id']}/cities").json() == []
+    listed = rita.get("/api/review/cities").json()["cities"]
+    assert [(c["name"], c["tops"]) for c in listed] == [("Tulsa", 0)]
+    # Not moved again by itself: it waits for a Top.
+    with Session(clean_engine) as db:
+        assert file_cities.move_due(db) == 0
+    assert owner.post(url).json()["error"]["code"] == "not_in_batch"
+
+
+def test_a_city_taken_out_on_batches_loses_its_top(owner: TestClient, person: Person) -> None:
+    """Deleting a city's file on Batches mutes the city and takes its Top: unmuted, it
+    doesn't go straight back to the batch."""
+    cal, _ = person(Role.COLLECTOR)
+    rita, _ = person(Role.REVIEWER)
+    sub = hand_in(cal, FILE)
+    key = rita.get(city_url(sub["id"], "Tulsa")).json()["businesses"][0]["key"]
+    rita.put(city_url(sub["id"], "Tulsa"), json={"tops": [key]})
+    rita.post(f"/api/submissions/{sub['id']}/to-batch", json={"city": "tulsa"})
+    [batch] = owner.get("/api/batches").json()
+    [imp] = owner.get("/api/imports", params={"batch_id": batch["id"]}).json()
+    assert owner.delete(f"/api/imports/{imp['id']}").status_code == 204
+    tulsa = next(
+        c
+        for c in owner.get(f"/api/submissions/{sub['id']}").json()["cities"]
+        if c["key"] == "tulsa"
+    )
+    assert (tulsa["state"], tulsa["tops"]) == ("muted", 0)
+    assert owner.post(f"/api/submissions/{sub['id']}/cities/tulsa/unmute").status_code == 200
+    again = next(c for c in rita.get("/api/review/cities").json()["cities"] if c["key"] == "tulsa")
+    assert again["state"] == "needs_top"
+
+
+def test_a_city_is_sent_back_from_its_batchs_files(owner: TestClient, person: Person) -> None:
+    cal, _ = person(Role.COLLECTOR)
+    rita, _ = person(Role.REVIEWER)
+    sub = hand_in(cal, FILE)
+    key = rita.get(city_url(sub["id"], "Tulsa")).json()["businesses"][0]["key"]
+    rita.put(city_url(sub["id"], "Tulsa"), json={"tops": [key]})
+    rita.post(f"/api/submissions/{sub['id']}/to-batch", json={"city": "tulsa"})
+    [batch] = owner.get("/api/batches").json()
+    [imp] = owner.get("/api/imports", params={"batch_id": batch["id"]}).json()
+    assert imp["from_top_review"] is True
+    viewer, _ = person(Role.VIEWER)
+    assert viewer.post(f"/api/imports/{imp['id']}/send-back").status_code == 403
+    assert owner.post(f"/api/imports/{imp['id']}/send-back").status_code == 204
+    assert [c["name"] for c in rita.get("/api/review/cities").json()["cities"]] == ["Tulsa"]

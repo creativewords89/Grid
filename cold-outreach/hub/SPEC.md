@@ -1081,3 +1081,11 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     batch: that city stays there, with its leads and their results; the other cities go to
     the new niche's batch. **Change niche** is on the file's row too.)
     (And: the Change niche box offers **+ New niche…** too, as handing in does.)
+43. **Send a city back to Top Review** (asked for after step 42): Owners and Admins send a
+    city in its batch back, from the file's page (its cities in the batch, each with **Send
+    back to Top Review**) or from the batch's files (a city from Top Review has the same
+    button). Asked first; not while the batch runs. Its leads in the batch go, with their
+    agents' results and files, and the city is in Top Review again **without a Top**: it
+    goes on only once a Top is chosen again. A city's file deleted on Batches loses its Top
+    too (muted as before), so unmuting it never sends it straight back. A batch's files list
+    shows up to 1,000 files (a niche's batch has one per city).
