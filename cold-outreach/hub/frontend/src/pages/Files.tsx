@@ -275,6 +275,78 @@ function HandIn({ onDone }: { onDone: (item: HandedInFileDetail) => void }) {
 const NEW_NICHE_OPTION = NEW_NICHE;
 
 /** After a file is dropped: its niche, then the upload (step 38). No niche, no upload. */
+/** An Owner or Admin moves a file to another niche (step 42): also in Top Review, until a
+ * city of it is in a batch. Its cities then go to the new niche's batch. */
+function ChangeNiche({
+  item,
+  onClose,
+  onDone,
+}: {
+  item: HandedInFileDetail;
+  onClose: () => void;
+  onDone: (item: HandedInFileDetail) => void;
+}) {
+  const [niches, setNiches] = useState<string[]>([]);
+  const [niche, setNiche] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    api
+      .fileNiches()
+      .then((found) => setNiches(found.filter((n) => n.toLowerCase() !== item.niche.toLowerCase())))
+      .catch(() => setNiches([]));
+  }, [item.niche]);
+
+  async function save() {
+    setBusy(true);
+    setError("");
+    try {
+      onDone(await api.changeNiche(item.id, niche));
+    } catch (err) {
+      setError(message(err, "Not changed."));
+      setBusy(false);
+    }
+  }
+
+  const sent = ["top_review", "in_batch"].includes(item.status);
+  return (
+    <Modal title="Change the niche" onClose={onClose}>
+      <div className="stack">
+        {error && <Alert kind="error">{error}</Alert>}
+        <p>
+          <strong>{item.file_name}</strong> is for <strong>{item.niche}</strong>.{" "}
+          {sent
+            ? "It is in Top Review: its cities go to the new niche's batch, and its Tops stay (a city the new niche already has is muted)."
+            : "It is checked again for the new niche."}
+        </p>
+        <label className="field">
+          <span>New niche</span>
+          <select value={niche} onChange={(e) => setNiche(e.target.value)}>
+            <option value="">Choose a niche…</option>
+            {niches.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="row">
+          <button
+            className="button button-primary"
+            disabled={!niche || busy}
+            onClick={() => void save()}
+          >
+            Move to {niche || "the niche"}
+          </button>
+          <button className="link-button" onClick={onClose}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function NicheDialog({
   file,
   onClose,
@@ -787,6 +859,7 @@ function FileView({
 
   const [downloading, setDownloading] = useState(false);
   const [fixesOpen, setFixesOpen] = useState(false);
+  const [nicheOpen, setNicheOpen] = useState(false);
 
   async function downloadMarked() {
     setDownloading(true);
@@ -900,6 +973,11 @@ function FileView({
               {item.niche} · version {item.version} · {item.businesses.toLocaleString()} businesses
               {item.uploaded_by && ` · handed in by ${item.uploaded_by}`}
             </span>
+            {staff && item.status !== "checking" && item.cities_in_batch === 0 && (
+              <button className="link-button small" onClick={() => setNicheOpen(true)}>
+                Change niche
+              </button>
+            )}
           </div>
           {item.same_as && <Alert kind="info">⚠ {item.same_as}</Alert>}
           {item.status === "checking" && (
@@ -1023,6 +1101,17 @@ function FileView({
 
           {!["checking", "failed"].includes(item.status) && (
             <FileLeads key={`${item.id}-${item.version}`} id={item.id} />
+          )}
+          {nicheOpen && (
+            <ChangeNiche
+              item={item}
+              onClose={() => setNicheOpen(false)}
+              onDone={(changed) => {
+                setNicheOpen(false);
+                setItem(changed);
+                onChanged();
+              }}
+            />
           )}
           {fixesOpen && (
             <FileFixDialog

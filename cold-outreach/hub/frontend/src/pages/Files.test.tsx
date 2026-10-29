@@ -491,3 +491,43 @@ test("Remove duplicates keeps one row of each business, after asking", async () 
   expect(await screen.findByText(/Lead Check is checking this file/)).toBeVisible();
   expect(screen.queryByRole("button", { name: "Remove duplicates" })).toBeNull();
 });
+
+test("an owner moves a file in Top Review to another niche", async () => {
+  const reviewing = { ...detail, status: "top_review" as const, errors: 0, problems: [] };
+  const calls = mockApi({
+    "GET /auth/me": me(owner),
+    "GET /submissions": [200, [file({ status: "top_review", errors: 0 })]],
+    "GET /submissions/niches": [200, ["Cleaning", "Roofing"]],
+    "GET /submissions/f1": [200, reviewing],
+    "GET /submissions/f1/leads?page=1&sort=row": [200, leads],
+    "PATCH /submissions/f1/niche": [200, { ...reviewing, niche: "Roofing", batch_name: "Roofing" }],
+  });
+  render(<App />);
+
+  await userEvent.click(await screen.findByRole("button", { name: "tulsa.xlsx" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Change niche" }));
+  const dialog = screen.getByRole("dialog", { name: "Change the niche" });
+  expect(dialog).toHaveTextContent(/its cities go to the new niche's batch/);
+  const select = within(dialog).getByLabelText("New niche");
+  await within(select).findByRole("option", { name: "Roofing" });
+  expect(within(select).queryByRole("option", { name: "Cleaning" })).toBeNull();
+  await userEvent.selectOptions(select, "Roofing");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Move to Roofing" }));
+  expect(calls.find((c) => c.path === "/submissions/f1/niche")?.body).toEqual({ niche: "Roofing" });
+  expect(await screen.findByText(/Roofing · version/)).toBeVisible();
+});
+
+test("a collector can't change a file's niche", async () => {
+  mockApi({
+    "GET /auth/me": me(collector),
+    "GET /submissions": [200, [file()]],
+    "GET /submissions/niches": [200, ["Cleaning"]],
+    "GET /submissions/f1": [200, detail],
+    "GET /submissions/f1/leads?page=1&sort=row": [200, leads],
+  });
+  render(<App />);
+
+  await userEvent.click(await screen.findByRole("button", { name: "tulsa.xlsx" }));
+  expect(await screen.findByRole("heading", { name: "tulsa.xlsx" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Change niche" })).toBeNull();
+});

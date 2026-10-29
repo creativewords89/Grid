@@ -651,6 +651,51 @@ def to_batch(file_id: uuid.UUID, body: ToBatchIn, me: CurrentUser, db: Db) -> Fi
     return _detail(db, me, sub)
 
 
+class NicheIn(Strict):
+    niche: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+
+
+@router.patch("/submissions/{file_id}/niche", response_model=FileDetail)
+def change_niche(file_id: uuid.UUID, body: NicheIn, me: CurrentUser, db: Db) -> FileDetail:
+    """An Owner or Admin changes a file's niche (step 42), also in Top Review, until a city
+    of it is in a batch: its cities then go to the new niche's batch. A file not sent on yet
+    is checked again (cities are muted by niche); one sent on isn't, only its cities' mutes
+    are looked at again for the new niche."""
+    ensure(me, Action.USE_FILES)
+    sub = _get(db, me, file_id)
+    chosen = niche_names(db).get(body.niche.lower())
+    if chosen is None:
+        raise ApiError(422, "unknown_niche", "Choose one of the niches.", {"niche": "Unknown."})
+    if any(c.moved_at is not None for c in sub.cities):
+        raise ApiError(
+            409, "in_batch", "A city of this file is in its batch: its niche can't change."
+        )
+    if sub.state == "checking":
+        raise ApiError(409, "checking", "This file is being checked: try again in a moment.")
+    before = sub.niche
+    if chosen.lower() == before.strip().lower():
+        return _detail(db, me, sub)
+    sub.niche = chosen
+    db.flush()
+    if sub.sent_at is None:
+        sub.state, sub.progress, sub.claimed_at = "checking", 0, None
+    else:
+        file_cities.recheck_mutes(db, sub)
+    file_cities.mute_later_files(db, sub)
+    audit.record(
+        db,
+        me,
+        "change niche",
+        "file",
+        sub.id,
+        sub.file_name,
+        [{"field": "niche", "from": before, "to": chosen}],
+    )
+    db.commit()
+    db.refresh(sub)
+    return _detail(db, me, sub)
+
+
 @router.post("/submissions/{file_id}/cities/{city}/unmute", response_model=FileDetail)
 def unmute(file_id: uuid.UUID, city: str, me: CurrentUser, db: Db) -> FileDetail:
     """An Owner or Admin unmutes a muted city once no other file or batch has it (step 39):

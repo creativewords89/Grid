@@ -995,6 +995,9 @@ export const api = {
   deleteNiche: (id: string) => request<void>("DELETE", `/niches/${id}`),
   deleteFile: (id: string) => request<void>("DELETE", `/submissions/${id}`),
   sendToReview: (id: string) => request<HandedInFile>("POST", `/submissions/${id}/send`),
+  // An Owner or Admin moves a file to another niche (step 42), until a city is in a batch.
+  changeNiche: (id: string, niche: string) =>
+    request<HandedInFileDetail>("PATCH", `/submissions/${id}/niche`, { niche }),
   removeDuplicates: (id: string) =>
     request<HandedInFileDetail>("POST", `/submissions/${id}/remove-duplicates`),
   // A file's ready cities (or one) to their batch now (step 39).
