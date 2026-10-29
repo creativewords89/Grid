@@ -25,7 +25,7 @@ async function setPart(page, label, fields = {}) {
 	await page.getByLabel(label).check();
 	for (const [name, value] of Object.entries(fields)) await page.locator(`[name="${name}"]`).fill(value);
 	await page.getByRole('button', { name: 'Save', exact: true }).click();
-	await page.locator('.notice').first().waitFor();
+	await page.locator('.grp-link-notice').waitFor();
 }
 
 test('tracker portal: hours, marks, screenshots and the main portal', async ({ page, browser }) => {
@@ -47,7 +47,7 @@ test('tracker portal: hours, marks, screenshots and the main portal', async ({ p
 	// The Super Admin makes this site the tracker portal.
 	await ownerToSettings(page);
 	await setPart(page, 'Tracker portal — copies profiles from the main portal', { main_url: MAIN, key: 'ab'.repeat(32) });
-	await expect(page.locator('.notice').first()).toContainText('Can’t reach 127.0.0.1');
+	await expect(page.locator('.grp-link-notice')).toContainText('Can’t reach 127.0.0.1');
 
 	// Hours: Max's hour, waiting for the main portal; no boards, projects or reports.
 	await page.goto('/');
@@ -121,7 +121,7 @@ test('tracker portal: hours, marks, screenshots and the main portal', async ({ p
 	// Back on its own for the other specs.
 	await ownerToSettings(page);
 	await setPart(page, 'On its own');
-	await expect(page.locator('.notice').first()).toContainText('works on its own');
+	await expect(page.locator('.grp-link-notice')).toContainText('works on its own');
 
 	noErrors();
 });

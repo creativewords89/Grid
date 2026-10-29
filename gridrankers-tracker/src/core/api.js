@@ -66,6 +66,10 @@ export function createClient({ server, getToken, fetchImpl, timeoutMs = 20000 })
 			if (res.status === 404 && (!data || data.code === 'rest_no_route' || data.code === 'rest_invalid_handler')) {
 				throw new ApiError(404, 'grp_no_tracker', 'This portal doesn’t have the time tracker yet (or the address is wrong). Check the portal address, or try again after the portal updates.');
 			}
+			// A portal whose plugin is older than the tracker asks for a browser session instead.
+			if (path === 'auth/device' && data && data.code === 'grp_bad_nonce') {
+				throw new ApiError(res.status, 'grp_no_tracker', 'This portal’s GridRankers plugin is too old for the tracker. Ask your Super Admin to update it (WP admin → Plugins), or check the portal address.');
+			}
 			throw new ApiError(res.status, data && data.code, data && data.message);
 		}
 		if (data === null && text) {

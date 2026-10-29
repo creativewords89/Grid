@@ -60,6 +60,8 @@ describe('api', () => {
 		await expect(noRoute.signIn('CODE', {})).rejects.toMatchObject({ code: 'grp_no_tracker' });
 		const html = createClient({ server: 'https://p.example', fetchImpl: async () => ({ ok: true, status: 200, text: async () => '<!doctype html><html></html>' }) });
 		await expect(html.signIn('CODE', {})).rejects.toMatchObject({ code: 'grp_not_portal' });
+		const old = createClient({ server: 'https://p.example', fetchImpl: async () => ({ ok: false, status: 403, text: async () => '{"code":"grp_bad_nonce","message":"Your session expired. Reload the page."}' }) });
+		await expect(old.signIn('CODE', {})).rejects.toMatchObject({ code: 'grp_no_tracker', message: expect.stringContaining('too old') });
 	});
 
 	it('tells offline from signed out', async () => {
