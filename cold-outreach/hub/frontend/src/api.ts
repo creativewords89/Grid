@@ -434,6 +434,7 @@ export type FileCity = {
   tops: number;
   muted: string; // why, when it is muted
   moves_at: string | null; // a ready city goes on to the batch then
+  moves_in: number | null; // seconds until then, by the server's clock
   moved_at: string | null;
 };
 
@@ -463,6 +464,7 @@ export type HandedInFile = {
   progress: number;
   error: string | null;
   sends_at: string | null; // in its Final check: when it goes on to Top Review (step 36)
+  sends_in: number | null; // seconds until then, by the server's clock (the viewer's may be off)
   can_send_cities: boolean; // may send its ready cities to the batch now
 };
 
@@ -527,6 +529,7 @@ export type ReviewRow = {
   tops: number;
   state: ReviewShown;
   moves_at: string | null;
+  moves_in: number | null;
 };
 
 export type ReviewList = { counts: Record<ReviewShown, number>; cities: ReviewRow[] };
@@ -536,6 +539,7 @@ export type ReviewCity = {
   name: string;
   state: ReviewShown;
   moves_at: string | null;
+  moves_in: number | null;
   file_id: string;
   file_name: string;
   columns: { key: string; label: string }[];

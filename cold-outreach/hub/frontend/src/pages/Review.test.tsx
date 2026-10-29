@@ -20,6 +20,7 @@ function row(overrides: Partial<ReviewRow> = {}): ReviewRow {
     tops: 0,
     state: "needs_top",
     moves_at: null,
+    moves_in: null,
     ...overrides,
   };
 }
@@ -32,6 +33,7 @@ const city: ReviewCity = {
   name: "Tulsa",
   state: "needs_top",
   moves_at: null,
+  moves_in: null,
   file_id: "f1",
   file_name: "tulsa.xlsx",
   columns: [
@@ -65,12 +67,15 @@ test("a reviewer chooses a city's Top: it is ready, and goes to its batch now if
   const calls = mockApi({
     "GET /auth/me": signedIn,
     "GET /review/cities?show=needs_top": list([row()]),
-    "GET /review/cities?show=ready": list([{ ...ready, moves_at: soon }]),
+    "GET /review/cities?show=ready": list([{ ...ready, moves_at: soon, moves_in: 3600 }]),
     "GET /review/cities?show=small": list([
       row({ key: "waco", name: "Waco", businesses: 3, state: "small" }),
     ]),
     "GET /review/files/f1/cities/tulsa": [200, city],
-    "PUT /review/files/f1/cities/tulsa": [200, row({ tops: 1, state: "ready", moves_at: soon })],
+    "PUT /review/files/f1/cities/tulsa": [
+      200,
+      row({ tops: 1, state: "ready", moves_at: soon, moves_in: 3590 }),
+    ],
     "POST /submissions/f2/to-batch": [200, {}],
   });
   render(<App />);

@@ -24,8 +24,9 @@ function message(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
 }
 
-function minutesLeft(until: string): string {
-  const left = Math.ceil((new Date(until).getTime() - Date.now()) / 60_000);
+// Seconds left as the server counts them: the viewer's clock may be off.
+function minutesLeft(seconds: number): string {
+  const left = Math.min(60, Math.ceil(seconds / 60));
   return left <= 0 ? "any moment" : `${left} min`;
 }
 
@@ -82,7 +83,7 @@ export function Review() {
             back(
               row.state === "ready"
                 ? `Saved the Top of ${row.name}: it goes on to its batch in ${
-                    row.moves_at ? minutesLeft(row.moves_at) : "an hour"
+                    row.moves_in !== null ? minutesLeft(row.moves_in) : "an hour"
                   }.`
                 : `Saved ${row.name}: no Top, so it isn't ready.`,
             )
@@ -159,9 +160,9 @@ export function Review() {
                         <td>
                           {row.state === "ready" && (
                             <div className="file-row-actions">
-                              {row.moves_at && (
+                              {row.moves_in !== null && (
                                 <span className="small muted">
-                                  Goes on in {minutesLeft(row.moves_at)}
+                                  Goes on in {minutesLeft(row.moves_in)}
                                 </span>
                               )}
                               <button

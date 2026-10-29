@@ -13,7 +13,7 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
 from app.auth.tokens import now
-from app.db.models import FileCity, Role
+from app.db.models import FileCity, Role, Submission
 from app.imports import file_checker
 from tests.conftest import Person
 from tests.hub_data import make_benchmark
@@ -107,6 +107,7 @@ def test_tops_are_chosen_city_by_city(owner: TestClient, person: Person) -> None
     saved = rita.put(city_url(bad["id"], "Tulsa"), json={"tops": [first, second]})
     assert saved.status_code == 200, saved.text
     assert saved.json()["state"] == "ready" and saved.json()["moves_at"] is not None
+    assert 3500 <= saved.json()["moves_in"] <= 3600  # by the server's clock
     assert listed(rita, "ready") == [("tulsa.xlsx", "Tulsa", 2)]
     assert rita.get(city_url(bad["id"], "Tulsa")).json()["businesses"][1]["top"] is True
     # Without a Top it isn't ready any more; a city under 10 with a Top is.
@@ -230,3 +231,23 @@ def test_a_niche_without_one_benchmark_gets_a_batch_without_one(
     assert rita.post(f"/api/submissions/{sub['id']}/to-batch", json={}).status_code == 200
     [batch] = owner.get("/api/batches").json()
     assert batch["name"] == "Cleaning" and batch["benchmark"] is None
+
+
+def test_top_review_never_reads_the_file_again(
+    owner: TestClient, person: Person, clean_engine: Engine
+) -> None:
+    """A big file is checked once: Top Review lists and opens its cities from what the check
+    saved, without its content (megabytes for hundreds of cities)."""
+    cal, _ = person(Role.COLLECTOR)
+    rita, _ = person(Role.REVIEWER)
+    sub = hand_in(cal, FILE)
+    with Session(clean_engine) as db:
+        found = db.get(Submission, sub["id"])
+        assert found is not None
+        found.content = b"not read again"
+        db.commit()
+    assert [c["name"] for c in rita.get("/api/review/cities").json()["cities"]] == ["Tulsa"]
+    city = rita.get(city_url(sub["id"], "Tulsa")).json()
+    assert len(city["businesses"]) == 12
+    saved = rita.put(city_url(sub["id"], "Tulsa"), json={"tops": [city["businesses"][0]["key"]]})
+    assert saved.json()["state"] == "ready"

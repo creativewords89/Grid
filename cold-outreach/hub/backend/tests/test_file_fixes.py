@@ -221,17 +221,29 @@ def test_the_file_made_again_keeps_its_other_columns(cal: TestClient) -> None:
     assert lead["values"]["website"] == "https://facebook.com/bc"  # left as it was
 
 
-def test_a_business_on_two_rows_is_kept_once_by_upload_fixes(cal: TestClient) -> None:
-    """Step 39: the same business twice in a file is an error; the fix file back, even
-    unchanged, makes the file again with one row for it."""
+def test_duplicates_are_not_in_the_fix_file_nor_fixed_through_it(cal: TestClient) -> None:
+    """Step 40: duplicates are removed on the Hub only. The fix file leaves them out, and a
+    file saved with other fixes keeps each duplicate's rows."""
     twice = row("Sparkle", "https://share.google/sp", "214 555 0100", city="Dallas")
-    sub = hand_in(cal, {"Dallas": [STANDARD, twice, twice]})
-    assert sub["status"] == "errors" and sub["problems"][0]["code"] == "SAME_IN_FILE"
-    preview = send(cal, sub["id"], fix_file(cal, sub["id"])).json()
-    assert [c["changes"] for c in preview["changed"]] == [
-        [{"field": "Rows", "from": "Dallas row 2, Dallas row 3", "to": "one row"}]
-    ]
-    assert send(cal, sub["id"], fix_file(cal, sub["id"]), confirm=True).json()["saved"] is True
+    tabs = {"Dallas": [STANDARD, twice, twice], "Tulsa": [STANDARD, BAD_ROW]}
+    sub = hand_in(cal, tabs)
+    assert {p["code"] for p in sub["problems"]} >= {"SAME_IN_FILE", "PHONE_HAS_LETTERS"}
+    sheet = fix_file(cal, sub["id"])["Problems"]
+    assert [r[1] for r in rows(sheet)[1:]] == ["Bad Co"]  # Sparkle isn't there
+    sheet.cell(2, 6).value = "https://badco.com"
+    sheet.cell(2, 7).value = "(918) 555-2222"
+    book = sheet.parent
+    assert send(cal, sub["id"], book, confirm=True).json()["saved"] is True
     run_file_checker()
     after = cal.get(f"/api/submissions/{sub['id']}").json()
-    assert (after["errors"], after["businesses"]) == (0, 1)
+    assert [p["code"] for p in after["problems"]] == ["SAME_IN_FILE"]
+    assert after["duplicates"] == {"rows": 1, "elsewhere": 0}
+
+
+def test_only_duplicates_left_the_fix_file_says_to_remove_them_on_the_hub(cal: TestClient) -> None:
+    twice = row("Sparkle", "https://share.google/sp", "214 555 0100", city="Dallas")
+    sub = hand_in(cal, {"Dallas": [STANDARD, twice, twice]})
+    sheet = fix_file(cal, sub["id"])["Problems"]
+    assert rows(sheet)[1][1] == (
+        "Nothing to fix here: remove the duplicates on the Hub (Remove duplicates)."
+    )

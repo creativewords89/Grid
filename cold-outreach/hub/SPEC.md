@@ -1043,4 +1043,9 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     first row, gaps in it filled from the others and their emails added; a business already
     handed in (another file handed in earlier, or a batch) is taken out of this file. The
     "Same business on another row" error says to press it. Duplicates are removed on the
-    Hub only, never through the Excel file (Upload fixes still keeps such a business once).
+    Hub only, never through the Excel file: the fix file leaves them out (with only
+    duplicates left it says to remove them on the Hub), and a file made again from fixes
+    keeps each duplicate on all its rows.
+    (Corrected after step 40: how long is left in a file's Final check, or before a ready
+    city goes on, is counted by the server (`sends_in`, `moves_in`, in seconds), so a
+    viewer's computer clock that is off never shows more than the hour.)

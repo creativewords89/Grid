@@ -609,8 +609,9 @@ function InBatch({ item }: { item: HandedInFile }) {
   );
 }
 
-function minutesLeft(until: string): string {
-  const left = Math.ceil((new Date(until).getTime() - Date.now()) / 60_000);
+// Seconds left as the server counts them: the viewer's clock may be off.
+function minutesLeft(seconds: number): string {
+  const left = Math.min(60, Math.ceil(seconds / 60));
   return left <= 0 ? "any moment" : `${left} min`;
 }
 
@@ -684,7 +685,7 @@ function FileRow({
         )}
         {item.status === "final_check" && (
           <span className="badge badge-ok">
-            No errors · {item.sends_at ? minutesLeft(item.sends_at) : "an hour"} left
+            No errors · {item.sends_in !== null ? minutesLeft(item.sends_in) : "an hour"} left
           </span>
         )}
         {item.status === "top_review" && <span className="badge badge-warning">In Top Review</span>}
@@ -918,7 +919,7 @@ function FileView({
           {item.status === "final_check" && (
             <p>
               ✓ No errors. Final check: this file goes on to Top Review in{" "}
-              {item.sends_at ? minutesLeft(item.sends_at) : "an hour"}, or now with{" "}
+              {item.sends_in !== null ? minutesLeft(item.sends_in) : "an hour"}, or now with{" "}
               <strong>Send to Top Review now</strong>. Until then it can still be fixed.
             </p>
           )}

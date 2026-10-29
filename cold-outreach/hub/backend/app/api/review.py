@@ -11,8 +11,8 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, load_only
 
 from app import audit
 from app.api.schemas import Strict
@@ -20,7 +20,7 @@ from app.auth.deps import CurrentUser, Db
 from app.auth.tokens import now
 from app.db.models import FileCity, Submission
 from app.errors import ApiError
-from app.imports import check, file_cities, reader
+from app.imports import check, file_cities
 from app.imports import submissions as files
 from app.permissions import Action, ensure
 
@@ -40,6 +40,7 @@ class ReviewCity(BaseModel):
     tops: int
     state: Shown
     moves_at: datetime | None  # a ready city goes on to its batch then
+    moves_in: int | None = None  # seconds until then, by the server's clock
 
 
 class ReviewList(BaseModel):
@@ -61,6 +62,9 @@ def _row(sub: Submission, city: FileCity) -> ReviewCity:
         tops=len(city.tops),
         state=state,
         moves_at=city.topped_at + files.READY_WAIT if state == "ready" and city.topped_at else None,
+        moves_in=files.seconds_until(city.topped_at + files.READY_WAIT)
+        if state == "ready" and city.topped_at
+        else None,
     )
 
 
@@ -71,18 +75,24 @@ def review_cities(
     """The cities in Top Review, the oldest file first: one of the three lists, with how many
     each list has."""
     ensure(me, Action.REVIEW_TOPS)
+    # Only the file's name and number come with each city: never its content or businesses,
+    # which are megabytes for a file of hundreds of cities.
     found = db.execute(
         select(Submission, FileCity)
         .join(FileCity, FileCity.submission_id == Submission.id)
+        .options(
+            load_only(Submission.id, Submission.file_name, Submission.number, Submission.niche)
+        )
         .where(
             Submission.state == "checked",
             Submission.sent_at.is_not(None),
+            func.coalesce(Submission.check["errors"].as_integer(), 0) == 0,
             FileCity.moved_at.is_(None),
             FileCity.muted == "",
         )
         .order_by(Submission.number, FileCity.name)
     )
-    rows = [_row(sub, city) for sub, city in found if file_cities.sent_without_errors(sub)]
+    rows = [_row(sub, city) for sub, city in found]
     counts = {
         key: sum(1 for r in rows if r.state == key) for key in ("needs_top", "ready", "small")
     }
@@ -108,6 +118,7 @@ class CityOut(BaseModel):
     name: str
     state: Shown
     moves_at: datetime | None
+    moves_in: int | None = None
     file_id: uuid.UUID
     file_name: str
     columns: list[dict[str, str]]
@@ -123,10 +134,7 @@ def review_city(file_id: uuid.UUID, city: str, me: CurrentUser, db: Db) -> CityO
     ensure(me, Action.REVIEW_TOPS)
     found_city = _open(db, file_id, city)
     sub = found_city.file
-    try:
-        found = files.city_businesses(sub.content, sub.niche, found_city.key)
-    except reader.ReadError as error:
-        raise ApiError(422, "unreadable", str(error)) from None
+    found = files.city_businesses(sub.leads, found_city.key)
     chosen = set(found_city.tops)
     extra: list[str] = []
     for business in found:
@@ -138,6 +146,7 @@ def review_city(file_id: uuid.UUID, city: str, me: CurrentUser, db: Db) -> CityO
         name=found_city.name,
         state=row.state,
         moves_at=row.moves_at,
+        moves_in=row.moves_in,
         file_id=sub.id,
         file_name=sub.file_name,
         columns=[{"key": k, "label": label} for k, label in COLUMNS]
@@ -157,7 +166,7 @@ def save_tops(file_id: uuid.UUID, city: str, body: TopsIn, me: CurrentUser, db: 
     ensure(me, Action.REVIEW_TOPS)
     found = _open(db, file_id, city, lock=True)
     sub = found.file
-    known = {b["key"] for b in files.city_businesses(sub.content, sub.niche, found.key)}
+    known = {b["key"] for b in files.city_businesses(sub.leads, found.key)}
     wanted = list(dict.fromkeys(body.tops))
     if not set(wanted) <= known:
         raise ApiError(422, "invalid", f"These businesses aren't all in {found.name}.")

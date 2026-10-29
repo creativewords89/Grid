@@ -16,7 +16,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, File, Form, Query, Response, UploadFile
 from pydantic import BaseModel, StringConstraints
 from sqlalchemy import func, select, text
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, defer, selectinload
 
 from app import audit
 from app.api.imports import MAX_BYTES, NicheName
@@ -44,6 +44,7 @@ class CityOut(BaseModel):
     tops: int
     muted: str  # why, when it is muted
     moves_at: datetime | None  # a ready city goes on to the batch then
+    moves_in: int | None = None  # seconds until then, by the server's clock
     moved_at: datetime | None
 
 
@@ -75,6 +76,8 @@ class FileOut(BaseModel):
     error: str | None = None
     # In its Final check (step 36): when it goes on to Top Review by itself.
     sends_at: datetime | None = None
+    # Seconds until then, by the server's clock: the viewer's clock may be off (at most an hour).
+    sends_in: int | None = None
     can_send_cities: bool = False  # may send its ready cities to the batch now
 
 
@@ -133,6 +136,9 @@ def _city(city: FileCity) -> CityOut:
         tops=len(city.tops),
         muted=city.muted,
         moves_at=city.topped_at + files.READY_WAIT if found == "ready" and city.topped_at else None,
+        moves_in=files.seconds_until(city.topped_at + files.READY_WAIT)
+        if found == "ready" and city.topped_at
+        else None,
         moved_at=city.moved_at,
     )
 
@@ -180,6 +186,9 @@ def _out(db: Session, me: User, sub: Submission, names: dict[str, str] | None = 
         progress=sub.progress,
         error=sub.error,
         sends_at=sub.clean_since + files.FINAL_CHECK
+        if status == "final_check" and sub.clean_since
+        else None,
+        sends_in=files.seconds_until(sub.clean_since + files.FINAL_CHECK)
         if status == "final_check" and sub.clean_since
         else None,
         can_send_cities=status == "top_review" and "ready" in states and _may_send_cities(me, sub),
@@ -268,7 +277,14 @@ def list_files(me: CurrentUser, db: Db) -> list[FileOut]:
         ensure(me, Action.SUBMIT_FILES)
     query = (
         select(Submission)
-        .options(selectinload(Submission.cities), selectinload(Submission.uploader))
+        .options(
+            selectinload(Submission.cities),
+            selectinload(Submission.uploader),
+            # Not the file itself nor its businesses: a list never needs them.
+            defer(Submission.content),
+            defer(Submission.leads),
+            defer(Submission.problems),
+        )
         .order_by(Submission.created_at.desc())
         .limit(500)
     )
@@ -427,18 +443,6 @@ def upload_fixes(
         if changes:
             changed.append(where | {"business_name": name, "changes": changes})
     kept = [lead for lead in leads if not lead.get("removed")]
-    # A business on several rows of the file (an error, step 39) is kept once: the file is
-    # made again with one row for it.
-    for lead in kept:
-        if len(lead.get("rows", [])) > 1:
-            name = lead["values"].get("business_name") or lead["values"].get("gbp_link", "")
-            once = {"field": "Rows", "from": ", ".join(lead["rows"]), "to": "one row"}
-            found = next((c for c in changed if c["file_id"] == lead["id"]), None)
-            if found is None:
-                where = {"tab": lead["tab"], "line": lead["line"], "file_id": lead["id"]}
-                changed.append(where | {"business_name": name, "changes": [once]})
-            else:
-                found["changes"].append(once)
     if confirm and (changed or removed):
         if not kept:
             raise ApiError(409, "empty", "That would take every business out of the file.")
@@ -486,7 +490,7 @@ def remove_duplicates(file_id: uuid.UUID, me: CurrentUser, db: Db) -> FileDetail
     kept = [lead for lead in sub.leads if not _elsewhere(lead)]
     if not kept:
         raise ApiError(409, "empty", "That would take every business out of the file.")
-    _store(sub, files.rebuilt(kept))
+    _store(sub, files.rebuilt(kept, once=True))
     sub.version += 1
     audit.record(
         db,
