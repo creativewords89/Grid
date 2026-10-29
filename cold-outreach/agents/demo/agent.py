@@ -1,6 +1,9 @@
-"""A demo agent for trying the Agent Hub (hub/SPEC.md section 6.2). It does no real work: it
-goes through the leads the Hub hands it in the batches that chose it, in the running order,
-and "audits" each by waiting a moment. Only Python's standard library is needed.
+"""A demo agent for trying the Agent Hub's agent API from a container of its own (hub/SPEC.md
+section 6.2). The Hub has the same demo built in (hub step 25: Agents → + Add agent → Demo
+agent), which needs no token or command; this file is for an agent of one's own. It does no
+real work: it goes through the leads the Hub hands it in the batches that chose it, in the
+running order, and "audits" each by waiting a moment. Only Python's standard library is
+needed.
 
     HUB_URL=http://localhost:8000 AGENT_TOKEN=hub_agent_… python agent.py
 

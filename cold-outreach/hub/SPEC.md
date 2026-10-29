@@ -36,7 +36,8 @@ SQLAlchemy, React, Caddy, encrypted write-only keys) by copying, not importing.
 
 ### Non-goals (first version)
 
-- Running agent code inside the Hub. Agents are separate containers (section 6.2).
+- (Changed by step 25: built-in agents now run in the Hub's `agents` service; an agent of
+  one's own can still be a separate container, section 6.2.)
 - Editing every field of a lead in the Hub: a new file updates the rest (section 6.4).
 - Self sign-up. People join by invite only.
 
@@ -180,7 +181,19 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 
 ### 6.2 Agents
 
-- **Adding an agent** (Owner): give its key (2–40 lower-case letters, digits and dashes, e.g.
+- **Built-in agents** (step 25, the normal way): **+ Add agent** (Owner) offers the kinds the
+  Hub can run (`GET /api/agents/kinds`; for now the **Demo agent**, which pretends to do a
+  job; the real GBP and Website agents come next). Choose a kind, the **job it does** for a
+  kind without a job of its own, and a name; its key is made from the name (`demo-gbp`,
+  `demo-gbp-2`). There is no token and nothing to start on the server: the Hub's **agents
+  service** (`python -m app.runner`, the `agents` service of the stack) runs every built-in
+  agent, one thread each, and stops one that was deleted. Each signs in to the agent API like
+  any agent, with a key worked out from `SECRET_KEY` and the agent's key
+  (`hub_runner_<key>.<HMAC-SHA256>`), never shown and only valid for an agent with a kind;
+  it sends its kind's manifest naming its job, then asks for work. Its card says **Connected
+  · runs in the Hub** (or **Starting in the Hub…**), has no **New token** and is in the agent
+  library under its job from the moment it is added.
+- **An agent of its own** (advanced): **Adding an agent** (Owner): give its key (2–40 lower-case letters, digits and dashes, e.g.
   `gbp-audit`) and name; the Hub shows its **token once** (`hub_agent_…`, only a hash is
   stored). The token goes into the agent container's settings as `AGENT_TOKEN`, with
   `HUB_URL`. **New token** replaces it and stops the old one at once. A new agent starts
@@ -733,3 +746,10 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     the library lists agents only; the lead file form no longer says a Level column makes a
     business Top. **Tests:** the built-in jobs in order without agents, a manifest joining one,
     the standard steps added once and kept, rights, the Tasks tab before any agent.
+25. **Agents run in the Hub** (asked for after step 24, "nothing typed in the terminal"):
+    the `agents` service and `python -m app.runner`; built-in kinds (`app/builtin`, the Demo
+    agent first); **+ Add agent** by kind, job and name, no token; the runner's signed key;
+    migration `0016` (`agents.kind`); an agent of one's own still possible. **Tests:** the
+    kinds, adding one (key from the name, its job at once, no token, refused New token),
+    rights, the runner key only for a built-in agent and not forgeable, the runner taking a
+    run through a batch, the Agents screen, e2e with the runner.

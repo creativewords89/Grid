@@ -1,6 +1,7 @@
 # GridRankers Agent Hub — production stack (SPEC sections 2 and 10).
 # Usage: cp .env.example .env, fill it in, then `docker compose up -d --build`.
-# Agents run in their own containers and join this stack's network to reach http://api:8000.
+# Built-in agents run in the `agents` service; an agent with a container of its own joins this
+# stack's network to reach http://api:8000.
 
 # Docker keeps each service's logs (JSON lines) and rotates them, so they can't fill the disk.
 x-logging: &logging
@@ -65,6 +66,23 @@ services:
     volumes:
       # Read-only: the scheduler raises an alert when the nightly backup failed or is late.
       - backups:/data/backups:ro
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # The built-in agents made on the Agents screen (step 25): no token, nothing to start by
+  # hand. They call the API like any agent, over this stack's network.
+  agents:
+    build: ./backend
+    command: ["agents"]
+    logging: *logging
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      JSON_LOGS: "true"
+      HUB_URL: http://api:8000
     security_opt: ["no-new-privileges:true"]
     depends_on:
       api:

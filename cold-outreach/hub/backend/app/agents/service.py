@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app import connections
 from app.agents.manifest import Manifest, effective_config
 from app.auth.tokens import hash_secret, now
+from app.builtin import key_of_runner_token
 from app.db.models import ACTIVE_RUN, Agent, Run, RunStatus, RunTrigger, User
 from app.errors import ApiError
 
@@ -22,6 +23,11 @@ def new_token() -> str:
 
 
 def find_by_token(db: Session, token: str) -> Agent | None:
+    """The agent a token is for: its own token, or for a built-in agent the runner's key
+    (step 25), which only signs in an agent that has a kind."""
+    key = key_of_runner_token(token)
+    if key is not None:
+        return db.scalar(select(Agent).where(Agent.key == key, Agent.kind.is_not(None)))
     if not token.startswith(TOKEN_PREFIX):
         return None
     return db.scalar(select(Agent).where(Agent.token_hash == hash_secret(token)))

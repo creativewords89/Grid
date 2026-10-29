@@ -1,6 +1,7 @@
 #!/bin/sh
 # api:       apply migrations, then serve the API (migrations run on every start)
 # scheduler: run the scheduler (due runs, stale runs, alerts)
+# agents:    run the built-in agents made on the Agents screen
 set -eu
 
 case "${1:-api}" in
@@ -10,6 +11,9 @@ case "${1:-api}" in
     ;;
   scheduler)
     exec python -m app.scheduler
+    ;;
+  agents)
+    exec python -m app.runner
     ;;
   *)
     exec "$@"

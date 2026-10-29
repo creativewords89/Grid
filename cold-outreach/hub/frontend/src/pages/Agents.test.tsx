@@ -9,6 +9,7 @@ function agent(overrides: Partial<Agent> = {}): Agent {
   return {
     key: "gbp-audit",
     name: "GBP audit",
+    kind: null,
     enabled: true,
     connected: true,
     last_seen_at: new Date().toISOString(),
@@ -207,10 +208,61 @@ test("a settings error from the server shows under its field", async () => {
   expect(await within(dialog).findAllByText("Batch size must be at most 100.")).toHaveLength(2);
 });
 
-test("the Owner adds an agent and sees its token once", async () => {
+const KINDS = [{ key: "demo", name: "Demo agent", about: "Pretends to do a job.", job: null }];
+const JOBS = [
+  { id: "t1", key: "gbp-audit", name: "GBP Audit", bots: [], batches: [] },
+  { id: "t2", key: "website-audit", name: "Website Audit", bots: [], batches: [] },
+];
+
+test("the Owner adds a built-in agent: its kind and job, no token (step 25)", async () => {
+  let added = false;
+  const demo = agent({
+    key: "demo-website",
+    name: "Demo website",
+    kind: "demo",
+    manifest: null,
+    connected: false,
+    last_seen_at: null,
+    task: { key: "website-audit", name: "Website Audit" },
+  });
+  const calls = mockApi({
+    "GET /auth/me": as("owner"),
+    "GET /agents": () => [200, added ? [demo] : []],
+    "GET /agents/kinds": [200, KINDS],
+    "GET /tasks": [200, JOBS],
+    "POST /agents": () => {
+      added = true;
+      return [201, { agent: demo, token: null }];
+    },
+  });
+  render(<App />);
+
+  await userEvent.click(await screen.findByRole("button", { name: "+ Add agent" }));
+  const dialog = screen.getByRole("dialog", { name: "Add an agent" });
+  expect(await within(dialog).findByText("Pretends to do a job.")).toBeVisible();
+  expect(within(dialog).queryByLabelText("Key")).not.toBeInTheDocument();
+  await userEvent.selectOptions(within(dialog).getByLabelText("Job it does"), "t2");
+  await userEvent.type(within(dialog).getByLabelText("Name"), "Demo website");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Add agent" }));
+
+  const card = await screen.findByRole("article", { name: "Demo website" });
+  expect(calls.find((c) => c.method === "POST")?.body).toEqual({
+    kind: "demo",
+    name: "Demo website",
+    task_id: "t2",
+  });
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument(); // no token to show
+  expect(within(card).getByText("Starting in the Hub…")).toBeVisible();
+  expect(within(card).queryByRole("button", { name: "New token" })).not.toBeInTheDocument();
+  expect(within(card).queryByText("How to start it")).not.toBeInTheDocument();
+});
+
+test("the Owner adds an agent of their own and sees its token once", async () => {
   const calls = mockApi({
     "GET /auth/me": as("owner"),
     "GET /agents": [200, []],
+    "GET /agents/kinds": [200, KINDS],
+    "GET /tasks": [200, JOBS],
     "POST /agents": [
       201,
       {
@@ -224,6 +276,8 @@ test("the Owner adds an agent and sees its token once", async () => {
   expect(await screen.findByText(/No agents yet/)).toBeVisible();
   await userEvent.click(screen.getByRole("button", { name: "+ Add agent" }));
   const dialog = screen.getByRole("dialog", { name: "Add an agent" });
+  await within(dialog).findByText("Pretends to do a job.");
+  await userEvent.selectOptions(within(dialog).getByLabelText("Kind of agent"), "own");
   await userEvent.type(within(dialog).getByLabelText("Name"), "Website audit");
   await userEvent.type(within(dialog).getByLabelText("Key"), "web-audit");
   await userEvent.click(within(dialog).getByRole("button", { name: "Add and show the token" }));

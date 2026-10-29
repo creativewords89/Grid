@@ -4,6 +4,7 @@ Everyone sees the agents. Owners and Admins switch them on and off, run them and
 their settings. Only Owners add an agent or replace its token; a token is shown once.
 """
 
+import re
 import uuid
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -15,12 +16,13 @@ from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app import audit, connections, pipeline
+from app import audit, connections, jobs, pipeline
 from app.agents import service
 from app.agents.manifest import AGENT_KEY, RUN_TIME, check_value
 from app.api.schemas import Name, Strict
 from app.auth.deps import CurrentUser, Db
 from app.auth.tokens import hash_secret, now
+from app.builtin import KINDS
 from app.db.models import Agent, Run, RunTrigger, Task
 from app.errors import ApiError
 from app.permissions import Action, ensure
@@ -86,6 +88,7 @@ class TaskRef(BaseModel):
 class AgentOut(BaseModel):
     key: str
     name: str
+    kind: str | None  # a built-in kind the Hub runs (step 25); None: its own container
     enabled: bool
     connected: bool
     last_seen_at: datetime | None
@@ -110,6 +113,7 @@ def _out(db: Session, agent: Agent) -> AgentOut:
     return AgentOut(
         key=agent.key,
         name=agent.name,
+        kind=agent.kind,
         enabled=agent.enabled,
         connected=bool(seen and now() - seen < CONNECTED_WITHIN),
         last_seen_at=seen,
@@ -154,20 +158,90 @@ def list_agents(me: CurrentUser, db: Db) -> list[AgentOut]:
 Key = Annotated[str, StringConstraints(strip_whitespace=True, to_lower=True, max_length=40)]
 
 
+class KindOut(BaseModel):
+    key: str
+    name: str
+    about: str
+    job: TaskRef | None  # the job it does; None: chosen when it is added
+
+
+@router.get("/kinds", response_model=list[KindOut])
+def list_kinds(me: CurrentUser, db: Db) -> list[KindOut]:
+    """The built-in agents the Hub can run (step 25)."""
+    ensure(me, Action.VIEW_HUB)
+    names = dict(jobs.BUILT_IN)
+    return [
+        KindOut(
+            key=k.key,
+            name=k.name,
+            about=k.about,
+            job=TaskRef(key=k.job, name=names.get(k.job, k.job)) if k.job else None,
+        )
+        for k in KINDS.values()
+    ]
+
+
 class AgentIn(Strict):
-    key: Key
     name: Name
+    # A built-in agent: its kind, and for a kind without a job of its own (the demo) the
+    # job it does. Otherwise an agent with a token: its key.
+    kind: Annotated[str, StringConstraints(max_length=40)] | None = None
+    task_id: uuid.UUID | None = None
+    key: Key | None = None
 
 
 class TokenOut(BaseModel):
     agent: AgentOut
-    token: str  # shown once
+    token: str | None  # shown once; None for a built-in agent, which needs none
+
+
+def _free_key(db: Session, name: str) -> str:
+    """A key made from the name, unused: "GBP Audit 2" → "gbp-audit-2"."""
+    base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:34] or "agent"
+    if len(base) < 2:
+        base = f"agent-{base}"
+    taken = set(db.scalars(select(Agent.key).where(Agent.key.like(f"{base}%"))))
+    key, n = base, 1
+    while key in taken:
+        n += 1
+        key = f"{base}-{n}"
+    return key
+
+
+def _add_built_in(body: AgentIn, me: CurrentUser, db: Db) -> TokenOut:
+    kind = KINDS.get(body.kind or "")
+    if kind is None:
+        raise ApiError(422, "invalid", "Choose a kind of agent.", {"kind": "Choose one."})
+    jobs.ensure_built_in(db)
+    if kind.job:
+        task = db.scalar(select(Task).where(Task.key == kind.job))
+    else:
+        task = db.get(Task, body.task_id) if body.task_id else None
+    if task is None:
+        message = "Choose the job it does."
+        raise ApiError(422, "invalid", message, {"task_id": message})
+    agent = Agent(
+        key=_free_key(db, body.name),
+        name=body.name,
+        kind=kind.key,
+        token_hash=hash_secret(service.new_token()),  # never shown: the runner signs in
+        task_id=task.id,
+    )
+    db.add(agent)
+    db.flush()
+    audit.record(db, me, "create", "agent", agent.key, agent.name, [])
+    db.commit()
+    return TokenOut(agent=_out(db, agent), token=None)
 
 
 @router.post("", response_model=TokenOut, status_code=201)
 def add_agent(body: AgentIn, me: CurrentUser, db: Db) -> TokenOut:
+    """Add a built-in agent (choose its kind: the Hub runs it), or an agent with a token
+    that is started on the server (its key; the token is shown once)."""
     ensure(me, Action.MANAGE_AGENT_TOKENS)
-    if not AGENT_KEY.match(body.key):
+    if body.kind is not None:
+        return _add_built_in(body, me, db)
+    if body.key is None or not AGENT_KEY.match(body.key):
         message = "Use 2–40 lower-case letters, digits and dashes, like gbp-audit."
         raise ApiError(422, "invalid", message, {"key": message})
     if db.scalar(select(func.count()).select_from(Agent).where(Agent.key == body.key)):
@@ -186,6 +260,8 @@ def replace_token(key: str, me: CurrentUser, db: Db) -> TokenOut:
     """A new token; the old one stops working at once."""
     ensure(me, Action.MANAGE_AGENT_TOKENS)
     agent = _get(db, key)
+    if agent.kind is not None:
+        raise ApiError(409, "built_in", "The Hub runs this agent: it needs no token.")
     token = service.new_token()
     agent.token_hash = hash_secret(token)
     audit.record(db, me, "new_token", "agent", agent.key, agent.name, [])

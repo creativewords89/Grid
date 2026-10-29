@@ -3,9 +3,11 @@ import {
   api,
   ApiError,
   type Agent,
+  type AgentKind,
   type AgentSettings,
   type ConfigValue,
   type ManifestSetting,
+  type Task,
 } from "../api";
 import { useAuth } from "../auth";
 import { setupState } from "../agentSetup";
@@ -19,6 +21,8 @@ import { CONNECTION_NAMES, RUN_STATUS } from "../labels";
 // only: the server checks every action.
 
 type Notice = { kind: "error" | "success"; text: string } | null;
+
+const OWN = "own"; // the + Add agent choice for an agent with a token of its own
 
 export function Agents() {
   const { user } = useAuth();
@@ -57,7 +61,7 @@ export function Agents() {
           <p className="muted">
             No agents yet.{" "}
             {owner
-              ? "Add one to get its token, then start the agent on the server with that token."
+              ? "Add one: choose what it does, and the Hub runs it. Then add it to a task in a batch."
               : "An Owner adds them."}
           </p>
         </div>
@@ -78,7 +82,8 @@ export function Agents() {
           onClose={() => setAdding(false)}
           onAdded={(result) => {
             setAdding(false);
-            setToken(result);
+            // A built-in agent has no token: the Hub runs it.
+            if (result.token) setToken({ agent: result.agent, token: result.token });
             load();
           }}
         />
@@ -153,13 +158,17 @@ function AgentCard({
       <p className="small">
         <span className={`dot ${agent.connected ? "dot-ok" : "dot-off"}`} aria-hidden="true" />{" "}
         {agent.connected
-          ? "Connected"
+          ? agent.kind
+            ? "Connected · runs in the Hub"
+            : "Connected"
           : agent.last_seen_at
             ? `Not connected · last seen ${ago(agent.last_seen_at)}`
-            : "Never connected: start the agent on the server with its token"}
+            : agent.kind
+              ? "Starting in the Hub…"
+              : "Never connected: start the agent on the server with its token"}
       </p>
       <p className={`small ${setup.done ? "" : "setup-next"}`}>Setup: {setup.label}</p>
-      {!agent.manifest && !agent.last_seen_at && (
+      {!agent.kind && !agent.manifest && !agent.last_seen_at && (
         <details>
           <summary className="small">How to start it</summary>
           <StartCommands agentKey={agent.key} token="PASTE_ITS_TOKEN" />
@@ -253,7 +262,7 @@ function AgentCard({
             Settings
           </button>
         )}
-        {owner && (
+        {owner && !agent.kind && (
           <button
             className="button"
             disabled={busy}
@@ -459,24 +468,54 @@ function SettingField({
   );
 }
 
+/** + Add agent: a built-in agent the Hub runs (choose its kind and, for the demo, its job),
+ * or one with a token that is started on the server (advanced). */
 function AddDialog({
   onClose,
   onAdded,
 }: {
   onClose: () => void;
-  onAdded: (result: { agent: Agent; token: string }) => void;
+  onAdded: (result: { agent: Agent; token: string | null }) => void;
 }) {
+  const [kinds, setKinds] = useState<AgentKind[]>([]);
+  const [jobs, setJobs] = useState<Task[]>([]);
+  const [kind, setKind] = useState(""); // "" until loaded; OWN: an agent with a token
+  const [taskId, setTaskId] = useState("");
   const [key, setKey] = useState("");
   const [name, setName] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api
+      .agentKinds()
+      .then((found) => {
+        setKinds(found);
+        setKind((now) => now || (found[0]?.key ?? OWN));
+      })
+      .catch(() => setKind(OWN));
+    api
+      .tasks()
+      .then((found) => {
+        setJobs(found);
+        setTaskId((now) => now || (found[0]?.id ?? ""));
+      })
+      .catch(() => setJobs([]));
+  }, []);
+
+  const chosen = kinds.find((k) => k.key === kind);
+  const own = kind === OWN;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
     setErrors({});
     try {
-      onAdded(await api.addAgent(key, name));
+      onAdded(
+        own
+          ? await api.addAgent(key, name)
+          : await api.addBuiltInAgent(kind, name, chosen?.job ? undefined : taskId),
+      );
     } catch (err) {
       if (err instanceof ApiError) setErrors({ form: err.message, ...err.fields });
       setBusy(false);
@@ -487,27 +526,60 @@ function AddDialog({
     <Modal title="Add an agent" onClose={onClose}>
       <form onSubmit={submit} className="stack" noValidate>
         {errors.form && <Alert kind="error">{errors.form}</Alert>}
+        <div className="field">
+          <label htmlFor="agent-kind">Kind of agent</label>
+          <select id="agent-kind" value={kind} onChange={(e) => setKind(e.target.value)}>
+            {kinds.map((k) => (
+              <option key={k.key} value={k.key}>
+                {k.name}
+              </option>
+            ))}
+            <option value={OWN}>An agent of my own (started on the server with a token)</option>
+          </select>
+          {chosen && <span className="hint">{chosen.about}</span>}
+        </div>
+        {chosen && !chosen.job && (
+          <div className="field">
+            <label htmlFor="agent-job">Job it does</label>
+            <select id="agent-job" value={taskId} onChange={(e) => setTaskId(e.target.value)}>
+              {jobs.map((j) => (
+                <option key={j.id} value={j.id}>
+                  {j.name}
+                </option>
+              ))}
+            </select>
+            {errors.task_id && <span className="field-error">{errors.task_id}</span>}
+          </div>
+        )}
         <Field
           label="Name"
-          placeholder="GBP audit"
+          placeholder={own ? "GBP audit" : "Demo GBP audit"}
           value={name}
           error={errors.name}
           onChange={(e) => setName(e.target.value)}
         />
-        <Field
-          label="Key"
-          placeholder="gbp-audit"
-          hint="Lower-case letters, digits and dashes. It can't be changed later."
-          value={key}
-          error={errors.key}
-          onChange={(e) => setKey(e.target.value)}
-        />
+        {own && (
+          <Field
+            label="Key"
+            placeholder="gbp-audit"
+            hint="Lower-case letters, digits and dashes. It can't be changed later."
+            value={key}
+            error={errors.key}
+            onChange={(e) => setKey(e.target.value)}
+          />
+        )}
+        {!own && (
+          <p className="muted small">
+            The Hub runs it: nothing to copy or start on the server. Next, add it to a task in a
+            batch and switch it on.
+          </p>
+        )}
         <div className="modal-actions">
           <button type="button" className="button" onClick={onClose}>
             Cancel
           </button>
-          <button className="button button-primary" disabled={busy}>
-            Add and show the token
+          <button className="button button-primary" disabled={busy || !kind}>
+            {own ? "Add and show the token" : "Add agent"}
           </button>
         </div>
       </form>

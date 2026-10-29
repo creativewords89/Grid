@@ -111,6 +111,7 @@ export type ConfigValue = number | string | boolean | null;
 export type Agent = {
   key: string;
   name: string;
+  kind: string | null; // a built-in kind the Hub runs (step 25); null: its own container
   enabled: boolean;
   connected: boolean;
   last_seen_at: string | null;
@@ -126,6 +127,14 @@ export type Agent = {
   last_run: Run | null;
   next_run_at: string | null;
   spent_today_usd: string;
+};
+
+/** A built-in agent the Hub can run (step 25). */
+export type AgentKind = {
+  key: string;
+  name: string;
+  about: string;
+  job: { key: string; name: string } | null; // null: chosen when it is added
 };
 
 export type AgentSettings = {
@@ -584,8 +593,15 @@ export const api = {
   testConnection: (group: string) => request<TestResult>("POST", `/connections/${group}/test`),
 
   agents: () => request<Agent[]>("GET", "/agents"),
+  agentKinds: () => request<AgentKind[]>("GET", "/agents/kinds"),
   addAgent: (key: string, name: string) =>
     request<{ agent: Agent; token: string }>("POST", "/agents", { key, name }),
+  addBuiltInAgent: (kind: string, name: string, taskId?: string) =>
+    request<{ agent: Agent; token: null }>("POST", "/agents", {
+      kind,
+      name,
+      task_id: taskId || undefined,
+    }),
   newAgentToken: (key: string) =>
     request<{ agent: Agent; token: string }>("POST", `/agents/${key}/token`),
   switchAgent: (key: string, enabled: boolean) =>

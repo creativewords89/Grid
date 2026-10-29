@@ -1,6 +1,6 @@
 #!/bin/sh
 # Start everything the end-to-end tests need, on ports of their own: a fresh database, the
-# API, the scheduler and the web app. Playwright runs this (see
+# API, the scheduler, the built-in agents and the web app. Playwright runs this (see
 # playwright.config.ts) and stops it afterwards; it can also be run by hand.
 #
 # Needs: PostgreSQL (E2E_DATABASE_URL, default hub:hub@localhost; the user must be allowed
@@ -25,6 +25,9 @@ cd "$HERE/../backend"
 PYTHONPATH=. uv run python "$HERE/reset.py" "$RUN/setup-code"
 uv run uvicorn app.main:app --port 8200 > "$RUN/api.log" 2>&1 &
 uv run python -m app.scheduler > "$RUN/scheduler.log" 2>&1 &
+# The built-in agents (step 25), asking the API for work every second.
+HUB_URL=http://localhost:8200 RUNNER_POLL_SECONDS=1 uv run python -m app.runner \
+  > "$RUN/agents.log" 2>&1 &
 
 # Playwright starts testing once the web app answers, so the API must be up before it is.
 tries=0

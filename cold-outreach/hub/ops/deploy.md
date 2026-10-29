@@ -146,38 +146,28 @@ first start, and the DNS record (step 3) must already work.
    the first lead file, check the preview and save it. the batch's **Leads** tab then shows every business;
    **Download Excel** gives any view as a file.
 
-## 7. Start an agent
+## 7. Add an agent
 
-Each agent runs in its own container on this server and talks to the Hub over the Hub's
-private Docker network, `agent-hub`, at `http://api:8000`. Nothing about agents is opened
-to the internet.
+Agents run inside the Hub, in its `agents` service (started with everything else in
+step 5). Nothing is typed on the server.
 
-1. **Agents → + Add agent**: give it a name and a key (for example `gbp-audit`). Copy the
-   token it shows: it is shown only once (an Owner can make a new one later).
-2. Start the agent with that token. Each agent's own guide gives the exact command; it
-   always has these two settings and joins the `agent-hub` network:
+1. **Agents → + Add agent**: choose the **kind of agent** and, for the demo agent, the
+   **job it does** (for example GBP Audit), give it a name and press **Add agent**. Within a
+   minute its card says **Connected · runs in the Hub** and **Does:** its job.
+2. Open a batch on **Batches**. On its **Tasks** tab press **Use the standard steps** (or
+   **+ Add a task**), then put the agent on its job's task: drag it from the agent library on
+   the left, or choose it in the task.
+3. Back on **Agents**, switch the agent **on**; on the batch press **Start**. It works at its
+   daily time, or press **Run now** to try it. **Runs** shows how it went.
 
-   ```sh
-   HUB_URL=http://api:8000
-   AGENT_TOKEN=hub_agent_…        # the token from step 1
-   ```
+The **demo agent** does no real work: it pretends to do its job on the batch's leads, so the
+whole flow can be tried before the real agents are ready. Delete it, or switch it off,
+afterwards.
 
-   To try the Hub with the **demo agent** (it does no real work):
-
-   ```sh
-   cd /opt/gridrankers/cold-outreach
-   docker run -d --name demo-agent --restart unless-stopped --network agent-hub \
-     -e HUB_URL=http://api:8000 -e AGENT_TOKEN=hub_agent_PASTE_IT_HERE \
-     -v "$PWD/agents/demo:/agent:ro" python:3.12-slim python /agent/agent.py
-   ```
-
-3. Back on **Agents**, the card says **Connected** within a minute and **Does: Demo** (its
-   job). Open a batch on **Batches**, and on its **Tasks** tab press **+ Add a task**, choose
-   the job "Demo", then add the demo agent to the task and press **Start**; then switch the
-   agent **on** and press **Run now** to try it. Add `-e AGENT_TASK=gbp-audit -e
-   AGENT_TASK_NAME="GBP Audit"` (or another job) to the
-   `docker run` to try several demo agents as the steps of one batch. **Runs** shows how it went. Remove the
-   demo agent afterwards with `docker rm -f demo-agent` (and switch it off in the Hub).
+An agent of your own that runs in its own container can still be added: choose **An agent
+of my own** in step 1. The Hub then shows its token once, and the container is started on
+the server with `HUB_URL=http://api:8000` and `AGENT_TOKEN=…`, on the Hub's private network
+`agent-hub`.
 
 ## 8. Backups
 
@@ -227,6 +217,7 @@ afterwards.
 docker compose ps                         # what is running
 docker compose logs --tail 100 api        # the website's log (one JSON object per line)
 docker compose logs --tail 100 scheduler  # schedules, timeouts, alerts
+docker compose logs --tail 100 agents     # the built-in agents
 docker compose logs --tail 100 backup
 docker compose restart api scheduler      # restart the Hub (the database keeps running)
 ```
@@ -319,8 +310,8 @@ curl -s https://answers.gridrankers.com/api/health   # still ok
 
 Then continue with step 6 above (create the Owner account). Commands for the Hub
 (`docker compose …`) are always run in `/opt/gridrankers/cold-outreach/hub`, and for the
-Answer Engine in `/opt/gridrankers/answer-engine`. Agents (step 7) join the Hub's own
-network, `agent-hub`, as described there.
+Answer Engine in `/opt/gridrankers/answer-engine`. Agents (step 7) run in the Hub's
+`agents` service; an agent of your own joins the Hub's network, `agent-hub`.
 
 **Updating:** `git pull` in `/opt/gridrankers`, then `docker compose up -d --build` in
 the folder of each app that changed. If the Hub is stopped, `hub.gridrankers.com` shows an

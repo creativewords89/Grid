@@ -1,5 +1,4 @@
 import { expect, test, type Page } from "@playwright/test";
-import { spawn, type ChildProcess } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -9,16 +8,6 @@ import path from "node:path";
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
 const RUN = path.join(HERE, "..", ".run");
-const DEMO_AGENT = path.join(
-  HERE,
-  "..",
-  "..",
-  "..",
-  "agents",
-  "demo",
-  "agent.py",
-);
-const API = "http://localhost:8200";
 const OWNER = {
   name: "Olivia",
   email: "olivia@example.com",
@@ -28,14 +17,12 @@ const OWNER = {
 test.describe.configure({ mode: "serial" });
 
 let page: Page;
-let agent: ChildProcess | undefined;
 
 test.beforeAll(async ({ browser }) => {
   page = await browser.newPage();
 });
 
 test.afterAll(async () => {
-  agent?.kill();
   await page.close();
 });
 
@@ -231,27 +218,19 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
     .getByRole("navigation", { name: "Main" })
     .getByRole("link", { name: "Agents" })
     .click();
+  // A built-in agent (step 25): its kind and job; the Hub runs it, no token or command.
   await page.getByRole("button", { name: "+ Add agent" }).click();
-  await page.getByLabel("Name").fill("Demo agent");
-  await page.getByLabel("Key").fill("demo");
-  await page.getByRole("button", { name: "Add and show the token" }).click();
-  const token = await page.getByLabel("Agent token").inputValue();
-  expect(token).toMatch(/^hub_agent_/);
-  await page.getByRole("button", { name: "Done" }).click();
+  const add = page.getByRole("dialog", { name: "Add an agent" });
+  await expect(add.getByLabel("Kind of agent")).toHaveValue("demo");
+  await add.getByLabel("Job it does").selectOption({ label: "GBP Audit" });
+  await add.getByLabel("Name").fill("Demo agent");
+  await add.getByRole("button", { name: "Add agent" }).click();
+  await expect(add).toBeHidden();
 
-  agent = spawn("python3", [DEMO_AGENT], {
-    env: {
-      ...process.env,
-      HUB_URL: API,
-      AGENT_TOKEN: token,
-      POLL_SECONDS: "1",
-    },
-    stdio: "ignore",
-  });
   const card = page.getByRole("article", { name: "Demo agent" });
   await expect(async () => {
     await card.getByRole("button", { name: "Refresh" }).click();
-    await expect(card.getByText("Connected", { exact: true })).toBeVisible({
+    await expect(card.getByText("Connected · runs in the Hub")).toBeVisible({
       timeout: 1000,
     });
   }).toPass({ timeout: 30_000 });
@@ -262,7 +241,7 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
   await page.getByRole("button", { name: "Save" }).click();
   await expect(card.getByText("Settings saved.")).toBeVisible();
   await expect(card.getByText("Does:").locator("..")).toContainText(
-    "Does: Demo",
+    "Does: GBP Audit",
   );
 
   // The batch chooses the agent for its task, then starts.
@@ -273,22 +252,17 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
   await page
     .getByRole("button", { name: "Texas November", exact: true })
     .click();
-  // The task is made in the batch: its job, its name, then its agent.
+  // The batch starts from the standard steps, then the agent goes on its job's task.
   await expect(
     page.getByRole("region", { name: "Agent library" }).getByText("Demo agent"),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: /\+ Add a task to this batch/ })
-    .click();
-  const form = page.getByRole("form", { name: "Add a task" });
-  await form
-    .getByLabel("Job (what your agents do)")
-    .selectOption({ label: "Demo (1 agent)" });
-  await form.getByLabel("Name").fill("Pretend audit");
-  await form.getByRole("button", { name: "Add task" }).click();
-  const slot = page.getByRole("article", { name: "Pretend audit" });
+  await page.getByRole("button", { name: "Use the standard steps" }).click();
+  await expect(
+    page.getByRole("article", { name: "Opportunity Finder" }),
+  ).toBeVisible();
+  const slot = page.getByRole("article", { name: "GBP Audit" });
   await slot
-    .getByLabel("Add an agent to Pretend audit")
+    .getByLabel("Add an agent to GBP Audit")
     .selectOption({ label: "Demo agent" });
   await expect(slot.getByText("Demo agent")).toBeVisible();
   await page.getByRole("button", { name: "Start" }).click();
@@ -299,7 +273,7 @@ test("the demo agent joins, works on the batch and finishes a run", async () => 
     .getByRole("link", { name: "Agents" })
     .click();
   await expect(card.getByText("Used in:").locator("..")).toContainText(
-    "Used in: Texas November · Pretend audit",
+    "Used in: Texas November · GBP Audit",
   );
   const power = card.getByRole("switch", { name: "Demo agent on or off" });
   await power.click(); // saved on the server first, then shown as on
