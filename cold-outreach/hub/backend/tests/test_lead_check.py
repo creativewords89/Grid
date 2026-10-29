@@ -43,6 +43,11 @@ def codes(**changes: str) -> list[str]:
 
 def test_a_clean_lead_has_no_problem() -> None:
     assert codes() == []
+    # Normal, not problems: no phone, a long name, reviews as 1.4k.
+    assert codes(phone="", whatsapp="") == []
+    assert codes(business_name="Sparkle Home Cleaning " * 6) == []
+    assert codes(reviews="1.4k") == codes(reviews="12.5K") == codes(reviews="2k") == []
+    assert codes(address="5874 S 129th E Ave, tulsa, OK") == []
     # WhatsApp says whether the phone number has WhatsApp.
     assert codes(whatsapp="yes") == codes(whatsapp="YES") == codes(whatsapp="") == []
     assert codes(phone="918-523-8300 ext 4", gbp_link="https://maps.google.com/?cid=1") == []
@@ -74,6 +79,11 @@ def test_a_clean_lead_has_no_problem() -> None:
         ({"rating": "great"}, "RATING_NOT_NUMBER"),
         ({"rating": "7.5"}, "RATING_OUT_OF_RANGE"),
         ({"reviews": "4.8", "rating": "120"}, "REVIEWS_RATING_SWAPPED"),
+        ({"reviews": "1.4m"}, "REVIEWS_NOT_NUMBER"),
+        ({"phone": "", "whatsapp": "Yes"}, "WHATSAPP_NO_PHONE"),
+        ({"address": ""}, "NO_ADDRESS"),
+        ({"address": "1 Main St, Broken Arrow, OK"}, "ADDRESS_OTHER_CITY"),
+        ({"address": "1 Main St, Tulsaville, OK"}, "ADDRESS_OTHER_CITY"),
     ],
 )
 def test_each_error(changes: dict[str, str], expected: str) -> None:
@@ -84,17 +94,9 @@ def test_each_error(changes: dict[str, str], expected: str) -> None:
 
 
 def test_missing_or_doubtful_data_only_warns() -> None:
-    found = check_lead(
-        CLEAN | {"gbp_link": "", "phone": "", "address": "1 Main St, Dallas", "email": "test@x.com"}
-    )
+    found = check_lead(CLEAN | {"gbp_link": "", "email": "test@x.com"})
 
-    assert {i.code for i in found} == {
-        "NO_GBP_LINK",
-        "NO_PHONE",
-        "WHATSAPP_NO_PHONE",
-        "ADDRESS_OTHER_CITY",
-        "EMAIL_PLACEHOLDER",
-    }
+    assert {i.code for i in found} == {"NO_GBP_LINK", "EMAIL_PLACEHOLDER"}
     assert all(i.severity == "warning" for i in found)
     tab = check_tab(["business_name", "gbp_link", "phone"], ["phone"], 2)
     assert {(i.code, i.field) for i in tab} >= {
@@ -413,3 +415,28 @@ def test_viewers_download_but_cannot_upload_fixes(
     assert client.get(f"/api/batches/{batch}/fixes.xlsx").status_code == 200
     refused = client.post(f"/api/batches/{batch}/fixes", files={"file": ("f.xlsx", content)})
     assert refused.status_code == 403
+
+
+def test_a_duplicate_row_is_checked_as_the_merged_business(client: TestClient, owner: User) -> None:
+    """Rows of one business are merged before the check: an empty cell in the second row is
+    filled from the first, so it isn't an error, and the business is counted once."""
+    second = row("Multi-Clean", "https://share.google/mc", "")
+    second[STANDARD.index("Address")] = ""
+    preview = upload(
+        client,
+        workbook(
+            {
+                "Tulsa": [
+                    STANDARD,
+                    row("Multi-Clean", "https://share.google/mc", "918 523 8300"),
+                    second,
+                ]
+            }
+        ),
+    )
+
+    assert preview["counts"]["merged"] == 1
+    assert (preview["preview"]["check"]["errors"], preview["preview"]["check"]["warnings"]) == (
+        0,
+        0,
+    )

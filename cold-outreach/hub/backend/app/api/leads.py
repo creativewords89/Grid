@@ -114,9 +114,15 @@ Problems = Annotated[str | None, Query(pattern=r"^(any|errors|[A-Z_]{3,40})$")]
 
 
 def _number(field: str) -> Any:
-    """A number from the lead file's text (e.g. "4.7", "1,234"); None when it isn't one."""
-    text = func.replace(Lead.data[field].astext, ",", "")
-    return case((text.op("~")(r"^[0-9]+(\.[0-9]+)?$"), cast(text, Float)), else_=None)
+    """A number from the lead file's text (e.g. "4.7", "1,234", "1.4k" for 1,400); None when
+    it isn't one."""
+    text = func.replace(func.lower(func.trim(Lead.data[field].astext)), ",", "")
+    thousands = func.regexp_replace(text, r"\s*k$", "")
+    return case(
+        (text.op("~")(r"^[0-9]+(\.[0-9]+)?$"), cast(text, Float)),
+        (text.op("~")(r"^[0-9]+(\.[0-9]+)?\s*k$"), cast(thousands, Float) * 1000),
+        else_=None,
+    )
 
 
 def _query(

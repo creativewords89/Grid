@@ -85,6 +85,12 @@ def _lead_row(lead: reader.Lead) -> dict[str, Any]:
     return dict(lead.values, emails=lead.emails, rows=lead.rows, extra=lead.extra)
 
 
+def _merged_values(row: dict[str, Any]) -> dict[str, str]:
+    """A business's values after its rows are merged, keyed like check.STANDARD."""
+    values = {k: str(row.get(k) or "") for k in check.STANDARD if k != "email"}
+    return values | {"email": ", ".join(row.get("emails") or [])}
+
+
 # The file's columns, in the order the team's files have them (SPEC section 6.4).
 SHEET_COLUMNS = (
     ("business_name", "Business name"),
@@ -109,9 +115,13 @@ def _sheet(report: reader.Report, rows: list[dict[str, Any]], batch: Batch) -> d
     counts: dict[str, int] = {}
     out = []
     for item in report.sheet:
-        found = [] if item.skipped else check.check_lead(item.values)
-        index = lead_of.get(f"{item.tab} row {item.line}")
+        where = f"{item.tab} row {item.line}"
+        index = lead_of.get(where)
         row = rows[index] if index is not None else None
+        # Lead Check on the business as it will be saved: rows of one business are merged
+        # first (an empty cell is filled from the other row), and counted once.
+        found = [] if row is None else check.check_lead(_merged_values(row))
+        first = row is not None and row["rows"][0] == where
         if row is None:
             status = "skipped"
         elif not row["lead_id"]:
@@ -130,8 +140,9 @@ def _sheet(report: reader.Report, rows: list[dict[str, Any]], batch: Batch) -> d
                 "extra": item.extra,
                 "raw": item.raw,
                 "bad_emails": item.bad_emails,
-                # Lead Check (step 26): what is wrong in this row, by column.
+                # Lead Check (step 26): what is wrong in this row's business, by column.
                 "issues": [i.as_dict() for i in found],
+                "counted": first,
             }
         )
     return {
@@ -235,6 +246,8 @@ def _preview_check(report: reader.Report, sheet_rows: list[dict[str, Any]]) -> d
         )
         tabs[name] = {"errors": 0, "warnings": 0, "columns": [i.as_dict() for i in columns]}
     for row in sheet_rows:
+        if not row.get("counted"):
+            continue  # a business's other rows: counted on its first row
         tab = tabs.setdefault(row["tab"], {"errors": 0, "warnings": 0, "columns": []})
         for item in row.get("issues", []):
             tab["errors" if item["severity"] == "error" else "warnings"] += 1
