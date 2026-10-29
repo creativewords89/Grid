@@ -58,18 +58,24 @@ class GRP_Cron {
 			'payslips'       => 0,
 			'timers_stopped' => 0,
 			'time_purged'    => 0,
+			'screenshots'    => 0,
 		);
 
-		foreach ( GRP_Store::find( 'grp_projects' ) as $project ) {
+		// A tracker portal's projects and tasks are copies: the main portal tops them up (SPEC.md 6.22).
+		$tracker = GRP_Link::is_tracker();
+		foreach ( $tracker ? array() : GRP_Store::find( 'grp_projects' ) as $project ) {
 			$summary['standard_tasks'] += GRP_Standard_Tasks::ensure( $project, $today );
 		}
 
 		// Timers forgotten for 12 hours stop at their 12th hour, flagged (SPEC.md 6.21).
 		$summary['timers_stopped'] = GRP_Time_Entries::stop_forgotten();
 		$summary['time_purged']    = GRP_Time_Entries::purge();
+		$summary['screenshots']    = GRP_Screenshots::purge();
 
-		$summary['billing']  = GRP_Billing::ensure( $today );
-		$summary['payslips'] = GRP_Pay::bill( $today );
+		if ( ! $tracker ) {
+			$summary['billing']  = GRP_Billing::ensure( $today );
+			$summary['payslips'] = GRP_Pay::bill( $today );
+		}
 
 		$before = count( GRP_Store::find( 'grp_trash' ) );
 		GRP_REST_Trash::purge();

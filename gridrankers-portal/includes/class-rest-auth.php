@@ -119,7 +119,11 @@ class GRP_REST_Auth {
 				'callback'            => array( __CLASS__, 'setup' ),
 				'permission_callback' => array( 'GRP_Auth', 'needs_setup' ),
 				'args'                => array(
-					'name' => array(
+					'name'      => array(
+						'type'    => 'string',
+						'default' => '',
+					),
+					'member_id' => array(
 						'type'    => 'string',
 						'default' => '',
 					),
@@ -150,7 +154,16 @@ class GRP_REST_Auth {
 		}
 		$path = substr( $route, strlen( $prefix ) );
 
+		// The tracker portal's calls (SPEC.md 6.22): the link key only, on a main portal only.
+		if ( self::link_route( $path ) ) {
+			$ok = GRP_Link::guard( $request );
+			return true === $ok ? $result : $ok;
+		}
+
 		if ( preg_match( '/^Bearer\s+(\S*)$/i', trim( (string) $request->get_header( 'Authorization' ) ), $m ) ) {
+			if ( GRP_Link::key_ok( $m[1] ) ) {
+				return new WP_Error( 'grp_link_route', __( 'A link key works only for the tracker portal’s link.', 'gridrankers-portal' ), array( 'status' => 403 ) );
+			}
 			if ( ! self::device_route( $path ) ) {
 				return new WP_Error( 'grp_device_route', __( 'Open the portal in your browser to do this.', 'gridrankers-portal' ), array( 'status' => 403 ) );
 			}
@@ -175,6 +188,16 @@ class GRP_REST_Auth {
 		}
 
 		return $result;
+	}
+
+	/**
+	 * Whether a route (path under the namespace) is one of the link's `/link/*` routes.
+	 *
+	 * @param string $path Path, e.g. `/link/ping`.
+	 * @return bool
+	 */
+	public static function link_route( $path ) {
+		return '/link' === $path || str_starts_with( $path, '/link/' );
 	}
 
 	/**
@@ -235,6 +258,13 @@ class GRP_REST_Auth {
 			'member'     => $member ? self::me_payload( $member ) : null,
 			'needsSetup' => ! $member && GRP_Auth::needs_setup(),
 		);
+		// A tracker portal (SPEC.md 6.22): where profiles are made, and who Set up may pick.
+		if ( GRP_Link::is_tracker() ) {
+			$out['mainPortal'] = GRP_Link::main_url();
+			if ( $out['needsSetup'] ) {
+				$out['setupChoices'] = GRP_Auth::setup_choices();
+			}
+		}
 		if ( GRP_Auth::uses_device() ) {
 			$out['device'] = GRP_Auth::current_device();
 		}
@@ -307,9 +337,11 @@ class GRP_REST_Auth {
 		);
 
 		return array(
-			'member'   => self::me_payload( $member ),
-			'work_day' => $work_day,
-			'schedule' => GRP_Time::schedule( GRP_Cycles::today(), $days, $member, GRP_REST_People::team_weekly(), GRP_REST_People::days_off(), $leaves, $work_day ),
+			'member'      => self::me_payload( $member ),
+			'work_day'    => $work_day,
+			// Minutes between screenshots while a timer runs; 0 = none (SPEC.md 6.23).
+			'screenshots' => GRP_Screenshots::every(),
+			'schedule'    => GRP_Time::schedule( GRP_Cycles::today(), $days, $member, GRP_REST_People::team_weekly(), GRP_REST_People::days_off(), $leaves, $work_day ),
 		);
 	}
 
@@ -320,7 +352,7 @@ class GRP_REST_Auth {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public static function setup( WP_REST_Request $request ) {
-		$member = GRP_Auth::setup_admin_member( (string) $request['name'] );
+		$member = GRP_Auth::setup_admin_member( (string) $request['name'], (string) $request['member_id'] );
 		if ( is_wp_error( $member ) ) {
 			return $member;
 		}

@@ -103,6 +103,34 @@ A person's signed-in computers are listed (and revoked) through `/devices`; **Se
 and removing someone sign their computers out too. The app itself, its installers and its releases:
 `gridrankers-tracker/README.md`.
 
+### Main portal and tracker portal (SPEC.md 6.22)
+
+Profiles are made once, on the **main portal** (bot.gridrankers.com). The **tracker portal**
+(tracker.gridrankers.com) runs this same plugin, copies the profiles from the main portal and sends it
+the hours. To link them:
+
+1. On the main portal: WP admin → **GridRankers → Settings → Sites** → **Main portal**, type the tracker
+   portal's address, **Save**, then **Make a link key** and copy the key (it is shown once).
+2. On the tracker portal: the same screen → **Tracker portal**, type the main portal's address, paste the
+   key, **Save**. It tests the connection at once ("Connected to bot.gridrankers.com · 23 people");
+   **Test connection** does it again later.
+
+From then on the tracker portal copies the profiles, working hours, days off, approved leave, projects
+and tasks every 5 minutes (WP-Cron `grp_link_sync`, run by the real cron above), and **Sync now** copies
+at once. Codes, salary, payment details and leave reasons never leave the main portal. On the tracker
+portal all of these are read-only: change them on the main portal.
+
+People sign in to the tracker portal with their main portal code (the main portal checks it; the
+tracker portal keeps no codes). The Super Admin signs in to the tracker portal's WordPress with the same
+email as on the main portal, or picks their profile under Set up. Tracked hours go back to the main
+portal's daily reports and pay within a minute; on the main portal the timer and time changes are then
+closed ("Time is tracked on tracker.gridrankers.com"). Screenshots (off by default) are turned on in the
+tracker portal's Settings tab and stay on the tracker portal (`uploads/grp-private/shots/`, 30 days).
+
+Both sites need HTTPS. The link key reaches only `/link/*` on the main portal, and wrong keys lock the
+caller's IP for 15 minutes like wrong codes. **Make a link key** again (or **Unlink**) ends the old key.
+The Authorization note above applies to the main portal too.
+
 ### Backups
 
 Rely on Hostinger's daily backups and download a JSON export regularly

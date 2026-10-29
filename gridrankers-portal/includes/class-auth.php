@@ -101,28 +101,11 @@ class GRP_Auth {
 	 * @return array|WP_Error `{member, token}` on success.
 	 */
 	public static function login( $code, $ip, $user_agent = '' ) {
-		$code = trim( (string) $code );
-
-		if ( self::is_locked( $ip ) ) {
-			return new WP_Error(
-				'grp_locked',
-				__( 'Too many attempts. Try again in 15 minutes.', 'gridrankers-portal' ),
-				array( 'status' => 429 )
-			);
+		$member = self::check_code( $code, $ip );
+		if ( is_wp_error( $member ) ) {
+			return $member;
 		}
 
-		$member = '' === $code ? null : self::find_member_by_code( $code );
-		if ( ! $member ) {
-			// Generic message: never reveal whether a member exists.
-			self::record_failure( $ip );
-			return new WP_Error(
-				'grp_invalid_code',
-				__( "That code doesn't match anyone.", 'gridrankers-portal' ),
-				array( 'status' => 401 )
-			);
-		}
-
-		self::clear_failures( $ip );
 		$token = self::create_session( $member['id'], $ip, $user_agent );
 		self::set_cookie( $token, time() + self::SESSION_TTL );
 
@@ -133,6 +116,86 @@ class GRP_Auth {
 			'member' => $member,
 			'token'  => $token,
 		);
+	}
+
+	/**
+	 * Checks a code for sign-in, with the lockout: the member it belongs to, or why not (the
+	 * generic "doesn't match anyone" — never whether a member exists). On a tracker portal the main
+	 * portal checks it (SPEC.md 6.22); this site keeps no codes.
+	 *
+	 * @param string $code Code as typed.
+	 * @param string $ip   Client IP address.
+	 * @return array|WP_Error
+	 */
+	public static function check_code( $code, $ip ) {
+		$code = trim( (string) $code );
+		if ( self::is_locked( $ip ) ) {
+			return new WP_Error(
+				'grp_locked',
+				__( 'Too many attempts. Try again in 15 minutes.', 'gridrankers-portal' ),
+				array( 'status' => 429 )
+			);
+		}
+
+		if ( '' === $code ) {
+			$member = null;
+		} elseif ( GRP_Link::is_tracker() ) {
+			$member = self::member_from_main( $code, $ip );
+			if ( is_wp_error( $member ) ) {
+				return $member;
+			}
+		} else {
+			$member = self::find_member_by_code( $code );
+		}
+
+		if ( ! $member ) {
+			self::record_failure( $ip );
+			return new WP_Error(
+				'grp_invalid_code',
+				__( "That code doesn't match anyone.", 'gridrankers-portal' ),
+				array( 'status' => 401 )
+			);
+		}
+		self::clear_failures( $ip );
+
+		return $member;
+	}
+
+	/**
+	 * Tracker portal: asks the main portal whose code this is (`POST /link/verify`), then the copied
+	 * person. Null when it matches nobody here (or someone who can't sign in with a code).
+	 *
+	 * @param string $code Code.
+	 * @param string $ip   The person's IP (the main portal locks it out, not this site).
+	 * @return array|null|WP_Error
+	 */
+	private static function member_from_main( $code, $ip ) {
+		$answer = GRP_Link::call(
+			'POST',
+			'verify',
+			array(
+				'code' => $code,
+				'ip'   => $ip,
+			)
+		);
+		if ( is_wp_error( $answer ) ) {
+			if ( 'grp_invalid_code' === $answer->get_error_code() ) {
+				return null;
+			}
+			if ( 'grp_locked' === $answer->get_error_code() ) {
+				return new WP_Error( 'grp_locked', $answer->get_error_message(), array( 'status' => 429 ) );
+			}
+			$host = (string) wp_parse_url( GRP_Link::main_url(), PHP_URL_HOST );
+
+			/* translators: %s: the main portal's address, e.g. bot.gridrankers.com. */
+			return new WP_Error( 'grp_main_unreachable', sprintf( __( 'Can’t reach %s to check your code. Try again in a minute.', 'gridrankers-portal' ), $host ), array( 'status' => 503 ) );
+		}
+		$member = self::get_member( (string) ( $answer['member_id'] ?? '' ) );
+		if ( ! $member || ! (int) $member['active'] || GRP_Permissions::ROLE_ADMIN === $member['role'] ) {
+			return null;
+		}
+
+		return $member;
 	}
 
 	/**
@@ -171,25 +234,10 @@ class GRP_Auth {
 	public static function device_login( $code, $ip, $name = '', $platform = '', $app_version = '' ) {
 		global $wpdb;
 
-		$code = trim( (string) $code );
-		if ( self::is_locked( $ip ) ) {
-			return new WP_Error(
-				'grp_locked',
-				__( 'Too many attempts. Try again in 15 minutes.', 'gridrankers-portal' ),
-				array( 'status' => 429 )
-			);
+		$member = self::check_code( $code, $ip );
+		if ( is_wp_error( $member ) ) {
+			return $member;
 		}
-
-		$member = '' === $code ? null : self::find_member_by_code( $code );
-		if ( ! $member ) {
-			self::record_failure( $ip );
-			return new WP_Error(
-				'grp_invalid_code',
-				__( "That code doesn't match anyone.", 'gridrankers-portal' ),
-				array( 'status' => 401 )
-			);
-		}
-		self::clear_failures( $ip );
 
 		if ( GRP_Pay::needs_setup( $member ) ) {
 			return new WP_Error( 'grp_pay_needed', __( 'Set up your working hours, salary and payment details on the portal first.', 'gridrankers-portal' ), array( 'status' => 403 ) );
@@ -342,12 +390,14 @@ class GRP_Auth {
 	}
 
 	/**
-	 * Creates the Super Admin team member for the current WordPress administrator.
+	 * Creates the Super Admin team member for the current WordPress administrator (on a tracker
+	 * portal: links them to the copied Super Admin they pick).
 	 *
-	 * @param string $name Display name.
+	 * @param string $name      Display name.
+	 * @param string $member_id Tracker portal: the copied Super Admin.
 	 * @return array|WP_Error The new member.
 	 */
-	public static function setup_admin_member( $name ) {
+	public static function setup_admin_member( $name, $member_id = '' ) {
 		global $wpdb;
 
 		if ( ! self::needs_setup() ) {
@@ -355,7 +405,26 @@ class GRP_Auth {
 		}
 
 		$wp_user = wp_get_current_user();
-		$name    = sanitize_text_field( (string) $name );
+		// A tracker portal links to a copied Super Admin; people are made on the main portal.
+		if ( GRP_Link::is_tracker() ) {
+			$choice = null;
+			foreach ( self::setup_choices() as $row ) {
+				if ( (string) $row['id'] === (string) $member_id ) {
+					$choice = $row;
+				}
+			}
+			if ( ! $choice ) {
+				$host = (string) wp_parse_url( GRP_Link::main_url(), PHP_URL_HOST );
+				/* translators: %s: the main portal's address. */
+				return new WP_Error( 'grp_main_portal', sprintf( __( 'Pick your Super Admin profile. New people are added on %s.', 'gridrankers-portal' ), $host ), array( 'status' => 400 ) );
+			}
+			$wpdb->update( self::table( 'grp_members' ), array( 'wp_user_id' => $wp_user->ID ), array( 'id' => $choice['id'] ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			self::$current = false;
+
+			return self::get_member( $choice['id'] );
+		}
+
+		$name = sanitize_text_field( (string) $name );
 		if ( '' === $name ) {
 			$name = $wp_user->display_name;
 		}
@@ -618,8 +687,62 @@ class GRP_Auth {
 			),
 			ARRAY_A
 		);
+		if ( ! $member && GRP_Link::is_tracker() ) {
+			$member = self::link_admin_by_email( $wp_user_id );
+		}
 
 		return $member ? $member : null;
+	}
+
+	/**
+	 * Tracker portal: links a WordPress administrator to the copied Super Admin with the same email
+	 * (SPEC.md 6.22). Null when there is none.
+	 *
+	 * @param int $wp_user_id WordPress user id.
+	 * @return array|null
+	 */
+	private static function link_admin_by_email( $wp_user_id ) {
+		global $wpdb;
+
+		$user = get_userdata( $wp_user_id );
+		if ( ! $user || '' === (string) $user->user_email || ! user_can( $user, 'manage_options' ) ) {
+			return null;
+		}
+		$member = $wpdb->get_row( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$wpdb->prepare(
+				"SELECT * FROM %i WHERE role = 'admin' AND active = 1 AND wp_user_id IS NULL AND LOWER(email) = %s ORDER BY created_at ASC LIMIT 1",
+				self::table( 'grp_members' ),
+				strtolower( $user->user_email )
+			),
+			ARRAY_A
+		);
+		if ( ! $member ) {
+			return null;
+		}
+		$wpdb->update( self::table( 'grp_members' ), array( 'wp_user_id' => $wp_user_id ), array( 'id' => $member['id'] ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$member['wp_user_id'] = $wp_user_id;
+
+		return $member;
+	}
+
+	/**
+	 * Tracker portal: the copied Super Admins not linked to a WordPress account yet ("Set up
+	 * GridRankers" picks one; it never makes a new person).
+	 *
+	 * @return array[] `[{id, name, email}]`.
+	 */
+	public static function setup_choices() {
+		global $wpdb;
+
+		if ( ! GRP_Link::is_tracker() ) {
+			return array();
+		}
+		$rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$wpdb->prepare( "SELECT id, name, email FROM %i WHERE role = 'admin' AND active = 1 AND wp_user_id IS NULL ORDER BY name ASC", self::table( 'grp_members' ) ),
+			ARRAY_A
+		);
+
+		return $rows ? $rows : array();
 	}
 
 	/**
@@ -805,6 +928,16 @@ class GRP_Auth {
 	 */
 	private static function hash_token( $token ) {
 		return hash( 'sha256', $token );
+	}
+
+	/**
+	 * Counts a failed attempt from outside sign-in (a wrong link key, SPEC.md 6.22) toward the same
+	 * lockout as wrong codes.
+	 *
+	 * @param string $ip Client IP address.
+	 */
+	public static function count_failure( $ip ) {
+		self::record_failure( $ip );
 	}
 
 	/**

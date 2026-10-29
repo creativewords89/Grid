@@ -94,6 +94,19 @@ function Main({ view }) {
 			</header>
 			{view.today && <p className="day">{view.today.working ? `Working day ${view.today.start}–${view.today.end}` : `${view.today.label || 'Day off'} — no reminders today`}</p>}
 
+			{view.screenshots > 0 && !view.prompts.shots && <p className="day">📷 A screenshot every {view.screenshots} min while your timer runs{view.shotsWaiting ? ` · ${view.shotsWaiting} waiting to upload` : ''}</p>}
+			{view.prompts.shots && (
+				<div className="prompt" role="alertdialog" aria-label="Screenshots">
+					<p>
+						This tracker takes a screenshot every <b>{view.prompts.shots.every} minutes</b> while your timer runs. Your manager can see them.
+					</p>
+					<div className="acts">
+						<button type="button" className="btn small primary" onClick={() => tracker.answer('shots', 'ok')}>
+							OK
+						</button>
+					</div>
+				</div>
+			)}
 			{view.prompts.crash && (
 				<section className="prompt" role="alertdialog" aria-label="Timer stopped unexpectedly">
 					<p>

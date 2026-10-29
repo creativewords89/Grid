@@ -15,7 +15,7 @@ class GRP_Install {
 	/**
 	 * Current schema version. Bump it whenever get_schema() or migrations() changes.
 	 */
-	const DB_VERSION = 24;
+	const DB_VERSION = 25;
 
 	/**
 	 * Option that stores the installed schema version.
@@ -44,6 +44,8 @@ class GRP_Install {
  * Schema 23 adds `carried` to meeting tasks: one moved into the next cycle, or a catch-up task made from an unfinished monthly task (6.11).
  * Schema 22 adds `handins` (files and links handed in on a step's checklist, 6.16) to meeting tasks and cycle records.
  * Schema 24 adds the time tracker (6.21): `grp_time_entries`, `grp_devices` and members' `work_start`.
+ * Schema 25 adds the link to the main portal (6.22): `main_synced_at`, `main_sent` and `main_error` on time entries,
+ * and `grp_screenshots` (6.23).
 	 *
 	 * @var string[]
 	 */
@@ -76,6 +78,7 @@ class GRP_Install {
 		'grp_report_changes',
 		'grp_time_entries',
 		'grp_devices',
+		'grp_screenshots',
 	);
 
 	/**
@@ -809,6 +812,9 @@ class GRP_Install {
 				device_id varchar(64) NULL,
 				flags json NULL,
 				synced_at datetime NULL,
+				main_synced_at datetime NULL,
+				main_sent char(32) NULL,
+				main_error varchar(255) NULL,
 				edited_by varchar(64) NULL,
 				deleted_at datetime NULL,
 				created_at datetime NOT NULL,
@@ -836,6 +842,24 @@ class GRP_Install {
 				PRIMARY KEY  (id),
 				UNIQUE KEY token_hash (token_hash),
 				KEY member_id (member_id)
+			) $collate;",
+
+			"CREATE TABLE {$t['grp_screenshots']} (
+				id varchar(64) NOT NULL,
+				member_id varchar(64) NOT NULL,
+				entry_id varchar(64) NOT NULL,
+				day date NOT NULL,
+				taken_at datetime NOT NULL,
+				path varchar(191) NOT NULL,
+				width int(11) NOT NULL DEFAULT 0,
+				height int(11) NOT NULL DEFAULT 0,
+				size int(11) NOT NULL DEFAULT 0,
+				created_at datetime NOT NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				KEY member_day (member_id,day),
+				KEY entry_id (entry_id),
+				KEY taken_at (taken_at)
 			) $collate;",
 		);
 	}

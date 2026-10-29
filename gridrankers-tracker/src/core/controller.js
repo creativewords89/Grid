@@ -4,16 +4,24 @@
 import { createClient, DEFAULT_SERVER } from './api.js';
 import { fromUtc, localDay } from './clock.js';
 import { dueReminder, markFired, SNOOZE_MS } from './reminders.js';
+import * as S from './shots.js';
 import * as T from './tracker.js';
 
 // Schedule and tasks are refreshed this often while online.
 export const REFRESH_MS = 5 * 60 * 1000;
 
-export function createController({ store, loadToken, saveToken, device, createApi = createClient, now = () => Date.now(), onChange = () => {} }) {
+// Screenshots uploaded per sync (the rest go next time).
+export const SHOTS_PER_SYNC = 10;
+
+// `readShot(file)` → the picture's bytes (or null when gone) and `removeShot(file)` deletes it: the
+// screenshots waiting to upload are files on this computer (SPEC.md 6.23).
+export function createController({ store, loadToken, saveToken, device, createApi = createClient, now = () => Date.now(), onChange = () => {}, readShot = () => null, removeShot = () => {} }) {
 	let state = { ...T.emptyState(DEFAULT_SERVER), ...(store.load(null) || {}) };
 	// A timer left running by a crash, a power cut or a killed app: ask what to do with it.
 	state = T.checkCrash(state, now());
 	let token = loadToken() || null;
+	// The first build (1.0.3) pointed at portal.gridrankers.com; the tracker's portal is DEFAULT_SERVER.
+	if (!token && state.server === 'https://portal.gridrankers.com') state = { ...state, server: DEFAULT_SERVER };
 	let tail = Promise.resolve();
 	let queued = null;
 	let lastRefresh = 0;
@@ -39,7 +47,7 @@ export function createController({ store, loadToken, saveToken, device, createAp
 		saveToken(token);
 		lastRefresh = now();
 		const base = { ...state, server, signedOut: false, sync: { ...state.sync, online: true, failures: 0, lastOkAt: now() } };
-		set(T.signedIn(base, res));
+		set(S.withEvery(T.signedIn(base, res), res.screenshots));
 		sync();
 		return state;
 	}
@@ -105,6 +113,7 @@ export function createController({ store, loadToken, saveToken, device, createAp
 				state = T.applyResults(state, res.results, sent);
 				uploaded += sent.length;
 			}
+			await uploadShots(client);
 			const t0 = now();
 			const timer = await client.timer();
 			const offset = Math.round((t0 - fromUtc(timer.now)) / 1000);
@@ -112,7 +121,7 @@ export function createController({ store, loadToken, saveToken, device, createAp
 			if (refresh || now() - lastRefresh > REFRESH_MS) {
 				const [schedule, tasks] = await Promise.all([client.schedule(14), client.tasks()]);
 				lastRefresh = now();
-				state = { ...state, workDay: schedule.work_day, schedule: schedule.schedule, tasks };
+				state = S.withEvery({ ...state, workDay: schedule.work_day, schedule: schedule.schedule, tasks }, schedule.screenshots);
 			}
 			// Back online after a while: "Synced N entries".
 			const flash = wasDown && uploaded ? { n: uploaded, atMs: now() } : state.sync.flash;
@@ -131,6 +140,50 @@ export function createController({ store, loadToken, saveToken, device, createAp
 		return state;
 	}
 
+	// Screenshots whose entry is on the portal go up; one whose entry is gone (discarded) is dropped.
+	// Offline or signed out stops the sync as for entries.
+	async function uploadShots(client) {
+		const queue = (state.shots && state.shots.queue) || {};
+		Object.values(queue)
+			.filter((s) => !state.entries[s.entryId])
+			.forEach((s) => answeredShot(s.id, 'gone'));
+		for (const shot of S.ready(state).slice(0, SHOTS_PER_SYNC)) {
+			const bytes = readShot(shot.file);
+			if (!bytes) {
+				answeredShot(shot.id, 'gone');
+				continue;
+			}
+			let outcome;
+			try {
+				outcome = (await client.uploadShot(shot.entryId, { id: shot.id, takenAt: shot.takenAt, bytes })).status;
+			} catch (e) {
+				if (e.offline || e.signedOut) throw e;
+				outcome = e.code === 'grp_screenshots_off' ? 'off' : e.status === 404 ? 'gone' : 'refused';
+			}
+			answeredShot(shot.id, outcome);
+		}
+	}
+	function answeredShot(id, outcome) {
+		const res = S.answered(state, id, outcome);
+		state = res.state;
+		if (res.remove) removeShot(res.remove);
+	}
+
+	// Every few seconds while a timer runs: a screenshot to take now, if any (`{id, entryId, takenAt}`).
+	function shotDue() {
+		const res = S.due(state, now());
+		const plan = (st) => JSON.stringify(st.shots ? st.shots.plan : null);
+		if (plan(res.state) !== plan(state)) set(res.state);
+		return res.take;
+	}
+
+	// The screenshot was taken and saved: it waits to upload.
+	function addShot(take, file) {
+		set(S.queued(state, take, file));
+		sync();
+		return state;
+	}
+
 	function dismiss(id) {
 		return set(T.dismiss(state, id));
 	}
@@ -145,6 +198,7 @@ export function createController({ store, loadToken, saveToken, device, createAp
 	function answer(prompt, choice) {
 		if (prompt === 'crash') set(T.resolveCrash(state, choice, now()));
 		if (prompt === 'away') set(T.resolveAway(state, choice, now()));
+		if (prompt === 'shots') set(S.noticeOk(state));
 		sync();
 		return state;
 	}
@@ -202,7 +256,9 @@ export function createController({ store, loadToken, saveToken, device, createAp
 			waiting: T.pending(mine(state)).length,
 			attention: T.attention(state),
 			sync: state.sync,
-			prompts: { ...state.prompts, crash: state.prompts.crash ? { ...state.prompts.crash, label: (T.running(state) || {}).label } : undefined, away: state.prompts.away ? { ...state.prompts.away, minutes: Math.max(1, Math.round(((state.prompts.away.toMs || nowMs) - state.prompts.away.fromMs) / 60000)) } : undefined },
+			screenshots: (state.shots && state.shots.every) || 0,
+			shotsWaiting: Object.keys((state.shots && state.shots.queue) || {}).length,
+			prompts: { ...state.prompts, shots: state.member && S.noticeDue(state) ? { every: state.shots.every } : undefined, crash: state.prompts.crash ? { ...state.prompts.crash, label: (T.running(state) || {}).label } : undefined, away: state.prompts.away ? { ...state.prompts.away, minutes: Math.max(1, Math.round(((state.prompts.away.toMs || nowMs) - state.prompts.away.fromMs) / 60000)) } : undefined },
 			flash: state.sync.flash && now() - state.sync.flash.atMs < 10000 ? state.sync.flash : null,
 			reminder: state.lastReminder && now() - state.lastReminder.atMs < 15 * 60 * 1000 && now() >= state.snoozeUntil ? state.lastReminder : null,
 			snoozeUntil: state.snoozeUntil,
@@ -226,6 +282,8 @@ export function createController({ store, loadToken, saveToken, device, createAp
 		suspended,
 		resumed,
 		snooze,
+		shotDue,
+		addShot,
 		nextSyncMs,
 		view,
 		hasToken: () => !!token,

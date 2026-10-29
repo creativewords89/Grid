@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { usePortal } from '../../context.js';
 import { settingOf } from '../../lib/people.js';
 import { fmtMinutes } from '../../lib/reports.js';
+import { hostOf, isTracker, mainMark, trackerElsewhere } from '../../lib/site.js';
 import { addDays, canEditTime, canSetStart, entryLabel, flagLabels, fmtClock, localDate, localTime, toUtc } from '../../lib/timer.js';
 
 // Where the desktop tracker's installers are (the `tracker-latest` pre-release, gridrankers-tracker/).
@@ -11,7 +12,12 @@ const DOWNLOADS = 'https://github.com/creativewords89/grid/releases/download/tra
 // (with Undo) by the rules of section 3, when their working day starts, and their signed-in
 // desktop computers with Revoke.
 export default function TimeTab({ person }) {
-	const { api, data, me, today, toast, viewOnly } = usePortal();
+	const { api, data, me, today, toast, viewOnly, config } = usePortal();
+	// Tracker portal: where each entry is on the main portal. Linked main portal: time is changed
+	// on the tracker portal (SPEC.md 6.22).
+	const tracker = isTracker(config);
+	const mainHost = tracker ? hostOf(config.site.mainUrl) : '';
+	const elsewhere = trackerElsewhere(config);
 	const [to, setTo] = useState(today);
 	const [entries, setEntries] = useState(null);
 	const [devices, setDevices] = useState(null);
@@ -85,6 +91,15 @@ export default function TimeTab({ person }) {
 						{fmtMinutes(Math.round(total / 60))}
 					</b>
 				</div>
+				{elsewhere && (
+					<p className="hint tt-elsewhere">
+						Time is tracked on{' '}
+						<a href={elsewhere} target="_blank" rel="noopener noreferrer">
+							{hostOf(elsewhere)}
+						</a>
+						: change it there.
+					</p>
+				)}
 				{!entries ? (
 					<p className="empty">Loading…</p>
 				) : !entries.length ? (
@@ -119,10 +134,11 @@ export default function TimeTab({ person }) {
 																	{f}
 																</span>
 															))}
+															{tracker && mainMark(e, mainHost) && <span className={'tt-flag tt-main ' + mainMark(e, mainHost).kind}>{mainMark(e, mainHost).text}</span>}
 														</span>
 													</span>
 													<b className="tt-dur">{e.ended_at ? fmtClock(e.seconds) : '…'}</b>
-													{!viewOnly && e.ended_at && canEditTime(me, person, e, today) && (
+													{!viewOnly && !elsewhere && e.ended_at && canEditTime(me, person, e, today) && (
 														<span className="tt-acts">
 															<button type="button" className="linkbtn" onClick={() => setEditing(e.id)}>
 																Edit
@@ -141,7 +157,7 @@ export default function TimeTab({ person }) {
 						))
 				)}
 			</section>
-			<WorkStart person={person} />
+			{!tracker && <WorkStart person={person} />}
 			{devices && (
 				<section className="dcard tt-dev" aria-label="Desktop tracker">
 					<h3>Desktop tracker</h3>

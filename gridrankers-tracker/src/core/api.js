@@ -17,7 +17,9 @@ export class ApiError extends Error {
 	}
 }
 
-export const DEFAULT_SERVER = 'https://portal.gridrankers.com';
+// The time tracker's portal (SPEC.md 6.21): a WordPress site with the GridRankers Portal plugin, where
+// the sign-in codes live.
+export const DEFAULT_SERVER = 'https://tracker.gridrankers.com';
 
 // A clean portal address: https:// added when missing, no trailing slash.
 export function cleanServer(value) {
@@ -32,12 +34,13 @@ export function createClient({ server, getToken, fetchImpl, timeoutMs = 20000 })
 	const base = cleanServer(server) + '/';
 	const doFetch = fetchImpl || globalThis.fetch;
 
-	async function request(method, path, { body, query, auth = true } = {}) {
+	async function request(method, path, { body, form, query, auth = true } = {}) {
 		const url = new URL(base);
 		url.searchParams.set('rest_route', '/gr-portal/v1/' + path.replace(/^\//, ''));
 		Object.entries(query || {}).forEach(([k, v]) => v !== undefined && v !== null && url.searchParams.set(k, v));
 		const headers = { Accept: 'application/json' };
 		if (body !== undefined) headers['Content-Type'] = 'application/json';
+		// A form (a screenshot) sets its own multipart Content-Type.
 		const token = auth && getToken ? getToken() : null;
 		if (token) headers.Authorization = 'Bearer ' + token;
 
@@ -45,7 +48,7 @@ export function createClient({ server, getToken, fetchImpl, timeoutMs = 20000 })
 		const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
 		let res;
 		try {
-			res = await doFetch(url.toString(), { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined, signal: ctrl ? ctrl.signal : undefined, cache: 'no-store' });
+			res = await doFetch(url.toString(), { method, headers, body: form || (body !== undefined ? JSON.stringify(body) : undefined), signal: ctrl ? ctrl.signal : undefined, cache: 'no-store' });
 		} catch (e) {
 			throw new ApiError(0, 'offline', 'Can’t reach the portal. Your time is saved on this computer.');
 		} finally {
@@ -58,7 +61,16 @@ export function createClient({ server, getToken, fetchImpl, timeoutMs = 20000 })
 		} catch (e) {
 			data = null;
 		}
-		if (!res.ok) throw new ApiError(res.status, data && data.code, data && data.message);
+		if (!res.ok) {
+			// Not a portal with the tracker: a wrong address, or the portal hasn't updated itself yet.
+			if (res.status === 404 && (!data || data.code === 'rest_no_route' || data.code === 'rest_invalid_handler')) {
+				throw new ApiError(404, 'grp_no_tracker', 'This portal doesn’t have the time tracker yet (or the address is wrong). Check the portal address, or try again after the portal updates.');
+			}
+			throw new ApiError(res.status, data && data.code, data && data.message);
+		}
+		if (data === null && text) {
+			throw new ApiError(res.status, 'grp_not_portal', 'That address isn’t a GridRankers portal. Check the portal address.');
+		}
 		return data;
 	}
 
@@ -72,5 +84,13 @@ export function createClient({ server, getToken, fetchImpl, timeoutMs = 20000 })
 		tasks: () => request('GET', 'timer/tasks'),
 		// POST /time-entries/batch: an answer per entry (saved / exists / refused).
 		batch: (entries, clockOffset = 0) => request('POST', 'time-entries/batch', { body: { entries, clock_offset: clockOffset } }),
+		// POST /time-entries/{id}/screenshots: a JPEG of the screens (SPEC.md 6.23).
+		uploadShot: (entryId, { id, takenAt, bytes }) => {
+			const form = new FormData();
+			form.append('id', id);
+			form.append('taken_at', takenAt);
+			form.append('file', new Blob([bytes], { type: 'image/jpeg' }), `${id}.jpg`);
+			return request('POST', `time-entries/${encodeURIComponent(entryId)}/screenshots`, { form });
+		},
 	};
 }
