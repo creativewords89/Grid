@@ -6,6 +6,7 @@ import {
   type BatchStatus,
   type Benchmark,
   type LeadImport,
+  type PreviewCheck,
   type LeadPage,
   type Pipeline,
 } from "../api";
@@ -15,6 +16,8 @@ import { when } from "../format";
 import { navigate } from "../router";
 import { BatchCities } from "./BatchCities";
 import { PipelineTab, ResultsTab } from "./BatchPipeline";
+import { FIELD_NAMES } from "../checkLabels";
+import { CheckReportDialog } from "../components/CheckReport";
 import { BatchLeads, LeadDialog } from "./Leads";
 import { SheetView } from "./ImportSheet";
 
@@ -581,6 +584,7 @@ function BatchView({
           staff={staff}
           running={status === "running"}
           onOpen={setCurrent}
+          onChanged={load}
           onDeleted={(item) => {
             if (current?.id === item.id) setCurrent(null);
             load();
@@ -846,8 +850,15 @@ function PreviewCard({
         <Count label="rows skipped" value={counts.skipped_rows} warn />
         <Count label="emails that look wrong" value={counts.invalid_emails} warn />
       </div>
+      {preview.check && (
+        <LeadCheckSummary
+          check={preview.check}
+          saved={item.status === "confirmed"}
+          held={(item.check_errors ?? 0) > 0}
+        />
+      )}
       <p className="muted small">
-        Top is chosen in the Hub (the batch&apos;s Leads tab), not from the file
+        Top is chosen in the Hub (a city on the batch&apos;s Cities tab), not from the file
         {preview.has_level_column && ": this file's Level column is kept as another column"}.
         Businesses already Top stay Top.
       </p>
@@ -895,18 +906,77 @@ function PreviewCard({
   );
 }
 
+/** Lead Check of a file in its preview (step 26): errors and warnings by tab, and what
+ * saving it means for its leads. */
+function LeadCheckSummary({
+  check,
+  saved,
+  held,
+}: {
+  check: PreviewCheck;
+  saved: boolean;
+  held: boolean;
+}) {
+  const tabs = Object.entries(check.tabs).filter(
+    ([, t]) => t.errors > 0 || t.warnings > 0 || t.columns.length > 0,
+  );
+  const message = saved
+    ? held
+      ? "Saved, and held: agents wait for every lead of this file until its errors are fixed. See the file's Lead Check report under Past imports."
+      : "Saved with no errors: agents can work on its leads."
+    : check.errors > 0
+      ? "Saving it holds every lead of this file back from the agents until the errors are fixed. Fix the Excel file and add it again, or save it and fix the leads in the Hub."
+      : "No errors: agents can work on its leads once it is saved.";
+  return (
+    <div className="stack-tight" role="region" aria-label="Lead Check">
+      <Alert kind={check.errors > 0 && !(saved && !held) ? "error" : "success"}>
+        <strong>Lead Check:</strong> 🔴 {check.errors} {check.errors === 1 ? "error" : "errors"} ·
+        🟠 {check.warnings} {check.warnings === 1 ? "warning" : "warnings"}. {message}
+      </Alert>
+      {tabs.length > 0 && (
+        <table className="table compact-table" aria-label="Lead Check by tab">
+          <thead>
+            <tr>
+              <th>Tab</th>
+              <th>🔴 Errors</th>
+              <th>🟠 Warnings</th>
+              <th>Columns</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tabs.map(([name, t]) => (
+              <tr key={name}>
+                <td>{name}</td>
+                <td>{t.errors}</td>
+                <td>{t.warnings}</td>
+                <td className="small">
+                  {t.columns
+                    .map((i) => `${i.message}: ${FIELD_NAMES[i.field] ?? i.field}`)
+                    .join("; ") || "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 function History({
   imports,
   staff,
   running,
   onOpen,
   onDeleted,
+  onChanged,
 }: {
   imports: LeadImport[];
   staff: boolean;
   running: boolean;
   onOpen: (item: LeadImport) => void;
   onDeleted: (item: LeadImport) => void;
+  onChanged: () => void;
 }) {
   const [asking, setAsking] = useState<{
     item: LeadImport;
@@ -914,6 +984,7 @@ function History({
     staying: number;
   } | null>(null);
   const [error, setError] = useState("");
+  const [report, setReport] = useState<string | null>(null); // a file's Lead Check report
   if (imports.length === 0) return null;
 
   async function ask(item: LeadImport) {
@@ -951,6 +1022,7 @@ function History({
             <th>File</th>
             <th>Status</th>
             <th>Businesses</th>
+            <th>Lead Check</th>
             <th className="hide-narrow">When</th>
             {staff && (
               <th>
@@ -969,6 +1041,21 @@ function History({
               </td>
               <td>{STATUS[item.status]}</td>
               <td>{item.counts.leads?.toLocaleString()}</td>
+              <td>
+                {item.status === "confirmed" && item.check_errors != null ? (
+                  <button
+                    className="link-button nowrap"
+                    aria-label={`Lead Check report of ${item.file_name}`}
+                    onClick={() => setReport(item.id)}
+                  >
+                    {item.check_errors > 0
+                      ? `🔴 ${item.check_errors} ${item.check_errors === 1 ? "lead" : "leads"} · held`
+                      : "✅ Clear"}
+                  </button>
+                ) : (
+                  <span className="muted">—</span>
+                )}
+              </td>
               <td className="hide-narrow">
                 {when(item.created_at)}
                 {item.uploaded_by && ` · ${item.uploaded_by}`}
@@ -992,6 +1079,14 @@ function History({
           ))}
         </tbody>
       </table>
+      {report && (
+        <CheckReportDialog
+          importId={report}
+          staff={staff}
+          onClose={() => setReport(null)}
+          onChanged={onChanged}
+        />
+      )}
       {asking && (
         <Confirm
           title={`Delete ${asking.item.file_name}?`}

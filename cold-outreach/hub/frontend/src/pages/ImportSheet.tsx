@@ -117,11 +117,18 @@ export function SheetView({ importId, saved }: { importId: string; saved: boolea
                     const text = value(row, c.key);
                     const original = row.raw[c.key];
                     const bad = c.key === "email" && row.bad_emails.length > 0;
+                    // Lead Check (step 26): what is wrong in this cell.
+                    const found = (row.issues ?? []).filter((i) => i.field === c.key);
+                    const wrong = found.some((i) => i.severity === "error");
+                    const notes = [
+                      ...found.map((i) => `${i.severity === "error" ? "🔴" : "🟠"} ${i.message}`),
+                      ...(original ? [`In the file: ${original}`] : []),
+                    ];
                     return (
                       <td
                         key={c.key}
-                        className={`small ${c.key === "business_name" ? "sticky-col" : ""}`}
-                        title={original ? `In the file: ${original}` : undefined}
+                        className={`small ${c.key === "business_name" ? "sticky-col" : ""} ${wrong ? "cell-problem" : ""}`}
+                        title={notes.join("\n") || undefined}
                       >
                         <span
                           className={c.key === "address" || c.key === "notes" ? "cell-wrap" : ""}

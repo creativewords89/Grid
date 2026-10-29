@@ -109,6 +109,9 @@ class Report:
     sheet: list[SheetRow] = field(default_factory=list)  # every row with a business, by tab
     tab_names: list[str] = field(default_factory=list)  # every tab, in the file's order
     extra_columns: list[str] = field(default_factory=list)  # other headers, first seen first
+    # Each tab's standard columns, the ones given twice and rows whose City isn't the tab's
+    # name, for Lead Check (step 26): tab -> {"fields", "duplicates", "city_not_tab"}.
+    tab_columns: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 # --- cleaning -------------------------------------------------------------------------------
@@ -230,6 +233,7 @@ def read_rows(content: bytes, report: Report) -> list[Row]:
             continue
         columns: dict[int, str] = {}
         others: dict[int, str] = {}
+        duplicates: list[str] = []
         for index, cell in enumerate(cells[header_at]):
             name = clean(cell)
             if not name:
@@ -245,6 +249,14 @@ def read_rows(content: bytes, report: Report) -> list[Row]:
                     report.extra_columns.append(name[:80])
             elif target not in columns.values() or target in ("notes", "email"):
                 columns[index] = target
+            elif target not in duplicates:
+                duplicates.append(target)
+        layout: dict[str, Any] = {
+            "fields": sorted(set(columns.values())),
+            "duplicates": duplicates,
+            "city_not_tab": 0,
+        }
+        report.tab_columns[tab] = layout
         found = 0
         for offset, raw in enumerate(cells[header_at + 1 :], start=header_at + 2):
             values: dict[str, str] = {}
@@ -278,6 +290,8 @@ def read_rows(content: bytes, report: Report) -> list[Row]:
             found += 1
             skipped = not values.get("business_name") and not values.get("gbp_link")
             if not skipped:
+                if values.get("city") and values["city"].lower() != tab.lower():
+                    layout["city_not_tab"] += 1
                 values["city"] = values.get("city") or tab
                 values["website"] = clean_website(values.get("website", ""))
                 values["gbp_link"] = clean_gbp(values.get("gbp_link", ""))

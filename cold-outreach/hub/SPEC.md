@@ -38,7 +38,7 @@ SQLAlchemy, React, Caddy, encrypted write-only keys) by copying, not importing.
 
 - (Changed by step 25: built-in agents now run in the Hub's `agents` service; an agent of
   one's own can still be a separate container, section 6.2.)
-- Editing every field of a lead in the Hub: a new file updates the rest (section 6.4).
+- (Changed by step 27: every standard field of a lead can now be edited in the Hub.)
 - Self sign-up. People join by invite only.
 
 ## 2. Architecture
@@ -95,7 +95,7 @@ cold-outreach/
 | See Overview, Runs, Agents, Batches, Benchmarks, Leads; download leads as Excel | ✔ | ✔ | ✔ |
 | Make, rename or delete a batch; add and confirm its files | ✔ | ✔ | ✘ |
 | Choose a batch's tasks and agents, start or pause it, change the batches' running order | ✔ | ✔ | ✘ |
-| Change a lead's email, phone, website or notes; mark Top in a city; delete a lead | ✔ | ✔ | ✘ |
+| Change any standard field of a lead or its notes; mark Top in a city; delete a lead | ✔ | ✔ | ✘ |
 | Switch an agent on/off, press Run now or Stop | ✔ | ✔ | ✘ |
 | Change an agent's batches, limit, run time, budget and settings | ✔ | ✔ | ✘ |
 | Make, change or delete a benchmark | ✔ | ✔ | ✘ |
@@ -385,8 +385,11 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    including each agent's status, score, summary and when; every text cell is stored as text,
    so a value starting with `=` never runs as a formula.
 10. **One lead** shows its row, each agent's result and the files agents saved (always
-   downloaded, never shown in the page). Owners and Admins change its email(s), phone, website
-   and notes (in History, with the old and new value), or delete it. It shows whether it is
+   downloaded, never shown in the page). Owners and Admins change **every standard field**
+   (step 27: Business name, GBP link, Address, City, Website, Phone, WhatsApp, Email(s),
+   Facebook, Instagram, Reviews, Rating) and its notes (only the fields changed are sent; in
+   History, with the old and new value; a new city is added to the batch's cities), or delete
+   it. Lead Check runs again on every save. It shows whether it is
    Top but cannot change it (step 19); Top keeps its email, phone and GBP link on the
    do-not-contact list, removing Top takes them off (its files
    go too; its do-not-contact entries stay, so a Top business imported again is still never
@@ -401,6 +404,30 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 12. **Find a business** (everyone), at the top of the Batches screen: the search of item 9
    over every batch; each result names its batch and opens the lead, or its batch's Leads
    tab.
+13. **Lead Check** (steps 26 and 27): every lead file is checked against the standard
+   (`app/imports/check.py`). **Per tab** (warnings): a standard column missing, a column given
+   twice, rows whose City isn't the tab's name. **Per lead**, on its current values: an
+   **error** (🔴) is wrong data in a field (a phone number, email or link in the Address; a
+   Facebook, Instagram or Google Maps link, or no link, as the Website; letters or not 10
+   digits in the Phone; WhatsApp not a phone; a GBP link that isn't Google Maps; a link or a
+   phone number as the business name; numbers in the City; a Facebook column that isn't
+   Facebook and the same for Instagram; Reviews not a whole number; Rating not a number or
+   outside 0–5; Reviews and Rating swapped); a **warning** (🟠) is missing or doubtful data
+   (no GBP link, phone or address, an address without the city, a made-up email, a very long
+   name). The **preview** shows errors and warnings by tab and marks each wrong cell; saving
+   a file checks its leads. **A file with an error is held**: while any lead it brought or
+   updated in its batch has an error, agents get **none** of that file's leads (section 6.7).
+   As soon as a file is saved the team is told (alert `lead_check`, email and Telegram): held
+   with its errors by city, or clear. Each saved file in **Past imports** says **✅ Clear** or
+   **🔴 N leads · held** and opens its **report**: by city, the tabs' column problems, every
+   problem with its lead (which opens to fix it), **Errors only**, **Download Excel**
+   (`/imports/{id}/check.xlsx`) and **Check again**. **Filters:** the Cities tab has a
+   **Problems** column and **All cities / With problems / With errors**; the Leads table has a
+   **Check** column, wrong cells outlined, and a **Problems** filter (any, errors only, or one
+   kind). A lead says when its file is held and lists its problems; a problem with a clear fix
+   (a link in the wrong column, Reviews and Rating swapped, a phone, email or link in the
+   address) has a **one-click fix** that is only applied when pressed. Leads saved before Lead
+   Check are checked the first time their batch is looked at.
 
 ### 6.5 Benchmarks
 
@@ -486,7 +513,8 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
   the agent's result has outcome `done` or `skipped` and was made against the batch's current
   benchmark version; a `failed` result is tried again on the next run. Top leads are never
   handed to an agent, and neither are the leads of a city that is **not ready** (no Top
-  chosen in it in that batch, step 20). So the Opportunity Finder starts on the first business both audits
+  chosen in it in that batch, step 20) nor the leads of a file **Lead Check holds** (a lead of
+  it has an error, step 26). So the Opportunity Finder starts on the first business both audits
   finished while the audits go on with the rest.
 - **Start and Pause:** a new batch is **not started**. Owners and Admins **Start** it once it
   has a benchmark and at least one task with an agent; a running batch can be **Paused**, which
@@ -753,3 +781,12 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     kinds, adding one (key from the name, its job at once, no token, refused New token),
     rights, the runner key only for a built-in agent and not forgeable, the runner taking a
     run through a batch, the Agents screen, e2e with the runner.
+26. **Lead Check** (asked for after step 25): the checks per tab and per lead, the preview's
+    check, a file held while a lead of it has an error, the alert when a file is saved, the
+    report and its Excel, Check again, the Problems filters on Cities and Leads. Migration
+    `0017` (`leads.check`). **Tests:** every rule, warnings never holding, a held file
+    holding all its leads until fixed, a clean file not held by another, the report, the
+    Excel, the alert, the filters, e2e.
+27. **Fixing leads in the Hub** (built with step 26): every standard field editable, a lead
+    moved to a new city, one-click fixes, Lead Check again on save. **Tests:** editing every
+    field, Top not editable, rights, fixes, a fix clearing a held file.
