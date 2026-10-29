@@ -32,6 +32,7 @@ def test_run_ticks_until_stopped(monkeypatch: pytest.MonkeyPatch) -> None:
         return True
 
     monkeypatch.setattr(scheduler, "tick", fake_tick)
+    monkeypatch.setattr(scheduler, "check_files", lambda stop: None)
 
     scheduler.run(stop)
 

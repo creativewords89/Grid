@@ -110,6 +110,8 @@ cold-outreach/
 | Add a ready file to a batch | ✔ | ✔ | ✘ | ✘ | ✘ |
 | Top Review (step 32): choose each city's Top businesses in a file without errors, until every city has one | ✔ | ✔ | ✘ | ✘ | ✔ |
 | Reopen a ready file for Top Review | ✔ | ✔ | ✘ | ✘ | ✘ |
+| Add a niche (step 33) | ✔ | ✔ | ✘ | ✔ | ✘ |
+| Rename a niche or delete an unused one | ✔ | ✔ | ✘ | ✘ | ✘ |
 
 - There can be more than one Owner; the last active Owner can't be removed or demoted.
 - A **Collector** (step 31) is the external team that collects leads: they see the **Files**
@@ -633,6 +635,14 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
     ones (**Done ✓**, not opened again). A file opens to its cities (Ready, Needs a Top,
     or Off · under 10); a city opens to its businesses with every column and a Top tick
     box each, saved with **Save the Top of <city>**.
+    (Step 33 on **Files**: the niche is chosen from the **Niches** list, or added with
+    **+ New niche…** ("Did you mean …?" for a spelling close to a known one); Owners and
+    Admins have **Niches** to rename or delete them. **Upload and check** shows
+    **Uploading n%**, then the file is listed as **Checking n%** while the server checks
+    it, going on after a reload or offline. A file opens on its own page (Files / name)
+    with its businesses as the batch's Leads tab shows them: a toolbar (search, City,
+    Problems, Sort), the count and pages, Tab · Row, the Check badge and every column, each
+    wrong cell marked with what is wrong; only to look at.)
 
 ## 8. REST API (`/api`, JSON)
 
@@ -648,6 +658,8 @@ agents), `/imports`
 `/lists/{id}`, `/alerts`, `/submissions` (the Files screen: `POST` to hand in, `/niches`,
 `/{id}`, `/{id}/version`, `/{id}/marked.xlsx`, `/{id}/use`, `/{id}/reopen`, `DELETE /{id}`),
 `/review/files` (Top Review: `/{id}`, `/{id}/cities/{city}` and `PUT` its Tops),
+`/submissions/{id}/leads` (the file's businesses), `/niches` (`POST` to add, `/all`,
+`PATCH` and `DELETE /{id}`),
 `/alert-settings`, `/history`, and the agent API (section 6.2). Every user endpoint checks
 `permissions.can`; every write checks CSRF.
 
@@ -898,3 +910,24 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     by city with the off city and businesses of another city refused, the lock and reopen,
     the Tops being Top in the batch, a file of small cities ready at once; vitest for the
     menus and Top Review; e2e: a Reviewer invited chooses the Top and the file is ready.
+33. **Niches, checks in the background and the file's table** (asked for after step 32):
+    a **Niches** list (table `niches`, started from those in use): Owners, Admins and
+    Collectors add one (the same name in other letters is the known one; a close spelling
+    asks "Did you mean …?" first); Owners and Admins rename one (its files, batches,
+    benchmarks, imports, leads and lists follow) or delete one nothing uses. Benchmarks and
+    the Files screen choose from it. Handing in a file (or a revised version) only stores
+    it, with the upload's progress shown; the scheduler's **file checker** (every 2 s, in
+    its own thread) checks it, saving its progress (reading the tabs 0–60 %, the
+    businesses 60–100 %) and taking over a check whose claim went stale (2 minutes, after a
+    restart); a version handed in during a check is the one kept. A file that can't be read
+    is **failed**, with why. Each business is kept for the Files table (`leads`):
+    `/submissions/{id}/leads` filters by search, city and problems, sorts and pages it.
+    Migration `0023` (files already handed in are checked again). **Tests:** progress,
+    the stale claim, a version during a check, the table's filters, who adds and manages
+    niches, close spellings, renaming that carries everything, deleting only unused ones;
+    vitest for uploading, a new niche and the file's table; e2e: checked after a reload.
+    (Corrected after step 33: the table's Problems filter is **All**, **Problems** (errors
+    and warnings), **Errors**, **Warnings** and **OK**, each with its count. **Download
+    problems to fix** fetches the file and says why when it can't; a workbook the Hub can
+    read but not mark in place is made again from what it read: a tab per tab, the row each
+    business was on, every standard column and the same marks.)

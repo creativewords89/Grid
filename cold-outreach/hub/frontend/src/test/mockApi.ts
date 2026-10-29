@@ -31,6 +31,45 @@ export function mockApi(routes: Record<string, Handler | [number, unknown?] | Re
         : new Response(JSON.stringify(data ?? {}), { status });
     }),
   );
+  // Uploads that report progress use XMLHttpRequest (step 33): answered from the same routes.
+  class FakeRequest {
+    method = "GET";
+    url = "";
+    status = 0;
+    responseText = "";
+    headers = new Headers();
+    upload: { onprogress: ((event: ProgressEvent) => void) | null } = { onprogress: null };
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    withCredentials = false;
+    open(method: string, url: string) {
+      this.method = method;
+      this.url = url;
+    }
+    setRequestHeader(name: string, value: string) {
+      this.headers.set(name, value);
+    }
+    send(body: FormData) {
+      const path = this.url.replace(/^\/api/, "");
+      const sent = Object.fromEntries(body.entries());
+      calls.push({ method: this.method, path, body: sent, csrf: this.headers.get("X-CSRF-Token") });
+      const route = routes[`${this.method} ${path}`];
+      setTimeout(() => {
+        this.upload.onprogress?.({ lengthComputable: true, loaded: 1, total: 1 } as ProgressEvent);
+        const result =
+          route === undefined
+            ? ([404, { error: { code: "not_found" } }] as [number, unknown])
+            : typeof route === "function"
+              ? route(sent)
+              : route;
+        if (result instanceof Response) throw new Error("not for uploads");
+        this.status = result[0];
+        this.responseText = JSON.stringify(result[1] ?? {});
+        this.onload?.();
+      }, 0);
+    }
+  }
+  vi.stubGlobal("XMLHttpRequest", FakeRequest);
   return calls;
 }
 

@@ -2,7 +2,8 @@
 
 Every 30 seconds: queue the scheduled runs that are due, give up on runs an agent stopped
 reporting on or never picked up, run the once-a-day jobs (DataForSEO balance, the backup,
-the daily summary) and send the alerts waiting (SPEC sections 6.3 and 6.6).
+the daily summary) and send the alerts waiting (SPEC sections 6.3 and 6.6). Next to it, the
+file checker checks the files handed in on Files every couple of seconds (step 33).
 """
 
 import logging
@@ -17,11 +18,13 @@ from app import logs
 from app.alerts import service as alerts
 from app.config import get_settings
 from app.db.session import get_engine
+from app.imports import file_checker
 from app.runs import service
 
 log = logging.getLogger("scheduler")
 
 TICK_SECONDS = 30.0
+FILES_SECONDS = 2.0
 
 
 def tick() -> bool:
@@ -43,8 +46,19 @@ def tick() -> bool:
     return True
 
 
+def check_files(stop: threading.Event) -> None:
+    """The file checker's loop (step 33)."""
+    while not stop.is_set():
+        try:
+            file_checker.run_pending(get_engine())
+        except SQLAlchemyError:
+            log.warning("database unreachable for the file checker")
+        stop.wait(FILES_SECONDS)
+
+
 def run(stop: threading.Event) -> None:
     log.info("scheduler started")
+    threading.Thread(target=check_files, args=(stop,), name="file-checker", daemon=True).start()
     while not stop.is_set():
         tick()
         stop.wait(TICK_SECONDS)

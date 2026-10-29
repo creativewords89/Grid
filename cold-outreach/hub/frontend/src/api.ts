@@ -429,7 +429,7 @@ export type HandedInFile = {
   businesses: number;
   errors: number;
   warnings: number;
-  status: "errors" | "needs_top" | "ready" | "adding" | "used";
+  status: "checking" | "failed" | "errors" | "needs_top" | "ready" | "adding" | "used";
   uploaded_by: string | null;
   mine: boolean;
   created_at: string;
@@ -444,7 +444,38 @@ export type HandedInFile = {
   same_as: string | null;
   cities_on: number;
   cities_topped: number;
+  // Checked in the background (step 33): how far, and why it couldn't be read.
+  progress: number;
+  error: string | null;
 };
+
+/** A business of a handed-in file, for the Files table (step 33). */
+export type FileLead = {
+  tab: string;
+  line: number;
+  rows: string[];
+  values: Record<string, string>;
+  issues: { field: string; code: string; severity: "error" | "warning"; message: string }[];
+};
+
+export type FileLeadsPage = {
+  total: number;
+  page: number;
+  pages: number;
+  counts: { all: number; problems: number; errors: number; warnings: number; ok: number };
+  cities: string[];
+  leads: FileLead[];
+};
+
+export type FileLeadFilters = {
+  search?: string;
+  city?: string;
+  problems?: "" | "problems" | "errors" | "warnings" | "ok";
+  sort?: "row" | "name" | "city" | "reviews" | "rating" | "problems";
+  page?: number;
+};
+
+export type NicheRow = { id: string; name: string; uses: number };
 
 /** A file in Top Review (step 32). */
 export type ReviewFile = {
@@ -651,6 +682,7 @@ export class ApiError extends Error {
     public code: string,
     message: string,
     public fields: Record<string, string> = {},
+    public details: Record<string, unknown> = {},
   ) {
     super(message);
   }
@@ -664,13 +696,21 @@ export function setCsrfToken(token: string) {
 
 function toApiError(status: number, data: unknown): ApiError {
   const error = (
-    data as { error?: { code?: string; message?: string; fields?: Record<string, string> } } | null
+    data as {
+      error?: {
+        code?: string;
+        message?: string;
+        fields?: Record<string, string>;
+        details?: Record<string, unknown>;
+      };
+    } | null
   )?.error;
   return new ApiError(
     status,
     error?.code ?? "error",
     error?.message ?? `Something went wrong (${status}).`,
     error?.fields ?? {},
+    error?.details ?? {},
   );
 }
 
@@ -712,6 +752,62 @@ async function upload<T>(path: string, form: FormData): Promise<T> {
   const data: unknown = await response.json().catch(() => null);
   if (!response.ok) throw toApiError(response.status, data);
   return data as T;
+}
+
+/** A file upload that reports how much is sent (0-100), for big lead files (step 33). */
+function uploadWithProgress<T>(
+  path: string,
+  form: FormData,
+  onProgress?: (percent: number) => void,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `/api${path}`);
+    xhr.setRequestHeader("Accept", "application/json");
+    xhr.setRequestHeader("X-CSRF-Token", csrfToken);
+    xhr.withCredentials = true;
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress)
+        onProgress(Math.round((event.loaded / event.total) * 100));
+    };
+    xhr.onerror = () =>
+      reject(new ApiError(0, "network", "The server can't be reached. Check your connection."));
+    xhr.onload = () => {
+      let data: unknown;
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch {
+        data = null;
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data as T);
+      else reject(toApiError(xhr.status, data));
+    };
+    xhr.send(form);
+  });
+}
+
+/** Download a file from the API, saying why when it can't be had (step 33). */
+export async function download(path: string, fallbackName: string): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch(`/api${path}`, { credentials: "same-origin" });
+  } catch {
+    throw new ApiError(0, "network", "The server can't be reached. Check your connection.");
+  }
+  if (!response.ok) {
+    const data: unknown = await response.json().catch(() => null);
+    throw toApiError(response.status, data);
+  }
+  const blob = await response.blob();
+  const named = /filename="([^"]+)"/.exec(response.headers.get("Content-Disposition") ?? "");
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = named?.[1] ?? fallbackName;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 export async function getHealth(signal?: AbortSignal): Promise<Health> {
@@ -807,17 +903,30 @@ export const api = {
   files: () => request<HandedInFile[]>("GET", "/submissions"),
   fileNiches: () => request<string[]>("GET", "/submissions/niches"),
   file: (id: string) => request<HandedInFileDetail>("GET", `/submissions/${id}`),
-  handIn: (file: File, niche: string) => {
+  handIn: (file: File, niche: string, onProgress?: (percent: number) => void) => {
     const form = new FormData();
     form.append("file", file);
     form.append("niche", niche);
-    return upload<HandedInFileDetail>("/submissions", form);
+    return uploadWithProgress<HandedInFileDetail>("/submissions", form, onProgress);
   },
-  reviseFile: (id: string, file: File) => {
+  reviseFile: (id: string, file: File, onProgress?: (percent: number) => void) => {
     const form = new FormData();
     form.append("file", file);
-    return upload<HandedInFileDetail>(`/submissions/${id}/version`, form);
+    return uploadWithProgress<HandedInFileDetail>(`/submissions/${id}/version`, form, onProgress);
   },
+  fileLeads: (id: string, filters: FileLeadFilters) => {
+    const params = new URLSearchParams();
+    for (const [name, value] of Object.entries(filters))
+      if (value !== undefined && value !== "") params.set(name, String(value));
+    const query = params.toString();
+    return request<FileLeadsPage>("GET", `/submissions/${id}/leads${query ? `?${query}` : ""}`);
+  },
+  // Niches (step 33).
+  addNiche: (name: string, confirm = false) =>
+    request<{ name: string; created: boolean }>("POST", "/niches", { name, confirm }),
+  allNiches: () => request<NicheRow[]>("GET", "/niches/all"),
+  renameNiche: (id: string, name: string) => request<NicheRow>("PATCH", `/niches/${id}`, { name }),
+  deleteNiche: (id: string) => request<void>("DELETE", `/niches/${id}`),
   deleteFile: (id: string) => request<void>("DELETE", `/submissions/${id}`),
   reopenFile: (id: string) => request<HandedInFile>("POST", `/submissions/${id}/reopen`),
   // Top Review (step 32).

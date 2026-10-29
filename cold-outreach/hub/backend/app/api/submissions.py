@@ -7,12 +7,13 @@ A Collector sees only their own files and changes them only while they have erro
 Owners, Admins and Viewers see every file. A file being added to a batch (its preview waits)
 or used (saved in a batch) can't be changed or deleted."""
 
+import logging
 import re
 import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, File, Form, Response, UploadFile
+from fastapi import APIRouter, File, Form, Query, Response, UploadFile
 from pydantic import BaseModel, StringConstraints
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -20,19 +21,21 @@ from sqlalchemy.orm import Session
 from app import audit
 from app.api.batches import get_batch
 from app.api.imports import MAX_BYTES, NicheName
+from app.api.niches import niche_names
 from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
-from app.auth.tokens import now
-from app.db.models import Batch, Benchmark, ImportStatus, Submission, User
+from app.db.models import ImportStatus, Submission, User
 from app.errors import ApiError
-from app.imports import reader, service
+from app.imports import check, service
 from app.imports import submissions as files
 from app.permissions import Action, can, ensure
 
 router = APIRouter(tags=["files"])
+log = logging.getLogger("files")
 
-# errors (Collectors fix them) → needs_top (Top Review) → ready → adding → used
-Status = Literal["errors", "needs_top", "ready", "adding", "used"]
+# checking (or failed: unreadable) → errors (Collectors fix them) → needs_top (Top Review)
+# → ready → adding → used
+Status = Literal["checking", "failed", "errors", "needs_top", "ready", "adding", "used"]
 
 
 class BatchRef(BaseModel):
@@ -64,6 +67,9 @@ class FileOut(BaseModel):
     # of them have one.
     cities_on: int = 0
     cities_topped: int = 0
+    # Checked in the background (step 33): how far, and why it couldn't be read.
+    progress: int = 100
+    error: str | None = None
 
 
 class FileDetail(FileOut):
@@ -77,27 +83,11 @@ def status_of(sub: Submission) -> Status:
         return "used"
     if imp is not None and imp.status == ImportStatus.PREVIEW:
         return "adding"
+    if sub.state in ("checking", "failed"):
+        return "checking" if sub.state == "checking" else "failed"
     if sub.check.get("errors"):
         return "errors"
     return "needs_top" if sub.topped_at is None else "ready"
-
-
-def cities(sub: Submission) -> dict[str, dict[str, Any]]:
-    """The file's cities; read from the file once for files handed in before step 32."""
-    if "cities" not in sub.check:
-        found = files.run(sub.content, sub.niche)
-        sub.check = dict(sub.check, cities=found.check["cities"])
-    found_cities: dict[str, dict[str, Any]] = sub.check["cities"]
-    return found_cities
-
-
-def lock_if_topped(sub: Submission) -> None:
-    """A file without errors whose every city that is on has a Top is ready, and locked
-    for Top Review."""
-    if sub.check.get("errors") or sub.topped_at is not None:
-        return
-    if files.all_topped(cities(sub), sub.tops):
-        sub.topped_at = now()
 
 
 def _batch(sub: Submission) -> BatchRef | None:
@@ -115,6 +105,8 @@ def _batch(sub: Submission) -> BatchRef | None:
 
 def _same_as(db: Session, me: User, sub: Submission) -> str | None:
     """Another file with the same leads: named when the person may see it."""
+    if not sub.sha256:
+        return None  # not checked yet
     others = list(
         db.scalars(
             select(Submission)
@@ -135,7 +127,7 @@ def _same_as(db: Session, me: User, sub: Submission) -> str | None:
 
 
 def _out(db: Session, me: User, sub: Submission) -> FileOut:
-    on = files.cities_on(cities(sub))
+    on = files.cities_on(files.cities(sub))
     return FileOut(
         id=sub.id,
         file_name=sub.file_name,
@@ -153,6 +145,8 @@ def _out(db: Session, me: User, sub: Submission) -> FileOut:
         same_as=_same_as(db, me, sub),
         cities_on=len(on),
         cities_topped=sum(1 for key in on if sub.tops.get(key)),
+        progress=sub.progress,
+        error=sub.error,
     )
 
 
@@ -193,17 +187,9 @@ def _changeable(db: Session, me: User, file_id: uuid.UUID, revise: bool) -> Subm
         raise ApiError(
             409, "adding", "This file is being added to a batch: confirm or discard it there."
         )
-    if status != "errors" and (revise or not can(me, Action.USE_FILES)):
+    if status not in ("checking", "failed", "errors") and (revise or not can(me, Action.USE_FILES)):
         raise ApiError(409, "no_errors", "This file has no errors: it can't be changed any more.")
     return sub
-
-
-def _niches(db: Session) -> dict[str, str]:
-    known = db.scalars(select(Benchmark.niche).union(select(Batch.niche)))
-    spellings: dict[str, str] = {}
-    for niche in known:
-        spellings.setdefault(niche.strip().lower(), niche)
-    return spellings
 
 
 def _read(file: UploadFile) -> bytes:
@@ -213,27 +199,19 @@ def _read(file: UploadFile) -> bytes:
     return content
 
 
-def _check(sub: Submission, content: bytes) -> None:
-    try:
-        content = files.clean(content)
-        found = files.run(content, sub.niche)
-    except reader.ReadError as error:
-        raise ApiError(422, "unreadable", str(error), {"file": str(error)}) from None
+def _store(sub: Submission, content: bytes) -> None:
+    """Keep the file as it came; the file checker checks it in the background (step 33)."""
     sub.content = content
-    sub.sha256 = found.fingerprint
-    sub.businesses = found.businesses
-    sub.check = found.check
-    sub.problems = found.problems
-    sub.tops = {}
-    sub.topped_at = None
-    lock_if_topped(sub)
+    sub.state, sub.progress, sub.error, sub.claimed_at = "checking", 0, None, None
+    sub.sha256, sub.businesses, sub.check, sub.problems, sub.leads = "", 0, {}, [], []
+    sub.tops, sub.topped_at = {}, None
 
 
 @router.get("/submissions/niches", response_model=list[NicheName])
 def niches(me: CurrentUser, db: Db) -> list[str]:
     """The niches a file can be handed in for (those of the benchmarks and batches)."""
     ensure(me, Action.SUBMIT_FILES)
-    return sorted(_niches(db).values(), key=str.lower)
+    return sorted(niche_names(db).values(), key=str.lower)
 
 
 @router.get("/submissions", response_model=list[FileOut])
@@ -255,16 +233,16 @@ def hand_in(
     file: Annotated[UploadFile, File()],
     niche: Annotated[str, Form(), StringConstraints(strip_whitespace=True, max_length=80)],
 ) -> FileDetail:
-    """Hand in a lead file: Lead Check runs on it at once."""
+    """Hand in a lead file: Lead Check runs on it at once, in the background."""
     ensure(me, Action.SUBMIT_FILES)
-    chosen = _niches(db).get(niche.lower())
+    chosen = niche_names(db).get(niche.strip().lower())
     if chosen is None:
         raise ApiError(422, "unknown_niche", "Choose one of the niches.", {"niche": "Unknown."})
     content = _read(file)
     sub = Submission(
         file_name=(file.filename or "leads.xlsx")[:255], niche=chosen, uploaded_by=me.id
     )
-    _check(sub, content)
+    _store(sub, content)
     db.add(sub)
     db.flush()
     audit.record(db, me, "hand in", "file", sub.id, sub.file_name, [])
@@ -284,9 +262,9 @@ def get_file(file_id: uuid.UUID, me: CurrentUser, db: Db) -> FileDetail:
 def revise(
     file_id: uuid.UUID, me: CurrentUser, db: Db, file: Annotated[UploadFile, File()]
 ) -> FileDetail:
-    """A revised version replaces the file and is checked again."""
+    """A revised version replaces the file and is checked again (its Tops start again)."""
     sub = _changeable(db, me, file_id, revise=True)
-    _check(sub, _read(file))
+    _store(sub, _read(file))
     sub.version += 1
     sub.import_id = None  # a discarded preview of the old version is forgotten
     audit.record(
@@ -307,10 +285,15 @@ def revise(
 def marked(file_id: uuid.UUID, me: CurrentUser, db: Db) -> Response:
     """The file with each problem marked, to fix offline and upload as a revised version."""
     sub = _get(db, me, file_id)
+    if status_of(sub) in ("checking", "failed"):
+        raise ApiError(409, "not_checked", "This file isn't checked yet.")
     try:
         content = files.marked(sub.content, sub.problems, sub.check)
-    except reader.ReadError as error:
-        raise ApiError(422, "unreadable", str(error)) from None
+    except Exception:
+        # Some workbooks open for reading but not for marking: the Hub makes the file again
+        # from what it read, with the same marks, so the download always works.
+        log.exception("file %s couldn't be marked in place", sub.id)
+        content = files.rebuilt(sub.leads, sub.problems, sub.check)
     stem = re.sub(r"[^A-Za-z0-9._-]+", "-", sub.file_name.rsplit(".", 1)[0])[:80]
     name = f"{stem or 'file'}-v{sub.version}-to-fix.xlsx"
     return Response(
@@ -318,6 +301,76 @@ def marked(file_id: uuid.UUID, me: CurrentUser, db: Db) -> Response:
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{name}"'},
     )
+
+
+LEADS_PAGE = 100
+
+
+def _matches(lead: dict[str, Any], words: list[str]) -> bool:
+    text = " ".join(lead["values"].values()).lower()
+    return all(word in text for word in words)
+
+
+def _number(text: str) -> float:
+    count = check.reviews_count(text.replace(",", "")) if text else None
+    return count if count is not None else -1.0
+
+
+@router.get("/submissions/{file_id}/leads")
+def file_leads(
+    file_id: uuid.UUID,
+    me: CurrentUser,
+    db: Db,
+    search: Annotated[str, Query(max_length=200)] = "",
+    city: Annotated[str, Query(max_length=120)] = "",
+    problems: Annotated[Literal["", "problems", "errors", "warnings", "ok"], Query()] = "",
+    sort: Annotated[
+        Literal["row", "name", "city", "reviews", "rating", "problems"], Query()
+    ] = "row",
+    page: Annotated[int, Query(ge=1, le=10_000)] = 1,
+) -> dict[str, Any]:
+    """The file's businesses as a table (step 33), filtered, sorted and a page at a time:
+    each with its tab and row, values and Lead Check problems. Only to look at: fixes are
+    made in Excel and handed in as a revised version."""
+    sub = _get(db, me, file_id)
+    rows: list[dict[str, Any]] = list(sub.leads)
+
+    def errors(lead: dict[str, Any]) -> int:
+        return sum(1 for i in lead["issues"] if i["severity"] == "error")
+
+    def kinds(lead: dict[str, Any]) -> set[str]:
+        """Errors and Warnings are the businesses with one; Problems those with either."""
+        found = {i["severity"] + "s" for i in lead["issues"]}
+        return found | {"problems"} if found else {"ok"}
+
+    if city:
+        rows = [r for r in rows if r["values"].get("city", "").lower() == city.strip().lower()]
+    if words := search.lower().split():
+        rows = [r for r in rows if _matches(r, words)]
+    counts = {"all": len(rows), "problems": 0, "errors": 0, "warnings": 0, "ok": 0}
+    for row in rows:
+        for found in kinds(row):
+            counts[found] += 1
+    if problems:
+        rows = [r for r in rows if problems in kinds(r)]
+    if sort == "name":
+        rows.sort(key=lambda r: r["values"].get("business_name", "").lower())
+    elif sort == "city":
+        rows.sort(key=lambda r: (r["values"].get("city", "").lower(), r["line"]))
+    elif sort in ("reviews", "rating"):
+        rows.sort(key=lambda r: -_number(r["values"].get(sort, "")))
+    elif sort == "problems":
+        rows.sort(key=lambda r: (-errors(r), -len(r["issues"])))
+    pages = max(1, -(-len(rows) // LEADS_PAGE))
+    cities = sorted({r["values"].get("city", "") for r in sub.leads} - {""}, key=str.lower)
+    return {
+        "total": len(rows),
+        "page": page,
+        "pages": pages,
+        "counts": counts,
+        "cities": cities,
+        "leads": rows[(page - 1) * LEADS_PAGE : page * LEADS_PAGE],
+    }
 
 
 @router.delete("/submissions/{file_id}", status_code=204)
@@ -367,7 +420,9 @@ def use(file_id: uuid.UUID, body: UseIn, me: CurrentUser, db: Db) -> FileOut:
     twin = [
         other
         for other in db.scalars(
-            select(Submission).where(Submission.sha256 == sub.sha256, Submission.id != sub.id)
+            select(Submission).where(
+                Submission.sha256 == sub.sha256, Submission.sha256 != "", Submission.id != sub.id
+            )
         )
         if status_of(other) == "used"
     ]

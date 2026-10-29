@@ -382,9 +382,26 @@ test("a Collector hands in a file and the Owner drags it onto a batch, once", as
     .getByLabel(/Excel file/)
     .setInputFiles(path.join(HERE, "..", "fixtures", "cleaning-leads.xlsx"));
   await cal.getByRole("button", { name: "Upload and check" }).click();
-  const handedIn = cal.getByRole("dialog", { name: "cleaning-leads.xlsx" });
-  await expect(handedIn.getByText(/this file is ready/)).toBeVisible();
-  await handedIn.getByRole("button", { name: "Close" }).click();
+  await expect(cal.getByText(/is uploaded and being checked/)).toBeVisible();
+  // Checked on the server (step 33), even after a reload.
+  await cal.reload();
+  const mine = cal.getByRole("row", { name: /cleaning-leads\.xlsx/ });
+  await expect(mine).toContainText("Ready");
+  await mine.getByRole("button", { name: "cleaning-leads.xlsx" }).click();
+  await expect(cal.getByText(/this\s+file is ready/)).toBeVisible();
+  const businesses = cal.getByRole("region", {
+    name: "Businesses in this file",
+  });
+  await expect(
+    businesses.getByText("Sparkle Home Cleaning").first(),
+  ).toBeVisible();
+  // The file with its problems marked downloads.
+  const downloaded = cal.waitForEvent("download");
+  await cal.getByRole("button", { name: /Download problems to fix/ }).click();
+  expect((await downloaded).suggestedFilename()).toBe(
+    "cleaning-leads-v1-to-fix.xlsx",
+  );
+  await cal.getByRole("link", { name: "Files" }).first().click();
 
   // The Owner drags the ready file onto the batch and saves its preview there.
   await page
@@ -423,9 +440,9 @@ test("a Reviewer chooses the Top of each city and the file becomes ready", async
     .getByLabel(/Excel file/)
     .setInputFiles(path.join(HERE, "..", "fixtures", "top-review.xlsx"));
   await page.getByRole("button", { name: "Upload and check" }).click();
-  const handedIn = page.getByRole("dialog", { name: "top-review.xlsx" });
-  await expect(handedIn.getByText(/Waiting for Top Review/)).toBeVisible();
-  await handedIn.getByRole("button", { name: "Close" }).click();
+  await expect(
+    page.getByRole("row", { name: /top-review\.xlsx/ }),
+  ).toContainText("Needs Top");
 
   // The Owner invites a Reviewer, who sees Top Review only.
   await page
