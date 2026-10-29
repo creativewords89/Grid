@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type CheckReport } from "../api";
 import { FIELD_NAMES } from "../checkLabels";
 import { LeadDialog } from "../pages/Leads";
+import { FixFileButtons } from "./FixFile";
 import { Alert, Modal } from "./ui";
 
 // A saved file's Lead Check report (SPEC step 26): held or clear, problems by city, the
@@ -9,11 +10,13 @@ import { Alert, Modal } from "./ui";
 
 export function CheckReportDialog({
   importId,
+  batchId,
   staff,
   onClose,
   onChanged,
 }: {
   importId: string;
+  batchId: string;
   staff: boolean;
   onClose: () => void;
   onChanged: () => void;
@@ -63,9 +66,15 @@ export function CheckReportDialog({
             </Alert>
           )}
           <div className="row">
-            <a className="button" href={`/api/imports/${importId}/check.xlsx`} download>
-              Download Excel
-            </a>
+            <FixFileButtons
+              href={`/api/imports/${importId}/fixes.xlsx`}
+              batchId={batchId}
+              staff={staff}
+              onSaved={() => {
+                load();
+                onChanged();
+              }}
+            />
             {staff && (
               <button className="button" disabled={busy} onClick={() => void again()}>
                 Check again

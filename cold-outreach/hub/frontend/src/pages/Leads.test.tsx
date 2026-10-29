@@ -426,3 +426,65 @@ test("Lead Check: problems, the filter, a held lead and a one-click fix (steps 2
     facebook: "https://fb.com/sp",
   });
 });
+
+test("a fix file: download, upload, see what changes, then save (step 28)", async () => {
+  let posts = 0;
+  const result = {
+    saved: false,
+    rows: 2,
+    changed: [
+      {
+        tab: "Tulsa",
+        line: 3,
+        lead_id: "L-000002",
+        business_name: "Sparkle",
+        city: "Tulsa",
+        changes: [{ field: "Address", from: "9 Elm St (918) 555-0300", to: "9 Elm St, Tulsa" }],
+        errors: 0,
+        warnings: 0,
+      },
+    ],
+    unchanged: 1,
+    skipped: [{ tab: "Tulsa", line: 9, lead_id: "L-999999", reason: "Not a lead of Batch 1." }],
+    refused: [],
+    errors_before: 1,
+    errors_after: 0,
+    warnings_after: 0,
+    held_files_after: 0,
+  };
+  mockApi({
+    "GET /auth/me": as("admin"),
+    "GET /leads?batch_id=b1": [200, leadPage([lead("L-000001")])],
+    "POST /batches/b1/fixes": () => {
+      posts += 1;
+      return [200, { ...result, saved: posts > 1 }];
+    },
+  });
+  render(
+    <AuthProvider>
+      <BatchLeads batchId="b1" />
+    </AuthProvider>,
+  );
+
+  expect(await screen.findByRole("link", { name: "Download problems to fix" })).toHaveAttribute(
+    "href",
+    "/api/batches/b1/fixes.xlsx",
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Upload fixes" }));
+  const dialog = screen.getByRole("dialog", { name: "Upload fixes" });
+  await userEvent.upload(
+    within(dialog).getByLabelText("Fix file (.xlsx)"),
+    new File(["xlsx"], "fixed.xlsx"),
+  );
+  await userEvent.click(within(dialog).getByRole("button", { name: "Check the file" }));
+
+  const changes = await within(dialog).findByRole("region", { name: "What changes" });
+  expect(changes).toHaveTextContent("If you save: 1 leads change");
+  expect(changes).toHaveTextContent("Errors 🔴 1 → 0");
+  expect(changes).toHaveTextContent("Address: 9 Elm St (918) 555-0300 → 9 Elm St, Tulsa");
+  expect(changes).toHaveTextContent("L-999999");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Save 1 changes" }));
+
+  expect(await within(dialog).findByText(/Saved:/)).toBeVisible();
+  expect(posts).toBe(2);
+});

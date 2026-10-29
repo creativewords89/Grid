@@ -409,19 +409,37 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    twice, rows whose City isn't the tab's name. **Per lead**, on its current values: an
    **error** (🔴) is wrong data in a field (a phone number, email or link in the Address; a
    Facebook, Instagram or Google Maps link, or no link, as the Website; letters or not 10
-   digits in the Phone; WhatsApp not a phone; a GBP link that isn't Google Maps; a link or a
+   digits in the Phone; WhatsApp not Yes or empty (it says whether the Phone number has
+   WhatsApp; "No" is a problem too: empty means no WhatsApp, and its one-click fix empties
+   it); a GBP link that isn't Google Maps; a link or a
    phone number as the business name; numbers in the City; a Facebook column that isn't
    Facebook and the same for Instagram; Reviews not a whole number; Rating not a number or
    outside 0–5; Reviews and Rating swapped); a **warning** (🟠) is missing or doubtful data
-   (no GBP link, phone or address, an address without the city, a made-up email, a very long
-   name). The **preview** shows errors and warnings by tab and marks each wrong cell; saving
+   (no GBP link, phone or address, WhatsApp Yes without a phone, an address without the
+   city, a made-up email, a very long name). When the rules change, a migration clears the
+   saved checks so every lead is checked again under the new rules. The **preview** shows errors and warnings by tab and marks each wrong cell; saving
    a file checks its leads. **A file with an error is held**: while any lead it brought or
    updated in its batch has an error, agents get **none** of that file's leads (section 6.7).
    As soon as a file is saved the team is told (alert `lead_check`, email and Telegram): held
    with its errors by city, or clear. Each saved file in **Past imports** says **✅ Clear** or
    **🔴 N leads · held** and opens its **report**: by city, the tabs' column problems, every
-   problem with its lead (which opens to fix it), **Errors only**, **Download Excel**
-   (`/imports/{id}/check.xlsx`) and **Check again**. **Filters:** the Cities tab has a
+   problem with its lead (which opens to fix it), **Errors only**, **Download problems to
+   fix**, **Upload fixes** and **Check again** (`/imports/{id}/check.xlsx` still gives one row
+   per problem). **Fix files** (step 28): **Download problems to fix** (in the report: that
+   file's leads; on the Leads tab: the batch's) gives every lead with a problem (errors and
+   warnings) as Excel, one tab per city, Lead ID first, then the standard columns and Notes,
+   and a Problems column; each wrong cell is red (error) or yellow (warning) with a note
+   saying what is wrong, filters on, the header frozen, every cell stored as text. Fixed
+   offline, it is uploaded back with **Upload fixes** (Owners and Admins,
+   `POST /batches/{id}/fixes`): rows are matched by **Lead ID** within the batch; each column
+   of the file changes its field and **an empty cell clears it**; other columns are left
+   alone, the Problems column is ignored. First the Hub shows what would change (each lead,
+   field, old → new value), errors before → after, how many files stay held, the rows left
+   out (no Lead ID: new businesses go in a lead file; a Lead ID of another batch or none; a
+   Lead ID twice) and the values refused (no name or city, a bad email); **nothing is saved**
+   until **Save N changes**. Saving goes through the same rules as the lead window (step 27),
+   checks each lead again (a file whose last error is fixed is released) and records each
+   lead's changes in History. Top is never changed by a fix file. **Filters:** the Cities tab has a
    **Problems** column and **All cities / With problems / With errors**; the Leads table has a
    **Check** column, wrong cells outlined, and a **Problems** filter (any, errors only, or one
    kind). A lead says when its file is held and lists its problems; a problem with a clear fix
@@ -790,3 +808,12 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
 27. **Fixing leads in the Hub** (built with step 26): every standard field editable, a lead
     moved to a new city, one-click fixes, Lead Check again on save. **Tests:** editing every
     field, Top not editable, rights, fixes, a fix clearing a held file.
+28. **Fix files** (asked for after step 27): **Download problems to fix** (per file and per
+    batch) with red and yellow cells and notes, **Upload fixes** matched by Lead ID with a
+    preview before saving, empty cells clearing; the lead window and fix files share one set
+    of rules (`app/leads/edit.py`). Also: WhatsApp is **Yes or empty** ("No", a phone number
+    or anything else is an error; "No" has a one-click fix that empties it; Yes without a
+    phone is a warning), and migration `0018` clears saved checks so every lead is checked
+    again. **Tests:** the file's tabs, colours and notes, a round trip clearing a held file,
+    a preview saving nothing, rows left out, a refused value, a file without Lead ID,
+    rights, the WhatsApp rule.

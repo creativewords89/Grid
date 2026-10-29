@@ -25,7 +25,7 @@ CLEAN = {
     "city": "Tulsa",
     "website": "https://multiclean1.com/",
     "phone": "(918) 523-8300",
-    "whatsapp": "+1 918 523 8300",
+    "whatsapp": "Yes",
     "email": "kevin@multiclean1.com",
     "facebook": "https://facebook.com/multiclean",
     "instagram": "https://instagram.com/multiclean",
@@ -43,6 +43,8 @@ def codes(**changes: str) -> list[str]:
 
 def test_a_clean_lead_has_no_problem() -> None:
     assert codes() == []
+    # WhatsApp says whether the phone number has WhatsApp.
+    assert codes(whatsapp="yes") == codes(whatsapp="YES") == codes(whatsapp="") == []
     assert codes(phone="918-523-8300 ext 4", gbp_link="https://maps.google.com/?cid=1") == []
 
 
@@ -58,7 +60,9 @@ def test_a_clean_lead_has_no_problem() -> None:
         ({"website": "call us"}, "WEBSITE_NOT_LINK"),
         ({"phone": "call 918 555"}, "PHONE_HAS_LETTERS"),
         ({"phone": "555-0101"}, "PHONE_WRONG_LENGTH"),
-        ({"whatsapp": "yes"}, "WHATSAPP_NOT_PHONE"),
+        ({"whatsapp": "918 523 8300"}, "WHATSAPP_NOT_YES"),
+        ({"whatsapp": "No"}, "WHATSAPP_NOT_YES"),
+        ({"whatsapp": "maybe"}, "WHATSAPP_NOT_YES"),
         ({"gbp_link": "https://multiclean1.com"}, "GBP_NOT_MAPS"),
         ({"business_name": "https://multiclean1.com"}, "NAME_IS_LINK"),
         ({"business_name": "(918) 523-8300"}, "NAME_IS_PHONE"),
@@ -87,6 +91,7 @@ def test_missing_or_doubtful_data_only_warns() -> None:
     assert {i.code for i in found} == {
         "NO_GBP_LINK",
         "NO_PHONE",
+        "WHATSAPP_NO_PHONE",
         "ADDRESS_OTHER_CITY",
         "EMAIL_PLACEHOLDER",
     }
@@ -118,6 +123,11 @@ def test_one_click_fixes() -> None:
         "label": "Move the phone number to Phone",
         "changes": {"address": "5874 S 129th E Ave, Tulsa", "phone": "(918) 555-0101"},
     }
+    assert fix_for("WHATSAPP_NOT_YES", CLEAN | {"whatsapp": "No"}) == {
+        "label": "Clear it (empty means no WhatsApp)",
+        "changes": {"whatsapp": ""},
+    }
+    assert fix_for("WHATSAPP_NOT_YES", CLEAN | {"whatsapp": "918 523 8300"}) is None
     assert fix_for("PHONE_WRONG_LENGTH", CLEAN) is None
 
 
@@ -208,6 +218,8 @@ def test_a_file_with_an_error_holds_all_its_leads_until_fixed(
     sparkle = client.get("/api/leads", params={"batch_id": batch, "problems": "errors"}).json()
     assert [x["business_name"] for x in sparkle["leads"]] == ["Sparkle"]
     lead_id = sparkle["leads"][0]["lead_id"]
+    anything = client.get("/api/leads", params={"batch_id": batch, "problems": "any"}).json()
+    assert lead_id in [x["lead_id"] for x in anything["leads"]]
     one = client.get("/api/leads", params={"batch_id": batch, "problems": "WEBSITE_IS_FACEBOOK"})
     assert [x["lead_id"] for x in one.json()["leads"]] == [lead_id]
     detail = client.get(f"/api/leads/{lead_id}").json()
@@ -301,3 +313,103 @@ def test_every_field_can_be_edited_but_not_top_and_not_by_viewers(
     client.cookies.clear()
     sign_in(client, make_user(Role.VIEWER).email)
     assert client.patch("/api/leads/L-000001", json={"rating": "5"}).status_code == 403
+
+
+# --- fix files (step 28) ---------------------------------------------------------------------
+
+
+def fix_upload(
+    client: TestClient, batch: str, content: bytes, confirm: bool = False
+) -> dict[str, Any]:
+    response = client.post(
+        f"/api/batches/{batch}/fixes",
+        files={"file": ("fixed.xlsx", content)},
+        data={"confirm": "true" if confirm else "false"},
+    )
+    assert response.status_code == 200, response.text
+    body: dict[str, Any] = response.json()
+    return body
+
+
+def test_a_fix_file_round_trip(client: TestClient, owner: User, db: Session) -> None:
+    saved = save(client, workbook(FILE))
+    batch = batch_id(client, "Batch 1")
+
+    download = client.get(f"/api/imports/{saved['id']}/fixes.xlsx")
+
+    assert download.status_code == 200
+    book = load_workbook(io.BytesIO(download.content))
+    assert book.sheetnames == ["Tulsa"]  # Dallas' lead has no problem
+    sheet = book["Tulsa"]
+    header = [c.value for c in sheet[1]]
+    assert header[:3] == ["Lead ID", "Business name", "GBP link"] and header[-1] == "Problems"
+    line = next(r for r in range(2, sheet.max_row + 1) if sheet.cell(r, 2).value == "Sparkle")
+    address = sheet.cell(line, header.index("Address") + 1)
+    assert address.fill.fgColor.rgb.endswith("F8C9C9")  # red: an error
+    assert address.comment is not None and "Address holds a phone number" in address.comment.text
+    assert "Website: Website is a Facebook link" in str(sheet.cell(line, len(header)).value)
+    lead_id = sheet.cell(line, 1).value
+
+    # Fixed offline: the address, the website moved, plus rows the Hub must leave alone.
+    sheet.cell(line, header.index("Address") + 1).value = "9 Elm St, Tulsa, OK"
+    sheet.cell(line, header.index("Website") + 1).value = None  # an empty cell clears
+    sheet.cell(line, header.index("Facebook") + 1).value = "https://fb.com/sp"
+    sheet.append(["L-999999", "Nobody"])
+    sheet.append([None, "A new business"])
+    out = io.BytesIO()
+    book.save(out)
+
+    preview = fix_upload(client, batch, out.getvalue())
+
+    assert preview["saved"] is False
+    assert (preview["errors_before"], preview["errors_after"], preview["held_files_after"]) == (
+        2,
+        0,
+        0,
+    )
+    [item] = preview["changed"]
+    assert item["lead_id"] == lead_id
+    assert {c["field"] for c in item["changes"]} == {"Address", "Website", "Facebook"}
+    assert [s["lead_id"] for s in preview["skipped"]] == ["L-999999", ""]
+    still = client.get(f"/api/leads/{lead_id}").json()
+    assert still["data"]["address"] == "9 Elm St (918) 555-0300"  # a preview saves nothing
+
+    done = fix_upload(client, batch, out.getvalue(), confirm=True)
+
+    assert done["saved"] is True
+    fixed = client.get(f"/api/leads/{lead_id}").json()
+    assert (fixed["data"]["address"], fixed["data"].get("website")) == ("9 Elm St, Tulsa, OK", None)
+    assert client.get(f"/api/imports/{saved['id']}").json()["check_errors"] == 0
+    history = client.get("/api/history", params={"entity": "lead"}).json()["entries"]
+    assert any(e["action"] == "edit" for e in history)
+
+
+def test_a_fix_file_refuses_a_bad_value_and_other_files(client: TestClient, owner: User) -> None:
+    save(client, workbook(FILE))
+    batch = batch_id(client, "Batch 1")
+    book = load_workbook(io.BytesIO(client.get(f"/api/batches/{batch}/fixes.xlsx").content))
+    sheet = book["Tulsa"]
+    sheet.cell(2, 2).value = None  # no business name
+    out = io.BytesIO()
+    book.save(out)
+
+    preview = fix_upload(client, batch, out.getvalue())
+
+    assert [r["message"] for r in preview["refused"]] == ["A business needs a name."]
+    plain = client.post(f"/api/batches/{batch}/fixes", files={"file": ("x.xlsx", workbook(FILE))})
+    assert plain.status_code == 422
+    assert "Lead ID" in plain.json()["error"]["message"]
+
+
+def test_viewers_download_but_cannot_upload_fixes(
+    client: TestClient, owner: User, make_user: UserFactory
+) -> None:
+    save(client, workbook(FILE))
+    batch = batch_id(client, "Batch 1")
+    content = client.get(f"/api/batches/{batch}/fixes.xlsx").content
+    client.cookies.clear()
+    sign_in(client, make_user(Role.VIEWER).email)
+
+    assert client.get(f"/api/batches/{batch}/fixes.xlsx").status_code == 200
+    refused = client.post(f"/api/batches/{batch}/fixes", files={"file": ("f.xlsx", content)})
+    assert refused.status_code == 403
