@@ -417,7 +417,8 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
    tab.
 13. **Lead Check** (steps 26 and 27): every lead file is checked against the standard
    (`app/imports/check.py`). **Per tab** (warnings): a standard column missing, a column given
-   twice, rows whose City isn't the tab's name. **Per lead**, on its current values: an
+   twice (rows whose City isn't the tab's name were one too, until after step 39: the city
+   is the City column's). **Per lead**, on its current values: an
    **error** (🔴) is wrong data in a field (a phone number, email or link in the Address; a
    Facebook, Instagram or Google Maps link, or no link, as the Website; letters or not 10
    digits in the Phone; WhatsApp not Yes or empty (it says whether the Phone number has
@@ -1031,3 +1032,6 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     saved on disk are left there), moves each file's Tops to its cities (those with a Top
     are ready from then) and checks every file again; files' batch names and per-niche
     numbers go.
+    (Corrected again after step 39: a file's page no longer lists its tabs' column problems,
+    and "City differs from the tab's name" is no longer checked, as the city is the City
+    column's; migration `0028` checks the files handed in again.)

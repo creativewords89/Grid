@@ -71,7 +71,6 @@ CODES: dict[str, tuple[Severity, str]] = {
     # A tab (city) of the file. (Every problem is an error since step 36.)
     "MISSING_COLUMN": ("error", "Column missing"),
     "DUPLICATE_COLUMN": ("error", "Column twice: the first one is used"),
-    "CITY_NOT_TAB": ("error", "City differs from the tab's name"),
 }
 
 PHONE_IN_TEXT = re.compile(r"(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}")
@@ -231,13 +230,12 @@ def check_lead(values: dict[str, str]) -> list[Issue]:
     return found
 
 
-def check_tab(fields: list[str], duplicates: list[str], city_not_tab: int) -> list[Issue]:
-    """The problems of one tab (city) of a file: missing or doubled standard columns, rows
-    whose City isn't the tab's name (errors since step 36)."""
+def check_tab(fields: list[str], duplicates: list[str]) -> list[Issue]:
+    """The problems of one tab of a file: missing or doubled standard columns (errors since
+    step 36). A City other than the tab's name is fine: the city is the City column's (the
+    check for it is gone since step 39)."""
     found = [issue("MISSING_COLUMN", f) for f in STANDARD if f not in fields and f != "city"]
     found += [issue("DUPLICATE_COLUMN", f) for f in duplicates if f in STANDARD]
-    if city_not_tab:
-        found.append(issue("CITY_NOT_TAB", "city"))
     return found
 
 

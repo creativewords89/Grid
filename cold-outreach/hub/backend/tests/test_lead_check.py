@@ -101,12 +101,11 @@ def test_missing_or_doubtful_data_is_an_error_too() -> None:
     assert {i.code for i in found} == {"NO_GBP_LINK", "EMAIL_PLACEHOLDER"}
     assert {i.code for i in check_lead(CLEAN | {"business_name": ""})} == {"NO_NAME"}
     assert all(i.severity == "error" for i in found)
-    tab = check_tab(["business_name", "gbp_link", "phone"], ["phone"], 2)
+    tab = check_tab(["business_name", "gbp_link", "phone"], ["phone"])
     assert all(i.severity == "error" for i in tab)
     assert {(i.code, i.field) for i in tab} >= {
         ("MISSING_COLUMN", "instagram"),
         ("DUPLICATE_COLUMN", "phone"),
-        ("CITY_NOT_TAB", "city"),
     }
     assert ("MISSING_COLUMN", "city") not in {(i.code, i.field) for i in tab}
 
