@@ -1082,6 +1082,7 @@ function History({
       {report && (
         <CheckReportDialog
           importId={report}
+          batchId={imports.find((i) => i.id === report)?.batch_id ?? ""}
           staff={staff}
           onClose={() => setReport(null)}
           onChanged={onChanged}

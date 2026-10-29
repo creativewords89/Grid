@@ -50,7 +50,9 @@ CODES: dict[str, tuple[Severity, str]] = {
     "PHONE_HAS_LETTERS": ("error", "Phone holds letters"),
     "PHONE_WRONG_LENGTH": ("error", "Phone isn't a 10-digit US number"),
     "NO_PHONE": ("warning", "No phone"),
-    "WHATSAPP_NOT_PHONE": ("error", "WhatsApp isn't a phone number"),
+    # WhatsApp says whether the Phone number has WhatsApp: Yes, or empty when it hasn't.
+    "WHATSAPP_NOT_YES": ("error", "WhatsApp should be Yes or empty"),
+    "WHATSAPP_NO_PHONE": ("warning", "WhatsApp is Yes but there is no phone"),
     "EMAIL_PLACEHOLDER": ("warning", "Email looks made up (test@, example.com)"),
     "FACEBOOK_IS_INSTAGRAM": ("error", "Facebook is an Instagram link"),
     "FACEBOOK_NOT_FACEBOOK": ("error", "Facebook isn't a Facebook link"),
@@ -77,6 +79,7 @@ MAPS = re.compile(
 )
 PLACEHOLDER_EMAIL = re.compile(r"^(test|example|none|noemail|no-reply|noreply)@|@example\.")
 NUMBER = re.compile(r"^\d+(\.\d+)?$")
+YES = ("yes",)
 
 
 @dataclass(frozen=True)
@@ -170,11 +173,11 @@ def check_lead(values: dict[str, str]) -> list[Issue]:
         add(issue("NO_PHONE", "phone"))
     elif problem := _phone_problem(phone, "phone", "PHONE_HAS_LETTERS", "PHONE_WRONG_LENGTH"):
         add(problem)
-    whatsapp = v["whatsapp"]
-    if whatsapp and _phone_problem(
-        whatsapp, "whatsapp", "WHATSAPP_NOT_PHONE", "WHATSAPP_NOT_PHONE"
-    ):
-        add(issue("WHATSAPP_NOT_PHONE", "whatsapp"))
+    whatsapp = v["whatsapp"].lower().rstrip(".")
+    if whatsapp and whatsapp not in YES:
+        add(issue("WHATSAPP_NOT_YES", "whatsapp"))
+    elif whatsapp in YES and not phone:
+        add(issue("WHATSAPP_NO_PHONE", "whatsapp"))
 
     if any(PLACEHOLDER_EMAIL.search(e.strip().lower()) for e in v["email"].split(",") if e):
         add(issue("EMAIL_PLACEHOLDER", "email"))
@@ -261,6 +264,8 @@ def fix_for(code: str, values: dict[str, str]) -> dict[str, Any] | None:
         return _move(values, "facebook", "instagram")
     if code == "INSTAGRAM_IS_FACEBOOK":
         return _move(values, "instagram", "facebook")
+    if code == "WHATSAPP_NOT_YES" and values.get("whatsapp", "").strip().lower() in ("no", "n"):
+        return {"label": "Clear it (empty means no WhatsApp)", "changes": {"whatsapp": ""}}
     if code == "REVIEWS_RATING_SWAPPED":
         changes = {"reviews": values["rating"], "rating": values["reviews"]}
         return {"label": "Swap Reviews and Rating", "changes": changes}

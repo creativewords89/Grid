@@ -196,6 +196,36 @@ export type CheckReport = {
   })[];
 };
 
+/** What a fix file changes (step 28): a preview until it is saved. */
+export type FixResult = {
+  saved: boolean;
+  rows: number;
+  changed: {
+    tab: string;
+    line: number;
+    lead_id: string;
+    business_name: string;
+    city: string;
+    changes: { field: string; from: unknown; to: unknown }[];
+    errors: number;
+    warnings: number;
+  }[];
+  unchanged: number;
+  skipped: { tab: string; line: number; lead_id: string; reason: string }[];
+  refused: {
+    tab: string;
+    line: number;
+    lead_id: string;
+    business_name: string;
+    field: string;
+    message: string;
+  }[];
+  errors_before: number;
+  errors_after: number;
+  warnings_after: number;
+  held_files_after: number;
+};
+
 export type ImportPreview = {
   has_level_column: boolean;
   empty_tabs: string[];
@@ -679,6 +709,13 @@ export const api = {
     form.append("file", file);
     form.append("batch_id", batchId);
     return upload<LeadImport>("/imports", form);
+  },
+  // A fix file back from Excel (step 28): a preview, or saved with `confirm`.
+  uploadFixes: (batchId: string, file: File, confirm: boolean) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("confirm", confirm ? "true" : "false");
+    return upload<FixResult>(`/batches/${batchId}/fixes`, form);
   },
   imports: (batchId?: string) =>
     request<LeadImport[]>("GET", `/imports${batchId ? `?batch_id=${batchId}` : ""}`),
