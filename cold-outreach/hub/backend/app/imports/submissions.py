@@ -276,6 +276,8 @@ FIX_FIELDS = EDIT_FIELDS  # Business name … Notes, as the batch's fix file has
 FILE_ID, PROBLEMS, DELETE = "File ID", "Problems", "Delete"
 FIX_HEADER = [FILE_ID, *(fixes.LABELS[f] for f in FIX_FIELDS), PROBLEMS, DELETE]
 FIX_SHEET = "Problems"
+# The same business twice (step 39): never in the fix file, removed on the Hub (step 40).
+DUPLICATE_CODES = ("SAME_IN_FILE", "SAME_ELSEWHERE")
 YES_WORDS = ("yes", "y", "x", "delete")
 FILE_ID_FORM = re.compile(r"^F(\d+)-(\d{4,})$")
 
@@ -312,12 +314,15 @@ def fix_file(leads: list[dict[str, Any]]) -> bytes:
     sheet.append(FIX_HEADER)
     for cell in sheet[1]:
         cell.font = Font(bold=True)
+    # Duplicates aren't in it: they are removed on the Hub only (step 40).
+    to_fix = [
+        (lead, [i for i in lead["issues"] if i["code"] not in DUPLICATE_CODES]) for lead in leads
+    ]
     shown = sorted(
-        (lead for lead in leads if lead["issues"]),
-        key=lambda lead: (lead["values"].get("city", "").lower(), lead["id"]),
+        ((lead, issues) for lead, issues in to_fix if issues),
+        key=lambda item: (item[0]["values"].get("city", "").lower(), item[0]["id"]),
     )
-    for lead in shown:
-        issues = lead["issues"]
+    for lead, issues in shown:
         sheet.append(
             [
                 lead["id"],
@@ -343,7 +348,15 @@ def fix_file(leads: list[dict[str, Any]]) -> bytes:
                 f"{old}{'Error' if error else 'Warning'}: {item['message']}", AUTHOR
             )
     if not shown:
-        sheet.append(["", "Every business in this file passes Lead Check."])
+        duplicates = any(len(issues) < len(lead["issues"]) for lead, issues in to_fix)
+        sheet.append(
+            [
+                "",
+                "Nothing to fix here: remove the duplicates on the Hub (Remove duplicates)."
+                if duplicates
+                else "Every business in this file passes Lead Check.",
+            ]
+        )
     sheet.freeze_panes = "C2"
     sheet.auto_filter.ref = sheet.dimensions
     widths = [11, 28, 24, 34, 16, 28, 16, 10, 28, 28, 28, 9, 8, 24, 50, 8]
@@ -408,10 +421,11 @@ def read_fixes(content: bytes) -> list[FixRow]:
     return rows
 
 
-def rebuilt(leads: list[dict[str, Any]]) -> bytes:
+def rebuilt(leads: list[dict[str, Any]], once: bool = False) -> bytes:
     """The file made again from its businesses (after fixes): a tab per tab of the file, each
     business's File ID (kept when it is checked again), the standard columns and the file's
-    other columns."""
+    other columns. A business on several rows is written on each of them, so it stays a
+    duplicate, unless `once` (Remove duplicates, step 40): then on its first row only."""
     book = Workbook()
     first = book.active
     extra: list[str] = []
@@ -420,8 +434,13 @@ def rebuilt(leads: list[dict[str, Any]]) -> bytes:
     header = [FILE_ID, *(fixes.LABELS[f] for f in FIX_FIELDS), *extra]
     sheets: dict[str, Any] = {}
     taken: set[str] = set()
-    for lead in leads:
-        tab = lead["tab"] or lead["values"].get("city", "") or "Leads"
+    placed = [
+        (lead, where.rsplit(" row ", 1)[0] if " row " in where else lead["tab"])
+        for lead in leads
+        for where in (lead.get("rows") or [""])[: 1 if once else None]
+    ]
+    for lead, tab_of in placed:
+        tab = tab_of or lead["tab"] or lead["values"].get("city", "") or "Leads"
         if tab not in sheets:
             sheets[tab] = book.create_sheet(fixes.tab_name(tab, taken))
             sheets[tab].append(header)

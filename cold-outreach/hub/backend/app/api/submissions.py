@@ -427,18 +427,6 @@ def upload_fixes(
         if changes:
             changed.append(where | {"business_name": name, "changes": changes})
     kept = [lead for lead in leads if not lead.get("removed")]
-    # A business on several rows of the file (an error, step 39) is kept once: the file is
-    # made again with one row for it.
-    for lead in kept:
-        if len(lead.get("rows", [])) > 1:
-            name = lead["values"].get("business_name") or lead["values"].get("gbp_link", "")
-            once = {"field": "Rows", "from": ", ".join(lead["rows"]), "to": "one row"}
-            found = next((c for c in changed if c["file_id"] == lead["id"]), None)
-            if found is None:
-                where = {"tab": lead["tab"], "line": lead["line"], "file_id": lead["id"]}
-                changed.append(where | {"business_name": name, "changes": [once]})
-            else:
-                found["changes"].append(once)
     if confirm and (changed or removed):
         if not kept:
             raise ApiError(409, "empty", "That would take every business out of the file.")
@@ -486,7 +474,7 @@ def remove_duplicates(file_id: uuid.UUID, me: CurrentUser, db: Db) -> FileDetail
     kept = [lead for lead in sub.leads if not _elsewhere(lead)]
     if not kept:
         raise ApiError(409, "empty", "That would take every business out of the file.")
-    _store(sub, files.rebuilt(kept))
+    _store(sub, files.rebuilt(kept, once=True))
     sub.version += 1
     audit.record(
         db,
