@@ -973,3 +973,9 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     **Tests:** the rules as errors, the Final check (sent by its sender, by the scheduler
     after an hour, errors again, who may), a held batch file fixed; vitest for the stages,
     the drop zone and the Final check card; e2e through the Final check.
+37. **Two buttons on a file** (asked for after step 36): **Download problems to fix** and
+    **Upload fixes**; Upload revised version is gone from the screen. Upload fixes takes
+    either file: the fix file (it has a File ID column: what changes is shown, then saved)
+    or a whole new Excel file (no File ID column: the Hub says it will replace the whole
+    file as the next version, and does once confirmed). It is offered while the file is
+    checking, couldn't be read, has errors or is in its Final check.

@@ -747,7 +747,7 @@ function FileCard({
               <span aria-hidden>⬇</span> Download problems to fix
             </button>
           )}
-          {mayChange && ["errors", "final_check"].includes(item.status) && (
+          {mayChange && ["failed", "errors", "final_check"].includes(item.status) && (
             <button className="button button-small" disabled={busy} onClick={() => setFixing(true)}>
               <span aria-hidden>⬆</span> Upload fixes
             </button>
@@ -858,8 +858,6 @@ function FileView({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [target, setTarget] = useState("");
-  const [sent, setSent] = useState<number | null>(null);
-  const input = useRef<HTMLInputElement>(null);
 
   const load = useCallback(() => {
     api
@@ -887,24 +885,6 @@ function FileView({
       setError(`The file wasn't downloaded: ${message(err, "try again.")}`);
     } finally {
       setDownloading(false);
-    }
-  }
-
-  async function revise() {
-    const file = input.current?.files?.[0];
-    if (!file) return;
-    setBusy(true);
-    setSent(0);
-    setError("");
-    try {
-      setItem(await api.reviseFile(id, file, setSent));
-      onChanged();
-    } catch (err) {
-      setError(message(err, "Not uploaded."));
-    } finally {
-      setBusy(false);
-      setSent(null);
-      if (input.current) input.current.value = "";
     }
   }
 
@@ -1005,15 +985,14 @@ function FileView({
           )}
           {item.status === "failed" && (
             <Alert kind="error">
-              This file couldn't be read: {item.error} Upload a revised version.
+              This file couldn't be read: {item.error} Hand it in again with Upload fixes.
             </Alert>
           )}
-          {sent !== null && <ProgressBar percent={sent} label="Uploading" />}
           {item.status === "errors" && (
             <p>
               🔴 {item.errors} {item.errors === 1 ? "error" : "errors"} to fix before this file can
-              go into a batch. Download the file with each problem marked, fix it in Excel, then
-              upload the revised version.
+              go into a batch. Download the problems, fix them in Excel, then send the file back
+              with Upload fixes.
             </p>
           )}
           {item.status === "final_check" && (
@@ -1049,19 +1028,6 @@ function FileView({
               </button>
             )}
             {revisable && (
-              <label className={`button ${busy ? "disabled" : ""}`}>
-                <span aria-hidden>⬆</span> Upload revised version
-                <input
-                  ref={input}
-                  className="sr-only"
-                  type="file"
-                  accept=".xlsx"
-                  disabled={busy}
-                  onChange={() => void revise()}
-                />
-              </label>
-            )}
-            {revisable && ["errors", "final_check"].includes(item.status) && (
               <button className="button" disabled={busy} onClick={() => setFixesOpen(true)}>
                 <span aria-hidden>⬆</span> Upload fixes
               </button>
@@ -1359,18 +1325,19 @@ function FileFixDialog({
   }
 
   const changes = result ? result.changed.reduce((n, r) => n + r.changes.length, 0) : 0;
+  const whole = result?.whole_file ?? false;
   const nothing = result && result.changed.length === 0 && result.removed.length === 0;
 
   return (
     <Modal title="Upload fixes" onClose={onClose} wide>
       <div className="stack">
         <p className="muted">
-          The file from <strong>Download problems to fix</strong>, fixed in Excel. Each row is found
-          by its File ID; an empty cell clears the value; Delete = Yes takes the business out of the
-          file. Nothing changes until you save.
+          The file from <strong>Download problems to fix</strong>, fixed in Excel: each row is found
+          by its File ID, an empty cell clears the value and Delete = Yes takes the business out. Or
+          a whole new Excel file, which replaces this one. Nothing changes until you save.
         </p>
         <label className="field">
-          <span>Fixed file (.xlsx)</span>
+          <span>Fixed file, or a whole new file (.xlsx)</span>
           <input
             type="file"
             accept=".xlsx"
@@ -1392,7 +1359,27 @@ function FileFixDialog({
             </button>
           </div>
         )}
-        {result && (
+        {result && whole && (
+          <div className="stack-tight">
+            <Alert kind="info">
+              This file has no File ID column: it isn't the file from Download problems to fix. It
+              will replace the whole file, as version {result.version_after}, and be checked again.
+            </Alert>
+            <div className="row">
+              <button
+                className="button button-primary"
+                disabled={busy}
+                onClick={() => void send(true)}
+              >
+                {busy ? "Replacing…" : "Replace the file"}
+              </button>
+              <button className="link-button" onClick={onClose}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+        {result && !whole && (
           <>
             <p>
               <strong>{changes}</strong> {changes === 1 ? "change" : "changes"} in{" "}
@@ -1402,7 +1389,7 @@ function FileFixDialog({
                   , <strong>{result.removed.length}</strong> taken out
                 </>
               )}
-              . The file will have {result.businesses_after.toLocaleString()} businesses.
+              . The file will have {(result.businesses_after ?? 0).toLocaleString()} businesses.
             </p>
             {result.removed.length > 0 && (
               <Alert kind="error">

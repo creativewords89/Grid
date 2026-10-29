@@ -482,6 +482,8 @@ export type FileLeadFilters = {
 /** A handed-in file's fix file back from Excel (step 34): what changes, or what changed. */
 export type FileFixResult = {
   saved: boolean;
+  whole_file: boolean; // no File ID column: a whole new version of the file (step 37)
+  version_after: number;
   rows: number;
   changed: {
     tab: string;
@@ -492,7 +494,7 @@ export type FileFixResult = {
   }[];
   removed: { tab: string; line: number; file_id: string; business_name: string }[];
   skipped: { tab: string; line: number; file_id: string; reason: string }[];
-  businesses_after: number;
+  businesses_after: number | null;
 };
 
 export type NicheRow = { id: string; name: string; uses: number };
@@ -928,11 +930,6 @@ export const api = {
     form.append("file", file);
     form.append("niche", niche);
     return uploadWithProgress<HandedInFileDetail>("/submissions", form, onProgress);
-  },
-  reviseFile: (id: string, file: File, onProgress?: (percent: number) => void) => {
-    const form = new FormData();
-    form.append("file", file);
-    return uploadWithProgress<HandedInFileDetail>(`/submissions/${id}/version`, form, onProgress);
   },
   uploadFileFixes: (id: string, file: File, confirm: boolean) => {
     const form = new FormData();

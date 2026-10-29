@@ -166,10 +166,27 @@ def test_rows_that_dont_match_are_left_out(cal: TestClient) -> None:
         "This File ID is on an earlier row too.",
     ]
     assert found["changed"] == []
-    other = Workbook()
-    other.active.append(["Business name", "Phone"])  # type: ignore[union-attr]
-    refused = send(cal, file_id, other)
-    assert refused.status_code == 422 and "No File ID column" in refused.json()["error"]["message"]
+    junk = cal.post(f"/api/submissions/{file_id}/fixes", files={"file": ("x.xlsx", b"not excel")})
+    assert junk.status_code == 422
+
+
+def test_a_whole_file_replaces_the_file_once_confirmed(cal: TestClient) -> None:
+    """One Upload fixes button (step 37): a file without File IDs is a new version."""
+    sub = hand_in(cal, FILE)
+    whole = Workbook()
+    sheet = whole.active
+    assert sheet is not None
+    sheet.title = "Tulsa"
+    for line in FILE["Tulsa"][:2]:
+        sheet.append(line)
+    asked = send(cal, sub["id"], whole).json()
+    assert (asked["whole_file"], asked["saved"], asked["version_after"]) == (True, False, 2)
+    assert cal.get(f"/api/submissions/{sub['id']}").json()["version"] == 1  # nothing saved
+    replaced = send(cal, sub["id"], whole, confirm=True).json()
+    assert (replaced["whole_file"], replaced["saved"], replaced["version_after"]) == (True, True, 2)
+    run_file_checker()
+    after = cal.get(f"/api/submissions/{sub['id']}").json()
+    assert (after["version"], after["businesses"]) == (2, 1)
 
 
 def test_only_who_may_change_the_file_uploads_fixes(cal: TestClient, person: Person) -> None:

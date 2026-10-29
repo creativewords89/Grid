@@ -194,7 +194,9 @@ test("a file opens to its businesses, the wrong cells marked", async () => {
   expect(
     await screen.findByText("The file wasn't downloaded: That file doesn't exist."),
   ).toBeVisible();
-  expect(screen.getByText(/Upload revised version/)).toBeVisible();
+  // Two buttons: the problems out, the fixes (or a whole new file) back in.
+  expect(screen.queryByText(/Upload revised version/)).toBeNull();
+  expect(screen.getByRole("button", { name: /Upload fixes/ })).toBeVisible();
   const table = await screen.findByRole("region", { name: "Businesses in this file" });
   const wrong = await within(table).findByText("call us");
   expect(wrong.closest("td")).toHaveClass("cell-problem");
@@ -240,7 +242,7 @@ test("a used file says where, and can't be changed", async () => {
   expect(screen.getByText(/Used in/)).toBeVisible();
   await userEvent.click(screen.getByRole("button", { name: "tulsa.xlsx" }));
   expect(await screen.findByRole("heading", { name: "tulsa.xlsx" })).toBeVisible();
-  expect(screen.queryByText(/Upload revised version/)).toBeNull();
+  expect(screen.queryByRole("button", { name: /Upload fixes/ })).toBeNull();
   expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
 });
 
@@ -273,6 +275,8 @@ test("an owner adds a ready file to a batch of its niche", async () => {
 test("fixes come back from Excel: shown first, then saved", async () => {
   const preview = {
     saved: false,
+    whole_file: false,
+    version_after: 1,
     rows: 3,
     changed: [
       {
@@ -350,4 +354,43 @@ test("a file without errors waits in its Final check, and can be sent on now", a
   await userEvent.click(within(stages).getByRole("button", { name: /Top Review/ }));
   const sent = await screen.findByRole("listitem", { name: "tulsa.xlsx" });
   expect(within(sent).getByText(/Waiting for Top Review/)).toBeVisible();
+});
+
+test("a whole new file through Upload fixes replaces the file once confirmed", async () => {
+  const asked = {
+    saved: false,
+    whole_file: true,
+    version_after: 2,
+    rows: 0,
+    changed: [],
+    removed: [],
+    skipped: [],
+    businesses_after: null,
+  };
+  const calls = mockApi({
+    "GET /auth/me": me(collector),
+    "GET /submissions": [200, [file()]],
+    "GET /submissions/niches": [200, ["Cleaning"]],
+    "GET /submissions/f1": [200, detail],
+    "GET /submissions/f1/leads?page=1&sort=row": [200, leads],
+    "POST /submissions/f1/fixes": (body) =>
+      (body as { confirm: string }).confirm === "true"
+        ? [200, { ...asked, saved: true }]
+        : [200, asked],
+  });
+  render(<App />);
+
+  await userEvent.click(await screen.findByRole("button", { name: "tulsa.xlsx" }));
+  await userEvent.click(await screen.findByRole("button", { name: /Upload fixes/ }));
+  const dialog = screen.getByRole("dialog", { name: "Upload fixes" });
+  await userEvent.upload(
+    within(dialog).getByLabelText(/whole new file/),
+    new File(["x"], "v2.xlsx"),
+  );
+  await userEvent.click(within(dialog).getByRole("button", { name: "Check the file" }));
+  expect(await within(dialog).findByText(/replace the whole file, as version 2/)).toBeVisible();
+  await userEvent.click(within(dialog).getByRole("button", { name: "Replace the file" }));
+  expect(screen.queryByRole("dialog", { name: "Upload fixes" })).toBeNull();
+  const sent = calls.filter((c) => c.path === "/submissions/f1/fixes").map((c) => c.body);
+  expect(sent.map((b) => (b as { confirm: string }).confirm)).toEqual(["false", "true"]);
 });

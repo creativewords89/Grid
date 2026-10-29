@@ -281,7 +281,14 @@ def revise(
 ) -> FileDetail:
     """A revised version replaces the file and is checked again (its Tops start again)."""
     sub = _changeable(db, me, file_id, revise=True)
-    _store(sub, _read(file))
+    _replace(db, me, sub, _read(file))
+    db.refresh(sub)
+    return _detail(db, me, sub)
+
+
+def _replace(db: Session, me: User, sub: Submission, content: bytes) -> None:
+    """A whole new version of the file, checked again."""
+    _store(sub, content)
     sub.version += 1
     sub.import_id = None  # a discarded preview of the old version is forgotten
     audit.record(
@@ -294,8 +301,6 @@ def revise(
         [{"field": "version", "from": sub.version - 1, "to": sub.version}],
     )
     db.commit()
-    db.refresh(sub)
-    return _detail(db, me, sub)
 
 
 @router.get("/submissions/{file_id}/marked.xlsx")
@@ -324,11 +329,28 @@ def upload_fixes(
 ) -> dict[str, Any]:
     """The fix file back from Excel (steps 34 and 35): each row found by its File ID, every
     column of the file changing its value (an empty cell clears it), Delete = Yes taking the
-    business out. Without `confirm` nothing is saved: the answer says what would change. Saved, the
-    file is made again with the fixes, as a new version, and checked again."""
+    business out. Without `confirm` nothing is saved: the answer says what would change. Saved,
+    the file is made again with the fixes, as a new version, and checked again.
+
+    A file without a File ID column is a whole new version (step 37): the answer says so, and
+    with `confirm` it replaces the file, as Upload revised version did."""
     sub = _changeable(db, me, file_id, revise=True)
+    content = _read(file)
     try:
-        rows = files.read_fixes(_read(file))
+        rows = files.read_fixes(content)
+    except files.NoFileId:
+        if confirm:
+            _replace(db, me, sub, content)
+        return {
+            "saved": confirm,
+            "whole_file": True,
+            "version_after": sub.version if confirm else sub.version + 1,
+            "rows": 0,
+            "changed": [],
+            "removed": [],
+            "skipped": [],
+            "businesses_after": None,
+        }
     except fixes.FixFileError as error:
         raise ApiError(422, "unreadable", str(error), {"file": str(error)}) from None
     leads = [dict(lead, values=dict(lead["values"])) for lead in sub.leads]
@@ -387,6 +409,8 @@ def upload_fixes(
         db.commit()
     return {
         "saved": bool(confirm and (changed or removed)),
+        "whole_file": False,
+        "version_after": sub.version,
         "rows": len(rows),
         "changed": changed,
         "removed": removed,
