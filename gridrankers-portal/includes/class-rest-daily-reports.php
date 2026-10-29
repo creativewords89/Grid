@@ -279,6 +279,12 @@ class GRP_REST_Daily_Reports extends GRP_REST_Controller {
 				) + $fields
 			);
 
+		// Handwritten hours on a sent report: tell the Super Admin (SPEC.md 6.21).
+		if ( ! empty( $row['sent_at'] ) ) {
+			$told = $existing && ! empty( $existing['sent_at'] ) ? array_values( (array) $existing['entries'] ) : array();
+			GRP_Time_Entries::notify_handwritten( $actor, $day, $told, array_values( (array) $row['entries'] ) );
+		}
+
 		return self::respond( self::out( $row ) );
 	}
 

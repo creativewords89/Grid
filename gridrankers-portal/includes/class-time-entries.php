@@ -387,6 +387,76 @@ class GRP_Time_Entries {
 	}
 
 	/**
+	 * Tells the Super Admin about handwritten hours (SPEC.md 6.21): when a report is sent with
+	 * handwritten time, and when handwritten minutes go up on a sent report. Tracked time never
+	 * counts; reports from before the tracker started send nothing.
+	 *
+	 * @param array   $member Person whose report it is.
+	 * @param string  $day    `Y-m-d`.
+	 * @param array[] $before Entries the Super Admin was last told about (none when first sent).
+	 * @param array[] $after  Entries now.
+	 * @return array|null The notice, or null when there was nothing to tell.
+	 */
+	public static function notify_handwritten( array $member, $day, array $before, array $after ) {
+		if ( $day < GRP_Time::since() ) {
+			return null;
+		}
+		$added = GRP_Time::hand_added( $before, $after );
+		$to    = self::super_admins();
+		if ( $added['minutes'] < 1 || ! $to ) {
+			return null;
+		}
+
+		$lines = array();
+		foreach ( $added['entries'] as $entry ) {
+			$lines[] = $entry['added'] < $entry['minutes']
+				/* translators: 1: what they did, 2: its time, 3: time added. */
+				? sprintf( __( '%1$s · %2$s (+%3$s)', 'gridrankers-portal' ), $entry['title'], GRP_Daily_Reports::hours( $entry['minutes'] ), GRP_Daily_Reports::hours( $entry['added'] ) )
+				: sprintf( '%1$s · %2$s', $entry['title'], GRP_Daily_Reports::hours( $entry['minutes'] ) );
+		}
+		$split   = GRP_Time::split( array( 'entries' => $after ) );
+		$lines[] = sprintf(
+			/* translators: 1: tracked time, 2: handwritten time, 3: total. */
+			__( 'Tracked %1$s · by hand %2$s · total %3$s', 'gridrankers-portal' ),
+			GRP_Daily_Reports::hours( $split['tracked'] ),
+			GRP_Daily_Reports::hours( $split['hand'] ),
+			GRP_Daily_Reports::hours( $split['total'] )
+		);
+
+		return GRP_Store::insert(
+			'grp_posts',
+			array(
+				'kind'       => 'notice',
+				/* translators: 1: name, 2: handwritten time, 3: day. */
+				'title'      => sprintf( __( '✍ %1$s wrote %2$s by hand · %3$s', 'gridrankers-portal' ), $member['name'], GRP_Daily_Reports::hours( $added['minutes'] ), gmdate( 'M j', strtotime( $day . ' UTC' ) ) ),
+				'body'       => implode( "\n", $lines ),
+				'to_members' => $to,
+				'to_member'  => $to[0],
+				'show_until' => GRP_People::add_days( GRP_Cycles::today(), 7 ),
+				'pinned'     => 0,
+				// Signed by a Super Admin so the notice stays private to them (the author also receives it).
+				'created_by' => $to[0],
+			)
+		);
+	}
+
+	/**
+	 * Ids of the active Super Admins.
+	 *
+	 * @return string[]
+	 */
+	private static function super_admins() {
+		$ids = array();
+		foreach ( GRP_Store::find( 'grp_members', array( 'active' => 1 ), array( 'order_by' => 'created_at' ) ) as $member ) {
+			if ( GRP_Permissions::ROLE_ADMIN === GRP_Permissions::effective_role( $member ) ) {
+				$ids[] = (string) $member['id'];
+			}
+		}
+
+		return $ids;
+	}
+
+	/**
 	 * What the timer offers a person to track (SPEC.md 6.21): their open meeting tasks and General
 	 * tasks, their monthly tasks of the current period, and the active projects for No task.
 	 *
