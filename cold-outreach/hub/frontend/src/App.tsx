@@ -5,11 +5,13 @@ import { Agents } from "./pages/Agents";
 import { Batches } from "./pages/Batches";
 import { Benchmarks } from "./pages/Benchmarks";
 import { Connections } from "./pages/Connections";
+import { Files } from "./pages/Files";
 import { FirstRun } from "./pages/FirstRun";
 import { Forgot } from "./pages/Forgot";
 import { History } from "./pages/History";
 import { Overview } from "./pages/Overview";
 import { Profile } from "./pages/Profile";
+import { Review } from "./pages/Review";
 import { Runs } from "./pages/Runs";
 import { SetPassword } from "./pages/SetPassword";
 import { SignIn } from "./pages/SignIn";
@@ -38,7 +40,13 @@ function Routes() {
   if (!user) return path === "/forgot" ? <Forgot /> : <SignIn notice={notice} />;
 
   let page;
-  if (path === "/users" && user.role === "owner") page = <Users />;
+  // A Collector (step 31) has the Files screen and their profile, nothing else.
+  if (user.role === "collector") page = path === "/profile" ? <Profile /> : <Files />;
+  // A Reviewer (step 32) has Top Review and their profile.
+  else if (user.role === "reviewer") page = path === "/profile" ? <Profile /> : <Review />;
+  else if (path === "/files") page = <Files />;
+  else if (path === "/review" && user.role !== "viewer") page = <Review />;
+  else if (path === "/users" && user.role === "owner") page = <Users />;
   else if (path === "/connections" && user.role === "owner") page = <Connections />;
   else if (path === "/history" && user.role === "owner") page = <History />;
   else if (path === "/agents") page = <Agents />;

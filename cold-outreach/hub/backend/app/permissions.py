@@ -1,7 +1,9 @@
 """Every permission rule of SPEC section 3, in one place.
 
 Every endpoint calls `can(user, action)` (or `ensure`, which raises a 403). No Hub rule
-depends on who owns a row, so the role alone decides.
+depends on who owns a row, so the role alone decides, except on the Files screen: a
+Collector sees and changes only the files they handed in (checked in `app/api/submissions`).
+A Reviewer has Top Review only (`app/api/review`).
 """
 
 import enum
@@ -23,14 +25,22 @@ class Action(enum.StrEnum):
     MANAGE_USERS = "manage_users"
     VIEW_HISTORY = "view_history"
     EDIT_OWN_PROFILE = "edit_own_profile"  # own profile, password, alert channels
+    # The Files screen (step 31): hand in a lead file, see its problems, upload a revision.
+    SUBMIT_FILES = "submit_files"
+    VIEW_ALL_FILES = "view_all_files"  # every file handed in, not just one's own
+    USE_FILES = "use_files"  # add a ready file to a batch; reopen it for Top Review
+    # Top Review (step 32): choose each city's Top businesses in a file before it is used.
+    REVIEW_TOPS = "review_tops"
 
 
 _ALL = frozenset(Role)
+# Everyone but the outside teams (Collectors and Reviewers).
+_TEAM = frozenset({Role.OWNER, Role.ADMIN, Role.VIEWER})
 _STAFF = frozenset({Role.OWNER, Role.ADMIN})
 _OWNER = frozenset({Role.OWNER})
 
 _ALLOWED: dict[Action, frozenset[Role]] = {
-    Action.VIEW_HUB: _ALL,
+    Action.VIEW_HUB: _TEAM,
     Action.IMPORT_LEADS: _STAFF,
     Action.RUN_BATCHES: _STAFF,
     Action.EDIT_LEADS: _STAFF,
@@ -43,6 +53,10 @@ _ALLOWED: dict[Action, frozenset[Role]] = {
     Action.MANAGE_USERS: _OWNER,
     Action.VIEW_HISTORY: _OWNER,
     Action.EDIT_OWN_PROFILE: _ALL,
+    Action.SUBMIT_FILES: frozenset({Role.OWNER, Role.ADMIN, Role.COLLECTOR}),
+    Action.VIEW_ALL_FILES: _TEAM,
+    Action.USE_FILES: _STAFF,
+    Action.REVIEW_TOPS: frozenset({Role.OWNER, Role.ADMIN, Role.REVIEWER}),
 }
 
 

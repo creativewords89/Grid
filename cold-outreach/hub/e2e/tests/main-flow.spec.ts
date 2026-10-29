@@ -351,3 +351,124 @@ test("the run is on the Runs screen and the changes are in History", async () =>
     page.getByRole("row", { name: /create benchmarks · Cleaning Benchmark 1/ }),
   ).toBeVisible();
 });
+
+test("a Collector hands in a file and the Owner drags it onto a batch, once", async ({
+  browser,
+}) => {
+  // The Owner invites the external team's Collector (email isn't set up: a link to copy).
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Users" })
+    .click();
+  await page.getByRole("button", { name: "+ Invite" }).click();
+  const invite = page.getByRole("dialog", { name: "Invite someone" });
+  await invite.getByLabel("Name").fill("Cal");
+  await invite.getByLabel("Email").fill("cal@example.com");
+  await invite.getByLabel("Role").selectOption("collector");
+  await invite.getByRole("button", { name: "Send invite" }).click();
+  const link = await page.getByRole("textbox", { name: "Link" }).inputValue();
+  await page.keyboard.press("Escape");
+
+  // The Collector sees Files only, hands in a file and Lead Check finds it ready.
+  const cal = await browser.newPage();
+  await cal.goto(new URL(link).pathname + new URL(link).hash);
+  await cal.getByLabel("New password").fill("cal collector passphrase");
+  await cal.getByLabel("Repeat password").fill("cal collector passphrase");
+  await cal.getByRole("button", { name: "Set password and sign in" }).click();
+  const nav = cal.getByRole("navigation", { name: "Main" });
+  await expect(nav.getByRole("link")).toHaveText(["Files"]);
+  await cal.getByLabel("Niche").selectOption("Cleaning");
+  await cal
+    .getByLabel(/Excel file/)
+    .setInputFiles(path.join(HERE, "..", "fixtures", "cleaning-leads.xlsx"));
+  await cal.getByRole("button", { name: "Upload and check" }).click();
+  const handedIn = cal.getByRole("dialog", { name: "cleaning-leads.xlsx" });
+  await expect(handedIn.getByText(/this file is ready/)).toBeVisible();
+  await handedIn.getByRole("button", { name: "Close" }).click();
+
+  // The Owner drags the ready file onto the batch and saves its preview there.
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Files" })
+    .click();
+  const row = page.getByRole("row", { name: /cleaning-leads\.xlsx/ });
+  await expect(row.getByText("Ready")).toBeVisible();
+  await row.dragTo(
+    page
+      .getByRole("complementary", { name: "Batches" })
+      .getByText("Texas November"),
+  );
+  const preview = page.getByRole("article", { name: "Preview" });
+  await preview.getByRole("button", { name: "Save 4 businesses" }).click();
+  await expect(preview.getByText(/Saved: 0 new and 4 updated/)).toBeVisible();
+
+  // Both now see where it is used; it can't be used again.
+  await cal.reload();
+  const used = cal.getByRole("row", { name: /cleaning-leads\.xlsx/ });
+  await expect(used).toContainText("Used in Texas November");
+  await expect(used).toContainText("by Olivia");
+  await cal.close();
+});
+
+test("a Reviewer chooses the Top of each city and the file becomes ready", async ({
+  browser,
+}) => {
+  // A file with a city of 12 businesses and no error: it waits for Top Review.
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Files" })
+    .click();
+  await page.getByLabel("Niche").selectOption("Cleaning");
+  await page
+    .getByLabel(/Excel file/)
+    .setInputFiles(path.join(HERE, "..", "fixtures", "top-review.xlsx"));
+  await page.getByRole("button", { name: "Upload and check" }).click();
+  const handedIn = page.getByRole("dialog", { name: "top-review.xlsx" });
+  await expect(handedIn.getByText(/Waiting for Top Review/)).toBeVisible();
+  await handedIn.getByRole("button", { name: "Close" }).click();
+
+  // The Owner invites a Reviewer, who sees Top Review only.
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Users" })
+    .click();
+  await page.getByRole("button", { name: "+ Invite" }).click();
+  const invite = page.getByRole("dialog", { name: "Invite someone" });
+  await invite.getByLabel("Name").fill("Rita");
+  await invite.getByLabel("Email").fill("rita@example.com");
+  await invite.getByLabel("Role").selectOption("reviewer");
+  await invite.getByRole("button", { name: "Send invite" }).click();
+  const link = await page.getByRole("textbox", { name: "Link" }).inputValue();
+  await page.keyboard.press("Escape");
+
+  const rita = await browser.newPage();
+  await rita.goto(new URL(link).pathname + new URL(link).hash);
+  await rita.getByLabel("New password").fill("rita reviewer passphrase");
+  await rita.getByLabel("Repeat password").fill("rita reviewer passphrase");
+  await rita.getByRole("button", { name: "Set password and sign in" }).click();
+  await expect(
+    rita.getByRole("navigation", { name: "Main" }).getByRole("link"),
+  ).toHaveText(["Top Review"]);
+  await rita.getByRole("button", { name: "top-review.xlsx" }).click();
+  await rita.getByRole("button", { name: "Tulsa" }).click();
+  await rita.getByRole("checkbox", { name: "Top: Tulsa Shine 3" }).check();
+  await rita.getByRole("button", { name: "Save the Top of Tulsa" }).click();
+  await expect(
+    rita.getByText(
+      "Every city has a Top: top-review.xlsx is ready and locked.",
+    ),
+  ).toBeVisible();
+  await expect(
+    rita.getByRole("button", { name: "top-review.xlsx" }),
+  ).toHaveCount(0);
+  await rita.close();
+
+  // The Owner sees it ready.
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Files" })
+    .click();
+  await expect(
+    page.getByRole("row", { name: /top-review\.xlsx/ }),
+  ).toContainText("Ready");
+});

@@ -1,6 +1,8 @@
 // Typed calls to the `/api` routes (SPEC section 8). Every write sends the CSRF token.
 
-export type Role = "owner" | "admin" | "viewer";
+// A Collector (step 31) is the external team that collects leads: the Files screen only.
+// A Reviewer (step 32) chooses each city's Top in the files: the Top Review screen only.
+export type Role = "owner" | "admin" | "viewer" | "collector" | "reviewer";
 
 export type User = {
   id: string;
@@ -418,6 +420,83 @@ export function leadQuery(filters: Record<string, string | number | undefined>):
 
 export type BatchStatus = "not_started" | "running" | "paused";
 
+/** A lead file handed in on the Files screen (step 31). */
+export type HandedInFile = {
+  id: string;
+  file_name: string;
+  niche: string;
+  version: number;
+  businesses: number;
+  errors: number;
+  warnings: number;
+  status: "errors" | "needs_top" | "ready" | "adding" | "used";
+  uploaded_by: string | null;
+  mine: boolean;
+  created_at: string;
+  updated_at: string;
+  batch: {
+    batch_id: string | null;
+    batch_name: string | null;
+    import_id: string;
+    at: string | null;
+    by: string | null;
+  } | null;
+  same_as: string | null;
+  cities_on: number;
+  cities_topped: number;
+};
+
+/** A file in Top Review (step 32). */
+export type ReviewFile = {
+  id: string;
+  file_name: string;
+  niche: string;
+  businesses: number;
+  created_at: string;
+  state: "needs_top" | "done";
+  cities_on: number;
+  cities_topped: number;
+};
+
+export type ReviewCityState = "ready" | "needs_top" | "off";
+
+export type ReviewFileDetail = ReviewFile & {
+  cities: { key: string; name: string; businesses: number; tops: number; state: ReviewCityState }[];
+};
+
+export type ReviewCity = {
+  key: string;
+  name: string;
+  state: ReviewCityState;
+  columns: { key: string; label: string }[];
+  businesses: {
+    key: string;
+    rows: string[];
+    values: Record<string, string>;
+    extra: Record<string, string>;
+    top: boolean;
+  }[];
+};
+
+export type FileProblem = {
+  code: string;
+  field: string;
+  severity: "error" | "warning";
+  message: string;
+  tab: string;
+  line: number;
+  business: string | null;
+  value: string;
+};
+
+export type HandedInFileDetail = HandedInFile & {
+  tabs: Record<
+    string,
+    { errors: number; warnings: number; columns: { field: string; message: string }[] }
+  >;
+  problems: FileProblem[];
+};
+
 export type Batch = {
   id: string;
   name: string;
@@ -724,6 +803,34 @@ export const api = {
   confirmImport: (id: string) => request<LeadImport>("POST", `/imports/${id}/confirm`),
   discardImport: (id: string) => request<LeadImport>("POST", `/imports/${id}/discard`),
   niches: () => request<string[]>("GET", "/niches"),
+  // The Files screen (step 31).
+  files: () => request<HandedInFile[]>("GET", "/submissions"),
+  fileNiches: () => request<string[]>("GET", "/submissions/niches"),
+  file: (id: string) => request<HandedInFileDetail>("GET", `/submissions/${id}`),
+  handIn: (file: File, niche: string) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("niche", niche);
+    return upload<HandedInFileDetail>("/submissions", form);
+  },
+  reviseFile: (id: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return upload<HandedInFileDetail>(`/submissions/${id}/version`, form);
+  },
+  deleteFile: (id: string) => request<void>("DELETE", `/submissions/${id}`),
+  reopenFile: (id: string) => request<HandedInFile>("POST", `/submissions/${id}/reopen`),
+  // Top Review (step 32).
+  reviewFiles: () => request<ReviewFile[]>("GET", "/review/files"),
+  reviewFile: (id: string) => request<ReviewFileDetail>("GET", `/review/files/${id}`),
+  reviewCity: (id: string, city: string) =>
+    request<ReviewCity>("GET", `/review/files/${id}/cities/${encodeURIComponent(city)}`),
+  saveTops: (id: string, city: string, tops: string[]) =>
+    request<ReviewFileDetail>("PUT", `/review/files/${id}/cities/${encodeURIComponent(city)}`, {
+      tops,
+    }),
+  useFile: (id: string, batchId: string) =>
+    request<HandedInFile>("POST", `/submissions/${id}/use`, { batch_id: batchId }),
   benchmarks: () => request<Benchmark[]>("GET", "/benchmarks"),
   createBenchmark: (body: BenchmarkIn) => request<Benchmark>("POST", "/benchmarks", body),
   saveBenchmark: (id: string, body: BenchmarkIn) =>
