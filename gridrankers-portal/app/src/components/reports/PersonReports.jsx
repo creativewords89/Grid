@@ -6,6 +6,7 @@ import { short } from '../../lib/format.js';
 import AskChange from './AskChange.jsx';
 import Avatar from '../Avatar.jsx';
 import { EntryRow, Notes } from './parts.jsx';
+import { HandSplit } from './TeamReports.jsx';
 
 // One person's reports (SPEC.md 6.18, design DR-C): a bar of the month's days on top (a blue dot
 // when there is a report, ‹ › for other months), and the chosen day's report below.
@@ -100,6 +101,7 @@ export default function PersonReports({ memberId, onBack, backLabel }) {
 					<div className="rc-h">
 						<h3>{dayTitle(shown)}</h3>
 						{report && report.sent_at && <span className="muted">{fmtMinutes(totalMinutes(shownReport.entries))}</span>}
+						{report && <HandSplit entries={shownReport.entries} />}
 						{change && change.status === 'approved' && (
 							<span className="rc-tag">
 								Changed {short(String(change.decided_at).slice(0, 10))}
@@ -127,7 +129,7 @@ export default function PersonReports({ memberId, onBack, backLabel }) {
 						<>
 							<ul className="dr-list read">
 								{shownReport.entries.map((e) => (
-									<EntryRow key={e.id} entry={e} was={was[e.id]} />
+									<EntryRow key={e.id} entry={e} was={was[e.id]} marks />
 								))}
 							</ul>
 							<Notes report={report} />

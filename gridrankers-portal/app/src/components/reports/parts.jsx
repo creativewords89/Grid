@@ -1,6 +1,7 @@
 import { usePortal } from '../../context.js';
 import { openFile } from '../../lib/files.js';
 import { fmtMinutes, projectName } from '../../lib/reports.js';
+import { isTracked } from '../../lib/timer.js';
 import { colorOf } from '../Sidebar.jsx';
 
 // A file on an entry: 📎 name — opens it; × removes it while editing.
@@ -53,9 +54,22 @@ export function ProjectTag({ project }) {
 // One entry as a quiet row (design DR-A): title and time spent, one line of details, project, files
 // and links. `onOpen` makes the row editable (click to edit).
 // `was`: the time sent before an approved change (design RC-1), shown crossed out.
-export function EntryRow({ entry, onOpen, was }) {
+// `marks`: tag handwritten entries "✍ by hand" too (Team reports, one person's report; SPEC.md 6.21).
+export function EntryRow({ entry, onOpen, was, marks = false }) {
+	const tracked = isTracked(entry);
 	const chips = (
 		<span className="dr-chipsrow">
+			{tracked ? (
+				<span className="dr-src tracked" title="Tracked by the timer">
+					⏱ Tracked
+				</span>
+			) : (
+				marks && (
+					<span className="dr-src hand" title="Written by hand">
+						✍ by hand
+					</span>
+				)
+			)}
 			<ProjectTag project={entry.project} />
 			{(entry.files || []).map((f) => (
 				<FileChip key={f.id} file={f} />

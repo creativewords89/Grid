@@ -678,4 +678,13 @@ class Test_GRP_REST_Timer extends GRP_REST_TestCase {
 		$this->assertStatus( 200, $this->api_as( 'admin', 'PATCH', '/members/' . $this->team['member']['id'], array( 'work_start' => '' ) ) );
 		$this->assertSame( '08:00', $this->api_as( 'member', 'GET', '/timer/schedule' )->get_data()['work_day']['start'], 'cleared: the team’s again' );
 	}
+
+	public function test_stopping_in_the_same_second_works() {
+		$this->assertStatus( 200, $this->api_as( 'member', 'POST', '/timer/start' ) );
+
+		$stop = $this->api_as( 'member', 'POST', '/timer/stop' );
+
+		$this->assertStatus( 200, $stop );
+		$this->assertGreaterThanOrEqual( 1, $stop->get_data()['entry']['seconds'] );
+	}
 }

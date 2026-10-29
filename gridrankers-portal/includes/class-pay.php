@@ -193,15 +193,25 @@ class GRP_Pay {
 	 * @param mixed   $team_weekly Team weekly day off.
 	 * @param array[] $days_off    Whole-team days off.
 	 * @param string  $today       `Y-m-d`.
-	 * @return array `{days: [{day, kind: work|leave|day_off|future, minutes, extra}], worked, extra, extra_pay, leave: settlement, leave_pay, deducted, total, salary, day_minutes, day_pay, hour_pay}`.
+	 * @return array `{days: [{day, kind: work|leave|day_off|future, minutes, extra}], worked, tracked, hand, extra, extra_pay, leave: settlement, leave_pay, deducted, total, salary, day_minutes, day_pay, hour_pay}`.
 	 */
 	public static function month( array $member, array $pay, $month, array $reports, array $leaves, $team_weekly, array $days_off, $today ) {
 		$salary = (int) $pay['salary'];
 		$length = (int) $pay['day_minutes'];
 		$sent   = array();
+		$split  = array(
+			'tracked' => 0,
+			'hand'    => 0,
+		);
 		foreach ( $reports as $report ) {
 			if ( ! empty( $report['sent_at'] ) && (string) $report['member_id'] === (string) $member['id'] ) {
 				$sent[ (string) $report['day'] ] = GRP_Daily_Reports::minutes( $report );
+				// Tracked and handwritten time of the month (SPEC.md 6.21), both paid.
+				if ( 0 === strpos( (string) $report['day'], $month . '-' ) ) {
+					$parts             = GRP_Time::split( $report );
+					$split['tracked'] += $parts['tracked'];
+					$split['hand']    += $parts['hand'];
+				}
 			}
 		}
 
@@ -237,6 +247,8 @@ class GRP_Pay {
 		return array(
 			'days'        => $days,
 			'worked'      => $worked,
+			'tracked'     => $split['tracked'],
+			'hand'        => $split['hand'],
 			'extra'       => $extra,
 			'extra_pay'   => $extra_pay,
 			'leave'       => $leave,

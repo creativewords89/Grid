@@ -84,7 +84,8 @@ class GRP_REST_Timer extends GRP_REST_Controller {
 		}
 		$raw = array(
 			'id'           => $running['id'],
-			'ended_at'     => self::param( $request, 'ended_at' ) ?? GRP_Ids::now(),
+			// Stopped right after starting (same second): it still ends a second after it began.
+			'ended_at'     => self::param( $request, 'ended_at' ) ?? max( GRP_Ids::now(), GRP_Ids::now( strtotime( $running['started_at'] . ' UTC' ) + 1 ) ),
 			'idle_seconds' => (int) $request['idle_seconds'],
 		);
 
