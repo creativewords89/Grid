@@ -35,6 +35,7 @@ function file(overrides: Partial<HandedInFile> = {}): HandedInFile {
     sends_at: null,
     sends_in: null,
     can_send_cities: false,
+    has_duplicates: false,
     ...overrides,
   };
 }
@@ -464,7 +465,7 @@ test("Remove duplicates keeps one row of each business, after asking", async () 
   vi.stubGlobal("confirm", confirm);
   const calls = mockApi({
     "GET /auth/me": me(collector),
-    "GET /submissions": [200, [file()]],
+    "GET /submissions": [200, [file({ has_duplicates: true })]],
     "GET /submissions/niches": [200, ["Cleaning"]],
     "GET /submissions/f1": [200, twice],
     "GET /submissions/f1/leads?page=1&sort=row": [200, leads],
@@ -475,7 +476,13 @@ test("Remove duplicates keeps one row of each business, after asking", async () 
   });
   render(<App />);
 
-  await userEvent.click(await screen.findByRole("button", { name: "tulsa.xlsx" }));
+  // The problems don't download while there are duplicates: they go first, on the Hub.
+  const row = await screen.findByRole("row", { name: /tulsa\.xlsx/ });
+  expect(within(row).getByRole("button", { name: "Download problems" })).toBeDisabled();
+  expect(within(row).getByText("Remove duplicates first")).toBeVisible();
+  await userEvent.click(within(row).getByRole("button", { name: "tulsa.xlsx" }));
+  expect(await screen.findByRole("button", { name: /Download problems to fix/ })).toBeDisabled();
+  expect(screen.getByText(/This file has duplicates/)).toBeVisible();
   await userEvent.click(await screen.findByRole("button", { name: "Remove duplicates" }));
   expect(confirm).toHaveBeenCalledWith(
     expect.stringMatching(/3 duplicate rows will be removed.*1 business already handed in/),

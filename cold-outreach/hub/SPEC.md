@@ -1049,3 +1049,6 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     (Corrected after step 40: how long is left in a file's Final check, or before a ready
     city goes on, is counted by the server (`sends_in`, `moves_in`, in seconds), so a
     viewer's computer clock that is off never shows more than the hour.)
+    (Corrected after step 40: while a file has duplicates, **Download problems to fix** is
+    off, on its page and its row, and the server refuses the fix file ("Remove duplicates
+    first"): duplicates go first, on the Hub, then the other problems download for Excel.)

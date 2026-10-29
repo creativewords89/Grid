@@ -123,17 +123,20 @@ test("a Collector hands in a file, fixes it and sends it on to Top Review", asyn
   await expect(
     businesses.getByText("Sparkle Home Cleaning").first(),
   ).toBeVisible();
-  // The problems download for Excel; the duplicate is removed on the Hub (step 40).
-  const downloaded = cal.waitForEvent("download");
-  await cal.getByRole("button", { name: /Download problems to fix/ }).click();
-  expect((await downloaded).suggestedFilename()).toBe(
-    "cleaning-leads-v1-to-fix.xlsx",
-  );
+  // Duplicates first, on the Hub (step 40): until then the problems don't download.
+  await expect(
+    cal.getByRole("button", { name: /Download problems to fix/ }),
+  ).toBeDisabled();
   cal.once("dialog", (dialog) => void dialog.accept());
   await cal.getByRole("button", { name: "Remove duplicates" }).click();
   await expect(cal.getByText(/No errors\. Final check/)).toBeVisible({
     timeout: 20_000,
   });
+  const downloaded = cal.waitForEvent("download");
+  await cal.getByRole("button", { name: /Download problems to fix/ }).click();
+  expect((await downloaded).suggestedFilename()).toBe(
+    "cleaning-leads-v2-to-fix.xlsx",
+  );
   await cal.getByRole("button", { name: "Send to Top Review now" }).click();
   // Both cities are under 10 businesses: none goes on unless it is given a Top.
   await expect(cal.getByText(/no city is in the batch/)).toBeVisible();
