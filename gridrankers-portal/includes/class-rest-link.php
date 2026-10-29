@@ -35,6 +35,25 @@ class GRP_REST_Link {
 		);
 		register_rest_route(
 			GRP_REST_Auth::REST_NAMESPACE,
+			'/link/verify',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( __CLASS__, 'verify' ),
+				'permission_callback' => array( 'GRP_Link', 'request_ok' ),
+				'args'                => array(
+					'code' => array(
+						'type'     => 'string',
+						'required' => true,
+					),
+					'ip'   => array(
+						'type'    => 'string',
+						'default' => '',
+					),
+				),
+			)
+		);
+		register_rest_route(
+			GRP_REST_Auth::REST_NAMESPACE,
 			'/link/people',
 			array(
 				'methods'             => WP_REST_Server::READABLE,
@@ -42,6 +61,24 @@ class GRP_REST_Link {
 				'permission_callback' => array( 'GRP_Link', 'request_ok' ),
 			)
 		);
+	}
+
+	/**
+	 * POST /link/verify `{code, ip}`: whose code this is, with this site's lockout on the person's IP
+	 * (not the tracker portal's). The generic error when it matches nobody who signs in with a code.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function verify( WP_REST_Request $request ) {
+		$ip     = (string) $request['ip'];
+		$ip     = false !== filter_var( $ip, FILTER_VALIDATE_IP ) ? $ip : 'tracker-portal';
+		$member = GRP_Auth::check_code( (string) $request['code'], $ip );
+		if ( is_wp_error( $member ) ) {
+			return $member;
+		}
+
+		return rest_ensure_response( array( 'member_id' => (string) $member['id'] ) );
 	}
 
 	/**

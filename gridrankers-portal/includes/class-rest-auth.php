@@ -119,7 +119,11 @@ class GRP_REST_Auth {
 				'callback'            => array( __CLASS__, 'setup' ),
 				'permission_callback' => array( 'GRP_Auth', 'needs_setup' ),
 				'args'                => array(
-					'name' => array(
+					'name'      => array(
+						'type'    => 'string',
+						'default' => '',
+					),
+					'member_id' => array(
 						'type'    => 'string',
 						'default' => '',
 					),
@@ -254,6 +258,13 @@ class GRP_REST_Auth {
 			'member'     => $member ? self::me_payload( $member ) : null,
 			'needsSetup' => ! $member && GRP_Auth::needs_setup(),
 		);
+		// A tracker portal (SPEC.md 6.22): where profiles are made, and who Set up may pick.
+		if ( GRP_Link::is_tracker() ) {
+			$out['mainPortal'] = GRP_Link::main_url();
+			if ( $out['needsSetup'] ) {
+				$out['setupChoices'] = GRP_Auth::setup_choices();
+			}
+		}
 		if ( GRP_Auth::uses_device() ) {
 			$out['device'] = GRP_Auth::current_device();
 		}
@@ -339,7 +350,7 @@ class GRP_REST_Auth {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public static function setup( WP_REST_Request $request ) {
-		$member = GRP_Auth::setup_admin_member( (string) $request['name'] );
+		$member = GRP_Auth::setup_admin_member( (string) $request['name'], (string) $request['member_id'] );
 		if ( is_wp_error( $member ) ) {
 			return $member;
 		}

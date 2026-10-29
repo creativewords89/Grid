@@ -206,7 +206,7 @@ export default function App({ config }) {
 	useEffect(() => {
 		api
 			.get('auth/me')
-			.then((res) => setAuth(res.member ? { status: 'signedIn', me: res.member } : { status: res.needsSetup ? 'setup' : 'signedOut', me: null }))
+			.then((res) => setAuth(res.member ? { status: 'signedIn', me: res.member, mainPortal: res.mainPortal || '' } : { status: res.needsSetup ? 'setup' : 'signedOut', me: null, choices: res.setupChoices || null, mainPortal: res.mainPortal || '' }))
 			.catch(() => setAuth({ status: 'signedOut', me: null }));
 	}, [api]);
 
@@ -300,7 +300,7 @@ export default function App({ config }) {
 		return <div className="auth-gate" aria-busy="true" />;
 	}
 	if (auth.status === 'setup') {
-		return <Setup api={api} defaultName={config.wpUserName} onDone={(member) => (setView('dash'), setAuth({ status: 'signedIn', me: member }))} />;
+		return <Setup api={api} defaultName={config.wpUserName} choices={auth.choices} mainPortal={auth.mainPortal} onDone={(member) => (setView('dash'), setAuth({ status: 'signedIn', me: member }))} />;
 	}
 	if (auth.status !== 'signedIn') {
 		return <SignIn api={api} loginUrl={config.loginUrl} onSignedIn={(member) => (setView('dash'), setAuth({ status: 'signedIn', me: member }))} />;
