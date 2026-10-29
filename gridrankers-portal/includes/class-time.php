@@ -23,6 +23,11 @@ class GRP_Time {
 	const SINCE_OPTION = 'grp_time_since';
 
 	/**
+	 * Setting key of the team's start of the working day: `{start: "09:00"}`.
+	 */
+	const START_KEY = 'work_start';
+
+	/**
 	 * Team start of the working day when none is set.
 	 */
 	const DEFAULT_START = '09:00';

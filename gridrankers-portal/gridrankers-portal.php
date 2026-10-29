@@ -34,6 +34,7 @@ require_once GRP_PLUGIN_DIR . 'includes/class-undo.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-files.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-rest-auth.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-rest-controller.php';
+require_once GRP_PLUGIN_DIR . 'includes/class-rest-devices.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-rest-projects.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-rest-meeting-tasks.php';
 require_once GRP_PLUGIN_DIR . 'includes/class-rest-monthly-tasks.php';
@@ -74,6 +75,7 @@ register_deactivation_hook( __FILE__, array( 'GRP_Install', 'deactivate' ) );
 add_action( 'plugins_loaded', array( 'GRP_Install', 'maybe_upgrade' ) );
 
 GRP_REST_Auth::init();
+GRP_REST_Devices::init();
 GRP_REST_Projects::init();
 GRP_REST_Meeting_Tasks::init();
 GRP_REST_Monthly_Tasks::init();
