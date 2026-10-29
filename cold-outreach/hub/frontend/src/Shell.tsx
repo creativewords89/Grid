@@ -5,14 +5,18 @@ import { navigate } from "./router";
 
 type NavItem = { path: string; label: string; roles?: Role[] };
 
+const TEAM: Role[] = ["owner", "admin", "viewer"];
+
 // Sidebar of SPEC section 7; screens are added with their build steps. Hiding items is for
 // tidiness only: the server enforces access.
+// Collectors (step 31) see Files only.
 const NAV: NavItem[] = [
-  { path: "/", label: "Overview" },
-  { path: "/benchmarks", label: "Benchmarks" },
-  { path: "/batches", label: "Batches" },
-  { path: "/agents", label: "Agents" },
-  { path: "/runs", label: "Runs" },
+  { path: "/", label: "Overview", roles: TEAM },
+  { path: "/benchmarks", label: "Benchmarks", roles: TEAM },
+  { path: "/batches", label: "Batches", roles: TEAM },
+  { path: "/files", label: "Files" },
+  { path: "/agents", label: "Agents", roles: TEAM },
+  { path: "/runs", label: "Runs", roles: TEAM },
   { path: "/connections", label: "Connections", roles: ["owner"] },
   { path: "/users", label: "Users", roles: ["owner"] },
   { path: "/history", label: "History", roles: ["owner"] },
@@ -79,7 +83,11 @@ export function Shell({ path, children }: { path: string; children: ReactNode })
             <a
               key={item.path}
               href={item.path}
-              aria-current={path === item.path ? "page" : undefined}
+              aria-current={
+                path === item.path || (item.path === "/files" && user.role === "collector")
+                  ? "page"
+                  : undefined
+              }
               onClick={(e) => {
                 e.preventDefault();
                 go(item.path);

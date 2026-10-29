@@ -13,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     func,
@@ -29,6 +30,8 @@ class Role(enum.StrEnum):
     OWNER = "owner"
     ADMIN = "admin"
     VIEWER = "viewer"
+    # The external team that collects leads (step 31): only the Files screen, own files.
+    COLLECTOR = "collector"
 
 
 class RunTrigger(enum.StrEnum):
@@ -278,6 +281,35 @@ class Import(TimestampMixin, Base):
 
     uploader: Mapped[User | None] = relationship()
     batch: Mapped["Batch | None"] = relationship()
+
+
+class Submission(TimestampMixin, Base):
+    """A lead file handed in on the Files screen (SPEC step 31), before it is in a batch:
+    checked by Lead Check, revised by its sender until it is ready, then added to a batch
+    by an Owner or Admin (which makes an import of it). A file is used once."""
+
+    __tablename__ = "submissions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    file_name: Mapped[str] = mapped_column(String(255))
+    niche: Mapped[str] = mapped_column(String(80))
+    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    content: Mapped[bytes] = mapped_column(LargeBinary)
+    sha256: Mapped[str] = mapped_column(String(64), index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    businesses: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Lead Check: errors and warnings by tab, and every problem (tab, row, column, value).
+    check: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
+    problems: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, server_default="[]")
+    # The import that added it to a batch; it is used once that import is saved.
+    import_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("imports.id", ondelete="SET NULL")
+    )
+
+    uploader: Mapped[User | None] = relationship()
+    imp: Mapped["Import | None"] = relationship()
 
 
 class Lead(TimestampMixin, Base):

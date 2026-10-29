@@ -90,23 +90,28 @@ cold-outreach/
 
 ## 3. Roles and permissions
 
-| Action | Owner | Admin | Viewer |
-|---|---|---|---|
-| See Overview, Runs, Agents, Batches, Benchmarks, Leads; download leads as Excel | ✔ | ✔ | ✔ |
-| Make, rename or delete a batch; add and confirm its files | ✔ | ✔ | ✘ |
-| Choose a batch's tasks and agents, start or pause it, change the batches' running order | ✔ | ✔ | ✘ |
-| Change any standard field of a lead or its notes; mark Top in a city; delete a lead | ✔ | ✔ | ✘ |
-| Switch an agent on/off, press Run now or Stop | ✔ | ✔ | ✘ |
-| Change an agent's batches, limit, run time, budget and settings | ✔ | ✔ | ✘ |
-| Make, change or delete a benchmark | ✔ | ✔ | ✘ |
-| See or change Connections (keys, accounts) | ✔ | ✘ | ✘ |
-| Change the total daily budget | ✔ | ✘ | ✘ |
-| Add an agent, show or replace an agent's token | ✔ | ✘ | ✘ |
-| Manage users (invite, deactivate, change role) | ✔ | ✘ | ✘ |
-| See the History (audit log) | ✔ | ✘ | ✘ |
-| Own profile, password, alert channels | ✔ | ✔ | ✔ |
+| Action | Owner | Admin | Viewer | Collector |
+|---|---|---|---|---|
+| See Overview, Runs, Agents, Batches, Benchmarks, Leads; download leads as Excel | ✔ | ✔ | ✔ | ✘ |
+| Make, rename or delete a batch; add and confirm its files | ✔ | ✔ | ✘ | ✘ |
+| Choose a batch's tasks and agents, start or pause it, change the batches' running order | ✔ | ✔ | ✘ | ✘ |
+| Change any standard field of a lead or its notes; mark Top in a city; delete a lead | ✔ | ✔ | ✘ | ✘ |
+| Switch an agent on/off, press Run now or Stop | ✔ | ✔ | ✘ | ✘ |
+| Change an agent's batches, limit, run time, budget and settings | ✔ | ✔ | ✘ | ✘ |
+| Make, change or delete a benchmark | ✔ | ✔ | ✘ | ✘ |
+| See or change Connections (keys, accounts) | ✔ | ✘ | ✘ | ✘ |
+| Change the total daily budget | ✔ | ✘ | ✘ | ✘ |
+| Add an agent, show or replace an agent's token | ✔ | ✘ | ✘ | ✘ |
+| Manage users (invite, deactivate, change role) | ✔ | ✘ | ✘ | ✘ |
+| See the History (audit log) | ✔ | ✘ | ✘ | ✘ |
+| Own profile, password, alert channels | ✔ | ✔ | ✔ | ✔ |
+| Files (step 31): hand in a lead file, see its problems, upload a revised version, delete it before it is used (Collectors: their own files only) | ✔ | ✔ | ✘ | ✔ |
+| See every file handed in on Files | ✔ | ✔ | ✔ | ✘ |
+| Add a ready file to a batch | ✔ | ✔ | ✘ | ✘ |
 
 - There can be more than one Owner; the last active Owner can't be removed or demoted.
+- A **Collector** (step 31) is the external team that collects leads: they see the **Files**
+  screen only, and only the files they handed in (someone else's file is "not found").
 - Every endpoint calls `permissions.can(user, action)`. **pytest covers every row**, for each
   role allowed and refused.
 - Agents are not users: they authenticate with their own token and can only reach the agent
@@ -602,6 +607,18 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 8. **Runs:** filter by agent and status; each run's counts, cost, stop reason and failures.
 9. **Connections** (Owner), **Users** (Owner), **History** (Owner: who did what, newest
    first, filtered by area; a connection change only says "(changed)"), **Profile**.
+10. **Files** (step 31, after Batches; a Collector's only screen, whatever the address):
+    **Hand in a lead file** (niche, from those of the benchmarks and batches, and the .xlsx);
+    the files with niche, businesses, who handed it in, its Lead Check (Needs fixing 🔴 n,
+    Ready, Being added, Used) and the batch it is in ("Used in Batch 01 · date · by Olivia"),
+    filtered by status; a file opens to its problems by tab, row and column, **Download
+    problems to fix** (the file itself, each wrong cell red or yellow with a note and a first
+    **Lead Check** tab listing them), **Upload revised version** (a new version, checked
+    again; the marks of the downloaded copy are taken out) and **Delete** (before it is used).
+    Owners and Admins also have a **Batches** panel: a ready file is dragged onto a batch of
+    its niche (or **Add to batch** in the file), which opens that batch with the file's
+    preview to confirm. A file handed in again with the same leads says so ("Same leads as
+    …, used in Batch 01").
 
 ## 8. REST API (`/api`, JSON)
 
@@ -614,7 +631,8 @@ agents), `/imports`
 (upload into a batch → preview, `?batch_id=`, `/{id}/confirm`, `/{id}/discard`, `/{id}/sheet`,
 `DELETE /{id}` and `/{id}/deletion` (what would go)), `/niches`, `/leads` (+ `/export`,
 `/{lead_id}`, `/{lead_id}/files/{id}`), `/batches/{id}/cities` (+ `PUT` all on or off),
-`/lists/{id}`, `/alerts`,
+`/lists/{id}`, `/alerts`, `/submissions` (the Files screen: `POST` to hand in, `/niches`,
+`/{id}`, `/{id}/version`, `/{id}/marked.xlsx`, `/{id}/use`, `DELETE /{id}`),
 `/alert-settings`, `/history`, and the agent API (section 6.2). Every user endpoint checks
 `permissions.can`; every write checks CSRF.
 
@@ -832,3 +850,21 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     filters that are on as chips that take them off, the Top hint as ⓘ, and the pages
     (‹ Page n of N ›, also under the table); a Check badge per lead (✓ OK, 🔴 n, 🟠 n), zebra
     rows, addresses on at most two lines and long values cut with the full text on hover.
+31. **Files and Collectors** (asked for after step 30): the external team that collects
+    leads signs in as a **Collector** (a new role, invited on Users) and sees only **Files**
+    and their own files, enforced on the server. A file handed in (table `submissions`:
+    the file, its niche, who, version, Lead Check's counts and every problem with its tab,
+    row, column and value, and a fingerprint of its leads) is checked at once like a preview
+    (each business once, rows merged); it is **ready** with no error. The marked file is the
+    file itself with red/yellow cells and notes and a first Lead Check tab; a revised version
+    replaces it and is checked again. An Owner or Admin adds a ready file to a batch of the
+    same niche: this makes the batch's import (its preview waits there, the normal confirm
+    or discard). The file is **being added** while that preview waits, **used** once it is
+    saved (then it can't be revised, deleted or added again, and shows the batch, date and
+    who); discarded or deleted in the batch, it is free again. Leads handed in again (the
+    same fingerprint) show a warning, and can't be added once the first file is used.
+    Migration `0021` adds the `collector` role and `submissions`. **Tests:** every
+    permission row for the four roles, a Collector refused everywhere but Files and others'
+    files, the check by tab and row, the marked file and its marks taken out, versions,
+    niche match, used once, same leads, delete rules; vitest for the menu and the Files
+    screen; e2e: a Collector invited, hands in a file, the Owner drags it onto the batch.

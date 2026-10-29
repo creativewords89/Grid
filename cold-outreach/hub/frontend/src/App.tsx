@@ -5,6 +5,7 @@ import { Agents } from "./pages/Agents";
 import { Batches } from "./pages/Batches";
 import { Benchmarks } from "./pages/Benchmarks";
 import { Connections } from "./pages/Connections";
+import { Files } from "./pages/Files";
 import { FirstRun } from "./pages/FirstRun";
 import { Forgot } from "./pages/Forgot";
 import { History } from "./pages/History";
@@ -38,7 +39,10 @@ function Routes() {
   if (!user) return path === "/forgot" ? <Forgot /> : <SignIn notice={notice} />;
 
   let page;
-  if (path === "/users" && user.role === "owner") page = <Users />;
+  // A Collector (step 31) has the Files screen and their profile, nothing else.
+  if (user.role === "collector") page = path === "/profile" ? <Profile /> : <Files />;
+  else if (path === "/files") page = <Files />;
+  else if (path === "/users" && user.role === "owner") page = <Users />;
   else if (path === "/connections" && user.role === "owner") page = <Connections />;
   else if (path === "/history" && user.role === "owner") page = <History />;
   else if (path === "/agents") page = <Agents />;
