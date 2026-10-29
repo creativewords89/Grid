@@ -40,6 +40,7 @@ class ReviewCity(BaseModel):
     tops: int
     state: Shown
     moves_at: datetime | None  # a ready city goes on to its batch then
+    moves_in: int | None = None  # seconds until then, by the server's clock
 
 
 class ReviewList(BaseModel):
@@ -61,6 +62,9 @@ def _row(sub: Submission, city: FileCity) -> ReviewCity:
         tops=len(city.tops),
         state=state,
         moves_at=city.topped_at + files.READY_WAIT if state == "ready" and city.topped_at else None,
+        moves_in=files.seconds_until(city.topped_at + files.READY_WAIT)
+        if state == "ready" and city.topped_at
+        else None,
     )
 
 
@@ -108,6 +112,7 @@ class CityOut(BaseModel):
     name: str
     state: Shown
     moves_at: datetime | None
+    moves_in: int | None = None
     file_id: uuid.UUID
     file_name: str
     columns: list[dict[str, str]]
@@ -138,6 +143,7 @@ def review_city(file_id: uuid.UUID, city: str, me: CurrentUser, db: Db) -> CityO
         name=found_city.name,
         state=row.state,
         moves_at=row.moves_at,
+        moves_in=row.moves_in,
         file_id=sub.id,
         file_name=sub.file_name,
         columns=[{"key": k, "label": label} for k, label in COLUMNS]

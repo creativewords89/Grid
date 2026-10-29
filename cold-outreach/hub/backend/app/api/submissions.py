@@ -44,6 +44,7 @@ class CityOut(BaseModel):
     tops: int
     muted: str  # why, when it is muted
     moves_at: datetime | None  # a ready city goes on to the batch then
+    moves_in: int | None = None  # seconds until then, by the server's clock
     moved_at: datetime | None
 
 
@@ -75,6 +76,8 @@ class FileOut(BaseModel):
     error: str | None = None
     # In its Final check (step 36): when it goes on to Top Review by itself.
     sends_at: datetime | None = None
+    # Seconds until then, by the server's clock: the viewer's clock may be off (at most an hour).
+    sends_in: int | None = None
     can_send_cities: bool = False  # may send its ready cities to the batch now
 
 
@@ -133,6 +136,9 @@ def _city(city: FileCity) -> CityOut:
         tops=len(city.tops),
         muted=city.muted,
         moves_at=city.topped_at + files.READY_WAIT if found == "ready" and city.topped_at else None,
+        moves_in=files.seconds_until(city.topped_at + files.READY_WAIT)
+        if found == "ready" and city.topped_at
+        else None,
         moved_at=city.moved_at,
     )
 
@@ -180,6 +186,9 @@ def _out(db: Session, me: User, sub: Submission, names: dict[str, str] | None = 
         progress=sub.progress,
         error=sub.error,
         sends_at=sub.clean_since + files.FINAL_CHECK
+        if status == "final_check" and sub.clean_since
+        else None,
+        sends_in=files.seconds_until(sub.clean_since + files.FINAL_CHECK)
         if status == "final_check" and sub.clean_since
         else None,
         can_send_cities=status == "top_review" and "ready" in states and _may_send_cities(me, sub),

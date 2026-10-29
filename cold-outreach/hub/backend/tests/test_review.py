@@ -107,6 +107,7 @@ def test_tops_are_chosen_city_by_city(owner: TestClient, person: Person) -> None
     saved = rita.put(city_url(bad["id"], "Tulsa"), json={"tops": [first, second]})
     assert saved.status_code == 200, saved.text
     assert saved.json()["state"] == "ready" and saved.json()["moves_at"] is not None
+    assert 3500 <= saved.json()["moves_in"] <= 3600  # by the server's clock
     assert listed(rita, "ready") == [("tulsa.xlsx", "Tulsa", 2)]
     assert rita.get(city_url(bad["id"], "Tulsa")).json()["businesses"][1]["top"] is True
     # Without a Top it isn't ready any more; a city under 10 with a Top is.

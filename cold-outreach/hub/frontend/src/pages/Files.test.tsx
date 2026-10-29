@@ -33,6 +33,7 @@ function file(overrides: Partial<HandedInFile> = {}): HandedInFile {
     progress: 100,
     error: null,
     sends_at: null,
+    sends_in: null,
     can_send_cities: false,
     ...overrides,
   };
@@ -66,6 +67,7 @@ function city(overrides: Partial<FileCity> = {}): FileCity {
     tops: 0,
     muted: "",
     moves_at: null,
+    moves_in: null,
     moved_at: null,
     ...overrides,
   };
@@ -386,7 +388,9 @@ test("a file without errors waits in its Final check, and can be sent on now", a
     status: "final_check",
     errors: 0,
     warnings: 0,
-    sends_at: new Date(Date.now() + 42 * 60_000).toISOString(),
+    // The viewer's clock is two hours off: the time left comes from the server.
+    sends_at: new Date(Date.now() + 162 * 60_000).toISOString(),
+    sends_in: 42 * 60,
   });
   let listed = [waiting, file({ id: "f2", file_name: "other.xlsx" })];
   const calls = mockApi({
@@ -394,7 +398,7 @@ test("a file without errors waits in its Final check, and can be sent on now", a
     "GET /submissions": () => [200, listed],
     "GET /submissions/niches": [200, ["Cleaning"]],
     "POST /submissions/f1/send": () => {
-      listed = [{ ...waiting, status: "top_review", sends_at: null }, listed[1]!];
+      listed = [{ ...waiting, status: "top_review", sends_at: null, sends_in: null }, listed[1]!];
       return [200, listed[0]];
     },
   });
@@ -402,7 +406,7 @@ test("a file without errors waits in its Final check, and can be sent on now", a
 
   const card = await screen.findByRole("row", { name: /tulsa\.xlsx/ });
   expect(within(card).getByText("Cleaning")).toBeVisible();
-  expect(within(card).getByText(/No errors · 4[12] min left/)).toBeVisible();
+  expect(within(card).getByText("No errors · 42 min left")).toBeVisible();
   // The stages count the files; one shows just the files at that stage.
   const stages = screen.getByRole("navigation", { name: "Stages" });
   await userEvent.click(within(stages).getByRole("button", { name: /Final check/ }));

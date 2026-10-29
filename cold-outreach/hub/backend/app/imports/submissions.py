@@ -10,7 +10,7 @@ import re
 import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from openpyxl import Workbook, load_workbook
@@ -208,6 +208,11 @@ def _cities(report: reader.Report, muted: dict[str, str]) -> dict[str, dict[str,
 
 FINAL_CHECK = timedelta(hours=1)  # a file without errors waits this long before Top Review
 READY_WAIT = timedelta(hours=1)  # a city with a Top waits this long before its batch
+
+
+def seconds_until(when: datetime | None) -> int | None:
+    """How long until then, by the server's clock (never the viewer's, which may be off)."""
+    return None if when is None else max(0, int((when - now()).total_seconds()))
 
 
 def send_on(sub: Submission) -> None:

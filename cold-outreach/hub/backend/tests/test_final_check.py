@@ -45,6 +45,8 @@ def test_a_file_without_errors_waits_in_its_final_check(owner: TestClient, perso
     assert sub["status"] == "final_check"
     # It goes on by itself an hour after it had no error.
     assert sub["sends_at"] is not None
+    # How long is left comes from the server's clock, never more than the hour.
+    assert 3500 <= sub["sends_in"] <= 3600
     assert rita.get("/api/review/cities").json()["cities"] == []
     assert rita.get(f"/api/review/files/{sub['id']}/cities/Tulsa").status_code == 404
     # Its sender can still change it.
