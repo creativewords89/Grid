@@ -4,15 +4,21 @@ Built into the Hub (hub step 25: Agents → **+ Add agent** → GBP audit agent)
 batches' **GBP Audit** task. Decisions behind it: [PLAN.md](../../PLAN.md) section 5, and the
 planning conversation of 30 October 2026, which changed them as below.
 
-## 1. Three stages
+## 1. What it does
 
 1. **Collect** (hub step 48, built): the profile, its posts and latest reviews, as they are
-   on Google. Nothing is compared or scored.
-2. **Compare** (hub step 51, built; section 5): the collected data against the batch's benchmark (GBP part).
-3. **Opportunities** (last): the list of what GridRankers can fix. Not only what the
-   benchmark compares: anything collected can be one, e.g. the website doesn't open, or
-   the profile's website isn't the business's own domain (`business.wixsite.com`,
-   `sites.google.com`, a Facebook or Linktree link).
+   on Google.
+2. **Compare** (hub step 51, built; section 5): the collected data against the batch's
+   benchmark (GBP part): findings and a score. This is the **audited result**, and where the
+   GBP audit agent stops.
+
+Opportunities and email copy are **not** this agent's job (decided 30 October 2026): a
+separate **Opportunity Finder** agent (the batches' Opportunity Finder task, after GBP Audit
+and later Website Audit) turns the audited results into opportunities for the email
+campaign, with an AI API, using only the findings it is given. Anything collected can feed
+it, not only what the benchmark compares, e.g. the website doesn't open, or the profile's
+website isn't the business's own domain (`business.wixsite.com`, `sites.google.com`, a
+Facebook or Linktree link). It is planned separately, later.
 
 The Basics collected (name, phone, website, address, hours) are the business's
 **standard**: the Website agent later compares the website's details with them. Nothing is

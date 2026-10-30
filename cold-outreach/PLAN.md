@@ -10,7 +10,7 @@ This file holds the decisions that apply to the whole system. Each part has its 
 | Part | Spec | State |
 |---|---|---|
 | Agent Hub | [hub/SPEC.md](hub/SPEC.md) | Built and installed (steps 1–11); step 12, tasks and the batch pipeline, done; step 13, agents made clear and the full Leads table, done; step 14, the lead file tab by tab, done; step 15, leads in their batch, cities per batch, deleting files, done; step 16, small cities muted and cities paged, done; step 17, Top chosen in the Hub, done; step 18, tasks made in the batch, done; steps 19–24 (Top per city, Ready cities, lead files, the standard steps), done; step 25, agents run in the Hub, done; steps 26–28, Lead Check, fixing leads in the Hub and fix files, done; steps 29–30, Lead Check corrections and the Leads tab redesigned, done; step 31, Files and Collectors (the external team hands in lead files), done; step 32, Top Review and Reviewers (Top chosen in the file before a batch), done; step 33, niches, checks in the background and the file's table, done; step 34, a handed-in file's fix file, done; step 35, File IDs and one sheet, done; step 36, every problem an error, the Final check and Files redesigned, done; step 37, two buttons on a file, done; step 38, batch names and Files as a table, done; step 39, cities go on to their niche's batch, done; step 40, Remove duplicates, done; step 41, Top Review without waiting, done; step 42, change a file's niche, done; step 43, send a city back to Top Review, done; step 44, Files by niche, done; step 45, Top Review by niche and file, done; step 46, Batches by niche and file, done; step 47, the same niches on Files, Top Review and Batches, done; step 48, the GBP audit agent collects, done; step 49, deleting an agent, done; step 50, testing an agent, done; step 51, the GBP audit agent compares with the benchmark, done |
-| GBP audit agent | [agents/gbp-audit/SPEC.md](agents/gbp-audit/SPEC.md) | Collecting (hub step 48) and comparing with the benchmark (step 51) built; opportunities next |
+| GBP audit agent | [agents/gbp-audit/SPEC.md](agents/gbp-audit/SPEC.md) | Built: collects (hub step 48) and compares with the benchmark (step 51), the audited result. Opportunities go to the separate Opportunity Finder agent |
 | Website audit agent | `agents/website-audit/SPEC.md` | Decided (section 6), spec written before its build |
 | Social media audit agent | `agents/social-audit/SPEC.md` | Data source not decided |
 | Outreach agents | later | Direction agreed (section 7) |
@@ -194,8 +194,9 @@ used up.
 
 ## 5. GBP audit agent (decided)
 
-> Changed on 30 October 2026: the agent works in three stages, collect → compare with the
-> benchmark → list opportunities, and what it collects was listed again.
+> Changed on 30 October 2026: the agent works in two stages, collect → compare with the
+> benchmark (the audited result); opportunities for the email campaign come from the separate
+> Opportunity Finder agent, with an AI API. What it collects was listed again.
 > [agents/gbp-audit/SPEC.md](agents/gbp-audit/SPEC.md) is the record; where it and this
 > section disagree, the spec wins.
 
