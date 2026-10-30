@@ -253,12 +253,16 @@ test("a file in the batch shows its cities, and can't be changed", async () => {
   });
   render(<App />);
 
+  // A niche whose files are all done is closed: its head says so.
+  const niche = await screen.findByRole("button", { name: /Cleaning/ });
+  expect(niche).toHaveAttribute("aria-expanded", "false");
+  expect(niche).toHaveTextContent("1 file · batch Cleaning · 1 of 1 cities in the batch");
+  expect(niche).toHaveTextContent("Done");
+  await userEvent.click(niche);
   const row = await screen.findByRole("row", { name: /tulsa\.xlsx/ });
-  expect(within(row).getByText("Cleaning")).toBeVisible();
   expect(within(row).getByText(/1 of 1/)).toBeVisible();
   expect(within(row).getByText(/city in the batch/)).toBeVisible();
   expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual([
-    "Batch name",
     "File",
     "Stage",
     "Status",
@@ -406,7 +410,9 @@ test("a file without errors waits in its Final check, and can be sent on now", a
   render(<App />);
 
   const card = await screen.findByRole("row", { name: /tulsa\.xlsx/ });
-  expect(within(card).getByText("Cleaning")).toBeVisible();
+  expect(screen.getByRole("button", { name: /Cleaning/ })).toHaveTextContent(
+    "2 files · batch Cleaning",
+  );
   expect(within(card).getByText("No errors · 42 min left")).toBeVisible();
   // The stages count the files; one shows just the files at that stage.
   const stages = screen.getByRole("navigation", { name: "Stages" });
@@ -612,10 +618,62 @@ test("an owner sends a city in its batch back to Top Review", async () => {
   });
   render(<App />);
 
+  await userEvent.click(await screen.findByRole("button", { name: /Cleaning/ }));
   await userEvent.click(await screen.findByRole("button", { name: "tulsa.xlsx" }));
   const inBatch = await screen.findByRole("list", { name: "Cities in the batch" });
   await userEvent.click(within(inBatch).getByRole("button", { name: "Send back to Top Review" }));
   expect(calls.some((c) => c.path === "/submissions/f1/cities/tulsa/send-back")).toBe(true);
   expect(await screen.findByText(/In Top Review/)).toBeVisible();
   expect(screen.queryByRole("list", { name: "Cities in the batch" })).toBeNull();
+});
+
+test("files of many niches: a section per niche, the niche chips and a search", async () => {
+  const files = [
+    file({ errors: 2 }),
+    file({
+      id: "f2",
+      file_name: "ohio.xlsx",
+      status: "top_review",
+      errors: 0,
+      uploaded_by: "Sumi",
+    }),
+    file({
+      id: "f3",
+      file_name: "roofs.xlsx",
+      niche: "Roofing",
+      batch_name: "Roofing",
+      status: "in_batch",
+      errors: 0,
+      cities_in_batch: 1,
+    }),
+  ];
+  mockApi({
+    "GET /auth/me": me(owner),
+    "GET /submissions": [200, files],
+    "GET /submissions/niches": [200, ["Cleaning", "Roofing"]],
+  });
+  render(<App />);
+
+  const cleaning = await screen.findByRole("button", { name: /^Cleaning\s*2 files/ });
+  expect(cleaning).toHaveAttribute("aria-expanded", "true");
+  expect(cleaning).toHaveTextContent("1 needs fixing");
+  expect(screen.getByRole("table", { name: "Cleaning files" })).toBeVisible();
+  // Roofing's files are all done: closed until opened.
+  const roofing = screen.getByRole("button", { name: /^Roofing\s*1 file/ });
+  expect(roofing).toHaveAttribute("aria-expanded", "false");
+  expect(screen.queryByRole("table", { name: "Roofing files" })).toBeNull();
+  await userEvent.click(roofing);
+  expect(screen.getByRole("table", { name: "Roofing files" })).toBeVisible();
+
+  // The niche chips show one niche; the search finds a file or who handed it in.
+  const chips = screen.getByRole("group", { name: "Niches" });
+  await userEvent.click(within(chips).getByRole("button", { name: "Roofing · 1" }));
+  expect(screen.queryByRole("table", { name: "Cleaning files" })).toBeNull();
+  await userEvent.click(within(chips).getByRole("button", { name: "All niches" }));
+  await userEvent.type(screen.getByRole("searchbox", { name: "Search files" }), "sumi");
+  expect(screen.getByRole("row", { name: /ohio\.xlsx/ })).toBeVisible();
+  expect(screen.queryByRole("row", { name: /tulsa\.xlsx/ })).toBeNull();
+  await userEvent.clear(screen.getByRole("searchbox", { name: "Search files" }));
+  await userEvent.type(screen.getByRole("searchbox", { name: "Search files" }), "nothing like it");
+  expect(screen.getByText("No file matches the search.")).toBeVisible();
 });
