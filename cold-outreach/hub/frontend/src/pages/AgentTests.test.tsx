@@ -133,6 +133,23 @@ test("a test report shows each lead and what the GBP agent collected", async () 
           at: "2026-10-30T11:08:00Z",
           details: {
             agent: "gbp",
+            benchmark: { id: "bm1", name: "Construction Benchmark 1", version: 2 },
+            findings: [
+              {
+                part: "posts",
+                code: "GBP_FEW_RECENT_POSTS",
+                severity: "red",
+                message: "Posts in 90 days: 1 vs 12 in the benchmark",
+                scored: true,
+              },
+              {
+                part: "basics",
+                code: "GBP_NO_PHONE",
+                severity: "ok",
+                message: "Phone",
+                scored: true,
+              },
+            ],
             data: {
               basics: { name: "Apex Builders", claimed: true, phone: null, hours: null },
               categories: { primary: "General contractor", additional: [], services: null },
@@ -181,6 +198,10 @@ test("a test report shows each lead and what the GBP agent collected", async () 
   const open = screen.getByRole("article", { name: "T-1" });
   expect(within(open).getByRole("heading", { name: "Apex Builders" })).toBeVisible();
   expect(within(open).getByText("General contractor")).toBeVisible();
+  const findings = within(open).getByRole("region", { name: "Findings" });
+  expect(within(findings).getByText(/against Construction Benchmark 1 \(v2\)/)).toBeVisible();
+  expect(within(findings).getByText(/Posts in 90 days: 1 vs 12/)).toBeVisible();
+  expect(within(findings).getByText("1 fine")).toBeVisible();
   expect(within(open).getByText("Fall offer")).toBeVisible();
   expect(within(open).getAllByText("Not given by DataForSEO").length).toBeGreaterThan(0);
   expect(within(open).getByRole("link", { name: "Download gbp.json" })).toHaveAttribute(

@@ -24,9 +24,11 @@ MAX_FILE = 2_000_000  # bytes of one file kept in a test
 PREFIX = "T-"
 
 
-def lead_out(lead: Lead) -> dict[str, Any]:
-    """A lead as the agent API hands it out (GET /batches/{id}/leads)."""
+def lead_out(lead: Lead, benchmark_id: uuid.UUID | None = None) -> dict[str, Any]:
+    """A lead as the agent API hands it out (GET /batches/{id}/leads), with the benchmark of
+    its batch (step 51: an agent compares with it)."""
     return {
+        "benchmark_id": str(benchmark_id) if benchmark_id else None,
         "lead_id": lead.lead_id,
         "niche": lead.niche,
         "city": lead.city,
@@ -53,7 +55,13 @@ def _from_batch(
                 f"No such lead: {', '.join(missing)}.",
                 {"lead_ids": "Unknown."},
             )
-        return ", ".join(lead_ids), [lead_out(found[x]) for x in lead_ids]
+        batch_ids = {x.batch_id for x in found.values() if x.batch_id}
+        benchmarks: dict[uuid.UUID | None, uuid.UUID | None] = {
+            b.id: b.benchmark_id for b in db.scalars(select(Batch).where(Batch.id.in_(batch_ids)))
+        }
+        return ", ".join(lead_ids), [
+            lead_out(found[x], benchmarks.get(found[x].batch_id)) for x in lead_ids
+        ]
     batch = db.get(Batch, batch_id) if batch_id else None
     if batch is None:
         raise ApiError(422, "invalid", "Choose a batch.", {"batch_id": "Required."})
@@ -68,7 +76,7 @@ def _from_batch(
     if not leads:
         raise ApiError(409, "no_leads", f"{batch.name} has no leads to test yet.")
     return f"{len(leads)} {'lead' if len(leads) == 1 else 'leads'} from {batch.name}", [
-        lead_out(x) for x in leads
+        lead_out(x, batch.benchmark_id) for x in leads
     ]
 
 

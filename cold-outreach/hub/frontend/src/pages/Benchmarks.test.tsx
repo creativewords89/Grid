@@ -50,6 +50,10 @@ test("make a new benchmark: GBP numbers and the website part", async () => {
   await userEvent.type(within(form).getByLabelText("Niche"), "Cleaning");
   await userEvent.type(within(form).getByLabelText("Photos"), "120");
   await userEvent.type(within(form).getByLabelText("Posts in 90 days"), "9");
+  await userEvent.type(
+    within(form).getByLabelText("Right primary categories"),
+    "House cleaning service{enter}Maid service",
+  );
   await userEvent.click(within(form).getByRole("button", { name: "+ Add a service" }));
   await userEvent.type(within(form).getByLabelText("Service 1"), "Deep cleaning");
   await userEvent.type(within(form).getByLabelText("Also called (comma separated)"), "deep clean");
@@ -60,12 +64,17 @@ test("make a new benchmark: GBP numbers and the website part", async () => {
   const sent = calls.find((c) => c.method === "POST")?.body as {
     name: string;
     niche: string;
-    gbp: Record<string, number>;
+    gbp: Record<string, unknown>;
     website: { services: unknown[]; location_page: { min_words: number } };
   };
   expect(sent.name).toBe("Cleaning Benchmark 1");
   expect(sent.niche).toBe("Cleaning");
-  expect(sent.gbp).toEqual({ photos: 120, posts_90_days: 9 }); // empty boxes aren't compared
+  // Empty boxes aren't compared.
+  expect(sent.gbp).toEqual({
+    photos: 120,
+    posts_90_days: 9,
+    primary_categories: ["House cleaning service", "Maid service"],
+  });
   expect(sent.website.services).toEqual([
     { name: "Deep cleaning", synonyms: ["deep clean"], must_have: true },
   ]);

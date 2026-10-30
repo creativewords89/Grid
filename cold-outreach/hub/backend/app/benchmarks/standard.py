@@ -86,3 +86,6 @@ class Gbp(Strict):
     reviews: Count | None = None
     rating: Annotated[float, Field(ge=0, le=5)] | None = None
     review_reply_pct: Annotated[float, Field(ge=0, le=100)] | None = None
+    # The primary categories that are right for the niche (step 51), e.g. "General
+    # contractor"; a profile's primary category is compared with them. Empty: not compared.
+    primary_categories: Annotated[list[Short], Field(max_length=30)] | None = None

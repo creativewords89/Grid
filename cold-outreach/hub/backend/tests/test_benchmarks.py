@@ -58,6 +58,24 @@ def test_empty_numbers_mean_dont_compare(client: TestClient, owner: User) -> Non
     assert response.json()["gbp"] == {"photos": 40}
 
 
+def test_a_benchmark_lists_the_right_primary_categories(client: TestClient, owner: User) -> None:
+    """Step 51: the GBP audit agent compares a profile's primary category with them."""
+    gbp = {"primary_categories": [" General contractor ", "Construction company"]}
+    response = client.post(
+        "/api/benchmarks",
+        json={"name": "C", "niche": "Construction", "gbp": gbp, "website": WEBSITE},
+    )
+    assert response.json()["gbp"] == {
+        "primary_categories": ["General contractor", "Construction company"]
+    }
+    too_many = {"primary_categories": ["x"] * 31}
+    refused = client.post(
+        "/api/benchmarks",
+        json={"name": "D", "niche": "Construction", "gbp": too_many, "website": WEBSITE},
+    )
+    assert refused.status_code == 422
+
+
 @pytest.mark.parametrize(
     ("change", "field"),
     [

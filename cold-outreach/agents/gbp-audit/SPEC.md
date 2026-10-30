@@ -8,7 +8,7 @@ planning conversation of 30 October 2026, which changed them as below.
 
 1. **Collect** (hub step 48, built): the profile, its posts and latest reviews, as they are
    on Google. Nothing is compared or scored.
-2. **Compare** (next, hub step 51): the collected data against the batch's benchmark (GBP part).
+2. **Compare** (hub step 51, built; section 5): the collected data against the batch's benchmark (GBP part).
 3. **Opportunities** (last): the list of what GridRankers can fix. Not only what the
    benchmark compares: anything collected can be one, e.g. the website doesn't open, or
    the profile's website isn't the business's own domain (`business.wixsite.com`,
@@ -61,17 +61,42 @@ Removed in planning: keyword-stuffed name, service-area business, price level, p
 the file's phone/address compared with GBP, additional-category and service counts compared
 with the benchmark (they come back in stage 2 if the team wants them).
 
-## 5. Result
+## 5. Comparing with the benchmark (stage 2)
 
-- Status: `COLLECTED`, `CLOSED` (permanently closed: Basics only), `NOT_FOUND`,
-  `NO_GBP_LINK` (skipped) or `FAILED` (tried again on the next run).
-- Summary, e.g. "Collected: claimed · category House cleaning service · 48 photos · last
-  post 2026-10-01 (1 in 90 days) · 126 reviews, 4.7★ · none on the profile: description."
-- `details`: the JSON envelope (PLAN.md section 3.6) with `data` as above, `findings: []` and
-  `score: null` in stage 1; the latest reviews and all but 5 posts only in the file.
+The collected data against the batch's benchmark (GBP part); an empty box isn't compared.
+
+- **A benchmark number:** the lead's value ÷ the benchmark's: under 25% 🔴, 25–60% 🟠,
+  60% or more ✅. Additional categories, services, photos, posts in 90 days and description
+  length are scored; reviews, rating and reply % are compared and shown, never scored.
+- **Right primary categories** (a new benchmark box, one a line): a primary category that
+  isn't one of them is 🔴.
+- **What the profile misses** (no benchmark needed): not claimed, no phone, website,
+  address, hours, description, logo or cover photo, never posted: 🔴. Services without a
+  description: 🟠 (🔴 when none has one), when DataForSEO gives services.
+- **What DataForSEO didn't give** is never a finding: that check is left out of the score
+  and listed in `unverified`.
+- **Score** (100, over the checks that could be made): Basics 20 (claimed, phone, website,
+  address, hours: 4 each), Categories & Services 35 (primary 15, additional categories 10,
+  services 5, service descriptions 5), Description 10 (there 4, length 6), Photos 10 (count 6,
+  logo 2, cover 2), Posts 25 (ever posted 10, in 90 days 15). A ratio earns its share of the
+  points; a present/missing check all or nothing.
+- A pasted link in a test has no batch, so no benchmark: only what the profile misses.
+
+## 6. Result
+
+- Status: `AUDITED` (compared, with a score), `CLOSED` (permanently closed: Basics only),
+  `NOT_FOUND`, `NO_GBP_LINK` (skipped) or `FAILED` (tried again on the next run).
+- Summary, e.g. "Score 70 · 2 red · 2 orange: Description length: 44 vs 600 in the
+  benchmark; Posts in 90 days: 1 vs 12 in the benchmark; …".
+- The result keeps the benchmark's id and version, so a new version of the benchmark has
+  the lead checked again.
+- `details`: the JSON envelope (PLAN.md section 3.6) with `benchmark`, `data` as above,
+  `findings` (red and orange first, each with its part, code, value, benchmark and whether
+  it is scored), `score` and `unverified`; the latest reviews and all but 5 posts only in
+  the file.
 - `gbp.json`: the full envelope, listed with the lead.
 
-## 6. Settings
+## 7. Settings
 
 Leads per run (50), Posts to collect (20), Reviews to collect (50), Longest wait for
 DataForSEO (60 minutes). Daily limit and budget are the Hub's (Agents screen).
