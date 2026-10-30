@@ -411,3 +411,31 @@ def test_files_in_top_review_by_niche_and_one_files_cities(
     small = rita.get("/api/review/small", params={"file_id": second["id"]}).json()
     assert small["total"] == 0
     assert rita.get("/api/review/small", params={"file_id": first["id"]}).json()["total"] == 1
+
+
+def test_a_batch_shows_its_files_and_a_files_cities(owner: TestClient, person: Person) -> None:
+    """Step 46: a niche's batch lists the files its cities came from; a file opens to its
+    cities in the batch."""
+    cal, _ = person(Role.COLLECTOR, "Cal")
+    rita, _ = person(Role.REVIEWER)
+    viewer, _ = person(Role.VIEWER)
+    sub = hand_in(cal, FILE)
+    key = rita.get(city_url(sub["id"], "Tulsa")).json()["businesses"][0]["key"]
+    rita.put(city_url(sub["id"], "Tulsa"), json={"tops": [key]})
+    rita.post(f"/api/submissions/{sub['id']}/to-batch", json={"city": "tulsa"})
+    [batch] = owner.get("/api/batches").json()
+    assert cal.get(f"/api/batches/{batch['id']}/files").status_code == 403
+    [found] = viewer.get(f"/api/batches/{batch['id']}/files").json()
+    assert {k: found[k] for k in ("file_name", "uploaded_by", "cities", "leads", "top")} == {
+        "file_name": "tulsa.xlsx",
+        "uploaded_by": "Cal",
+        "cities": 1,
+        "leads": 12,
+        "top": 1,
+    }
+    assert found["done_pct"] is None  # no agent on the batch yet
+    [city] = viewer.get(f"/api/batches/{batch['id']}/files/{sub['id']}/cities").json()
+    assert (city["name"], city["leads"], city["top"], city["active"]) == ("Tulsa", 12, 1, True)
+    assert city["list_id"] is not None and city["problems"] == 0
+    other = owner.get(f"/api/batches/{batch['id']}/files/{batch['id']}/cities")
+    assert other.status_code == 404

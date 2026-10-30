@@ -3,6 +3,7 @@ import {
   api,
   ApiError,
   type Batch,
+  type BatchFile,
   type BatchStatus,
   type Benchmark,
   type LeadImport,
@@ -20,6 +21,7 @@ import { FIELD_NAMES } from "../checkLabels";
 import { CheckReportDialog } from "../components/CheckReport";
 import { BatchLeads, LeadDialog } from "./Leads";
 import { SheetView } from "./ImportSheet";
+import { BatchFilesTable, BatchFileView } from "./BatchFiles";
 
 // Batches (SPEC sections 6.4 and 7): make a batch (a name, one niche, one benchmark of that
 // niche), then add Excel files to it at any time. A business stays in the batch it came in
@@ -40,15 +42,16 @@ const STATUS: Record<LeadImport["status"], string> = {
 };
 
 // "leads" and "files" are the two views of the Lead files tab (step 23).
-type Tab = "tasks" | "cities" | "results" | "leads" | "files" | "settings";
+type Tab = "handed" | "tasks" | "cities" | "results" | "leads" | "files" | "settings";
 const TABS: [Tab, string][] = [
+  ["handed", "Files"],
   ["tasks", "Tasks"],
   ["cities", "Cities"],
   ["results", "Results"],
   ["leads", "Lead files"],
   ["settings", "Settings"],
 ];
-const ALL_TABS: Tab[] = ["tasks", "cities", "results", "leads", "files", "settings"];
+const ALL_TABS: Tab[] = ["handed", "tasks", "cities", "results", "leads", "files", "settings"];
 
 /** The open batch and tab from the address: /batches?batch=<id>&tab=<tab>, and the old
  * /leads?batch=<id> opens that batch's Leads tab. */
@@ -76,7 +79,11 @@ export function Batches() {
   const { user } = useAuth();
   const [batches, setBatches] = useState<Batch[] | null>(null);
   const [open, setOpen] = useState<string | null>(() => fromAddress().batch);
-  const [startTab] = useState<Tab | null>(() => fromAddress().tab);
+  const [startTab, setStartTab] = useState<Tab | null>(() => fromAddress().tab);
+  const [startCity, setStartCity] = useState("");
+  // A batch's file open on its own (step 46), and the batches opened in the list.
+  const [file, setFile] = useState<{ batch: Batch; file: BatchFile } | null>(null);
+  const [opened, setOpened] = useState<Record<string, boolean>>({});
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -116,6 +123,36 @@ export function Batches() {
     setOpen(id);
   };
 
+  async function startOrPause(batch: Batch, start: boolean) {
+    setError("");
+    try {
+      await (start ? api.startBatch(batch.id) : api.pauseBatch(batch.id));
+      load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Didn't work.");
+    }
+  }
+
+  if (file) {
+    return (
+      <BatchFileView
+        batch={file.batch}
+        file={file.file}
+        staff={staff}
+        onBack={() => {
+          setFile(null);
+          load();
+        }}
+        onOpenCity={(city) => {
+          setFile(null);
+          setStartTab("leads");
+          setStartCity(city);
+          openBatch(file.batch.id);
+        }}
+      />
+    );
+  }
+
   if (current) {
     return (
       <BatchView
@@ -123,7 +160,11 @@ export function Batches() {
         batch={current}
         staff={staff}
         startTab={startTab}
+        startCity={startCity}
+        onOpenFile={(f) => setFile({ batch: current, file: f })}
         onBack={() => {
+          setStartTab(null);
+          setStartCity("");
           openBatch(null);
           load();
         }}
@@ -150,81 +191,103 @@ export function Batches() {
           No batches yet. A niche's batch is made when its first city comes from Top Review.
         </p>
       )}
+      {/* A section per batch (step 46): closed until opened, then the files its cities came
+          from. The running order: the higher batch shares its agents first. */}
       {batches && batches.length > 0 && (
-        <div className="card table-card">
-          <table className="table">
-            <caption className="table-caption">
-              Running batches share their agents in this order: the higher one goes first.
-            </caption>
-            <thead>
-              <tr>
-                {staff && <th>Order</th>}
-                <th>Batch</th>
-                <th>Status</th>
-                <th>Niche</th>
-                <th>Benchmark</th>
-                <th>Businesses</th>
-                <th className="hide-narrow">Files</th>
-                <th className="hide-narrow">Agents</th>
-                <th className="hide-narrow">Progress</th>
-              </tr>
-            </thead>
-            <tbody>
-              {batches.map((batch, index) => (
-                <tr key={batch.id}>
-                  {staff && (
-                    <td className="nowrap">
-                      <button
-                        className="icon-button"
-                        aria-label={`Move ${batch.name} up`}
-                        disabled={index === 0}
-                        onClick={() => void move(index, -1)}
-                      >
-                        ↑
-                      </button>
-                      <button
-                        className="icon-button"
-                        aria-label={`Move ${batch.name} down`}
-                        disabled={index === batches.length - 1}
-                        onClick={() => void move(index, 1)}
-                      >
-                        ↓
-                      </button>
-                    </td>
-                  )}
-                  <td>
-                    <button className="link-button cell-strong" onClick={() => openBatch(batch.id)}>
-                      {batch.name}
-                    </button>
-                  </td>
-                  <td>
-                    <span className={`pill pill-batch-${batch.status}`}>
-                      {BATCH_STATUS[batch.status]}
-                    </span>
-                  </td>
-                  <td>{batch.niche}</td>
-                  <td>
-                    {batch.benchmark ? (
-                      `${batch.benchmark.name} (v${batch.benchmark.version})`
-                    ) : (
-                      <span className="field-error">Choose a benchmark</span>
-                    )}
-                  </td>
-                  <td>
-                    {batch.leads.toLocaleString()}
-                    {batch.top > 0 && <span className="muted small"> · {batch.top} Top</span>}
-                  </td>
-                  <td className="hide-narrow">{batch.files}</td>
-                  <td className="hide-narrow small">{batch.bots.join(", ") || "—"}</td>
-                  <td className="hide-narrow small">
-                    {batch.progress_pct === null ? "—" : `${batch.progress_pct}%`}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <p className="small muted">
+          Running batches share their agents in this order: the higher one goes first.
+        </p>
       )}
+      {(batches ?? []).map((batch, index) => {
+        const open = opened[batch.id] ?? false;
+        return (
+          <section
+            key={batch.id}
+            className="card table-card files-niche"
+            aria-label={`${batch.name} batch`}
+          >
+            <div className="files-niche-head batch-head-row">
+              <button
+                className="icon-button"
+                aria-expanded={open}
+                aria-label={`${open ? "Hide" : "Show"} the files of ${batch.name}`}
+                onClick={() => setOpened({ ...opened, [batch.id]: !open })}
+              >
+                {open ? "▾" : "▸"}
+              </button>
+              <button
+                className="link-button files-niche-title cell-strong"
+                onClick={() => openBatch(batch.id)}
+              >
+                {batch.name}
+              </button>
+              <span className={`pill pill-batch-${batch.status}`}>
+                {BATCH_STATUS[batch.status]}
+              </span>
+              <span className="small muted">
+                {batch.benchmark ? (
+                  `${batch.benchmark.name} (v${batch.benchmark.version})`
+                ) : (
+                  <span className="field-error">Choose a benchmark</span>
+                )}{" "}
+                · {batch.files} {batch.files === 1 ? "file" : "files"} ·{" "}
+                {batch.leads.toLocaleString()} businesses
+                {batch.top > 0 && ` · ${batch.top} Top`} · {batch.bots.length}{" "}
+                {batch.bots.length === 1 ? "agent" : "agents"}
+              </span>
+              <span className="batch-head-actions">
+                {batch.progress_pct !== null && (
+                  <span className="small">{batch.progress_pct}% done</span>
+                )}
+                {staff && (
+                  <>
+                    <button
+                      className="icon-button"
+                      aria-label={`Move ${batch.name} up`}
+                      disabled={index === 0}
+                      onClick={() => void move(index, -1)}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      className="icon-button"
+                      aria-label={`Move ${batch.name} down`}
+                      disabled={index === (batches ?? []).length - 1}
+                      onClick={() => void move(index, 1)}
+                    >
+                      ↓
+                    </button>
+                  </>
+                )}
+                {batch.can_run && batch.status === "running" && (
+                  <button
+                    className="button button-small"
+                    onClick={() => void startOrPause(batch, false)}
+                  >
+                    Pause
+                  </button>
+                )}
+                {batch.can_run && batch.status === "paused" && (
+                  <button
+                    className="button button-small"
+                    onClick={() => void startOrPause(batch, true)}
+                  >
+                    Resume
+                  </button>
+                )}
+                <button
+                  className="button button-small button-primary"
+                  aria-label={`Open ${batch.name}`}
+                  onClick={() => openBatch(batch.id)}
+                >
+                  Open batch
+                </button>
+              </span>
+            </div>
+            {open && <BatchFilesTable batch={batch} onOpen={(f) => setFile({ batch, file: f })} />}
+          </section>
+        );
+      })}
     </section>
   );
 }
@@ -237,21 +300,25 @@ function BatchView({
   batch,
   staff,
   startTab,
+  startCity = "",
+  onOpenFile,
   onBack,
   onChanged,
 }: {
   batch: Batch;
   staff: boolean;
   startTab: Tab | null;
+  startCity?: string;
+  onOpenFile: (file: BatchFile) => void;
   onBack: () => void;
   onChanged: () => void;
 }) {
   const [imports, setImports] = useState<LeadImport[]>([]);
   const [current, setCurrent] = useState<LeadImport | null>(null);
   const [error, setError] = useState("");
-  // A batch opens on its cities (step 39): they come from Top Review.
-  const [tab, setTabState] = useState<Tab>(startTab ?? "cities");
-  const [city, setCity] = useState("");
+  // A batch opens on its files (step 46): its cities come from them, through Top Review.
+  const [tab, setTabState] = useState<Tab>(startTab ?? "handed");
+  const [city, setCity] = useState(startCity);
   const setTab = useCallback(
     (next: Tab) => {
       setAddress(batch.id, next);
@@ -379,6 +446,11 @@ function BatchView({
           </button>
         ))}
       </nav>
+      {tab === "handed" && (
+        <div className="card table-card">
+          <BatchFilesTable batch={batch} onOpen={onOpenFile} />
+        </div>
+      )}
       {tab === "tasks" && pipeline && (
         <PipelineTab batchId={batch.id} pipeline={pipeline} onChange={changed} />
       )}
@@ -389,7 +461,7 @@ function BatchView({
             Leads
           </button>
           <button role="tab" aria-selected={tab === "files"} onClick={() => setTab("files")}>
-            Files
+            Imports
           </button>
         </div>
       )}

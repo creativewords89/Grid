@@ -3522,3 +3522,14 @@ textarea {
 .review-search {
   flex: 0 1 280px;
 }
+/* Batches (step 46): a section per batch, its head with the actions on the right. */
+.batch-head-row {
+  cursor: default;
+}
+.batch-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}

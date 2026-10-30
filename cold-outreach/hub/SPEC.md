@@ -1106,3 +1106,14 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     search) with the three lists, **Not ready · Ready · Cities under 10**, of its cities
     only; Save & next city goes on within the file. (`GET /api/review/files`;
     `/api/review/cities` and `/api/review/small` take a `file_id`.)
+46. **Batches by niche and file** (asked for after step 45; the Batches canvas): **Batches**
+    is a section per batch (one per niche), in the running order (↑ ↓), each closed until
+    opened: its status, benchmark (or Choose a benchmark), files, businesses, Top, agents,
+    how much is done, Pause/Resume and **Open batch**. Opened, it lists the files its cities
+    came from: who handed each in, its cities in the batch (and how many are still in Top
+    Review), its businesses, how much of them its agents have done, **Open**. A file opens
+    to its cities in the batch (Batches / batch / file), in three lists, **On · Off · Lead
+    Check problems**: leads, Top, done by agents, problems, the On switch and **Send back
+    to Top Review**; a city opens to its leads. A batch's page opens on its **Files** tab
+    (the batch's own past imports are its Lead files' **Imports**). (`GET
+    /api/batches/{id}/files`, `GET /api/batches/{id}/files/{file_id}/cities`.)
