@@ -1165,3 +1165,11 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     no services number any more, migration 0032), and the GBP audit agent no longer
     collects what DataForSEO didn't give: booking link, payment methods, last updated,
     "people also search for". Categories score 35: primary 20, additional 15.
+52. **The GBP description, checked by Claude** (asked for after step 51;
+    `agents/gbp-audit/SPEC.md` section 5): a new connection, **Anthropic (Claude)** (an API
+    key, tested by listing models). The GBP audit agent asks Claude whether the description
+    names the business, its primary category, its city and at least 3 of the benchmark's
+    must-have services (a benchmark box sets how many), quoting its words; quotes not in the
+    description don't count. An agent setting picks the model (Claude Opus 5.5 or Haiku
+    5.5). Description scores: there 2, length 2, business name 2, category 2, services 2.
+    The one-line summary keeps only the score and counts.

@@ -163,6 +163,7 @@ const GBP_FIELDS: [GbpNumber, string, string][] = [
   ["reviews", "Reviews", "100"],
   ["rating", "Rating (0–5)", "4.7"],
   ["review_reply_pct", "Review replies (%)", "80"],
+  ["services_in_description", "Must-have services named in the description", "3"],
 ];
 
 const EMPTY: Standard = {

@@ -4,15 +4,21 @@ Built into the Hub (hub step 25: Agents → **+ Add agent** → GBP audit agent)
 batches' **GBP Audit** task. Decisions behind it: [PLAN.md](../../PLAN.md) section 5, and the
 planning conversation of 30 October 2026, which changed them as below.
 
-## 1. Three stages
+## 1. What it does
 
 1. **Collect** (hub step 48, built): the profile, its posts and latest reviews, as they are
-   on Google. Nothing is compared or scored.
-2. **Compare** (hub step 51, built; section 5): the collected data against the batch's benchmark (GBP part).
-3. **Opportunities** (last): the list of what GridRankers can fix. Not only what the
-   benchmark compares: anything collected can be one, e.g. the website doesn't open, or
-   the profile's website isn't the business's own domain (`business.wixsite.com`,
-   `sites.google.com`, a Facebook or Linktree link).
+   on Google.
+2. **Compare** (hub step 51, built; section 5): the collected data against the batch's
+   benchmark (GBP part): findings and a score. This is the **audited result**, and where the
+   GBP audit agent stops.
+
+Opportunities and email copy are **not** this agent's job (decided 30 October 2026): a
+separate **Opportunity Finder** agent (the batches' Opportunity Finder task, after GBP Audit
+and later Website Audit) turns the audited results into opportunities for the email
+campaign, with an AI API, using only the findings it is given. Anything collected can feed
+it, not only what the benchmark compares, e.g. the website doesn't open, or the profile's
+website isn't the business's own domain (`business.wixsite.com`, `sites.google.com`, a
+Facebook or Linktree link). It is planned separately, later.
 
 The Basics collected (name, phone, website, address, hours) are the business's
 **standard**: the Website agent later compares the website's details with them. Nothing is
@@ -79,11 +85,22 @@ The collected data against the batch's benchmark (GBP part); an empty box isn't 
   isn't one of them is 🔴.
 - **What the profile misses** (no benchmark needed): not claimed, no phone, website,
   address, hours, description, logo or cover photo, never posted: 🔴.
+- **The description, checked by Claude** (hub step 52): with the Anthropic key from
+  Connections and the agent's *Claude model for the description* (Claude Opus 5.5 by
+  default, about $0.01 a lead; Claude Haiku 5.5, about $0.0003). Claude says whether the
+  description names the business (without "LLC" …), its primary category (close wording
+  counts), its city, and which of the benchmark's Website Standard **must-have services**
+  (with their other names), quoting the description's own words; a yes whose words aren't
+  in the description is a no. Not every service is needed: **at least 3** (the benchmark's
+  *Must-have services named in the description*, or all when fewer) is ✅, 1–2 🟠, none
+  🔴. Brand or category missing: 🔴; city missing: 🟠, shown, not scored. Without a
+  description, a key or a usable answer these checks are unable to verify. Structured
+  output (JSON schema), low effort; on Opus, refusals fall back server-side.
 - **What DataForSEO didn't give** is never a finding: that check is left out of the score
   and listed in `unverified`.
 - **Score** (100, over the checks that could be made): Basics 20 (claimed, phone, website,
   address, hours: 4 each), Categories 35 (primary 20, additional categories 15),
-  Description 10 (there 4, length 6), Photos 10 (count 6,
+  Description 10 (there 2, length 2, business name 2, category 2, main services 2), Photos 10 (count 6,
   logo 2, cover 2), Posts 25 (ever posted 10, in 90 days 15). A ratio earns its share of the
   points; a present/missing check all or nothing.
 - A pasted link in a test has no batch, so no benchmark: only what the profile misses.
@@ -92,8 +109,8 @@ The collected data against the batch's benchmark (GBP part); an empty box isn't 
 
 - Status: `AUDITED` (compared, with a score), `CLOSED` (permanently closed: Basics only),
   `NOT_FOUND`, `NO_GBP_LINK` (skipped) or `FAILED` (tried again on the next run).
-- Summary, e.g. "Score 70 · 2 red · 2 orange: Description length: 44 vs 600 in the
-  benchmark; Posts in 90 days: 1 vs 12 in the benchmark; …".
+- Summary: only the score and the counts, e.g. "Score 70 · 2 red · 2 orange"; the
+  findings say the rest.
 - The result keeps the benchmark's id and version, so a new version of the benchmark has
   the lead checked again.
 - `details`: the JSON envelope (PLAN.md section 3.6) with `benchmark`, `data` as above,

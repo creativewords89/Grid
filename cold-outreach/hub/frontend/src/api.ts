@@ -340,6 +340,7 @@ export type GbpTargets = {
   rating?: number;
   review_reply_pct?: number;
   primary_categories?: string[]; // the right ones for the niche (step 51)
+  services_in_description?: number; // must-have services the description should name (step 52)
 };
 
 export type Benchmark = {

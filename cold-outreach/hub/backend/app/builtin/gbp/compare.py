@@ -139,19 +139,22 @@ def checks(data: dict[str, Any], gbp: dict[str, Any]) -> list[Check]:
         )
     )
 
-    # Description: 10 (there 4, length 6).
+    # Description: 10 (there 2, length 2, and Claude's check: brand 2, category 2, main
+    # services 2; the city is shown, not scored).
     text = d.get("text")
-    out.append(_present("description", "GBP_NO_DESCRIPTION", "Description", 4, text or ""))
+    out.append(_present("description", "GBP_NO_DESCRIPTION", "Description", 2, text or ""))
     out.append(
         _ratio(
             "description",
             "GBP_SHORT_DESCRIPTION",
             "Description length",
-            6,
+            2,
             d.get("length") if text else 0,
             gbp.get("description_length"),
         )
     )
+    if text:
+        out.extend(_described(d.get("checks"), gbp))
 
     # Photos: 10 (count 6, logo 2, cover 2).
     out.append(_ratio("photos", "GBP_FEW_PHOTOS", "Photos", 6, p.get("total"), gbp.get("photos")))
@@ -201,6 +204,75 @@ def checks(data: dict[str, Any], gbp: dict[str, Any]) -> list[Check]:
     return [x for x in out if x is not None]
 
 
+def _mention(code: str, what: str, points: float, answer: Any, scored: bool = True) -> Check:
+    if not isinstance(answer, dict):
+        return Check("description", code, f"{what}: unable to verify", points, None, scored=scored)
+    if answer.get("mentioned"):
+        return Check(
+            "description",
+            code,
+            f"{what} in the description",
+            points,
+            1.0,
+            OK,
+            answer.get("quote"),
+            scored=scored,
+        )
+    severity = RED if scored else ORANGE
+    return Check(
+        "description",
+        code,
+        f"{what} not in the description",
+        points,
+        0.0,
+        severity,
+        scored=scored,
+    )
+
+
+def _described(checks: Any, gbp: dict[str, Any]) -> list[Check]:
+    """Claude's check of the description (describe.py): unable to verify without one."""
+    checks = checks if isinstance(checks, dict) else {}
+    out = [
+        _mention("GBP_DESCRIPTION_NO_BRAND", "Business name", 2, checks.get("brand")),
+        _mention("GBP_DESCRIPTION_NO_CATEGORY", "Primary category", 2, checks.get("category")),
+        _mention("GBP_DESCRIPTION_NO_CITY", "City", 0, checks.get("city"), scored=False),
+    ]
+    services = checks.get("services")
+    if not checks:
+        out.append(
+            Check(
+                "description",
+                "GBP_DESCRIPTION_FEW_SERVICES",
+                "Main services: unable to verify",
+                2,
+                None,
+            )
+        )
+    elif services:
+        named = [s["name"] for s in services if s.get("mentioned")]
+        missing = [s["name"] for s in services if not s.get("mentioned")]
+        needed = min(int(gbp.get("services_in_description") or 3), len(services))
+        share = min(1.0, len(named) / needed)
+        severity = OK if len(named) >= needed else ORANGE if named else RED
+        message = f"{len(named)} of the main services in the description" + (
+            f" ({needed} wanted); not named: {', '.join(missing)}" if severity != OK else ""
+        )
+        out.append(
+            Check(
+                "description",
+                "GBP_DESCRIPTION_FEW_SERVICES",
+                message,
+                2,
+                share,
+                severity,
+                named,
+                needed,
+            )
+        )
+    return out
+
+
 def score(found: list[Check]) -> float | None:
     """100 points over the checks that could be made; None when none could."""
     counted = [c for c in found if c.scored and c.points and c.got is not None]
@@ -214,9 +286,7 @@ def summary(found: list[Check], points: float | None) -> str:
     reds = [c for c in found if c.severity == RED]
     oranges = [c for c in found if c.severity == ORANGE]
     head = f"Score {_num(points)}" if points is not None else "No score"
-    parts = [head, f"{len(reds)} red", f"{len(oranges)} orange"]
-    worst = [c.message for c in reds + oranges][:3]
-    return " · ".join(parts) + (": " + "; ".join(worst) if worst else "") + "."
+    return " · ".join([head, f"{len(reds)} red", f"{len(oranges)} orange"])
 
 
 def compare(data: dict[str, Any], gbp: dict[str, Any] | None) -> dict[str, Any]:

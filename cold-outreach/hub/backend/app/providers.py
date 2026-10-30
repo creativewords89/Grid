@@ -6,6 +6,7 @@ key, password or token that was used. Tests swap `transport` for an httpx2.MockT
 
 from typing import Any
 
+import anthropic
 import httpx2
 
 from app.config import get_settings
@@ -51,6 +52,25 @@ def dataforseo_balance(login: str, password: str) -> float:
         return float(task["result"][0]["money"]["balance"])
     except (KeyError, IndexError, TypeError, ValueError):
         raise ProviderError(f"DataForSEO answered unexpectedly ({response.status_code}).") from None
+
+
+# --- Anthropic (Claude) --------------------------------------------------------------------
+
+
+anthropic_base_url: str | None = None  # tests point the client at a fake
+
+
+def anthropic_key(api_key: str) -> None:
+    """Prove the key works by listing the models it can use (no tokens spent)."""
+    client = anthropic.Anthropic(api_key=api_key, base_url=anthropic_base_url, max_retries=1)
+    try:
+        client.models.list(limit=1)
+    except anthropic.AuthenticationError:
+        raise ProviderError("Anthropic refused the API key.") from None
+    except anthropic.APIStatusError as error:
+        raise ProviderError(f"Anthropic answered {error.status_code}.") from None
+    except anthropic.APIConnectionError:
+        raise ProviderError("Anthropic can't be reached.") from None
 
 
 # --- PageSpeed Insights ---------------------------------------------------------------------

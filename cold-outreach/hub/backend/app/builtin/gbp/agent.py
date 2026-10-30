@@ -15,7 +15,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from app.builtin.gbp import collect, compare, links
+from app.builtin.gbp import collect, compare, describe, links
 from app.builtin.gbp.dataforseo import INFO, POSTS, REVIEWS, US, DataForSeo, DataForSeoError
 from app.config import get_settings
 
@@ -28,7 +28,7 @@ sleep: Callable[[float], None] = time.sleep
 
 MANIFEST: dict[str, Any] = {
     "name": "GBP audit agent",
-    "version": "0.2.1",
+    "version": "0.3.0",
     "description": "Collects each lead's Google Business Profile, posts and latest reviews "
     "from DataForSEO and compares them with the batch's benchmark: findings and a score.",
     "settings": [
@@ -68,6 +68,15 @@ MANIFEST: dict[str, Any] = {
             "default": False,
         },
         {
+            "key": "description_model",
+            "type": "choice",
+            "label": "Claude model for the description",
+            "help": "Checks the GBP description: Opus 5.5 is the most accurate (about $0.01 a "
+            "lead), Haiku 5.5 far cheaper (about $0.0003).",
+            "choices": list(describe.MODELS),
+            "default": describe.MODELS[0],
+        },
+        {
             "key": "wait_minutes",
             "type": "int",
             "label": "Longest wait for DataForSEO (minutes)",
@@ -77,7 +86,7 @@ MANIFEST: dict[str, Any] = {
             "max": 240,
         },
     ],
-    "connections": ["dataforseo"],
+    "connections": ["dataforseo", "anthropic"],
     "result_label": "GBP",
     "cost_per_item_usd": COST_PER_ITEM,
 }
@@ -284,6 +293,33 @@ class Run:
                     self.found(lead, info)
         self.extras(by_id, found)
 
+    def describe(
+        self, lead: dict[str, Any], data: dict[str, Any], benchmark: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        """Claude's check of the description (brand, category, city, main services), with
+        the key from Connections; None when it can't be made."""
+        text = data["description"]["text"]
+        key = (self.job.get("connections") or {}).get("anthropic", {}).get("anthropic_api_key")
+        if not text or not key:
+            return None
+        services = [
+            s
+            for s in ((benchmark or {}).get("website") or {}).get("services") or []
+            if s.get("must_have", True)
+        ]
+        address = data["basics"]["address"] or ""
+        parts = [p.strip() for p in address.split(",")]
+        city = lead.get("city") or (parts[-2] if len(parts) >= 3 else "")
+        return describe.check(
+            key,
+            str(self.config.get("description_model") or describe.MODELS[0]),
+            text,
+            data["basics"]["name"] or lead.get("business_name") or "",
+            data["categories"]["primary"] or "",
+            city,
+            services,
+        )
+
     def found(self, lead: dict[str, Any], info: dict[str, Any]) -> None:
         """Say a lead's profile is found while its posts and reviews are on their way: not
         finished yet (tried again if the run ends before), and not counted."""
@@ -347,10 +383,11 @@ class Run:
                 today,
             )
             benchmark = self.benchmark_of(by_id[tag])
+            data["description"]["checks"] = self.describe(by_id[tag], data, benchmark)
             compared = compare.compare(data, benchmark["gbp"] if benchmark else None)
             summary = compared["summary"]
             if benchmark is None:
-                summary += " No benchmark: only what the profile misses is found."
+                summary += " · no benchmark"
             self.save(by_id[tag], "done", "AUDITED", summary, data, compared, raw=info)
 
 

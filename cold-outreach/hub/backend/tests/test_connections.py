@@ -7,6 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+import anthropic
 import httpx2
 import pytest
 from fastapi.testclient import TestClient
@@ -103,6 +104,7 @@ def test_every_group_is_listed_empty_at_first(client: TestClient, owner: User) -
     assert [g["id"] for g in body["groups"]] == [
         "dataforseo",
         "pagespeed",
+        "anthropic",
         "email",
         "telegram",
     ]
@@ -155,7 +157,7 @@ def test_an_empty_value_removes_it(client: TestClient, owner: User) -> None:
         ("smtp_from", "not-an-email", "email address"),
         ("google_sheet_url", "https://docs.google.com/spreadsheets/d/x", "can't be set here"),
         ("telegram_chat_id", "my group", "is a number"),
-        ("anthropic_api_key", "sk-1", "can't be set here"),
+        ("openai_api_key", "sk-1", "can't be set here"),
     ],
 )
 def test_bad_values_are_refused_without_saving(
@@ -254,6 +256,32 @@ def test_pagespeed_key(client: TestClient, owner: User, fake_web: FakeWeb) -> No
         True,
         "The key works (example.com scores 97 on mobile).",
     )
+
+
+def test_anthropic_key(client: TestClient, owner: User, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Step 52: the key for Claude, which checks GBP descriptions; tested by listing models."""
+    seen: list[str] = []
+
+    class Claude:
+        def __init__(self, api_key: str, **_: Any) -> None:
+            seen.append(api_key)
+            self.models = self
+
+        def list(self, limit: int) -> list[Any]:
+            if seen[-1] != "sk-ant-good-key-1234":
+                request = httpx2.Request("GET", "https://api.anthropic.com/v1/models")
+                raise anthropic.AuthenticationError(
+                    "bad key", response=httpx2.Response(401, request=request), body=None
+                )
+            return []
+
+    monkeypatch.setattr(anthropic, "Anthropic", Claude)
+    _save(client, anthropic_api_key="sk-ant-good-key-1234")
+    ok = client.post("/api/connections/anthropic/test").json()
+    assert (ok["ok"], ok["message"]) == (True, "The key works.")
+    _save(client, anthropic_api_key="sk-ant-bad-key-9999")
+    bad = client.post("/api/connections/anthropic/test").json()
+    assert (bad["ok"], bad["message"]) == (False, "Anthropic refused the API key.")
 
 
 def test_email_sends_a_test_message(client: TestClient, owner: User, mailer: FakeMailer) -> None:

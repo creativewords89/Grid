@@ -25,7 +25,7 @@ router = APIRouter(prefix="/connections", tags=["connections"])
 
 # A service account key file is a few KB; everything else is short.
 Value = Annotated[str, StringConstraints(strip_whitespace=True, max_length=20_000)]
-Group = Literal["dataforseo", "pagespeed", "email", "telegram"]
+Group = Literal["dataforseo", "pagespeed", "anthropic", "email", "telegram"]
 
 
 class FieldOut(BaseModel):
@@ -157,6 +157,10 @@ def _run_test(group: str, values: dict[str, str], me: User, db: Db, mailer: Mail
             values["dataforseo_login"], values["dataforseo_password"]
         )
         return f"Connected. Balance: ${balance:,.2f}."
+
+    if group == "anthropic":
+        providers.anthropic_key(values["anthropic_api_key"])
+        return "The key works."
 
     if group == "pagespeed":
         score = providers.pagespeed_score(values["pagespeed_api_key"])

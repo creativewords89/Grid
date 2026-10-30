@@ -88,3 +88,6 @@ class Gbp(Strict):
     # The primary categories that are right for the niche (step 51), e.g. "General
     # contractor"; a profile's primary category is compared with them. Empty: not compared.
     primary_categories: Annotated[list[Short], Field(max_length=30)] | None = None
+    # How many of the Website Standard's must-have services the GBP description should
+    # name (step 52); 3 when empty, or all of them when there are fewer.
+    services_in_description: Annotated[int, Field(ge=1, le=20)] | None = None
