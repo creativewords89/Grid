@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app import runner
 from app.builtin import KINDS, runner_token
-from app.builtin.gbp import agent, collect, dataforseo, links
+from app.builtin.gbp import agent, collect, compare, dataforseo, links
 from app.db.models import Lead, Role, User
 from tests.conftest import UserFactory, sign_in
 from tests.hub_data import make_batch, put_bot, task_id_of
@@ -356,14 +356,18 @@ def test_a_run_collects_each_lead_and_saves_its_file(
             if lead.results
         }
     assert {k: r["status"] for k, r in results.items()} == {
-        "L-000001": "COLLECTED",
+        "L-000001": "AUDITED",
         "L-000002": "NO_GBP_LINK",
         "L-000003": "CLOSED",
         "L-000004": "NOT_FOUND",
         "L-000005": "NOT_FOUND",
     }
     one = results["L-000001"]
-    assert one["score"] is None and one["summary"].startswith("Collected: claimed")
+    assert isinstance(one["score"], float) and one["summary"].startswith("Score ")
+    # Compared with the batch's benchmark, so it is checked again when that changes.
+    benchmark = client.get("/api/benchmarks").json()[0]
+    assert (one["benchmark_id"], one["benchmark_version"]) == (benchmark["id"], 1)
+    assert one["details"]["benchmark"]["name"] == benchmark["name"]
     data = one["details"]["data"]
     assert data["basics"]["website"] == "https://shine.example"
     assert "latest" not in data["reviews"]  # the full reviews are in gbp.json
@@ -377,7 +381,7 @@ def test_a_run_collects_each_lead_and_saves_its_file(
     assert [f["name"] for f in files] == ["gbp.json"]
     saved = client.get(f"/api/leads/L-000001/files/{files[0]['id']}").json()
     assert saved["data"]["reviews"]["latest"][0]["text"] == "Great"
-    assert saved["findings"] == [] and saved["score"] is None
+    assert saved["findings"] and saved["score"] == one["score"]
 
 
 def test_a_run_without_the_dataforseo_key_fails_at_once(
@@ -387,3 +391,54 @@ def test_a_run_without_the_dataforseo_key_fails_at_once(
     [found] = _run(client, clean_engine, monkeypatch, fake, connected=False)
     assert found["last_run"]["status"] in ("failed", "stopped")
     assert fake.posted == []
+
+
+BENCHMARK = {
+    "photos": 100,
+    "posts_90_days": 12,
+    "additional_categories": 4,
+    "description_length": 600,
+    "primary_categories": ["House cleaning service"],
+    "reviews": 200,
+}
+
+
+def test_the_profile_is_compared_with_the_benchmark_into_findings_and_a_score() -> None:
+    """Step 51: the lead ÷ the benchmark (red under 25%, orange to 60%), what the profile
+    misses, and a score over what could be checked; reviews shown, never scored."""
+    data = collect.collect(INFO, POSTS, REVIEWS, TODAY)
+    found = compare.compare(data, BENCHMARK)
+
+    bad = [(f["severity"], f["code"], f["value"], f["benchmark"]) for f in found["findings"]]
+    assert bad[:4] == [
+        ("red", "GBP_SHORT_DESCRIPTION", len(INFO["description"]), 600.0),
+        ("red", "GBP_FEW_RECENT_POSTS", 1, 12.0),
+        ("orange", "GBP_FEW_CATEGORIES", 2, 4.0),
+        ("orange", "GBP_FEW_PHOTOS", 48, 100.0),
+    ]
+    reviews = next(f for f in found["findings"] if f["code"] == "GBP_FEW_REVIEWS")
+    assert (reviews["severity"], reviews["scored"]) == ("ok", False)  # 126 of 200: shown only
+    assert found["score"] == 70
+    assert found["summary"].startswith("Score 70 · 2 red · 2 orange: Description length")
+
+
+def test_a_wrong_primary_category_and_what_the_profile_misses_are_red() -> None:
+    bare = {**INFO, "category": "Painter", "is_claimed": False, "phone": None, "logo": None}
+    data = collect.collect(bare, [{"items": []}], None, TODAY)
+    found = compare.compare(data, BENCHMARK)
+    red = {f["code"] for f in found["findings"] if f["severity"] == "red"}
+    assert {"GBP_WRONG_PRIMARY", "GBP_NOT_CLAIMED", "GBP_NO_PHONE", "GBP_NO_LOGO"} <= red
+    assert "GBP_NO_POSTS" in red  # posts were collected, and there are none
+
+
+def test_what_dataforseo_didnt_give_is_left_out_of_the_score() -> None:
+    data = collect.collect(
+        {"title": "Bare", "phone": "1", "url": "x", "address": "a"}, None, None, TODAY
+    )
+    found = compare.compare(data, {"photos": 10, "services": 5})
+    assert {"GBP_FEW_PHOTOS", "GBP_FEW_SERVICES", "GBP_NO_POSTS", "GBP_NOT_CLAIMED"} <= set(
+        found["unverified"]
+    )
+    assert all(f["code"] not in found["unverified"] for f in found["findings"])
+    # Without a benchmark only what the profile misses counts.
+    assert compare.compare(collect.collect(INFO, POSTS, None, TODAY), None)["score"] == 100

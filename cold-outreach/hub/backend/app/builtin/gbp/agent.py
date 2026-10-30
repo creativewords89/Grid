@@ -15,7 +15,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from app.builtin.gbp import collect, links
+from app.builtin.gbp import collect, compare, links
 from app.builtin.gbp.dataforseo import INFO, POSTS, REVIEWS, US, DataForSeo, DataForSeoError
 from app.config import get_settings
 
@@ -28,9 +28,9 @@ sleep: Callable[[float], None] = time.sleep
 
 MANIFEST: dict[str, Any] = {
     "name": "GBP audit agent",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "Collects each lead's Google Business Profile, posts and latest reviews "
-    "from DataForSEO. It doesn't compare or score yet.",
+    "from DataForSEO and compares them with the batch's benchmark: findings and a score.",
     "settings": [
         {
             "key": "items",
@@ -107,6 +107,18 @@ class Run:
         self.config = job["config"]
         self.done = self.failed = self.skipped = 0
         self.cost = 0.0
+        self.benchmarks: dict[str, dict[str, Any] | None] = {}
+
+    def benchmark_of(self, lead: dict[str, Any]) -> dict[str, Any] | None:
+        """The benchmark of the lead's batch (GET /benchmarks/{id}), read once a run; None
+        for a pasted link in a test."""
+        key = str(lead.get("benchmark_id") or "")
+        if not key:
+            return None
+        if key not in self.benchmarks:
+            status, found = self.hub.call("GET", f"/benchmarks/{key}")
+            self.benchmarks[key] = found if status == 200 else None
+        return self.benchmarks[key]
 
     def counts(self) -> dict[str, Any]:
         return {
@@ -129,16 +141,26 @@ class Run:
         status: str,
         summary: str,
         data: dict[str, Any] | None = None,
+        compared: dict[str, Any] | None = None,
     ) -> None:
+        benchmark = self.benchmark_of(lead)
         details: dict[str, Any] = {
             "schema_version": 1,
             "agent": "gbp",
             "lead_id": lead["lead_id"],
             "audited_at": datetime.now(UTC).isoformat(timespec="seconds"),
             "input": {"gbp_link": lead.get("gbp_link", "")},
+            "benchmark": {
+                "id": benchmark["id"],
+                "name": benchmark["name"],
+                "version": benchmark["version"],
+            }
+            if benchmark
+            else None,
             "data": data or {},
-            "findings": [],  # comparing with the benchmark comes in the next step
-            "score": None,
+            "findings": (compared or {}).get("findings", []),
+            "score": (compared or {}).get("score"),
+            "unverified": (compared or {}).get("unverified", []),
         }
         if data is not None:
             self.hub.upload(
@@ -154,7 +176,16 @@ class Run:
             if short.get("posts"):
                 short["posts"]["items"] = short["posts"]["items"][:5]
             details["data"] = short
-        body = {"outcome": outcome, "status": status, "summary": summary, "details": details}
+        body: dict[str, Any] = {
+            "outcome": outcome,
+            "status": status,
+            "summary": summary,
+            "details": details,
+            "score": details["score"],
+        }
+        if benchmark and outcome == "done":  # checked again when the benchmark changes
+            body["benchmark_id"] = benchmark["id"]
+            body["benchmark_version"] = benchmark["version"]
         self.hub.call("PUT", f"/leads/{lead['lead_id']}/result", body)
         if outcome == "done":
             self.done += 1
@@ -285,7 +316,12 @@ class Run:
                 reviews if isinstance(reviews, list) else None,
                 today,
             )
-            self.save(by_id[tag], "done", "COLLECTED", collect.summary(data), data)
+            benchmark = self.benchmark_of(by_id[tag])
+            compared = compare.compare(data, benchmark["gbp"] if benchmark else None)
+            summary = compared["summary"]
+            if benchmark is None:
+                summary += " No benchmark: only what the profile misses is found."
+            self.save(by_id[tag], "done", "AUDITED", summary, data, compared)
 
 
 def _leads(hub: "HubClient", job: dict[str, Any]) -> list[dict[str, Any]]:
@@ -296,7 +332,11 @@ def _leads(hub: "HubClient", job: dict[str, Any]) -> list[dict[str, Any]]:
     for batch in job.get("batches", []):
         status, found = hub.call("GET", f"/batches/{batch['id']}/leads")
         if status == 200:
-            leads.extend(x for x in found if x.get("level") != "Top")
+            leads.extend(
+                x | {"benchmark_id": batch.get("benchmark_id")}
+                for x in found
+                if x.get("level") != "Top"
+            )
     return leads
 
 

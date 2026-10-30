@@ -118,7 +118,7 @@ def test_a_test_on_pasted_gbp_links_keeps_the_agents_file(
     assert (first["lead_id"], first["gbp_link"], first["result"]["status"]) == (
         "",
         links_in[0],
-        "COLLECTED",
+        "AUDITED",
     )
     assert first["result"]["details"]["data"]["basics"]["name"] == "Shine Cleaning"
     assert first["files"] == ["gbp.json"]

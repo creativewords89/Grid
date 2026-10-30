@@ -153,7 +153,9 @@ export function Benchmarks() {
 
 // --- the editor -------------------------------------------------------------------------------
 
-const GBP_FIELDS: [keyof GbpTargets, string, string][] = [
+type GbpNumber = Exclude<keyof GbpTargets, "primary_categories">;
+
+const GBP_FIELDS: [GbpNumber, string, string][] = [
   ["additional_categories", "Additional categories", "4"],
   ["services", "Services", "12"],
   ["photos", "Photos", "100"],
@@ -254,6 +256,7 @@ function BenchmarkEditor({
       ]),
     ),
   );
+  const [primary, setPrimary] = useState((source?.gbp.primary_categories ?? []).join("\n"));
   const [s, setS] = useState<Standard>(start);
   const [topics, setTopics] = useState(start.blog.topics.join("\n"));
   const [pages, setPages] = useState(start.supporting_pages.join(", "));
@@ -280,6 +283,8 @@ function BenchmarkEditor({
       const typed = (gbp[key] ?? "").trim();
       if (typed !== "") targets[key] = Number(typed);
     }
+    const right = lines(primary);
+    if (right.length > 0) targets.primary_categories = right;
     const website: Standard = {
       ...s,
       services: s.services.map((svc, i) => ({ ...svc, synonyms: lines(synonyms[i] ?? "") })),
@@ -367,6 +372,25 @@ function BenchmarkEditor({
               }}
             />
           ))}
+        </div>
+
+        <div className="field">
+          <label htmlFor="benchmark-primary">Right primary categories</label>
+          <textarea
+            id="benchmark-primary"
+            rows={3}
+            value={primary}
+            placeholder={"General contractor\nConstruction company"}
+            aria-describedby="benchmark-primary-hint"
+            onChange={(e) => setPrimary(e.target.value)}
+          />
+          <span id="benchmark-primary-hint" className="muted small">
+            One a line, as Google names them. A profile whose primary category isn&apos;t one of
+            these gets a red finding. Empty: not compared.
+          </span>
+          {errors["gbp.primary_categories"] && (
+            <p className="field-error">{errors["gbp.primary_categories"]}</p>
+          )}
         </div>
 
         <h3>Website</h3>

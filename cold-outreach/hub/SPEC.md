@@ -1154,3 +1154,9 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     audit agent collected in sections (or any other agent's details as JSON) and its files
     to download. Anyone in the Hub reads them. (`POST/GET /api/agents/{key}/tests`,
     `GET /api/agents/{key}/tests/{id}`, `…/files/{T-n}/{name}`; migration 0031.)
+51. **GBP audit agent, comparing** (asked for after step 50; `agents/gbp-audit/SPEC.md`
+    section 5): the GBP audit agent compares what it collected with the batch's benchmark
+    into findings (🔴 🟠 ✅) and a score of 100, status `AUDITED`, keeping the benchmark's
+    version so a new one has the lead checked again. A benchmark gains **Right primary
+    categories** (one a line). A test's report shows the findings above the collected data;
+    a test lead from a batch carries its batch's benchmark, a pasted link none.

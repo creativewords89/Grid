@@ -3586,3 +3586,13 @@ textarea {
   border-radius: 8px;
   padding: 12px;
 }
+
+/* A test report's findings (step 51): one a line, its mark first. */
+.findings {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  font-size: 0.9rem;
+}

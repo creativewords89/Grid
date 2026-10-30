@@ -286,6 +286,60 @@ function Facts({ rows }: { rows: [string, unknown][] }) {
   );
 }
 
+type Finding = {
+  part: string;
+  code: string;
+  severity: "red" | "orange" | "ok";
+  message: string;
+  scored: boolean;
+};
+
+const MARK: Record<Finding["severity"], string> = { red: "🔴", orange: "🟠", ok: "✅" };
+
+/** What the GBP audit agent found against the batch's benchmark (step 51): red and orange
+ * first; what is fine folds away. */
+function Findings({ details }: { details: Data }) {
+  const findings = (details.findings ?? []) as Finding[];
+  const benchmark = details.benchmark as { name: string; version: number } | null;
+  const bad = findings.filter((f) => f.severity !== "ok");
+  const fine = findings.filter((f) => f.severity === "ok");
+  return (
+    <section className="card-inner stack-tight" aria-label="Findings">
+      <h4>
+        Findings ·{" "}
+        {benchmark
+          ? `against ${benchmark.name} (v${benchmark.version})`
+          : "no benchmark: only what the profile misses"}
+      </h4>
+      {bad.length === 0 ? (
+        <p className="small">Nothing to fix was found.</p>
+      ) : (
+        <ul className="findings">
+          {bad.map((f) => (
+            <li key={f.code}>
+              <span aria-label={f.severity}>{MARK[f.severity]}</span> {f.message}
+              {!f.scored && <span className="muted"> (shown only)</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {fine.length > 0 && (
+        <details>
+          <summary className="small">{fine.length} fine</summary>
+          <ul className="findings">
+            {fine.map((f) => (
+              <li key={f.code}>
+                <span aria-label="ok">{MARK.ok}</span> {f.message}
+                {!f.scored && <span className="muted"> (shown only)</span>}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </section>
+  );
+}
+
 /** What the GBP audit agent collected for one lead (agents/gbp-audit/SPEC.md section 4). */
 function GbpData({ data }: { data: Data }) {
   const b = (data.basics ?? {}) as Data;
@@ -553,7 +607,10 @@ export function TestReportPage({ agentKey, testId }: { agentKey: string; testId:
                 {shown.result.summary}
               </p>
               {details.agent === "gbp" && details.data ? (
-                <GbpData data={details.data as Data} />
+                <>
+                  <Findings details={details} />
+                  <GbpData data={details.data as Data} />
+                </>
               ) : (
                 <pre className="test-json">{JSON.stringify(details, null, 2)}</pre>
               )}

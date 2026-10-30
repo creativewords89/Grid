@@ -45,7 +45,7 @@ KINDS: dict[str, Kind] = {
         key="gbp-audit",
         name="GBP audit agent",
         about="Collects each lead's Google Business Profile, posts and latest reviews from "
-        "DataForSEO (about $0.01 a lead). It doesn't compare or score yet.",
+        "DataForSEO (about $0.01 a lead) and compares them with the batch's benchmark.",
         job="gbp-audit",
         manifest=gbp_audit.MANIFEST,
         run=gbp_audit.do_run,
