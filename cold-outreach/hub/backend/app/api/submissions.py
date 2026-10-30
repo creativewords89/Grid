@@ -330,6 +330,7 @@ def hand_in(
     _store(sub, content)
     db.add(sub)
     db.flush()
+    file_cities.niche_batch(db, chosen, me)  # Batches shows the niche at once (step 47)
     audit.record(db, me, "hand in", "file", sub.id, sub.file_name, [])
     db.commit()
     db.refresh(sub)
@@ -604,6 +605,8 @@ def delete_file(file_id: uuid.UUID, me: CurrentUser, db: Db) -> None:
     sub = _changeable(db, me, file_id, revise=False)
     audit.record(db, me, "delete", "file", sub.id, sub.file_name, [])
     db.delete(sub)
+    db.flush()
+    file_cities.drop_unused(db, sub.niche, me)
     db.commit()
 
 
@@ -701,6 +704,8 @@ def change_niche(file_id: uuid.UUID, body: NicheIn, me: CurrentUser, db: Db) -> 
     else:
         file_cities.recheck_mutes(db, sub)
     file_cities.mute_later_files(db, sub)
+    file_cities.niche_batch(db, chosen, me)
+    file_cities.drop_unused(db, before, me)
     audit.record(
         db,
         me,

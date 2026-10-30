@@ -681,6 +681,7 @@ test("a batch's section opens to its files; a file opens to its cities in the ba
     uploaded_by: "Sumi",
     cities: 2,
     cities_in_review: 15,
+    in_files: false,
     leads: 49,
     top: 3,
     done: 5,

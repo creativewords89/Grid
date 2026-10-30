@@ -3,9 +3,12 @@ other files and the batches: a city that another file of the niche (handed in ea
 the niche's batch already has is muted, and a business already handed in is an error. Once
 a Reviewer chooses a city's Top it is ready, and goes on to its niche's batch an hour later
 (or when someone sends it now): only that city's businesses are saved there. Each niche
-has one batch, named after it, made when its first city comes."""
+has one batch, named after it, made when its first file is handed in (step 47), so Files,
+Top Review and Batches show the same niches; a batch left without files, leads or a start
+goes again."""
 
 import logging
+import uuid
 from typing import Literal
 
 from sqlalchemy import func, select, text
@@ -13,7 +16,18 @@ from sqlalchemy.orm import Session
 
 from app import audit
 from app.auth.tokens import now
-from app.db.models import Batch, Benchmark, FileCity, Lead, LeadList, Submission, User
+from app.db.models import (
+    Batch,
+    BatchStatus,
+    Benchmark,
+    FileCity,
+    Import,
+    ImportStatus,
+    Lead,
+    LeadList,
+    Submission,
+    User,
+)
 from app.errors import ApiError
 from app.imports import check, reader, service
 from app.imports import submissions as files
@@ -146,17 +160,23 @@ def forget_tops(sub: Submission) -> None:
             city.tops, city.topped_at = [], None
 
 
-def niche_batch(db: Session, niche: str, user: User | None) -> Batch:
-    """The niche's batch, made (named after the niche) when its first city comes: with the
-    niche's benchmark when it has one, else without (it can't be started until one is
-    chosen)."""
-    key = _niche(niche)
-    batch = db.scalar(
+def find_niche_batch(db: Session, niche: str) -> Batch | None:
+    """The niche's batch (the first, should there be more), if it has one."""
+    return db.scalar(
         select(Batch)
-        .where(func.lower(func.trim(Batch.niche)) == key)
+        .where(func.lower(func.trim(Batch.niche)) == _niche(niche))
         .order_by(Batch.position, Batch.created_at)
         .limit(1)
     )
+
+
+def niche_batch(db: Session, niche: str, user: User | None) -> Batch:
+    """The niche's batch, made (named after the niche) when its first file is handed in:
+    with the niche's benchmark when it has one, else without (it can't be started until one
+    is chosen)."""
+    db.execute(text("SELECT pg_advisory_xact_lock(4242003)"))  # one batch per niche
+    key = _niche(niche)
+    batch = find_niche_batch(db, niche)
     if batch is not None:
         return batch
     choices = list(
@@ -178,9 +198,56 @@ def niche_batch(db: Session, niche: str, user: User | None) -> Batch:
     return batch
 
 
+def batch_files(db: Session, batch: Batch) -> list[uuid.UUID]:
+    """The files a batch shows (step 47): those a city of which is in it, and, for the
+    niche's batch, every file of the niche, its cities still in Files or Top Review."""
+    found = set(
+        db.scalars(
+            select(FileCity.submission_id)
+            .join(Import, Import.id == FileCity.import_id)
+            .where(FileCity.moved_at.is_not(None), Import.batch_id == batch.id)
+        )
+    )
+    main = find_niche_batch(db, batch.niche)
+    if main is not None and main.id == batch.id:
+        found.update(
+            db.scalars(
+                select(Submission.id).where(
+                    func.lower(func.trim(Submission.niche)) == _niche(batch.niche)
+                )
+            )
+        )
+    return list(found)
+
+
+def drop_unused(db: Session, niche: str, user: User | None) -> None:
+    """Delete the niche's batches no file of the niche is left for, that have no leads or
+    files and were never started (step 47). One with leads or results always stays."""
+    key = _niche(niche)
+    if db.scalar(
+        select(Submission.id).where(func.lower(func.trim(Submission.niche)) == key).limit(1)
+    ):
+        return
+    for batch in db.scalars(
+        select(Batch).where(
+            func.lower(func.trim(Batch.niche)) == key,
+            Batch.status == BatchStatus.NOT_STARTED,
+        )
+    ):
+        if db.scalar(select(Lead.lead_id).where(Lead.batch_id == batch.id).limit(1)):
+            continue
+        imports = list(db.scalars(select(Import).where(Import.batch_id == batch.id)))
+        if any(i.status in (ImportStatus.CONFIRMED, ImportStatus.PREVIEW) for i in imports):
+            continue
+        for imp in imports:
+            db.delete(imp)  # discarded or failed files
+        audit.record(db, user, "delete", "batch", batch.id, batch.name, [])
+        db.delete(batch)
+    db.flush()
+
+
 def move(db: Session, sub: Submission, city: FileCity, user: User | None) -> Batch:
     """Save a ready city's businesses in its niche's batch, its Top as Top."""
-    db.execute(text("SELECT pg_advisory_xact_lock(4242003)"))  # one batch per niche
     batch = niche_batch(db, sub.niche, user)
     imp = service.preview(
         db,

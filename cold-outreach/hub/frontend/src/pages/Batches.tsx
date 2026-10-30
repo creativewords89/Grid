@@ -174,13 +174,13 @@ export function Batches() {
   }
 
   return (
-    <section className="page">
+    <section className="page page-wide">
       <div className="page-head">
         <div className="stack-tight">
           <h1>Batches</h1>
           <p className="muted">
-            One batch per niche, named after it: its cities come from the Files screen once they
-            have their Top (Top Review).
+            One batch per niche, named after it, made when its first file is handed in: its cities
+            come from the Files screen once they have their Top (Top Review).
           </p>
         </div>
       </div>

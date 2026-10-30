@@ -429,6 +429,7 @@ export type BatchFile = {
   uploaded_by: string | null;
   cities: number;
   cities_in_review: number; // its cities still in Top Review
+  in_files: boolean; // not sent on to Top Review yet (step 47)
   leads: number;
   top: number;
   done: number;

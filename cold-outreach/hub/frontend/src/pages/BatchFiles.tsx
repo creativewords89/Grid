@@ -32,7 +32,7 @@ export function BatchFilesTable({
   if (files.length === 0)
     return (
       <p className="muted files-empty">
-        No files yet: its cities come from Top Review once they have their Top.
+        No files yet: a file of its niche shows here once it is handed in on Files.
       </p>
     );
   return (
@@ -56,7 +56,10 @@ export function BatchFilesTable({
                   {f.file_name}
                 </button>
                 <div className="small muted">
-                  F{f.number} · {f.cities} {f.cities === 1 ? "city" : "cities"} in the batch
+                  F{f.number} ·{" "}
+                  {f.in_files
+                    ? "still in Files"
+                    : `${f.cities} ${f.cities === 1 ? "city" : "cities"} in the batch`}
                   {f.cities_in_review > 0 && ` (${f.cities_in_review} still in Top Review)`}
                 </div>
               </td>
@@ -170,6 +173,7 @@ export function BatchFileView({
             In {batch.name} · F{file.number}
             {file.uploaded_by && ` · handed in by ${file.uploaded_by}`} · {all.length}{" "}
             {all.length === 1 ? "city" : "cities"} here
+            {file.in_files && ", still in Files"}
             {file.cities_in_review > 0 && `, ${file.cities_in_review} still in Top Review`}
           </p>
         </div>

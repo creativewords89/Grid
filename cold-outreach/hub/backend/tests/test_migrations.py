@@ -443,3 +443,33 @@ def test_cities_of_files_sent_on_get_their_businesses(fresh_database_url: str) -
         }
     ]
     assert state == "checked"
+
+
+def test_every_niche_of_the_files_gets_its_batch(fresh_database_url: str) -> None:
+    """Step 47: the niches of the files handed in get their batch; an unused batch no file
+    of its niche is left for goes."""
+    cfg = alembic_config(fresh_database_url)
+    command.upgrade(cfg, "0029")
+    engine = create_engine(fresh_database_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO submissions (id, number, file_name, niche, content, sha256,"
+                    " state) VALUES (gen_random_uuid(), 1, 'a.xlsx', 'Construction', 'x', 'h',"
+                    " 'checked')"
+                )
+            )
+            conn.execute(
+                text(
+                    "INSERT INTO batches (id, name, niche, status, position) VALUES"
+                    " (gen_random_uuid(), 'Cleaning', 'Cleaning', 'not_started', 1)"
+                )
+            )
+        command.upgrade(cfg, "0030")
+        with engine.connect() as conn:
+            batches = conn.execute(text("SELECT name, niche, position FROM batches")).all()
+    finally:
+        engine.dispose()
+
+    assert [tuple(b) for b in batches] == [("Construction", "Construction", 1)]
