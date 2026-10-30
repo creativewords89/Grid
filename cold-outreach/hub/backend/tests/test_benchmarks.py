@@ -58,6 +58,34 @@ def test_empty_numbers_mean_dont_compare(client: TestClient, owner: User) -> Non
     assert response.json()["gbp"] == {"photos": 40}
 
 
+def test_the_gbp_part_holds_only_what_an_agency_can_improve(
+    client: TestClient, owner: User
+) -> None:
+    """Step 53: the right primary categories, the standard GBP services, photos and posts in
+    90 days. Reviews, ratings and description length aren't a benchmark any more."""
+    gbp = {"standard_services": ["Remodeling", " Roofing "], "photos": 50, "posts_90_days": 6}
+    made = client.post(
+        "/api/benchmarks",
+        json={"name": "S", "niche": "Construction", "gbp": gbp, "website": WEBSITE},
+    )
+    assert made.json()["gbp"] == {
+        "standard_services": ["Remodeling", "Roofing"],
+        "photos": 50,
+        "posts_90_days": 6,
+    }
+    for gone in ("reviews", "rating", "description_length", "additional_categories"):
+        refused = client.post(
+            "/api/benchmarks",
+            json={
+                "name": f"X {gone}",
+                "niche": "Construction",
+                "gbp": {gone: 1},
+                "website": WEBSITE,
+            },
+        )
+        assert refused.status_code == 422, gone
+
+
 def test_a_benchmark_lists_the_right_primary_categories(client: TestClient, owner: User) -> None:
     """Step 51: the GBP audit agent compares a profile's primary category with them."""
     gbp = {"primary_categories": [" General contractor ", "Construction company"]}

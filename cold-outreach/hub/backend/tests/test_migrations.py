@@ -473,3 +473,32 @@ def test_every_niche_of_the_files_gets_its_batch(fresh_database_url: str) -> Non
         engine.dispose()
 
     assert [tuple(b) for b in batches] == [("Construction", "Construction", 1)]
+
+
+def test_the_gbp_benchmark_keeps_what_an_agency_can_improve(fresh_database_url: str) -> None:
+    """Step 53: reviews, rating, review replies, description length, additional categories
+    and the services named in the description leave the GBP part."""
+    cfg = alembic_config(fresh_database_url)
+    command.upgrade(cfg, "0032")
+    engine = create_engine(fresh_database_url)
+    old = (
+        '{"photos": 100, "reviews": 150, "rating": 4.8, "review_reply_pct": 80,'
+        ' "description_length": 600, "additional_categories": 4,'
+        ' "services_in_description": 3, "primary_categories": ["A"]}'
+    )
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO benchmarks (id, name, niche, gbp, website) VALUES"
+                    " (gen_random_uuid(), 'B', 'Cleaning', CAST(:gbp AS jsonb), '{}')"
+                ),
+                {"gbp": old},
+            )
+        command.upgrade(cfg, "0033")
+        with engine.connect() as conn:
+            gbp = conn.execute(text("SELECT gbp FROM benchmarks")).scalar()
+    finally:
+        engine.dispose()
+
+    assert gbp == {"photos": 100, "primary_categories": ["A"]}

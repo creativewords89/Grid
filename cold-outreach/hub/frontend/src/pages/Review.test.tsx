@@ -62,7 +62,6 @@ const city: ReviewCity = {
       values: { business_name: "Shine 0", phone: "(918) 555-0000" },
       extra: {},
       top: false,
-      likely: false,
     },
     {
       key: "Tulsa row 3",
@@ -70,10 +69,8 @@ const city: ReviewCity = {
       values: { business_name: "Shine 1", phone: "(918) 555-0001" },
       extra: {},
       top: false,
-      likely: true,
     },
   ],
-  benchmark: { name: "Cleaning Benchmark 1", reviews: 150, rating: 4.8 },
 };
 
 beforeEach(() => window.history.pushState(null, "", "/batches"));
@@ -102,7 +99,6 @@ test("a reviewer chooses a city's Top: it is ready, and goes to its batch now if
         page: 1,
         pages: 1,
         columns: city.columns,
-        benchmark: null,
         cities: [
           {
             ...row({ key: "waco", name: "Waco", businesses: 3, state: "small" }),
@@ -193,12 +189,9 @@ test("Save & next city opens the next one, fetched ahead; ticks are kept as a dr
   await openFile();
 
   await userEvent.click(await screen.findByRole("button", { name: "Tulsa" }));
-  // Most reviews first, with ⭐ on the business that meets the benchmark.
-  expect(await screen.findByLabelText("Likely Top")).toBeVisible();
-  expect(
-    screen.getByText(/meets Cleaning Benchmark 1 \(150\+ reviews, 4.8\+ rating\)/),
-  ).toBeVisible();
-  await userEvent.click(screen.getByRole("checkbox", { name: "Top: Shine 1" }));
+  // Most reviews first; reviews aren't a benchmark, so no business is marked (step 53).
+  await userEvent.click(await screen.findByRole("checkbox", { name: "Top: Shine 1" }));
+  expect(screen.queryByLabelText("Likely Top")).not.toBeInTheDocument();
   // The next city is fetched while this one is worked on.
   expect(calls.some((c) => c.path === "/review/files/f1/cities/waco")).toBe(true);
 
@@ -255,7 +248,6 @@ test("cities under 10 are ticked on one page and saved at once", async () => {
         page: 1,
         pages: 1,
         columns: city.columns,
-        benchmark: null,
         cities: [small("Waco", "waco", "f1"), small("Enid", "enid", "f1")],
       },
     ],

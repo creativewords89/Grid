@@ -66,7 +66,7 @@ Nothing missing is ever a problem: what DataForSEO doesn't give is `null` and li
 | Description | the text and its length |
 | Photos | number of photos, logo, cover photo |
 | Posts | every post collected (date, text, link, image or not, button), the last post's date, posts in the last 30 and 90 days |
-| Reviews (shown only: not scored, not used in outreach) | count, rating, stars 5 to 1, last review date, the latest reviews (stars, text, date, owner's reply), reply rate, unanswered 1–2★ reviews |
+| Reviews (shown only: never compared, not scored, not used in outreach) | count, rating, stars 5 to 1, last review date, the latest reviews (stars, text, date, owner's reply), reply rate, unanswered 1–2★ reviews |
 
 Removed in planning: keyword-stuffed name, service-area business, price level, place topics,
 the file's phone/address compared with GBP. Removed after the first real reports (30 October
@@ -77,32 +77,38 @@ DataForSEO didn't give. The Website Standard's services are a different thing an
 ## 5. Comparing with the benchmark (stage 2)
 
 The collected data against the batch's benchmark (GBP part); an empty box isn't compared.
+The GBP part holds only what an agency can improve for the business (hub step 53): reviews
+and ratings can't be changed by an agency, and the description is judged by what it says,
+not its length.
 
-- **A benchmark number:** the lead's value ÷ the benchmark's: under 25% 🔴, 25–60% 🟠,
-  60% or more ✅. Additional categories, photos, posts in 90 days and description length
-  are scored; reviews, rating and reply % are compared and shown, never scored.
-- **Right primary categories** (a new benchmark box, one a line): a primary category that
-  isn't one of them is 🔴.
+- **The benchmark's GBP part:** **Right primary categories** (one a line), **Standard GBP
+  services** (one a line, by hand), **Photos** and **Posts in 90 days**.
+- **A benchmark number** (photos, posts in 90 days): the lead's value ÷ the benchmark's:
+  under 25% 🔴, 25–60% 🟠, 60% or more ✅.
+- **Right primary categories:** a primary category that isn't one of them is 🔴.
+- **Standard GBP services:** DataForSEO doesn't say which services a profile lists, so they
+  are shown as a suggestion ("a profile in this niche usually lists these"), never a
+  finding, and looked for in the description. Later, the Opportunity Finder can use them.
 - **What the profile misses** (no benchmark needed): not claimed, no phone, website,
   address, hours, description, logo or cover photo, never posted: 🔴.
 - **The description, checked by Claude** (hub step 52): with the Anthropic key from
   Connections and the agent's *Claude model for the description* (Claude Opus 5.5 by
   default, about $0.01 a lead; Claude Haiku 5.5, about $0.0003). Claude says whether the
   description names the business (without "LLC" …), its primary category (close wording
-  counts), its city, and which of the benchmark's Website Standard **must-have services**
-  (with their other names), quoting the description's own words; a yes whose words aren't
-  in the description is a no. Not every service is needed: **at least 3** (the benchmark's
-  *Must-have services named in the description*, or all when fewer) is ✅, 1–2 🟠, none
-  🔴. Brand or category missing: 🔴; city missing: 🟠, shown, not scored. Without a
+  counts), its city, and which of the **standard GBP services**, quoting the description's
+  own words; a yes whose words aren't in the description is a no. Not every service is
+  needed: **at least 3** (all, when the benchmark lists fewer) is ✅, 1–2 🟠, none 🔴.
+  Business name or category missing: 🔴; city missing: 🟠, shown, not scored. Without a
   description, a key or a usable answer these checks are unable to verify. Structured
   output (JSON schema), low effort; on Opus, refusals fall back server-side.
+- **Reviews and ratings** are shown in the report, never compared.
 - **What DataForSEO didn't give** is never a finding: that check is left out of the score
   and listed in `unverified`.
 - **Score** (100, over the checks that could be made): Basics 20 (claimed, phone, website,
-  address, hours: 4 each), Categories 35 (primary 20, additional categories 15),
-  Description 10 (there 2, length 2, business name 2, category 2, main services 2), Photos 10 (count 6,
-  logo 2, cover 2), Posts 25 (ever posted 10, in 90 days 15). A ratio earns its share of the
-  points; a present/missing check all or nothing.
+  address, hours: 4 each), Primary category 20, Description 10 (there 2, business name 3,
+  category 3, standard services 2), Photos 20 (count 16, logo 2, cover 2), Posts 30 (ever
+  posted 10, in 90 days 20). A ratio earns its share of the points; a present/missing check
+  all or nothing.
 - A pasted link in a test has no batch, so no benchmark: only what the profile misses.
 
 ## 6. Result

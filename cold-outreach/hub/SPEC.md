@@ -465,10 +465,10 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 - A **benchmark** is a named set such as "Cleaning Benchmark 1" (unique name, case ignored),
   of one niche, made, changed and deleted by Owners and Admins in a form (no file upload). A
   niche can have several. It **doesn't depend on city or competition**.
-- **GBP part:** additional categories, photos, posts in 90 days, description length
-  (characters), reviews, rating (0–5), review replies (%), and the right primary categories
-  (step 51). An empty box means "don't compare this". (Reviews are shown in reports, not
-  scored: PLAN.md section 5. GBP services left the plan after step 51.)
+- **GBP part** (step 53: only what an agency can improve): the right primary categories,
+  the standard GBP services (by hand), photos and posts in 90 days. An empty box means
+  "don't compare this". Reviews and ratings aren't a benchmark: they are shown in reports,
+  never compared. The form has two tabs, **Google Business Profile** and **Website**.
 - **Website part (the Website Standard):** services (name, other names, must-have or not; at
   least one must-have); service pages (words, sections, FAQ, price, own photos, reviews, call
   to action, service area); location pages (words, city in title, local content, local
@@ -1173,3 +1173,12 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     description don't count. An agent setting picks the model (Claude Opus 5.5 or Haiku
     5.5). Description scores: there 2, length 2, business name 2, category 2, services 2.
     The one-line summary keeps only the score and counts.
+53. **The GBP benchmark: what an agency can improve** (asked for after step 52; the
+    Benchmark canvas): the benchmark form has two tabs, Google Business Profile and Website.
+    The GBP part keeps the right primary categories, photos and posts in 90 days and gains
+    **Standard GBP services** (one a line, by hand); additional categories, description
+    length, reviews, rating, review replies and the services named in the description go
+    (migration 0033). Claude looks for the standard services in the description (at least
+    3); the report lists them as a suggestion. Top Review no longer marks a likely Top (it
+    came from the benchmark's reviews and rating). GBP score: Basics 20, Primary category
+    20, Description 10, Photos 20, Posts 30.

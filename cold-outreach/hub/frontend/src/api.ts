@@ -332,15 +332,10 @@ export type LeadList = {
 };
 
 export type GbpTargets = {
-  additional_categories?: number;
+  primary_categories?: string[]; // the right ones for the niche (step 51)
+  standard_services?: string[]; // the niche's standard GBP services, by hand (step 53)
   photos?: number;
   posts_90_days?: number;
-  description_length?: number;
-  reviews?: number;
-  rating?: number;
-  review_reply_pct?: number;
-  primary_categories?: string[]; // the right ones for the niche (step 51)
-  services_in_description?: number; // must-have services the description should name (step 52)
 };
 
 export type Benchmark = {
@@ -610,7 +605,6 @@ export type ReviewCity = {
   file_name: string;
   columns: { key: string; label: string }[];
   businesses: ReviewBusiness[];
-  benchmark: BenchmarkHint | null; // ⭐ for the businesses that meet it (step 41)
 };
 
 /** A business of a city in Top Review (step 41): most reviews first. */
@@ -620,10 +614,7 @@ export type ReviewBusiness = {
   values: Record<string, string>;
   extra: Record<string, string>;
   top: boolean;
-  likely: boolean; // meets the niche's benchmark: a likely Top
 };
-
-export type BenchmarkHint = { name: string; reviews: number | null; rating: number | null };
 
 /** The cities under 10 on one page, to tick and save at once (step 41). */
 export type SmallPage = {
@@ -631,7 +622,6 @@ export type SmallPage = {
   page: number;
   pages: number;
   columns: { key: string; label: string }[];
-  benchmark: BenchmarkHint | null;
   cities: (ReviewRow & { businesses_list: ReviewBusiness[] })[];
 };
 

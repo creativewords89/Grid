@@ -76,18 +76,13 @@ Count = Annotated[float, Field(ge=0, le=1_000_000)]
 
 
 class Gbp(Strict):
-    """What a good profile of the niche has. Empty (None) means "don't compare this"."""
+    """What a good profile of the niche has, of what an agency can improve (step 53).
+    Reviews and ratings are not a benchmark. Empty (None) means "don't compare this"."""
 
-    additional_categories: Annotated[float, Field(ge=0, le=100)] | None = None
+    # The primary categories that are right for the niche, e.g. "General contractor".
+    primary_categories: Annotated[list[Short], Field(max_length=30)] | None = None
+    # The services a profile in the niche lists, entered by hand (DataForSEO doesn't give a
+    # profile's services): shown as a suggestion, and looked for in the description.
+    standard_services: Annotated[list[Short], Field(max_length=60)] | None = None
     photos: Count | None = None
     posts_90_days: Annotated[float, Field(ge=0, le=1000)] | None = None
-    description_length: Annotated[float, Field(ge=0, le=750)] | None = None
-    reviews: Count | None = None
-    rating: Annotated[float, Field(ge=0, le=5)] | None = None
-    review_reply_pct: Annotated[float, Field(ge=0, le=100)] | None = None
-    # The primary categories that are right for the niche (step 51), e.g. "General
-    # contractor"; a profile's primary category is compared with them. Empty: not compared.
-    primary_categories: Annotated[list[Short], Field(max_length=30)] | None = None
-    # How many of the Website Standard's must-have services the GBP description should
-    # name (step 52); 3 when empty, or all of them when there are fewer.
-    services_in_description: Annotated[int, Field(ge=1, le=20)] | None = None
