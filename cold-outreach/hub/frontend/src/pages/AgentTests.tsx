@@ -340,6 +340,33 @@ function Findings({ details }: { details: Data }) {
   );
 }
 
+/** Claude's check of the description (step 52): what it names, with its own words. */
+function DescriptionChecks({ checks }: { checks: Data | null | undefined }) {
+  if (!checks) return <p className="muted small">Not checked by Claude.</p>;
+  const said = (answer: unknown) => {
+    const a = answer as { mentioned?: boolean; quote?: string | null } | undefined;
+    if (!a) return "—";
+    return a.mentioned ? `Yes: “${a.quote ?? ""}”` : "No";
+  };
+  const services = (checks.services ?? []) as { name: string; mentioned: boolean }[];
+  return (
+    <Facts
+      rows={[
+        ["Names the business", said(checks.brand)],
+        ["Names the category", said(checks.category)],
+        ["Names the city", said(checks.city)],
+        [
+          "Main services",
+          services.length
+            ? services.map((s) => `${s.mentioned ? "✓" : "✗"} ${s.name}`).join(" · ")
+            : "None in the benchmark",
+        ],
+        ["Checked by", checks.model],
+      ]}
+    />
+  );
+}
+
 /** What the GBP audit agent collected for one lead (agents/gbp-audit/SPEC.md section 4). */
 function GbpData({ data }: { data: Data }) {
   const b = (data.basics ?? {}) as Data;
@@ -384,6 +411,7 @@ function GbpData({ data }: { data: Data }) {
           <h4>Description</h4>
           <p className="small">{(d.text as string | null) ?? "—"}</p>
           <p className="muted small">{Number(d.length ?? 0)} characters</p>
+          <DescriptionChecks checks={d.checks as Data | null | undefined} />
         </section>
         <section className="card-inner stack-tight">
           <h4>Photos</h4>

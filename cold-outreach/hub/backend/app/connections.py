@@ -50,6 +50,7 @@ FIELDS: dict[str, Field] = {
     "dataforseo_login": Field("dataforseo", "Login (API email)", placeholder="you@gridrankers.com"),
     "dataforseo_password": Field("dataforseo", "API password", "secret"),
     "pagespeed_api_key": Field("pagespeed", "API key", "secret", placeholder="AIza…"),
+    "anthropic_api_key": Field("anthropic", "API key", "secret", placeholder="sk-ant-…"),
     "smtp_host": Field("email", "SMTP server", placeholder="smtp.hostinger.com"),
     "smtp_port": Field("email", "Port", "number", placeholder="587"),
     "smtp_user": Field("email", "Username", required=False),
@@ -66,6 +67,7 @@ FIELDS: dict[str, Field] = {
 GROUPS = {
     "dataforseo": "DataForSEO",
     "pagespeed": "PageSpeed Insights",
+    "anthropic": "Anthropic (Claude)",
     "email": "Email (SMTP)",
     "telegram": "Telegram alerts",
 }

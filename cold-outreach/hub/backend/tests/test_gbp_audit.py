@@ -6,7 +6,8 @@ import base64
 import json
 import threading
 from datetime import UTC, datetime
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, ClassVar
 
 import httpx2
 import pytest
@@ -16,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app import runner
 from app.builtin import KINDS, runner_token
-from app.builtin.gbp import agent, collect, compare, dataforseo, links
+from app.builtin.gbp import agent, collect, compare, dataforseo, describe, links
 from app.db.models import Lead, Role, User
 from tests.conftest import UserFactory, sign_in
 from tests.hub_data import make_batch, put_bot, task_id_of
@@ -433,8 +434,10 @@ def test_the_profile_is_compared_with_the_benchmark_into_findings_and_a_score() 
     ]
     reviews = next(f for f in found["findings"] if f["code"] == "GBP_FEW_REVIEWS")
     assert (reviews["severity"], reviews["scored"]) == ("ok", False)  # 126 of 200: shown only
-    assert found["score"] == 70
-    assert found["summary"].startswith("Score 70 · 2 red · 2 orange: Description length")
+    # The description's own checks weren't made (no Claude answer): left out of the score.
+    assert "GBP_DESCRIPTION_NO_BRAND" in found["unverified"]
+    assert found["score"] == 72
+    assert found["summary"] == "Score 72 · 2 red · 2 orange"
 
 
 def test_a_wrong_primary_category_and_what_the_profile_misses_are_red() -> None:
@@ -455,3 +458,117 @@ def test_what_dataforseo_didnt_give_is_left_out_of_the_score() -> None:
     assert all(f["code"] not in found["unverified"] for f in found["findings"])
     # Without a benchmark only what the profile misses counts.
     assert compare.compare(collect.collect(INFO, POSTS, None, TODAY), None)["score"] == 100
+
+
+# --- the description, checked by Claude (step 52) --------------------------------------------
+
+SERVICES = [
+    {"name": "Remodeling", "synonyms": ["renovation"], "must_have": True},
+    {"name": "Roofing", "synonyms": [], "must_have": True},
+    {"name": "Demolition", "synonyms": [], "must_have": True},
+    {"name": "Painting", "synonyms": [], "must_have": True},
+]
+TEXT = "Apex Builders is a construction company in Akron doing renovation and demolition."
+
+
+class FakeClaude:
+    """The Anthropic client: records each request and answers with `reply`."""
+
+    calls: ClassVar[list[dict[str, Any]]] = []
+    reply: ClassVar[dict[str, Any]] = {}
+    stop = "end_turn"
+
+    def __init__(self, **options: Any) -> None:
+        self.options = options
+        self.messages = SimpleNamespace(create=self._create)
+        self.beta = SimpleNamespace(messages=SimpleNamespace(create=self._create))
+
+    def _create(self, **request: Any) -> Any:
+        FakeClaude.calls.append(request | {"api_key": self.options.get("api_key")})
+        text = SimpleNamespace(type="text", text=json.dumps(FakeClaude.reply))
+        return SimpleNamespace(stop_reason=FakeClaude.stop, content=[text])
+
+
+@pytest.fixture
+def claude(monkeypatch: pytest.MonkeyPatch) -> type[FakeClaude]:
+    FakeClaude.calls = []
+    FakeClaude.stop = "end_turn"
+    FakeClaude.reply = {
+        "brand": {"mentioned": True, "quote": "Apex Builders"},
+        "category": {"mentioned": True, "quote": "construction company"},
+        "city": {"mentioned": True, "quote": "in Akron"},
+        "services": [
+            {"service": "Remodeling", "mentioned": True, "quote": "renovation"},
+            {"service": "Roofing", "mentioned": True, "quote": "roof repair"},  # not in it
+            {"service": "Demolition", "mentioned": True, "quote": "demolition"},
+            {"service": "Painting", "mentioned": False, "quote": ""},
+        ],
+    }
+    monkeypatch.setattr(describe.anthropic, "Anthropic", FakeClaude)
+    return FakeClaude
+
+
+def test_claude_checks_the_description_and_its_quotes_are_verified(
+    claude: type[FakeClaude],
+) -> None:
+    found = describe.check(
+        "sk-ant-x",
+        "claude-opus-5-5",
+        TEXT,
+        "Apex Builders, LLC",
+        "Construction company",
+        "Akron",
+        SERVICES,
+    )
+    assert found is not None
+    assert (found["brand"], found["city"]["mentioned"]) == (
+        {"mentioned": True, "quote": "Apex Builders"},
+        True,
+    )
+    # A "yes" whose words aren't in the description is a no.
+    assert [(s["name"], s["mentioned"]) for s in found["services"]] == [
+        ("Remodeling", True),
+        ("Roofing", False),
+        ("Demolition", True),
+        ("Painting", False),
+    ]
+    [call] = claude.calls
+    assert call["model"] == "claude-opus-5-5" and call["api_key"] == "sk-ant-x"
+    assert call["output_config"]["format"]["type"] == "json_schema"
+    assert call["fallbacks"] == "default"  # Opus: a refused request is re-run on a fallback
+    assert "renovation" in call["messages"][0]["content"]  # the services' other names
+    assert '"Apex Builders"' in call["messages"][0]["content"]  # without ", LLC"
+
+    describe.check("k", "claude-haiku-5-5", TEXT, "Apex", "x", "Akron", SERVICES)
+    assert claude.calls[-1]["model"] == "claude-haiku-5-5" and "fallbacks" not in claude.calls[-1]
+
+
+def test_no_description_key_or_usable_answer_checks_nothing(claude: type[FakeClaude]) -> None:
+    assert describe.check("", "claude-opus-5-5", TEXT, "A", "B", "C", SERVICES) is None
+    assert describe.check("k", "claude-opus-5-5", "  ", "A", "B", "C", SERVICES) is None
+    assert describe.check("k", "gpt-4", TEXT, "A", "B", "C", SERVICES) is None
+    claude.stop = "refusal"
+    assert describe.check("k", "claude-opus-5-5", TEXT, "A", "B", "C", SERVICES) is None
+    assert len(claude.calls) == 1  # Claude was asked only once
+
+
+def test_a_few_main_services_are_enough(claude: type[FakeClaude]) -> None:
+    checks = describe.check("k", "claude-opus-5-5", TEXT, "Apex", "x", "Akron", SERVICES)
+    data = collect.collect({**INFO, "description": TEXT}, POSTS, REVIEWS, TODAY)
+    data["description"]["checks"] = checks
+    found = {f["code"]: f for f in compare.compare(data, BENCHMARK)["findings"]}
+    services = found["GBP_DESCRIPTION_FEW_SERVICES"]
+    # 2 of the 4 named, 3 wanted: orange, with what is missing.
+    assert services["severity"] == "orange"
+    assert "not named: Roofing, Painting" in services["message"]
+    assert found["GBP_DESCRIPTION_NO_BRAND"]["severity"] == "ok"
+    enough = compare.compare(data, BENCHMARK | {"services_in_description": 2})
+    named = next(f for f in enough["findings"] if f["code"] == "GBP_DESCRIPTION_FEW_SERVICES")
+    assert named["severity"] == "ok"
+    data["description"]["checks"]["city"] = {"mentioned": False, "quote": None}
+    city = next(
+        f
+        for f in compare.compare(data, BENCHMARK)["findings"]
+        if f["code"] == "GBP_DESCRIPTION_NO_CITY"
+    )
+    assert (city["severity"], city["scored"]) == ("orange", False)  # shown, not scored

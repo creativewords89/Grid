@@ -85,11 +85,22 @@ The collected data against the batch's benchmark (GBP part); an empty box isn't 
   isn't one of them is 🔴.
 - **What the profile misses** (no benchmark needed): not claimed, no phone, website,
   address, hours, description, logo or cover photo, never posted: 🔴.
+- **The description, checked by Claude** (hub step 52): with the Anthropic key from
+  Connections and the agent's *Claude model for the description* (Claude Opus 5.5 by
+  default, about $0.01 a lead; Claude Haiku 5.5, about $0.0003). Claude says whether the
+  description names the business (without "LLC" …), its primary category (close wording
+  counts), its city, and which of the benchmark's Website Standard **must-have services**
+  (with their other names), quoting the description's own words; a yes whose words aren't
+  in the description is a no. Not every service is needed: **at least 3** (the benchmark's
+  *Must-have services named in the description*, or all when fewer) is ✅, 1–2 🟠, none
+  🔴. Brand or category missing: 🔴; city missing: 🟠, shown, not scored. Without a
+  description, a key or a usable answer these checks are unable to verify. Structured
+  output (JSON schema), low effort; on Opus, refusals fall back server-side.
 - **What DataForSEO didn't give** is never a finding: that check is left out of the score
   and listed in `unverified`.
 - **Score** (100, over the checks that could be made): Basics 20 (claimed, phone, website,
   address, hours: 4 each), Categories 35 (primary 20, additional categories 15),
-  Description 10 (there 4, length 6), Photos 10 (count 6,
+  Description 10 (there 2, length 2, business name 2, category 2, main services 2), Photos 10 (count 6,
   logo 2, cover 2), Posts 25 (ever posted 10, in 90 days 15). A ratio earns its share of the
   points; a present/missing check all or nothing.
 - A pasted link in a test has no batch, so no benchmark: only what the profile misses.
@@ -98,8 +109,8 @@ The collected data against the batch's benchmark (GBP part); an empty box isn't 
 
 - Status: `AUDITED` (compared, with a score), `CLOSED` (permanently closed: Basics only),
   `NOT_FOUND`, `NO_GBP_LINK` (skipped) or `FAILED` (tried again on the next run).
-- Summary, e.g. "Score 70 · 2 red · 2 orange: Description length: 44 vs 600 in the
-  benchmark; Posts in 90 days: 1 vs 12 in the benchmark; …".
+- Summary: only the score and the counts, e.g. "Score 70 · 2 red · 2 orange"; the
+  findings say the rest.
 - The result keeps the benchmark's id and version, so a new version of the benchmark has
   the lead checked again.
 - `details`: the JSON envelope (PLAN.md section 3.6) with `benchmark`, `data` as above,

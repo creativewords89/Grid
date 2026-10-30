@@ -15,6 +15,7 @@ import { ago } from "../format";
 const TEST_LABEL: Record<string, string> = {
   dataforseo: "Test and show balance",
   pagespeed: "Test the key",
+  anthropic: "Test the key",
   email: "Send a test email",
   telegram: "Test and find the group",
 };
@@ -24,6 +25,8 @@ const HELP: Record<string, string> = {
     "From app.dataforseo.com → API Access: the API login and API password (not your website password). Used by the GBP audit agent.",
   pagespeed:
     "From Google Cloud → APIs & Services → Credentials, with the PageSpeed Insights API turned on. Used by the Website audit agent.",
+  anthropic:
+    "From console.anthropic.com → API Keys. Used by the GBP audit agent to check each profile's description with Claude.",
   email:
     "From your email provider. Used for invites, password resets and alerts. Port 587 (or 465).",
   telegram:

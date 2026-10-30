@@ -153,7 +153,20 @@ test("a test report shows each lead and what the GBP agent collected", async () 
             data: {
               basics: { name: "Apex Builders", claimed: true, phone: null, hours: null },
               categories: { primary: "General contractor", additional: [] },
-              description: { text: null, length: 0 },
+              description: {
+                text: "Apex Builders builds homes in Akron.",
+                length: 36,
+                checks: {
+                  model: "claude-opus-5-5",
+                  brand: { mentioned: true, quote: "Apex Builders" },
+                  category: { mentioned: false, quote: null },
+                  city: { mentioned: true, quote: "in Akron" },
+                  services: [
+                    { name: "Remodeling", mentioned: false, quote: null },
+                    { name: "Home building", mentioned: true, quote: "builds homes" },
+                  ],
+                },
+              },
               photos: { total: 48, logo: "https://x/logo.jpg", cover: null },
               posts: {
                 count: 1,
@@ -205,6 +218,9 @@ test("a test report shows each lead and what the GBP agent collected", async () 
   expect(within(open).getByText("Fall offer")).toBeVisible();
   expect(within(open).getAllByText("Not given by DataForSEO").length).toBeGreaterThan(0);
   expect(within(open).getByText("None on the profile")).toBeVisible(); // no additional category
+  // Claude's check of the description, with its own words.
+  expect(within(open).getByText("Yes: “Apex Builders”")).toBeVisible();
+  expect(within(open).getByText("✗ Remodeling · ✓ Home building")).toBeVisible();
   expect(within(open).queryByText("Booking link")).not.toBeInTheDocument();
   expect(within(open).queryByText(/Services/)).not.toBeInTheDocument();
   expect(within(open).getByRole("link", { name: "Download gbp.json" })).toHaveAttribute(
