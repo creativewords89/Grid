@@ -3447,3 +3447,75 @@ textarea {
   padding: 12px 16px 4px;
   font-size: 15px;
 }
+
+/* Files by niche (step 44): a search, the niche chips, then a section per niche. */
+.files-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.files-search {
+  flex: 1 1 280px;
+}
+.files-search input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+.files-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.files-chips button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.files-chips button[aria-pressed="true"] {
+  border-color: var(--brand);
+  background: var(--info-bg);
+  color: var(--brand);
+  font-weight: 600;
+}
+.files-niche {
+  margin-top: 12px;
+}
+.files-niche-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.files-niche-head[aria-expanded="false"] {
+  border-bottom: 0;
+}
+.files-niche-title {
+  font-size: 16px;
+}
+.files-niche-head .badge {
+  margin-left: auto;
+}

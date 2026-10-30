@@ -1089,3 +1089,11 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     goes on only once a Top is chosen again. A city's file deleted on Batches loses its Top
     too (muted as before), so unmuting it never sends it straight back. A batch's files list
     shows up to 1,000 files (a niche's batch has one per city).
+44. **Files by niche** (asked for after step 43; design A of the Files canvas): with many
+    niches and several files each, **Files** has a search (a file, a niche or who handed it
+    in), the niche chips (All niches · Cleaning · 3 …, when there are two or more), the
+    stage tabs (counting what the niche and the search leave), then **a section per
+    niche**: its name, how many files, its batch, how many of its cities are in the batch,
+    and a badge (N needs fixing, In Top Review, Done). A niche whose files are all done is
+    closed until opened; each section is a table without the batch-name column (its head
+    says it), and a file's cities in the batch show a progress bar.

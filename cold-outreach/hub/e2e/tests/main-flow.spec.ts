@@ -434,6 +434,11 @@ test("a city of 10 businesses or more gets its Top and goes on to the batch", as
     .click();
   await expect(rita.getByText("Austin is in its batch.")).toBeVisible();
   await page.reload();
+  // Every Cleaning file is done now: its section is closed until opened (step 44).
+  const cleaning = page.getByRole("button", { name: /^Cleaning\s*2 files/ });
+  await expect(cleaning).toHaveAttribute("aria-expanded", "false");
+  await expect(cleaning).toContainText("Done");
+  await cleaning.click();
   await expect(row).toContainText("1 of 1 city in the batch");
   await expect(row).toContainText("Done");
   await page

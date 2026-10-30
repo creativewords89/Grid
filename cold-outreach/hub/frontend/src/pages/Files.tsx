@@ -54,6 +54,9 @@ export function Files() {
   const [items, setItems] = useState<HandedInFile[] | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
+  const [nicheShown, setNicheShown] = useState(""); // "" = all niches (lower case otherwise)
+  const [search, setSearch] = useState("");
+  const [toggled, setToggled] = useState<Record<string, boolean>>({}); // opened or closed by hand
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -97,8 +100,23 @@ export function Files() {
   }
 
   const stage = STAGES.find((s) => s.key === filter);
-  const shown = (items ?? []).filter((f) => !stage || stage.statuses.includes(f.status));
-  const count = (s: Stage) => (items ?? []).filter((f) => s.statuses.includes(f.status)).length;
+  // Many niches, several files each (step 44): a search, the niche chips, then a section per
+  // niche; the stage tabs count what the niche and the search leave.
+  const words = search.toLowerCase().split(/\s+/).filter(Boolean);
+  const found = (items ?? []).filter(
+    (f) =>
+      (!nicheShown || f.niche.trim().toLowerCase() === nicheShown) &&
+      words.every((w) =>
+        [f.file_name, f.niche, f.uploaded_by ?? ""].join(" ").toLowerCase().includes(w),
+      ),
+  );
+  const shown = found.filter((f) => !stage || stage.statuses.includes(f.status));
+  const count = (s: Stage) => found.filter((f) => s.statuses.includes(f.status)).length;
+  const niches = nicheList(items ?? []);
+  const groups = nicheList(shown).map((n) => ({
+    ...n,
+    files: shown.filter((f) => f.niche.trim().toLowerCase() === n.key),
+  }));
 
   return (
     <section className="page page-wide">
@@ -127,16 +145,43 @@ export function Files() {
         />
       )}
 
+      {(items ?? []).length > 0 && (
+        <div className="files-filters">
+          <label className="files-search">
+            <span className="sr-only">Search files</span>
+            <input
+              type="search"
+              placeholder="Search a file, a niche or who handed it in"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </label>
+          {niches.length > 1 && (
+            <div className="files-chips" role="group" aria-label="Niches">
+              <button aria-pressed={nicheShown === ""} onClick={() => setNicheShown("")}>
+                All niches
+              </button>
+              {niches.map((n) => (
+                <button
+                  key={n.key}
+                  aria-pressed={nicheShown === n.key}
+                  onClick={() => setNicheShown(n.key)}
+                >
+                  {n.name} · {n.count}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <nav className="files-tabs" aria-label="Stages">
         <button
           className={filter === "" ? "on" : undefined}
           aria-pressed={filter === ""}
           onClick={() => setFilter("")}
         >
-          All{" "}
-          {(items ?? []).length > 0 && (
-            <span className="files-tab-count">{(items ?? []).length}</span>
-          )}
+          All {found.length > 0 && <span className="files-tab-count">{found.length}</span>}
         </button>
         {STAGES.map((s) => (
           <button
@@ -155,48 +200,98 @@ export function Files() {
         ))}
       </nav>
 
-      <div>
-        <div className="card table-card">
-          {items === null ? (
-            <p className="muted files-empty">Loading…</p>
-          ) : shown.length === 0 ? (
-            <p className="muted files-empty">
-              {items.length === 0 ? "No files yet." : "No file at this stage."}
-            </p>
-          ) : (
-            <div className="table-scroll">
-              <table className="table files-table">
-                <thead>
-                  <tr>
-                    <th>Batch name</th>
-                    <th>File</th>
-                    {role !== "collector" && <th>Handed in by</th>}
-                    <th>Stage</th>
-                    <th>Status</th>
-                    <th>In a batch</th>
-                    <th className="files-next">Next step</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {shown.map((item) => (
-                    <FileRow
-                      key={item.id}
-                      item={item}
-                      staff={staff}
-                      collector={role === "collector"}
-                      onOpen={() => setOpen(item.id)}
-                      onChanged={load}
-                      onError={setError}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+      {items === null ? (
+        <div className="card">
+          <p className="muted files-empty">Loading…</p>
         </div>
-      </div>
+      ) : shown.length === 0 ? (
+        <div className="card">
+          <p className="muted files-empty">
+            {items.length === 0
+              ? "No files yet."
+              : words.length > 0
+                ? "No file matches the search."
+                : "No file at this stage."}
+          </p>
+        </div>
+      ) : (
+        groups.map((group) => {
+          const done = group.files.every((f) => f.status === "in_batch");
+          const open = toggled[group.key] ?? !done; // a niche whose files are all done is closed
+          const going = group.files.reduce((sum, f) => sum + f.cities_going, 0);
+          const inBatch = group.files.reduce((sum, f) => sum + f.cities_in_batch, 0);
+          const fixing = group.files.filter((f) => ["errors", "failed"].includes(f.status)).length;
+          const reviewing = group.files.some((f) => f.status === "top_review");
+          return (
+            <section key={group.key} className="card table-card files-niche">
+              <button
+                className="files-niche-head"
+                aria-expanded={open}
+                onClick={() => setToggled({ ...toggled, [group.key]: !open })}
+              >
+                <span className="files-niche-title">
+                  <span aria-hidden>{open ? "▾" : "▸"}</span> <strong>{group.name}</strong>
+                </span>
+                <span className="small muted">
+                  {group.files.length} {group.files.length === 1 ? "file" : "files"} · batch{" "}
+                  {group.files[0]?.batch_name ?? group.name}
+                  {going > 0 && ` · ${inBatch} of ${going} cities in the batch`}
+                </span>
+                {fixing > 0 ? (
+                  <span className="badge badge-error">{fixing} needs fixing</span>
+                ) : reviewing ? (
+                  <span className="badge badge-warning">In Top Review</span>
+                ) : done ? (
+                  <span className="badge badge-ok">Done</span>
+                ) : null}
+              </button>
+              {open && (
+                <div className="table-scroll">
+                  <table className="table files-table" aria-label={`${group.name} files`}>
+                    <thead>
+                      <tr>
+                        <th>File</th>
+                        {role !== "collector" && <th>Handed in by</th>}
+                        <th>Stage</th>
+                        <th>Status</th>
+                        <th>In a batch</th>
+                        <th className="files-next">Next step</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.files.map((item) => (
+                        <FileRow
+                          key={item.id}
+                          item={item}
+                          staff={staff}
+                          collector={role === "collector"}
+                          onOpen={() => setOpen(item.id)}
+                          onChanged={load}
+                          onError={setError}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          );
+        })
+      )}
     </section>
   );
+}
+
+/** The niches of these files (lower case key, its spelling, how many files), by name. */
+function nicheList(files: HandedInFile[]): { key: string; name: string; count: number }[] {
+  const found = new Map<string, { key: string; name: string; count: number }>();
+  for (const f of files) {
+    const key = f.niche.trim().toLowerCase();
+    const known = found.get(key) ?? { key, name: f.niche.trim(), count: 0 };
+    known.count += 1;
+    found.set(key, known);
+  }
+  return [...found.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 const NEW_NICHE = "\u0000new";
@@ -697,12 +792,18 @@ function InBatch({ item }: { item: HandedInFile }) {
   if (!["top_review", "in_batch"].includes(item.status)) return <span className="muted">—</span>;
   if (item.cities_going === 0) return <span className="small muted">No city in the batch</span>;
   return (
-    <span className="small">
-      <strong>
-        {item.cities_in_batch} of {item.cities_going}
-      </strong>{" "}
-      {item.cities_going === 1 ? "city" : "cities"} in the batch
-      {item.cities_muted > 0 && ` · ${item.cities_muted} muted`}
+    <span className="small stack-tight">
+      <span>
+        <strong>
+          {item.cities_in_batch} of {item.cities_going}
+        </strong>{" "}
+        {item.cities_going === 1 ? "city" : "cities"} in the batch
+        {item.cities_muted > 0 && ` · ${item.cities_muted} muted`}
+      </span>
+      <ProgressBar
+        percent={Math.round((100 * item.cities_in_batch) / item.cities_going)}
+        label={`${item.file_name}: cities in the batch`}
+      />
     </span>
   );
 }
@@ -750,9 +851,6 @@ function FileRow({
 
   return (
     <tr>
-      <td className="nowrap">
-        <strong>{item.batch_name}</strong>
-      </td>
       <td>
         <button className="link-button cell-strong" onClick={onOpen}>
           {item.file_name}
