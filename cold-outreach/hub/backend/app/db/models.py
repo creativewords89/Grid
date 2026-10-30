@@ -39,6 +39,7 @@ class Role(enum.StrEnum):
 class RunTrigger(enum.StrEnum):
     SCHEDULE = "schedule"
     MANUAL = "manual"
+    TEST = "test"  # a test on a few leads (step 50): its results stay in the run
 
 
 class RunStatus(enum.StrEnum):
@@ -232,6 +233,10 @@ class Run(Base):
     stop_requested_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL")
     )
+
+    # A test run (step 50): what was asked, the leads handed out and what the agent found;
+    # None for other runs.
+    test: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
     agent: Mapped[Agent] = relationship(back_populates="runs")
     requester: Mapped[User | None] = relationship(foreign_keys=[requested_by])

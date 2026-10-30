@@ -13,6 +13,7 @@ import { useAuth } from "../auth";
 import { setupState } from "../agentSetup";
 import { StartCommands } from "../components/agentSetup";
 import { Alert, CopyLink, Field, Modal } from "../components/ui";
+import { TestDialog, TestReports } from "./AgentTests";
 import { ago, money, when } from "../format";
 import { CONNECTION_NAMES, RUN_STATUS } from "../labels";
 
@@ -125,6 +126,8 @@ function AgentCard({
   const [notice, setNotice] = useState<Notice>(null);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [tests, setTests] = useState(0); // bumped when a test starts, to list it
   const last = agent.last_run;
   const running = agent.batches.filter((b) => b.status === "running");
   const setup = setupState(agent);
@@ -272,6 +275,16 @@ function AgentCard({
           </button>
         )}
         {staff && (
+          <button
+            className="button"
+            disabled={busy || active}
+            title={active ? "It has a run waiting or in progress" : undefined}
+            onClick={() => setTesting(true)}
+          >
+            Test
+          </button>
+        )}
+        {staff && (
           <button className="button" disabled={busy} onClick={() => setEditing(true)}>
             Settings
           </button>
@@ -299,6 +312,22 @@ function AgentCard({
           </button>
         )}
       </div>
+      <TestReports agent={agent} version={tests} />
+      {testing && (
+        <TestDialog
+          agent={agent}
+          onClose={() => setTesting(false)}
+          onStarted={() => {
+            setTesting(false);
+            setTests((n) => n + 1);
+            onReload();
+            setNotice({
+              kind: "success",
+              text: "Test started. Its report fills in below as the agent works.",
+            });
+          }}
+        />
+      )}
       {editing && (
         <SettingsDialog
           agent={agent}

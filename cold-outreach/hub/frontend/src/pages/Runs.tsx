@@ -101,7 +101,7 @@ export function Runs() {
                   <td className="hide-narrow muted small">
                     {run.trigger === "schedule"
                       ? "Scheduled"
-                      : `Run now${run.requested_by ? ` by ${run.requested_by}` : ""}`}
+                      : `${run.trigger === "test" ? "Test" : "Run now"}${run.requested_by ? ` by ${run.requested_by}` : ""}`}
                   </td>
                 </tr>
               ))}

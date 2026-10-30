@@ -55,6 +55,8 @@ log = logging.getLogger("demo-agent")
 
 def _leads(hub: "HubClient", job: dict[str, Any]) -> list[dict[str, Any]]:
     """The leads ready for this agent in the run's batches, batch after batch."""
+    if job.get("test"):  # a test run (step 50): only the leads it names
+        return list(job.get("test_leads") or [])
     leads: list[dict[str, Any]] = []
     for batch in job.get("batches", []):
         status, found = hub.call("GET", f"/batches/{batch['id']}/leads")

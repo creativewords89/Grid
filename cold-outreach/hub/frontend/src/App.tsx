@@ -16,6 +16,7 @@ import { Runs } from "./pages/Runs";
 import { SetPassword } from "./pages/SetPassword";
 import { SignIn } from "./pages/SignIn";
 import { Users } from "./pages/Users";
+import { TestReportPage } from "./pages/AgentTests";
 import { usePath } from "./router";
 import { Shell } from "./Shell";
 
@@ -50,7 +51,10 @@ function Routes() {
   else if (path === "/connections" && user.role === "owner") page = <Connections />;
   else if (path === "/history" && user.role === "owner") page = <History />;
   else if (path === "/agents") page = <Agents />;
-  else if (path === "/runs") page = <Runs />;
+  else if (/^\/agents\/[^/]+\/tests\/[^/]+$/.test(path)) {
+    const [, , key, , id] = path.split("/");
+    page = <TestReportPage agentKey={key ?? ""} testId={id ?? ""} />;
+  } else if (path === "/runs") page = <Runs />;
   // A batch's leads are in the batch: /leads?batch=<id> opens its Leads tab.
   else if (path === "/batches" || path === "/import" || path === "/leads") page = <Batches />;
   else if (path === "/benchmarks") page = <Benchmarks />;

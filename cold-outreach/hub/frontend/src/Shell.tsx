@@ -86,6 +86,7 @@ export function Shell({ path, children }: { path: string; children: ReactNode })
               href={item.path}
               aria-current={
                 path === item.path ||
+                path.startsWith(`${item.path}/`) ||
                 (item.path === "/files" && user.role === "collector") ||
                 (item.path === "/review" && user.role === "reviewer")
                   ? "page"

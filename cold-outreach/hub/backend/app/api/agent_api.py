@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, StringConstraints, ValidationError
 from sqlalchemy import or_, select
 
 from app import pipeline
-from app.agents import service
+from app.agents import service, trials
 from app.agents.manifest import Manifest
 from app.alerts import service as alerts
 from app.api.schemas import Strict
@@ -107,6 +107,10 @@ class RunOut(BaseModel):
     connections: dict[str, dict[str, str]]
     # Work through these in order; an agent with nothing left to do finishes at once.
     batches: list[BatchOut]
+    # A test run (step 50): work on `test_leads` only (no batches), saving their results
+    # and files as for any lead; they stay in the test.
+    test: bool = False
+    test_leads: list[dict[str, Any]] = Field(default_factory=list)
 
 
 @router.get("/next-run", response_model=RunOut, responses={204: {"description": "Nothing to do"}})
@@ -134,7 +138,12 @@ def next_run(agent: CurrentAgent, db: Db, response: Response) -> RunOut | Respon
         items_left=max(0, agent.daily_limit - runs.items_today(db, agent)),
         budget_left_usd=budget.left,
         connections=service.run_connections(agent),
-        batches=_batches(db, agent),
+        batches=[] if run.test is not None else _batches(db, agent),
+        test=run.test is not None,
+        test_leads=[
+            {k: v for k, v in lead.items() if k != "source_lead_id"}
+            for lead in (run.test or {}).get("leads", [])
+        ],
     )
 
 
@@ -301,12 +310,17 @@ MAX_DETAILS = 200_000  # characters of JSON; bigger reports go in a file
 
 @router.put("/leads/{lead_id}/result", status_code=status.HTTP_204_NO_CONTENT)
 def put_result(lead_id: str, body: ResultIn, agent: CurrentAgent, db: Db) -> None:
-    """Save what this agent found for a lead; it replaces the agent's previous result."""
-    lead = _lead(db, lead_id)
+    """Save what this agent found for a lead; it replaces the agent's previous result. A test
+    lead's (T-1 …) stays in its test run."""
     result = body.model_dump(mode="json")
     if len(json.dumps(result["details"])) > MAX_DETAILS:
         raise ApiError(413, "too_large", "details is too big; save the report as a file.")
     result["at"] = now().isoformat()
+    if trials.is_test_lead(lead_id):
+        trials.save_result(db, agent, lead_id, result)
+        db.commit()
+        return
+    lead = _lead(db, lead_id)
     lead.results = dict(lead.results or {}) | {agent.key: result}
     db.commit()
 
@@ -320,8 +334,8 @@ def save_file(
     name: Annotated[str, Form()],
 ) -> dict[str, str]:
     """Save a file for a lead, e.g. `gbp-report.pdf`. The same name from the same agent
-    replaces the earlier file. PDF, JSON, PNG, JPEG or CSV, at most 20 MB."""
-    lead = _lead(db, lead_id)
+    replaces the earlier file. PDF, JSON, PNG, JPEG or CSV, at most 20 MB. A test lead's
+    stays in its test run."""
     content_type = (file.content_type or "").split(";")[0].strip().lower()
     if content_type not in files.CONTENT_TYPES:
         raise ApiError(415, "bad_type", "Send a PDF, JSON, PNG, JPEG or CSV file.")
@@ -330,6 +344,11 @@ def save_file(
     content = file.file.read(files.MAX_BYTES + 1)
     if len(content) > files.MAX_BYTES:
         raise ApiError(413, "too_large", "The file is over 20 MB.")
+    if trials.is_test_lead(lead_id):
+        trials.save_file(db, agent, lead_id, name, content_type, content)
+        db.commit()
+        return {"id": f"{lead_id}/{name}"}
+    lead = _lead(db, lead_id)
     row = db.scalar(
         select(LeadFile).where(
             LeadFile.lead_id == lead.lead_id,
