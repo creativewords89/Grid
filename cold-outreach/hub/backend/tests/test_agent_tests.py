@@ -112,6 +112,8 @@ def test_a_test_on_pasted_gbp_links_keeps_the_agents_file(
     test = client.post(f"/api/agents/{key}/tests", json={"links": links_in}).json()
     assert test["what"] == "2 pasted GBP links"
     _work(hub, "gbp-audit")
+    # A test asks DataForSEO's high priority queue, so its report comes in minutes.
+    assert fake.posted and all(task["priority"] == 2 for _, task in fake.posted)
 
     report = client.get(f"/api/agents/{key}/tests/{test['id']}").json()
     first, second = report["leads"]

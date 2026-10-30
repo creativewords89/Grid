@@ -371,6 +371,7 @@ def test_a_run_collects_each_lead_and_saves_its_file(
     data = one["details"]["data"]
     assert data["basics"]["website"] == "https://shine.example"
     assert "latest" not in data["reviews"]  # the full reviews are in gbp.json
+    assert all(task["priority"] == 1 for _, task in fake.posted)  # the Standard queue
     # Posts and reviews are asked by the profile's CID, never for a closed one.
     asked = [(e, t["keyword"]) for e, t in fake.posted if e != dataforseo.INFO]
     assert sorted(asked) == [
