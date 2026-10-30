@@ -1136,3 +1136,9 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     `NOT_FOUND`, `NO_GBP_LINK` or `FAILED`, a summary, the collected data as its details
     and a `gbp.json` file. Nothing is compared or scored yet: comparing with the benchmark
     and listing opportunities are the next steps.
+49. **Deleting an agent** (asked for after step 48): an Owner deletes an agent on the Agents
+    screen (**Delete**, then **Delete agent** in the window), not while it runs (Stop
+    first). It leaves the batches that chose it, and its runs go with it; a built-in one can
+    be added again. Its results on leads and their files stay, unless **Also delete its
+    results on N leads** is ticked. Recorded in History. (`DELETE /api/agents/{key}`,
+    `?results=true`.)

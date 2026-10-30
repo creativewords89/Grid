@@ -6,12 +6,12 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine
+from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
 from app import runner
 from app.builtin import KINDS, runner_token
-from app.db.models import Role, User
+from app.db.models import Agent, Lead, Role, Run, RunStatus, RunTrigger, User
 from tests.conftest import UserFactory, sign_in
 from tests.hub_data import make_batch, put_bot, task_id_of
 from tests.test_agents import add_agent, agent_call
@@ -128,3 +128,56 @@ def test_the_runner_runs_a_built_in_agent_through_a_batch(
 
     last = client.get("/api/agents").json()[0]["last_run"]
     assert (last["status"], last["done"]) == ("succeeded", 2)
+
+
+def test_an_owner_deletes_an_agent_keeping_or_deleting_its_results(
+    client: TestClient, owner: User, clean_engine: Engine, make_user: UserFactory
+) -> None:
+    """Step 49: the agent leaves its batches with its runs; its results on leads stay unless
+    asked to go with it. Only an Owner deletes one, and not while it runs."""
+    added = add_demo(client)["agent"]
+    other = add_demo(client, name="Demo two")["agent"]
+    batch = make_batch(client)["id"]
+    with Session(clean_engine) as db:
+        leads(db, batch, 2)
+        for lead in db.scalars(select(Lead).where(Lead.level == "")):
+            lead.results = {
+                added["key"]: {"status": "OK", "score": 50},
+                other["key"]: {"status": "OK", "score": 60},
+            }
+        db.commit()
+    put_bot(client, batch, added["key"], "gbp-audit")
+    shown = {a["key"]: a["results"] for a in client.get("/api/agents").json()}
+    assert shown == {added["key"]: 2, other["key"]: 2}
+
+    # A running agent is stopped first.
+    with Session(clean_engine) as db:
+        agent_id = db.scalar(select(Agent.id).where(Agent.key == added["key"]))
+        db.add(Run(agent_id=agent_id, trigger=RunTrigger.MANUAL, status=RunStatus.RUNNING))
+        db.commit()
+    refused = client.delete(f"/api/agents/{added['key']}")
+    assert refused.json()["error"]["code"] == "running"
+    with Session(clean_engine) as db:
+        db.execute(update(Run).values(status=RunStatus.SUCCEEDED))
+        db.commit()
+
+    client.cookies.clear()
+    sign_in(client, make_user(Role.ADMIN).email)
+    assert client.delete(f"/api/agents/{added['key']}").status_code == 403
+    client.cookies.clear()
+    sign_in(client, owner.email)
+
+    assert client.delete(f"/api/agents/{added['key']}").status_code == 204
+    assert [a["key"] for a in client.get("/api/agents").json()] == [other["key"]]
+    pipeline = client.get(f"/api/batches/{batch}/pipeline").json()
+    assert [b for s in pipeline["steps"] for t in s["tasks"] for b in t["bots"]] == []
+    with Session(clean_engine) as db:
+        kept = [lead.results for lead in db.scalars(select(Lead).where(Lead.level == ""))]
+        assert all(added["key"] in r for r in kept)  # its results stay
+
+    assert client.delete(f"/api/agents/{other['key']}?results=true").status_code == 204
+    with Session(clean_engine) as db:
+        gone = [lead.results for lead in db.scalars(select(Lead).where(Lead.level == ""))]
+        assert all(other["key"] not in r for r in gone)
+    history = client.get("/api/history", params={"what": "agent"}).json()
+    assert history["entries"][0]["action"] == "delete"

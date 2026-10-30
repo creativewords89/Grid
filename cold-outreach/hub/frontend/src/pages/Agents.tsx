@@ -30,6 +30,7 @@ export function Agents() {
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
   const [token, setToken] = useState<{ agent: Agent; token: string } | null>(null);
+  const [deleting, setDeleting] = useState<Agent | null>(null);
 
   const load = useCallback(() => {
     api
@@ -75,6 +76,7 @@ export function Agents() {
           onChange={replace}
           onReload={load}
           onToken={setToken}
+          onDelete={setDeleting}
         />
       ))}
       {adding && (
@@ -89,6 +91,16 @@ export function Agents() {
         />
       )}
       {token && <TokenDialog result={token} onClose={() => setToken(null)} />}
+      {deleting && (
+        <DeleteDialog
+          agent={deleting}
+          onClose={() => setDeleting(null)}
+          onDeleted={() => {
+            setDeleting(null);
+            load();
+          }}
+        />
+      )}
     </section>
   );
 }
@@ -100,6 +112,7 @@ function AgentCard({
   onChange,
   onReload,
   onToken,
+  onDelete,
 }: {
   agent: Agent;
   staff: boolean;
@@ -107,6 +120,7 @@ function AgentCard({
   onChange: (agent: Agent) => void;
   onReload: () => void;
   onToken: (result: { agent: Agent; token: string }) => void;
+  onDelete: (agent: Agent) => void;
 }) {
   const [notice, setNotice] = useState<Notice>(null);
   const [busy, setBusy] = useState(false);
@@ -274,6 +288,16 @@ function AgentCard({
         <button className="button" disabled={busy} onClick={onReload}>
           Refresh
         </button>
+        {owner && (
+          <button
+            className="button button-danger"
+            disabled={busy || last?.status === "running"}
+            title={last?.status === "running" ? "Stop it first" : undefined}
+            onClick={() => onDelete(agent)}
+          >
+            Delete
+          </button>
+        )}
       </div>
       {editing && (
         <SettingsDialog
@@ -606,6 +630,71 @@ function TokenDialog({
         <div className="modal-actions">
           <button type="button" className="button button-primary" onClick={onClose}>
             Done
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/** Delete an agent (step 49): it leaves its batches with its runs; its results on leads
+ * stay unless ticked to go too. */
+function DeleteDialog({
+  agent,
+  onClose,
+  onDeleted,
+}: {
+  agent: Agent;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const [results, setResults] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function remove() {
+    setBusy(true);
+    setError("");
+    try {
+      await api.deleteAgent(agent.key, results);
+      onDeleted();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Not deleted.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title={`Delete ${agent.name}?`} onClose={onClose}>
+      <div className="stack">
+        {error && <Alert kind="error">{error}</Alert>}
+        <p>
+          It leaves the batches that chose it
+          {agent.batches.length > 0 && ` (${agent.batches.map((b) => b.name).join(", ")})`}, and its
+          runs go with it. A built-in agent can be added again later.
+        </p>
+        {agent.results > 0 && (
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={results}
+              onChange={(e) => setResults(e.target.checked)}
+            />{" "}
+            Also delete its results on {agent.results} {agent.results === 1 ? "lead" : "leads"},
+            with their files
+          </label>
+        )}
+        <div className="modal-actions">
+          <button type="button" className="button" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="button button-danger"
+            onClick={() => void remove()}
+            disabled={busy}
+          >
+            Delete agent
           </button>
         </div>
       </div>

@@ -129,6 +129,7 @@ export type Agent = {
   last_run: Run | null;
   next_run_at: string | null;
   spent_today_usd: string;
+  results: number; // leads with a result of this agent
 };
 
 /** A built-in agent the Hub can run (step 25). */
@@ -969,6 +970,8 @@ export const api = {
     request<Agent>("PATCH", `/agents/${key}`, settings),
   runAgent: (key: string) => request<Run>("POST", `/agents/${key}/run`),
   stopAgent: (key: string) => request<Run>("POST", `/agents/${key}/stop`),
+  deleteAgent: (key: string, results: boolean) =>
+    request<void>("DELETE", `/agents/${key}${results ? "?results=true" : ""}`),
   runs: (filters: { agent?: string; status?: string; before?: string } = {}) => {
     const params = new URLSearchParams();
     for (const [name, value] of Object.entries(filters)) if (value) params.set(name, value);
