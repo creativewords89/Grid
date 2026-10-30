@@ -15,7 +15,6 @@ WEBSITE: dict[str, Any] = {
 }
 GBP: dict[str, Any] = {
     "additional_categories": 4,
-    "services": 12,
     "photos": 120,
     "posts_90_days": 9,
     "description_length": 690,

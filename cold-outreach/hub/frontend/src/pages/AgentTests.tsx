@@ -348,7 +348,6 @@ function GbpData({ data }: { data: Data }) {
   const p = (data.photos ?? {}) as Data;
   const r = (data.reviews ?? {}) as Data;
   const posts = data.posts as Data | null;
-  const services = c.services as { name: string; description: string | null }[] | null;
   const items = (posts?.items ?? []) as Data[];
   const unknown = (data.unknown ?? []) as string[];
   return (
@@ -365,33 +364,23 @@ function GbpData({ data }: { data: Data }) {
               ["Address", b.address],
               ["Hours", b.hours],
               ["Status", b.status],
-              ["Booking link", b.booking_link],
               ["Attributes", b.attributes],
-              ["Payments", b.payments],
-              ["Last updated", b.last_updated],
-              ["People also search", b.people_also_search],
             ]}
           />
         </section>
         <section className="card-inner stack-tight">
-          <h4>Categories &amp; Services</h4>
+          <h4>Categories</h4>
           <Facts
             rows={[
               ["Primary", c.primary],
-              ["Additional", c.additional],
+              [
+                "Additional",
+                Array.isArray(c.additional) && c.additional.length === 0
+                  ? "None on the profile"
+                  : c.additional,
+              ],
             ]}
           />
-          {services ? (
-            <ul className="small">
-              {services.map((s) => (
-                <li key={s.name}>
-                  {s.name} {s.description ? "✓ description" : "· no description"}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="muted small">Services: not given by DataForSEO</p>
-          )}
           <h4>Description</h4>
           <p className="small">{(d.text as string | null) ?? "—"}</p>
           <p className="muted small">{Number(d.length ?? 0)} characters</p>

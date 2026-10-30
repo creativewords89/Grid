@@ -8,8 +8,8 @@ was collected, compared with the batch's benchmark (GBP part), into findings and
 - What DataForSEO didn't give is never a finding: that check is left out of the score.
 - Reviews are compared and shown, but never scored (PLAN.md section 5).
 
-The score is 100 points over the parts that could be checked: Basics 20, Categories &
-Services 35, Description 10, Photos 10, Posts 25.
+The score is 100 points over the parts that could be checked: Basics 20, Categories 35,
+Description 10, Photos 10, Posts 25.
 """
 
 from dataclasses import dataclass
@@ -96,7 +96,7 @@ def checks(data: dict[str, Any], gbp: dict[str, Any]) -> list[Check]:
     out.append(_present("basics", "GBP_NO_ADDRESS", "Address", 4, b.get("address") or ""))
     out.append(_present("basics", "GBP_NO_HOURS", "Hours", 4, b.get("hours") or ""))
 
-    # Categories & Services: 35 (primary 15, additional 10, services 10).
+    # Categories: 35 (primary 20, additional 15). GBP services aren't checked.
     right = [x.strip().lower() for x in gbp.get("primary_categories") or [] if x.strip()]
     primary = c.get("primary")
     if right:
@@ -106,13 +106,13 @@ def checks(data: dict[str, Any], gbp: dict[str, Any]) -> list[Check]:
                     "categories",
                     "GBP_WRONG_PRIMARY",
                     "Primary category: unable to verify",
-                    15,
+                    20,
                     None,
                 )
             )
         elif primary.strip().lower() in right:
             out.append(
-                Check("categories", "GBP_WRONG_PRIMARY", f"Primary category {primary}", 15, 1.0)
+                Check("categories", "GBP_WRONG_PRIMARY", f"Primary category {primary}", 20, 1.0)
             )
         else:
             out.append(
@@ -120,7 +120,7 @@ def checks(data: dict[str, Any], gbp: dict[str, Any]) -> list[Check]:
                     "categories",
                     "GBP_WRONG_PRIMARY",
                     f"Primary category {primary} isn't one for the niche",
-                    15,
+                    20,
                     0.0,
                     RED,
                     primary,
@@ -133,31 +133,11 @@ def checks(data: dict[str, Any], gbp: dict[str, Any]) -> list[Check]:
             "categories",
             "GBP_FEW_CATEGORIES",
             "Additional categories",
-            10,
+            15,
             len(additional) if isinstance(additional, list) else None,
             gbp.get("additional_categories"),
         )
     )
-    services = c.get("services")
-    count = len(services) if isinstance(services, list) else None
-    out.append(_ratio("categories", "GBP_FEW_SERVICES", "Services", 5, count, gbp.get("services")))
-    if isinstance(services, list) and services:
-        described = sum(1 for s in services if s.get("description"))
-        share = described / len(services)
-        out.append(
-            Check(
-                "categories",
-                "GBP_SERVICES_UNDESCRIBED",
-                f"{len(services) - described} of {len(services)} services have no description"
-                if described < len(services)
-                else "Every service has a description",
-                5,
-                share,
-                OK if described == len(services) else ORANGE if described else RED,
-                described,
-                len(services),
-            )
-        )
 
     # Description: 10 (there 4, length 6).
     text = d.get("text")

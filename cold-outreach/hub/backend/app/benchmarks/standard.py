@@ -79,7 +79,6 @@ class Gbp(Strict):
     """What a good profile of the niche has. Empty (None) means "don't compare this"."""
 
     additional_categories: Annotated[float, Field(ge=0, le=100)] | None = None
-    services: Annotated[float, Field(ge=0, le=1000)] | None = None
     photos: Count | None = None
     posts_90_days: Annotated[float, Field(ge=0, le=1000)] | None = None
     description_length: Annotated[float, Field(ge=0, le=750)] | None = None

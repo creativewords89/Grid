@@ -333,7 +333,6 @@ export type LeadList = {
 
 export type GbpTargets = {
   additional_categories?: number;
-  services?: number;
   photos?: number;
   posts_90_days?: number;
   description_length?: number;
