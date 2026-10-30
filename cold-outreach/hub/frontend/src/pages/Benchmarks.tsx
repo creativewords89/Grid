@@ -157,7 +157,6 @@ type GbpNumber = Exclude<keyof GbpTargets, "primary_categories">;
 
 const GBP_FIELDS: [GbpNumber, string, string][] = [
   ["additional_categories", "Additional categories", "4"],
-  ["services", "Services", "12"],
   ["photos", "Photos", "100"],
   ["posts_90_days", "Posts in 90 days", "12"],
   ["description_length", "Description length (characters)", "600"],

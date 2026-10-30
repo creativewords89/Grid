@@ -465,9 +465,10 @@ As in the Answer Engine (its SPEC sections 4 and 13.6):
 - A **benchmark** is a named set such as "Cleaning Benchmark 1" (unique name, case ignored),
   of one niche, made, changed and deleted by Owners and Admins in a form (no file upload). A
   niche can have several. It **doesn't depend on city or competition**.
-- **GBP part:** additional categories, services, photos, posts in 90 days, description length
-  (characters), reviews, rating (0–5), review replies (%). An empty box means "don't compare
-  this". (Reviews are shown in reports, not scored: PLAN.md section 5.)
+- **GBP part:** additional categories, photos, posts in 90 days, description length
+  (characters), reviews, rating (0–5), review replies (%), and the right primary categories
+  (step 51). An empty box means "don't compare this". (Reviews are shown in reports, not
+  scored: PLAN.md section 5. GBP services left the plan after step 51.)
 - **Website part (the Website Standard):** services (name, other names, must-have or not; at
   least one must-have); service pages (words, sections, FAQ, price, own photos, reviews, call
   to action, service area); location pages (words, city in title, local content, local
@@ -1160,3 +1161,7 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     version so a new one has the lead checked again. A benchmark gains **Right primary
     categories** (one a line). A test's report shows the findings above the collected data;
     a test lead from a batch carries its batch's benchmark, a pasted link none.
+    After the first real reports, GBP services left the plan (a benchmark's GBP part has
+    no services number any more, migration 0032), and the GBP audit agent no longer
+    collects what DataForSEO didn't give: booking link, payment methods, last updated,
+    "people also search for". Categories score 35: primary 20, additional 15.

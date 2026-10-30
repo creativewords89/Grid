@@ -137,7 +137,7 @@ city or competition**.
 
 - A **benchmark** is a named set per niche ("Cleaning Benchmark 1", "Cleaning Benchmark 2"
   …), made in a Hub form (screen **Benchmarks**), with two parts:
-  - **GBP:** additional categories, services, photos, posts in 90 days, description length,
+  - **GBP:** additional categories, photos, posts in 90 days, description length,
     reviews, rating, review reply %. An empty box means "don't compare this".
   - **Website Standard:** must-have services with synonyms, service and location page depth,
     supporting pages, blog posts per month, blog topics (topical map), mobile LCP.
@@ -209,7 +209,6 @@ used up.
   | Basics | 20 | claimed, phone, website, hours, full address (not for service-area businesses), keyword-stuffed name; the lead's phone/address differ from GBP |
   | Categories | 15 | primary matches the Niche, number of additional categories, vs benchmark |
   | Description | 10 | missing, under 250 characters, no city, no niche keyword, vs benchmark |
-  | Services | 20 | none, fewer than 5, no descriptions, vs benchmark |
   | Photos | 10 | under 10, no logo or cover, vs benchmark |
   | Posts | 25 | never posted, last post over 30 days ago, under 4 in 90 days, no image or button, vs benchmark |
 
@@ -252,7 +251,7 @@ used up.
   | Speed and access | 10 | mobile LCP and score (PageSpeed Insights); site opens, HTTPS, not blocking Google |
   | Supporting pages | 10 | FAQ, Reviews, Gallery, About, Contact, Pricing: present or missing |
   | Blog | 10 | total posts, last post, posts in each of the last 3 months, topic coverage |
-  | GBP match | 15 | name/address/phone, category, services, service areas, hours, schema vs `gbp.json` |
+  | GBP match | 15 | name/address/phone, category, service areas, hours, schema vs `gbp.json` |
 
 - **Dropped on purpose:** image SEO, sitemap and robots.txt detail, broken links, duplicate
   titles, schema errors, search volume, ranking, 36-month blog chart, post quality.

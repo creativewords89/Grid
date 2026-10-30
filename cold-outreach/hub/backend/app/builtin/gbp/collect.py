@@ -1,5 +1,5 @@
 """What the GBP audit agent collects from DataForSEO's answers (`agents/gbp-audit/SPEC.md`
-section 4): Basics, Categories & Services, Description, Photos, Posts and Reviews. Nothing is
+section 4): Basics, Categories, Description, Photos, Posts and Reviews. Nothing is
 compared or scored here. What DataForSEO doesn't give is None and listed in `unknown`: never
 a problem, "unable to verify" (PLAN.md section 3.7)."""
 
@@ -7,7 +7,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 DAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
-BOOKING = ("reservation", "booking", "appointment", "book")
 LATEST_REVIEWS = 50
 
 
@@ -65,12 +64,6 @@ def _attributes(info: dict[str, Any]) -> dict[str, list[str]] | None:
 
 
 def basics(info: dict[str, Any]) -> dict[str, Any]:
-    attributes = _attributes(info)
-    links = [x for x in info.get("local_business_links") or [] if isinstance(x, dict)]
-    booking = next(
-        (x.get("url") for x in links if any(w in str(x.get("type", "")).lower() for w in BOOKING)),
-        None,
-    )
     status = ((info.get("work_time") or {}).get("work_hours") or {}).get("current_status")
     return {
         "name": _text(info.get("title")),
@@ -82,50 +75,16 @@ def basics(info: dict[str, Any]) -> dict[str, Any]:
         "longitude": info.get("longitude"),
         "hours": hours(info.get("work_time")),
         "status": _text(status),
-        "booking_link": booking,
-        "attributes": attributes,
-        "payments": (attributes or {}).get("payments"),
-        "last_updated": _day(when(info.get("last_updated_time"))),
-        "people_also_search": [
-            str(x.get("title")) for x in info.get("people_also_search") or [] if x.get("title")
-        ]
-        or None,
+        "attributes": _attributes(info),
         "cid": _text(str(info.get("cid") or "")),
         "place_id": _text(info.get("place_id")),
-        "gbp_url": _text(info.get("check_url")),
     }
-
-
-def _services(found: Any) -> list[dict[str, Any]] | None:
-    """The profile's services, as DataForSEO gives them (`services`: a list of objects with a
-    `title` and maybe a `category` and `description`; a dict of lists is flattened). None
-    when it gives none: unable to verify."""
-    if isinstance(found, dict):
-        found = [x for values in found.values() if isinstance(values, list) for x in values]
-    if not isinstance(found, list):
-        return None
-    out = []
-    for item in found:
-        if isinstance(item, dict):
-            name = _text(item.get("title")) or _text(item.get("name"))
-            if name:
-                out.append(
-                    {
-                        "name": name,
-                        "category": _text(item.get("category")),
-                        "description": _text(item.get("description")),
-                    }
-                )
-        elif _text(item):
-            out.append({"name": str(item).strip(), "category": None, "description": None})
-    return out
 
 
 def categories(info: dict[str, Any]) -> dict[str, Any]:
     return {
         "primary": _text(info.get("category")),
         "additional": [str(x) for x in info.get("additional_categories") or []],
-        "services": _services(info.get("services")),
     }
 
 

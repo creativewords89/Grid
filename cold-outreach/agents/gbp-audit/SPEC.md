@@ -55,34 +55,35 @@ Nothing missing is ever a problem: what DataForSEO doesn't give is `null` and li
 
 | Part | Collected |
 |---|---|
-| Basics | business name, claimed or not, phone, website, full address, latitude/longitude, opening hours (each day), current status (open, temporarily closed, closed forever), booking link, attributes, payment methods, last updated, "people also search for", CID, Place ID, GBP link |
-| Categories & Services | primary category, additional categories, services with their descriptions (if DataForSEO gives them) |
+| Basics | business name, claimed or not, phone, website, full address, latitude/longitude, opening hours (each day), current status (open, temporarily closed, closed forever), attributes, CID, Place ID |
+| Categories | primary category, additional categories ("None on the profile" when it has none) |
 | Description | the text and its length |
 | Photos | number of photos, logo, cover photo |
 | Posts | every post collected (date, text, link, image or not, button), the last post's date, posts in the last 30 and 90 days |
 | Reviews (shown only: not scored, not used in outreach) | count, rating, stars 5 to 1, last review date, the latest reviews (stars, text, date, owner's reply), reply rate, unanswered 1–2★ reviews |
 
 Removed in planning: keyword-stuffed name, service-area business, price level, place topics,
-the file's phone/address compared with GBP, additional-category and service counts compared
-with the benchmark (they come back in stage 2 if the team wants them).
+the file's phone/address compared with GBP. Removed after the first real reports (30 October
+2026): **GBP services** (DataForSEO doesn't give them reliably; the team dropped the idea),
+and booking link, payment methods, last updated and "people also search for", which
+DataForSEO didn't give. The Website Standard's services are a different thing and stay.
 
 ## 5. Comparing with the benchmark (stage 2)
 
 The collected data against the batch's benchmark (GBP part); an empty box isn't compared.
 
 - **A benchmark number:** the lead's value ÷ the benchmark's: under 25% 🔴, 25–60% 🟠,
-  60% or more ✅. Additional categories, services, photos, posts in 90 days and description
-  length are scored; reviews, rating and reply % are compared and shown, never scored.
+  60% or more ✅. Additional categories, photos, posts in 90 days and description length
+  are scored; reviews, rating and reply % are compared and shown, never scored.
 - **Right primary categories** (a new benchmark box, one a line): a primary category that
   isn't one of them is 🔴.
 - **What the profile misses** (no benchmark needed): not claimed, no phone, website,
-  address, hours, description, logo or cover photo, never posted: 🔴. Services without a
-  description: 🟠 (🔴 when none has one), when DataForSEO gives services.
+  address, hours, description, logo or cover photo, never posted: 🔴.
 - **What DataForSEO didn't give** is never a finding: that check is left out of the score
   and listed in `unverified`.
 - **Score** (100, over the checks that could be made): Basics 20 (claimed, phone, website,
-  address, hours: 4 each), Categories & Services 35 (primary 15, additional categories 10,
-  services 5, service descriptions 5), Description 10 (there 4, length 6), Photos 10 (count 6,
+  address, hours: 4 each), Categories 35 (primary 20, additional categories 15),
+  Description 10 (there 4, length 6), Photos 10 (count 6,
   logo 2, cover 2), Posts 25 (ever posted 10, in 90 days 15). A ratio earns its share of the
   points; a present/missing check all or nothing.
 - A pasted link in a test has no batch, so no benchmark: only what the profile misses.

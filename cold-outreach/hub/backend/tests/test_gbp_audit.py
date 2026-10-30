@@ -147,13 +147,25 @@ def test_the_profile_posts_and_reviews_are_collected_without_a_score() -> None:
     )
     assert basics["address"] == "12 Main St, Tulsa, OK 74103"
     assert basics["hours"]["monday"] == "08:00–18:00" and basics["hours"]["sunday"] == "closed"
-    assert (basics["status"], basics["booking_link"]) == ("open", "https://book.example")
-    assert basics["payments"] == ["pay_credit_card"]
-    assert basics["people_also_search"] == ["Gleam Maids"]
+    assert (basics["status"], basics["attributes"]) == ("open", {"payments": ["pay_credit_card"]})
+    # What DataForSEO doesn't give isn't collected (booking link, last updated …).
+    assert set(basics) == {
+        "name",
+        "claimed",
+        "phone",
+        "website",
+        "address",
+        "latitude",
+        "longitude",
+        "hours",
+        "status",
+        "attributes",
+        "cid",
+        "place_id",
+    }
     assert data["categories"] == {
         "primary": "House cleaning service",
         "additional": ["Commercial cleaning service", "Carpet cleaning service"],
-        "services": None,  # DataForSEO gives none: unable to verify
     }
     assert data["description"]["length"] == len(INFO["description"])
     assert data["photos"] == {
@@ -178,7 +190,6 @@ def test_the_profile_posts_and_reviews_are_collected_without_a_score() -> None:
     reviews = data["reviews"]
     assert (reviews["count"], reviews["rating"], reviews["last"]) == (126, 4.7, "2026-10-20")
     assert (reviews["reply_pct"], reviews["unanswered_low"]) == (50, 1)
-    assert "categories.services" in data["unknown"]
     assert collect.summary(data) == (
         "Collected: claimed · category House cleaning service · 48 photos · "
         "last post 2026-10-01 (1 in 90 days) · 126 reviews, 4.7★."
@@ -439,36 +450,8 @@ def test_what_dataforseo_didnt_give_is_left_out_of_the_score() -> None:
     data = collect.collect(
         {"title": "Bare", "phone": "1", "url": "x", "address": "a"}, None, None, TODAY
     )
-    found = compare.compare(data, {"photos": 10, "services": 5})
-    assert {"GBP_FEW_PHOTOS", "GBP_FEW_SERVICES", "GBP_NO_POSTS", "GBP_NOT_CLAIMED"} <= set(
-        found["unverified"]
-    )
+    found = compare.compare(data, {"photos": 10})
+    assert {"GBP_FEW_PHOTOS", "GBP_NO_POSTS", "GBP_NOT_CLAIMED"} <= set(found["unverified"])
     assert all(f["code"] not in found["unverified"] for f in found["findings"])
     # Without a benchmark only what the profile misses counts.
     assert compare.compare(collect.collect(INFO, POSTS, None, TODAY), None)["score"] == 100
-
-
-def test_services_are_read_as_dataforseo_gives_them() -> None:
-    """DataForSEO's `services`: objects with a title and maybe a category and description;
-    none given is unable to verify, never "no services"."""
-    listed = {
-        **INFO,
-        "services": [
-            {"title": "Demolition", "category": "Construction company"},
-            {"title": "Remodeling", "description": "Kitchens and baths"},
-            {"category": "no title: left out"},
-        ],
-    }
-    found = collect.collect(listed, None, None, TODAY)["categories"]["services"]
-    assert found == [
-        {"name": "Demolition", "category": "Construction company", "description": None},
-        {"name": "Remodeling", "category": None, "description": "Kitchens and baths"},
-    ]
-    grouped = {**INFO, "services": {"Construction company": [{"title": "Demolition"}]}}
-    assert collect.collect(grouped, None, None, TODAY)["categories"]["services"] == [
-        {"name": "Demolition", "category": None, "description": None}
-    ]
-    assert (
-        collect.collect({**INFO, "services": None}, None, None, TODAY)["categories"]["services"]
-        is None
-    )
