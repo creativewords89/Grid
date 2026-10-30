@@ -380,3 +380,34 @@ def test_a_city_is_sent_back_from_its_batchs_files(owner: TestClient, person: Pe
     assert viewer.post(f"/api/imports/{imp['id']}/send-back").status_code == 403
     assert owner.post(f"/api/imports/{imp['id']}/send-back").status_code == 204
     assert [c["name"] for c in rita.get("/api/review/cities").json()["cities"]] == ["Tulsa"]
+
+
+def test_files_in_top_review_by_niche_and_one_files_cities(
+    owner: TestClient, person: Person
+) -> None:
+    """Step 45: Top Review lists its files (by niche, with their cities' counts); a file's
+    cities open on their own, in the three lists."""
+    make_benchmark(owner, "Roofing Benchmark 1", "Roofing")
+    cal, _ = person(Role.COLLECTOR, "Cal")
+    rita, _ = person(Role.REVIEWER)
+    viewer, _ = person(Role.VIEWER)
+    first = hand_in(cal, FILE)
+    waco = [
+        row(f"Wave {n}", f"https://share.google/wv{n}", f"(254) 555-{n:04d}", city="Waco")
+        for n in range(10)
+    ]
+    second = hand_in(cal, {"Waco": [STANDARD, *waco]}, niche="Roofing", name="waco.xlsx")
+    assert viewer.get("/api/review/files").status_code == 403
+    files = rita.get("/api/review/files").json()
+    assert [(f["niche"], f["file_name"], f["uploaded_by"], f["counts"]) for f in files] == [
+        ("Cleaning", "tulsa.xlsx", "Cal", {"needs_top": 1, "ready": 0, "small": 1}),
+        ("Roofing", "waco.xlsx", "Cal", {"needs_top": 1, "ready": 0, "small": 0}),
+    ]
+    one = rita.get("/api/review/cities", params={"file_id": first["id"]}).json()
+    assert one["counts"] == {"needs_top": 1, "ready": 0, "small": 1}
+    assert [c["name"] for c in one["cities"]] == ["Tulsa"]
+    other = rita.get("/api/review/cities", params={"file_id": second["id"]}).json()
+    assert [c["name"] for c in other["cities"]] == ["Waco"]
+    small = rita.get("/api/review/small", params={"file_id": second["id"]}).json()
+    assert small["total"] == 0
+    assert rita.get("/api/review/small", params={"file_id": first["id"]}).json()["total"] == 1

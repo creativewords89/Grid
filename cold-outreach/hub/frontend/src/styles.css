@@ -3519,3 +3519,6 @@ textarea {
 .files-niche-head .badge {
   margin-left: auto;
 }
+.review-search {
+  flex: 0 1 280px;
+}

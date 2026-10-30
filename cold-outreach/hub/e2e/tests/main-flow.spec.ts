@@ -158,6 +158,9 @@ test("a Reviewer gives a city its Top and sends it to the niche's batch now", as
   await expect(
     rita.getByRole("navigation", { name: "Main" }).getByRole("link"),
   ).toHaveText(["Top Review"]);
+  // Top Review opens on the niches: Cleaning, then its file (step 45).
+  await rita.getByRole("button", { name: /^Cleaning\s*1 file/ }).click();
+  await rita.getByRole("button", { name: "Open cleaning-leads.xlsx" }).click();
   const lists = rita.getByRole("navigation", { name: "Cities" });
   await lists.getByRole("button", { name: /Cities under 10/ }).click();
   // The cities under 10 are ticked on one page (step 41), most reviews first.
@@ -416,6 +419,8 @@ test("a city of 10 businesses or more gets its Top and goes on to the batch", as
 
   // The Reviewer finds Austin Not ready and chooses its Top.
   await rita.reload();
+  await rita.getByRole("button", { name: /^Cleaning\s*1 file/ }).click();
+  await rita.getByRole("button", { name: "Open top-review.xlsx" }).click();
   await rita.getByRole("button", { name: "Austin" }).click();
   await rita.getByRole("checkbox", { name: "Top: Austin Shine 3" }).check();
   await rita.getByRole("button", { name: "Save the Top of Austin" }).click();

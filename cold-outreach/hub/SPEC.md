@@ -1097,3 +1097,12 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     and a badge (N needs fixing, In Top Review, Done). A niche whose files are all done is
     closed until opened; each section is a table without the batch-name column (its head
     says it), and a file's cities in the batch show a progress bar.
+45. **Top Review by niche and file** (asked for after step 44; design A2 of the Top Review
+    canvas): Top Review opens on its niches, each closed until opened, with how many files
+    and how many of their cities are not ready, ready or under 10, and a search (a file, a
+    niche or who handed it in; it opens the niches it finds). An open niche lists its files
+    (who handed each in, the three counts, **Open**); no city loads there. A file opens on
+    its own page (Top Review / niche / file, how many of its cities have a Top, a city
+    search) with the three lists, **Not ready · Ready · Cities under 10**, of its cities
+    only; Save & next city goes on within the file. (`GET /api/review/files`;
+    `/api/review/cities` and `/api/review/small` take a `file_id`.)

@@ -536,6 +536,16 @@ export type ReviewRow = {
 
 export type ReviewList = { counts: Record<ReviewShown, number>; cities: ReviewRow[] };
 
+/** A file in Top Review (step 45): its cities open one file at a time. */
+export type ReviewFileRow = {
+  file_id: string;
+  file_name: string;
+  number: number;
+  niche: string;
+  uploaded_by: string | null;
+  counts: Record<ReviewShown, number>;
+};
+
 export type ReviewCity = {
   key: string;
   name: string;
@@ -1010,10 +1020,19 @@ export const api = {
       `/submissions/${id}/cities/${encodeURIComponent(city)}/unmute`,
     ),
   // Top Review (steps 32 and 39).
-  reviewCities: (show: ReviewShown) => request<ReviewList>("GET", `/review/cities?show=${show}`),
+  reviewFiles: () => request<ReviewFileRow[]>("GET", "/review/files"),
+  reviewCities: (show: ReviewShown, fileId?: string) =>
+    request<ReviewList>(
+      "GET",
+      `/review/cities?show=${show}${fileId ? `&file_id=${encodeURIComponent(fileId)}` : ""}`,
+    ),
   reviewCity: (id: string, city: string) =>
     request<ReviewCity>("GET", `/review/files/${id}/cities/${encodeURIComponent(city)}`),
-  smallCities: (page: number) => request<SmallPage>("GET", `/review/small?page=${page}`),
+  smallCities: (page: number, fileId?: string) =>
+    request<SmallPage>(
+      "GET",
+      `/review/small?page=${page}${fileId ? `&file_id=${encodeURIComponent(fileId)}` : ""}`,
+    ),
   saveManyTops: (cities: { file_id: string; city: string; tops: string[] }[]) =>
     request<{ saved: number }>("PUT", "/review/tops", { cities }),
   saveTops: (id: string, city: string, tops: string[]) =>
