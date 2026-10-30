@@ -3535,3 +3535,54 @@ textarea {
   gap: 8px;
   margin-left: auto;
 }
+
+/* Test runs (step 50): the Test window's two fields side by side, and a test report's
+   sections. */
+.test-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.test-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.card-inner {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  min-width: 0;
+}
+
+.card-inner h4 {
+  margin: 0;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.card-inner .facts div {
+  grid-template-columns: 140px minmax(0, 1fr);
+}
+
+.card-inner .facts dd {
+  overflow-wrap: anywhere;
+}
+
+.table tr.row-on td {
+  background: var(--info-bg);
+}
+
+.test-json {
+  margin: 0;
+  max-height: 480px;
+  overflow: auto;
+  font-size: 0.8rem;
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 12px;
+}

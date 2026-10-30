@@ -204,6 +204,9 @@ class Run:
             else:  # a link without the profile's ID: looked up by name and address
                 keyword = f"{lead.get('business_name', '')}, {lead.get('address', '')}".strip(", ")
                 searched.add(lead["lead_id"])
+                if not keyword:
+                    self.save(lead, "done", "NOT_FOUND", "The GBP link names no profile.")
+                    continue
             tasks.append(
                 {
                     "keyword": keyword,
@@ -287,6 +290,8 @@ class Run:
 
 def _leads(hub: "HubClient", job: dict[str, Any]) -> list[dict[str, Any]]:
     """The leads ready for this agent in the run's batches, batch after batch; never Top."""
+    if job.get("test"):  # a test run (step 50): only the leads it names
+        return list(job.get("test_leads") or [])
     leads: list[dict[str, Any]] = []
     for batch in job.get("batches", []):
         status, found = hub.call("GET", f"/batches/{batch['id']}/leads")
@@ -298,6 +303,8 @@ def _leads(hub: "HubClient", job: dict[str, Any]) -> list[dict[str, Any]]:
 def do_run(hub: "HubClient", job: dict[str, Any]) -> None:
     config = job["config"]
     limit = min(int(config["items"]), int(job.get("items_left", job["daily_limit"])))
+    if job.get("test"):  # a test names its few leads itself
+        limit = len(job.get("test_leads") or [])
     work = _leads(hub, job)[:limit]
     key = job.get("connections", {}).get("dataforseo", {})
     run_id = job["run_id"]

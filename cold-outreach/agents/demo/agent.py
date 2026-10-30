@@ -99,6 +99,8 @@ class Hub:
 
 def leads_of(hub: Hub, job: dict[str, Any]) -> list[dict[str, str]]:
     """The leads ready for this agent in the run's batches, batch after batch."""
+    if job.get("test"):  # a test run: only the leads it names, results stay in the test
+        return list(job.get("test_leads") or [])
     leads: list[dict[str, str]] = []
     for batch in job.get("batches", []):
         status, found = hub.call("GET", f"/batches/{batch['id']}/leads")

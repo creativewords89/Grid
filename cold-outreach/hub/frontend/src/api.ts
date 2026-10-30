@@ -67,7 +67,7 @@ export type Manifest = {
 
 export type Run = {
   id: string;
-  trigger: "schedule" | "manual";
+  trigger: "schedule" | "manual" | "test";
   status: "queued" | "running" | "succeeded" | "failed" | "stopped" | "timed_out";
   queued_at: string;
   started_at: string | null;
@@ -84,6 +84,31 @@ export type Run = {
 };
 
 export type RunPage = { runs: Run[]; more: boolean };
+
+/** A test run (step 50): an agent tried on a few leads; its report stays in the run. */
+export type AgentTest = Run & {
+  what: string; // "5 leads from Construction", "2 pasted GBP links" …
+  statuses: Record<string, number>;
+};
+
+export type AgentTestReport = AgentTest & {
+  leads: {
+    key: string; // T-1 …
+    lead_id: string; // "" for a pasted link
+    business_name: string;
+    city: string;
+    gbp_link: string;
+    result: LeadResult | null;
+    files: string[];
+  }[];
+};
+
+export type TestIn = {
+  batch_id?: string;
+  count?: number;
+  lead_ids?: string[];
+  links?: string[];
+};
 
 export type HistoryEntry = {
   id: string;
@@ -970,6 +995,11 @@ export const api = {
     request<Agent>("PATCH", `/agents/${key}`, settings),
   runAgent: (key: string) => request<Run>("POST", `/agents/${key}/run`),
   stopAgent: (key: string) => request<Run>("POST", `/agents/${key}/stop`),
+  startTest: (key: string, body: TestIn) =>
+    request<AgentTest>("POST", `/agents/${key}/tests`, body),
+  agentTests: (key: string) => request<AgentTest[]>("GET", `/agents/${key}/tests`),
+  agentTest: (key: string, id: string) =>
+    request<AgentTestReport>("GET", `/agents/${key}/tests/${id}`),
   deleteAgent: (key: string, results: boolean) =>
     request<void>("DELETE", `/agents/${key}${results ? "?results=true" : ""}`),
   runs: (filters: { agent?: string; status?: string; before?: string } = {}) => {

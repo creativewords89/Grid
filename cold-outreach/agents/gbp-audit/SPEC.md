@@ -8,7 +8,7 @@ planning conversation of 30 October 2026, which changed them as below.
 
 1. **Collect** (hub step 48, built): the profile, its posts and latest reviews, as they are
    on Google. Nothing is compared or scored.
-2. **Compare** (next): the collected data against the batch's benchmark (GBP part).
+2. **Compare** (next, hub step 51): the collected data against the batch's benchmark (GBP part).
 3. **Opportunities** (last): the list of what GridRankers can fix. Not only what the
    benchmark compares: anything collected can be one, e.g. the website doesn't open, or
    the profile's website isn't the business's own domain (`business.wixsite.com`,

@@ -1142,3 +1142,15 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     be added again. Its results on leads and their files stay, unless **Also delete its
     results on N leads** is ticked. Recorded in History. (`DELETE /api/agents/{key}`,
     `?results=true`.)
+50. **Testing an agent** (asked for after step 49; the Agent Test reports canvas): Owners
+    and Admins press **Test** on an agent's card to try it now on up to 10 leads: a batch's
+    first leads, the Lead IDs typed, or pasted GBP links (no file or batch needed). The
+    window shows about what it costs (it counts in today's budget). Like Run now, the agent
+    must be on and not busy; the batch needn't run and the agent needn't be on its task. The
+    leads are handed to the agent as `T-1` … (`test: true`, `test_leads` in its run), and
+    what it saves for them (results and files) stays in the test run, never on the leads.
+    The card lists the last 20 tests (when, leads, result, cost, **Open**); a test opens to
+    its report: each lead's status and summary, one lead open below, with what the GBP
+    audit agent collected in sections (or any other agent's details as JSON) and its files
+    to download. Anyone in the Hub reads them. (`POST/GET /api/agents/{key}/tests`,
+    `GET /api/agents/{key}/tests/{id}`, `…/files/{T-n}/{name}`; migration 0031.)

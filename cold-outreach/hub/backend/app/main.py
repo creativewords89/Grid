@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app import __version__, errors, logs
 from app.api import (
     agent_api,
+    agent_tests,
     agents,
     alerts,
     auth,
@@ -77,6 +78,7 @@ def create_app() -> FastAPI:
         me,
         connections,
         agents,
+        agent_tests,
         agent_api,
         runs,
         imports,
