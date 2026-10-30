@@ -153,18 +153,21 @@ export function Benchmarks() {
 
 // --- the editor -------------------------------------------------------------------------------
 
-type GbpNumber = Exclude<keyof GbpTargets, "primary_categories">;
+type GbpNumber = "photos" | "posts_90_days";
 
+// Step 53: only what an agency can improve. Reviews and ratings aren't a benchmark.
 const GBP_FIELDS: [GbpNumber, string, string][] = [
-  ["additional_categories", "Additional categories", "4"],
   ["photos", "Photos", "100"],
   ["posts_90_days", "Posts in 90 days", "12"],
-  ["description_length", "Description length (characters)", "600"],
-  ["reviews", "Reviews", "100"],
-  ["rating", "Rating (0–5)", "4.7"],
-  ["review_reply_pct", "Review replies (%)", "80"],
-  ["services_in_description", "Must-have services named in the description", "3"],
 ];
+
+/** One a line, for names that may hold a comma. */
+function perLine(text: string): string[] {
+  return text
+    .split("\n")
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
 
 const EMPTY: Standard = {
   services: [],
@@ -257,6 +260,8 @@ function BenchmarkEditor({
     ),
   );
   const [primary, setPrimary] = useState((source?.gbp.primary_categories ?? []).join("\n"));
+  const [standard, setStandard] = useState((source?.gbp.standard_services ?? []).join("\n"));
+  const [part, setPart] = useState<"gbp" | "website">("gbp");
   const [s, setS] = useState<Standard>(start);
   const [topics, setTopics] = useState(start.blog.topics.join("\n"));
   const [pages, setPages] = useState(start.supporting_pages.join(", "));
@@ -283,8 +288,10 @@ function BenchmarkEditor({
       const typed = (gbp[key] ?? "").trim();
       if (typed !== "") targets[key] = Number(typed);
     }
-    const right = lines(primary);
+    const right = perLine(primary);
     if (right.length > 0) targets.primary_categories = right;
+    const services = perLine(standard);
+    if (services.length > 0) targets.standard_services = services;
     const website: Standard = {
       ...s,
       services: s.services.map((svc, i) => ({ ...svc, synonyms: lines(synonyms[i] ?? "") })),
@@ -300,6 +307,9 @@ function BenchmarkEditor({
       if (err instanceof ApiError) {
         setErrors(err.fields);
         setError(err.message);
+        const fields = Object.keys(err.fields);
+        if (fields.some((f) => f.startsWith("website."))) setPart("website");
+        else if (fields.some((f) => f.startsWith("gbp."))) setPart("gbp");
       }
       setBusy(false);
     }
@@ -351,229 +361,281 @@ function BenchmarkEditor({
           </div>
         </div>
 
-        <h3>Google Business Profile</h3>
-        <p className="muted small">
-          What a good profile in this niche has. Leave a box empty to skip that comparison.
-        </p>
-        <div className="connection-fields">
-          {GBP_FIELDS.map(([key, label, example]) => (
-            <Field
-              key={key}
-              label={label}
-              type="number"
-              min={0}
-              step="any"
-              placeholder={example}
-              value={gbp[key] ?? ""}
-              error={errors[`gbp.${key}`]}
-              onChange={(e) => {
-                const typed = e.target.value;
-                setGbp((all) => ({ ...all, [key]: typed }));
-              }}
-            />
-          ))}
-        </div>
-
-        <div className="field">
-          <label htmlFor="benchmark-primary">Right primary categories</label>
-          <textarea
-            id="benchmark-primary"
-            rows={3}
-            value={primary}
-            placeholder={"General contractor\nConstruction company"}
-            aria-describedby="benchmark-primary-hint"
-            onChange={(e) => setPrimary(e.target.value)}
-          />
-          <span id="benchmark-primary-hint" className="muted small">
-            One a line, as Google names them. A profile whose primary category isn&apos;t one of
-            these gets a red finding. Empty: not compared.
-          </span>
-          {errors["gbp.primary_categories"] && (
-            <p className="field-error">{errors["gbp.primary_categories"]}</p>
-          )}
-        </div>
-
-        <h3>Website</h3>
-        <h4>Services</h4>
-        {s.services.map((svc, i) => (
-          <div className="service-row" key={i}>
-            <Field
-              label={`Service ${i + 1}`}
-              value={svc.name}
-              error={errors[`website.services.${i}.name`]}
-              onChange={(e) => setService(i, { name: e.target.value })}
-            />
-            <Field
-              label="Also called (comma separated)"
-              value={synonyms[i] ?? ""}
-              onChange={(e) => {
-                const text = e.target.value;
-                setSynonyms((all) => all.map((old, j) => (j === i ? text : old)));
-              }}
-            />
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={svc.must_have}
-                onChange={(e) => setService(i, { must_have: e.target.checked })}
-              />
-              Must-have
-            </label>
-            <button
-              type="button"
-              className="link-button"
-              onClick={() => {
-                setS((x) => ({ ...x, services: x.services.filter((_, j) => j !== i) }));
-                setSynonyms((all) => all.filter((_, j) => j !== i));
-              }}
-            >
-              Remove
-            </button>
-          </div>
-        ))}
-        <div>
+        <nav className="files-tabs" aria-label="Parts">
           <button
             type="button"
-            className="button"
-            onClick={() => {
-              setS((x) => ({
-                ...x,
-                services: [...x.services, { name: "", synonyms: [], must_have: true }],
-              }));
-              setSynonyms((all) => [...all, ""]);
-            }}
+            className={part === "gbp" ? "on" : undefined}
+            aria-pressed={part === "gbp"}
+            onClick={() => setPart("gbp")}
           >
-            + Add a service
+            Google Business Profile
           </button>
-        </div>
-        {errors.website && <p className="field-error">{errors.website}</p>}
+          <button
+            type="button"
+            className={part === "website" ? "on" : undefined}
+            aria-pressed={part === "website"}
+            onClick={() => setPart("website")}
+          >
+            Website
+          </button>
+        </nav>
 
-        <h4>Service pages</h4>
-        <div className="connection-fields">
-          <Field
-            label="Words at least"
-            type="number"
-            min={0}
-            value={String(s.service_page.min_words)}
-            onChange={(e) =>
-              setS((x) => ({
-                ...x,
-                service_page: { ...x.service_page, min_words: Number(e.target.value) },
-              }))
-            }
-          />
-          <Field
-            label="Sections (H2) at least"
-            type="number"
-            min={0}
-            value={String(s.service_page.min_sections)}
-            onChange={(e) =>
-              setS((x) => ({
-                ...x,
-                service_page: { ...x.service_page, min_sections: Number(e.target.value) },
-              }))
-            }
-          />
-        </div>
-        <div className="checks">
-          {SERVICE_CHECKS.map(([key, label]) => (
-            <label className="check" key={key}>
-              <input
-                type="checkbox"
-                checked={Boolean(s.service_page[key])}
-                onChange={(e) =>
-                  setS((x) => ({
-                    ...x,
-                    service_page: { ...x.service_page, [key]: e.target.checked },
-                  }))
-                }
+        <div className="stack" hidden={part !== "gbp"}>
+          <p className="muted small">
+            Only what an agency can improve for the business. Reviews and ratings aren&apos;t a
+            benchmark: they are shown in reports, never compared.
+          </p>
+          <div className="benchmark-gbp">
+            <div className="field">
+              <label htmlFor="benchmark-primary">Right primary categories</label>
+              <textarea
+                id="benchmark-primary"
+                rows={4}
+                value={primary}
+                placeholder={"General contractor\nConstruction company"}
+                aria-describedby="benchmark-primary-hint"
+                onChange={(e) => setPrimary(e.target.value)}
               />
-              {label}
-            </label>
-          ))}
-        </div>
-
-        <h4>Location pages</h4>
-        <div className="connection-fields">
-          <Field
-            label="Words at least"
-            type="number"
-            min={0}
-            value={String(s.location_page.min_words)}
-            onChange={(e) =>
-              setS((x) => ({
-                ...x,
-                location_page: { ...x.location_page, min_words: Number(e.target.value) },
-              }))
-            }
-          />
-          <Field
-            label="Most text shared with another location page (%)"
-            type="number"
-            min={0}
-            max={100}
-            value={String(s.location_page.max_shared_text_pct)}
-            onChange={(e) =>
-              setS((x) => ({
-                ...x,
-                location_page: { ...x.location_page, max_shared_text_pct: Number(e.target.value) },
-              }))
-            }
-          />
-        </div>
-        <div className="checks">
-          {LOCATION_CHECKS.map(([key, label]) => (
-            <label className="check" key={key}>
-              <input
-                type="checkbox"
-                checked={Boolean(s.location_page[key])}
-                onChange={(e) =>
-                  setS((x) => ({
-                    ...x,
-                    location_page: { ...x.location_page, [key]: e.target.checked },
-                  }))
-                }
+              <span id="benchmark-primary-hint" className="muted small">
+                One a line, as Google names them. Another primary category is red. Empty: not
+                compared.
+              </span>
+              {errors["gbp.primary_categories"] && (
+                <p className="field-error">{errors["gbp.primary_categories"]}</p>
+              )}
+            </div>
+            <div className="field">
+              <label htmlFor="benchmark-standard">Standard GBP services</label>
+              <textarea
+                id="benchmark-standard"
+                rows={4}
+                value={standard}
+                placeholder={"Remodeling\nRoofing\nDemolition"}
+                aria-describedby="benchmark-standard-hint"
+                onChange={(e) => setStandard(e.target.value)}
               />
-              {label}
-            </label>
-          ))}
+              <span id="benchmark-standard-hint" className="muted small">
+                One a line. Shown to the business as the services a profile in this niche lists, and
+                looked for in its description (at least 3).
+              </span>
+              {errors["gbp.standard_services"] && (
+                <p className="field-error">{errors["gbp.standard_services"]}</p>
+              )}
+            </div>
+            {GBP_FIELDS.map(([key, label, example]) => (
+              <Field
+                key={key}
+                label={label}
+                type="number"
+                min={0}
+                step="any"
+                placeholder={example}
+                hint="Under 25% of it red, under 60% orange. Empty: not compared."
+                value={gbp[key] ?? ""}
+                error={errors[`gbp.${key}`]}
+                onChange={(e) => {
+                  const typed = e.target.value;
+                  setGbp((all) => ({ ...all, [key]: typed }));
+                }}
+              />
+            ))}
+          </div>
+          <p className="muted small">
+            Checked on every profile without a benchmark: claimed, phone, website, address, hours,
+            logo, cover photo, ever posted, and whether the description names the business, its
+            primary category, its city and some of the standard services (Claude).
+          </p>
         </div>
 
-        <h4>Supporting pages, blog and speed</h4>
-        <Field
-          label="Supporting pages good sites have (comma separated)"
-          value={pages}
-          onChange={(e) => setPages(e.target.value)}
-        />
-        <div className="connection-fields">
+        <div className="stack" hidden={part !== "website"}>
+          <p className="muted small">The Website Standard, used by the Website audit agent.</p>
+          <h4>Services</h4>
+          {s.services.map((svc, i) => (
+            <div className="service-row" key={i}>
+              <Field
+                label={`Service ${i + 1}`}
+                value={svc.name}
+                error={errors[`website.services.${i}.name`]}
+                onChange={(e) => setService(i, { name: e.target.value })}
+              />
+              <Field
+                label="Also called (comma separated)"
+                value={synonyms[i] ?? ""}
+                onChange={(e) => {
+                  const text = e.target.value;
+                  setSynonyms((all) => all.map((old, j) => (j === i ? text : old)));
+                }}
+              />
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={svc.must_have}
+                  onChange={(e) => setService(i, { must_have: e.target.checked })}
+                />
+                Must-have
+              </label>
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => {
+                  setS((x) => ({ ...x, services: x.services.filter((_, j) => j !== i) }));
+                  setSynonyms((all) => all.filter((_, j) => j !== i));
+                }}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+          <div>
+            <button
+              type="button"
+              className="button"
+              onClick={() => {
+                setS((x) => ({
+                  ...x,
+                  services: [...x.services, { name: "", synonyms: [], must_have: true }],
+                }));
+                setSynonyms((all) => [...all, ""]);
+              }}
+            >
+              + Add a service
+            </button>
+          </div>
+          {errors.website && <p className="field-error">{errors.website}</p>}
+
+          <h4>Service pages</h4>
+          <div className="connection-fields">
+            <Field
+              label="Words at least"
+              type="number"
+              min={0}
+              value={String(s.service_page.min_words)}
+              onChange={(e) =>
+                setS((x) => ({
+                  ...x,
+                  service_page: { ...x.service_page, min_words: Number(e.target.value) },
+                }))
+              }
+            />
+            <Field
+              label="Sections (H2) at least"
+              type="number"
+              min={0}
+              value={String(s.service_page.min_sections)}
+              onChange={(e) =>
+                setS((x) => ({
+                  ...x,
+                  service_page: { ...x.service_page, min_sections: Number(e.target.value) },
+                }))
+              }
+            />
+          </div>
+          <div className="checks">
+            {SERVICE_CHECKS.map(([key, label]) => (
+              <label className="check" key={key}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(s.service_page[key])}
+                  onChange={(e) =>
+                    setS((x) => ({
+                      ...x,
+                      service_page: { ...x.service_page, [key]: e.target.checked },
+                    }))
+                  }
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+
+          <h4>Location pages</h4>
+          <div className="connection-fields">
+            <Field
+              label="Words at least"
+              type="number"
+              min={0}
+              value={String(s.location_page.min_words)}
+              onChange={(e) =>
+                setS((x) => ({
+                  ...x,
+                  location_page: { ...x.location_page, min_words: Number(e.target.value) },
+                }))
+              }
+            />
+            <Field
+              label="Most text shared with another location page (%)"
+              type="number"
+              min={0}
+              max={100}
+              value={String(s.location_page.max_shared_text_pct)}
+              onChange={(e) =>
+                setS((x) => ({
+                  ...x,
+                  location_page: {
+                    ...x.location_page,
+                    max_shared_text_pct: Number(e.target.value),
+                  },
+                }))
+              }
+            />
+          </div>
+          <div className="checks">
+            {LOCATION_CHECKS.map(([key, label]) => (
+              <label className="check" key={key}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(s.location_page[key])}
+                  onChange={(e) =>
+                    setS((x) => ({
+                      ...x,
+                      location_page: { ...x.location_page, [key]: e.target.checked },
+                    }))
+                  }
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+
+          <h4>Supporting pages, blog and speed</h4>
           <Field
-            label="Blog posts a month"
-            type="number"
-            min={0}
-            step="0.5"
-            value={String(s.blog.posts_per_month)}
-            onChange={(e) =>
-              setS((x) => ({ ...x, blog: { ...x.blog, posts_per_month: Number(e.target.value) } }))
-            }
+            label="Supporting pages good sites have (comma separated)"
+            value={pages}
+            onChange={(e) => setPages(e.target.value)}
           />
-          <Field
-            label="Mobile LCP target (seconds)"
-            type="number"
-            min={0.5}
-            step="0.1"
-            value={String(s.mobile_lcp_seconds)}
-            error={errors["website.mobile_lcp_seconds"]}
-            onChange={(e) => setS((x) => ({ ...x, mobile_lcp_seconds: Number(e.target.value) }))}
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="standard-topics">Blog topics good sites cover (one per line)</label>
-          <textarea
-            id="standard-topics"
-            rows={5}
-            value={topics}
-            onChange={(e) => setTopics(e.target.value)}
-          />
+          <div className="connection-fields">
+            <Field
+              label="Blog posts a month"
+              type="number"
+              min={0}
+              step="0.5"
+              value={String(s.blog.posts_per_month)}
+              onChange={(e) =>
+                setS((x) => ({
+                  ...x,
+                  blog: { ...x.blog, posts_per_month: Number(e.target.value) },
+                }))
+              }
+            />
+            <Field
+              label="Mobile LCP target (seconds)"
+              type="number"
+              min={0.5}
+              step="0.1"
+              value={String(s.mobile_lcp_seconds)}
+              error={errors["website.mobile_lcp_seconds"]}
+              onChange={(e) => setS((x) => ({ ...x, mobile_lcp_seconds: Number(e.target.value) }))}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="standard-topics">Blog topics good sites cover (one per line)</label>
+            <textarea
+              id="standard-topics"
+              rows={5}
+              value={topics}
+              onChange={(e) => setTopics(e.target.value)}
+            />
+          </div>
         </div>
       </fieldset>
       <div className="row">

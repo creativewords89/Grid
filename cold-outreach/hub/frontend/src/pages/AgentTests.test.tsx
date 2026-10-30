@@ -134,6 +134,7 @@ test("a test report shows each lead and what the GBP agent collected", async () 
           details: {
             agent: "gbp",
             benchmark: { id: "bm1", name: "Construction Benchmark 1", version: 2 },
+            standard_services: ["Remodeling", "Home building"],
             findings: [
               {
                 part: "posts",
@@ -221,6 +222,8 @@ test("a test report shows each lead and what the GBP agent collected", async () 
   // Claude's check of the description, with its own words.
   expect(within(open).getByText("Yes: “Apex Builders”")).toBeVisible();
   expect(within(open).getByText("✗ Remodeling · ✓ Home building")).toBeVisible();
+  const standard = within(open).getByRole("region", { name: "Standard GBP services" });
+  expect(within(standard).getByText("Remodeling")).toBeVisible();
   expect(within(open).queryByText("Booking link")).not.toBeInTheDocument();
   expect(within(open).queryByText(/Services/)).not.toBeInTheDocument();
   expect(within(open).getByRole("link", { name: "Download gbp.json" })).toHaveAttribute(

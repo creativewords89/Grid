@@ -54,6 +54,13 @@ test("make a new benchmark: GBP numbers and the website part", async () => {
     within(form).getByLabelText("Right primary categories"),
     "House cleaning service{enter}Maid service",
   );
+  await userEvent.type(
+    within(form).getByLabelText("Standard GBP services"),
+    "Deep cleaning{enter}Move-out cleaning, end of lease",
+  );
+  // Reviews and ratings aren't a benchmark any more (step 53).
+  expect(within(form).queryByLabelText("Rating (0–5)")).not.toBeInTheDocument();
+  await userEvent.click(within(form).getByRole("button", { name: "Website" }));
   await userEvent.click(within(form).getByRole("button", { name: "+ Add a service" }));
   await userEvent.type(within(form).getByLabelText("Service 1"), "Deep cleaning");
   await userEvent.type(within(form).getByLabelText("Also called (comma separated)"), "deep clean");
@@ -74,6 +81,7 @@ test("make a new benchmark: GBP numbers and the website part", async () => {
     photos: 120,
     posts_90_days: 9,
     primary_categories: ["House cleaning service", "Maid service"],
+    standard_services: ["Deep cleaning", "Move-out cleaning, end of lease"],
   });
   expect(sent.website.services).toEqual([
     { name: "Deep cleaning", synonyms: ["deep clean"], must_have: true },
@@ -119,8 +127,8 @@ test("copy a benchmark into a new one, and a server error shows on its field", a
       {
         error: {
           code: "invalid",
-          message: "Input should be less than or equal to 5.",
-          fields: { "gbp.rating": "Input should be less than or equal to 5." },
+          message: "Input should be greater than or equal to 0.",
+          fields: { "gbp.photos": "Input should be greater than or equal to 0." },
         },
       },
     ],
@@ -131,11 +139,16 @@ test("copy a benchmark into a new one, and a server error shows on its field", a
   const form = screen.getByRole("form", { name: "Benchmark" });
   expect(within(form).getByLabelText("Name")).toHaveValue("Cleaning Benchmark 1 (copy)");
   expect(within(form).getByLabelText("Service 1")).toHaveValue("Deep cleaning");
-  await userEvent.type(within(form).getByLabelText("Rating (0–5)"), "9");
+  await userEvent.click(within(form).getByRole("button", { name: "Website" }));
   await userEvent.click(within(form).getByRole("button", { name: "Save" }));
 
-  expect(await within(form).findAllByText("Input should be less than or equal to 5.")).toHaveLength(
-    2,
+  // The error is on the GBP tab: it opens again to show it.
+  expect(
+    await within(form).findAllByText("Input should be greater than or equal to 0."),
+  ).toHaveLength(2);
+  expect(within(form).getByRole("button", { name: "Google Business Profile" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
   );
 });
 

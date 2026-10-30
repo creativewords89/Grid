@@ -18,7 +18,7 @@ from app import audit
 from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
 from app.auth.tokens import now
-from app.db.models import Batch, Benchmark, FileCity, Submission, User
+from app.db.models import FileCity, Submission, User
 from app.errors import ApiError
 from app.imports import check, file_cities
 from app.imports import submissions as files
@@ -188,14 +188,6 @@ def _open(db: Session, file_id: uuid.UUID, key: str, lock: bool = False) -> File
     return city
 
 
-class BenchmarkHint(BaseModel):
-    """What a Top business has at least (the niche's benchmark): ⭐ for the ones that do."""
-
-    name: str
-    reviews: float | None
-    rating: float | None
-
-
 class CityOut(BaseModel):
     key: str
     name: str
@@ -206,7 +198,6 @@ class CityOut(BaseModel):
     file_name: str
     columns: list[dict[str, str]]
     businesses: list[dict[str, Any]]
-    benchmark: BenchmarkHint | None = None
 
 
 COLUMNS = [*check.STANDARD.items(), ("notes", "Notes")]
@@ -221,50 +212,11 @@ def _number(text: str | None) -> float | None:
         return check.reviews_count(text)
 
 
-def _hint(db: Session, niche: str) -> BenchmarkHint | None:
-    """The niche's benchmark: its batch's, else the niche's first."""
-    key = niche.strip().lower()
-    batch = db.scalar(
-        select(Batch)
-        .where(func.lower(func.trim(Batch.niche)) == key, Batch.benchmark_id.is_not(None))
-        .order_by(Batch.position)
-        .limit(1)
-    )
-    benchmark = (
-        batch.benchmark
-        if batch is not None
-        else db.scalar(
-            select(Benchmark)
-            .where(func.lower(func.trim(Benchmark.niche)) == key)
-            .order_by(Benchmark.name)
-            .limit(1)
-        )
-    )
-    if benchmark is None:
-        return None
-    gbp = benchmark.gbp or {}
-    return BenchmarkHint(
-        name=benchmark.name,
-        reviews=_number(str(gbp["reviews"])) if gbp.get("reviews") is not None else None,
-        rating=_number(str(gbp["rating"])) if gbp.get("rating") is not None else None,
-    )
-
-
-def _businesses(city: FileCity, hint: BenchmarkHint | None) -> list[dict[str, Any]]:
-    """The city's businesses (kept when the file was sent on, step 41), most reviews first:
-    each with whether it is Top and whether it meets the benchmark (⭐ a likely Top)."""
+def _businesses(city: FileCity) -> list[dict[str, Any]]:
+    """The city's businesses (kept when the file was sent on, step 41), most reviews first,
+    each with whether it is Top. (Reviews aren't a benchmark: no "likely Top" any more.)"""
     chosen = set(city.tops)
-    found = []
-    for item in city.items:
-        values = item.get("values", {})
-        reviews, rating = _number(values.get("reviews")), _number(values.get("rating"))
-        likely = bool(
-            hint
-            and (hint.reviews is not None or hint.rating is not None)
-            and (hint.reviews is None or (reviews or 0) >= hint.reviews)
-            and (hint.rating is None or (rating or 0) >= hint.rating)
-        )
-        found.append(dict(item, top=item["key"] in chosen, likely=likely))
+    found = [dict(item, top=item["key"] in chosen) for item in city.items]
     found.sort(
         key=lambda b: (
             -(_number(b["values"].get("reviews")) or 0),
@@ -285,13 +237,11 @@ def _columns(found: list[dict[str, Any]]) -> list[dict[str, str]]:
 
 @router.get("/review/files/{file_id}/cities/{city}", response_model=CityOut)
 def review_city(file_id: uuid.UUID, city: str, me: CurrentUser, db: Db) -> CityOut:
-    """One city's businesses, with every column, which are Top and which meet the niche's
-    benchmark."""
+    """One city's businesses, with every column, and which are Top."""
     ensure(me, Action.REVIEW_TOPS)
     found_city = _open(db, file_id, city)
     sub = found_city.file
-    hint = _hint(db, sub.niche)
-    found = _businesses(found_city, hint)
+    found = _businesses(found_city)
     row = _row(sub, found_city)
     return CityOut(
         key=found_city.key,
@@ -303,7 +253,6 @@ def review_city(file_id: uuid.UUID, city: str, me: CurrentUser, db: Db) -> CityO
         file_name=sub.file_name,
         columns=_columns(found),
         businesses=found,
-        benchmark=hint,
     )
 
 
@@ -319,7 +268,6 @@ class SmallPage(BaseModel):
     page: int
     pages: int
     columns: list[dict[str, str]]
-    benchmark: BenchmarkHint | None
     cities: list[SmallCity]
 
 
@@ -342,24 +290,19 @@ def small_cities(
     ]
     pages = max(1, -(-len(found) // SMALL_PAGE))
     shown = found[(page - 1) * SMALL_PAGE : page * SMALL_PAGE]
-    hints: dict[str, BenchmarkHint | None] = {}
     cities = []
     for sub, city in shown:
-        if sub.niche not in hints:
-            hints[sub.niche] = _hint(db, sub.niche)
         cities.append(
             SmallCity(
                 **_row(sub, city).model_dump(),
-                businesses_list=_businesses(city, hints[sub.niche]),
+                businesses_list=_businesses(city),
             )
         )
-    hint = next(iter(hints.values()), None) if len(hints) == 1 else None
     return SmallPage(
         total=len(found),
         page=page,
         pages=pages,
         columns=_columns([b for c in cities for b in c.businesses_list]),
-        benchmark=hint,
         cities=cities,
     )
 

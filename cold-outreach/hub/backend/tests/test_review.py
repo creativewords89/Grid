@@ -256,9 +256,9 @@ def test_top_review_never_reads_the_file_again(
     assert saved.json()["state"] == "ready"
 
 
-def test_a_city_shows_most_reviews_first_and_likely_tops(owner: TestClient, person: Person) -> None:
-    """Step 41: businesses come most reviews first; those meeting the niche's benchmark
-    (150 reviews, 4.8) are marked as likely Tops."""
+def test_a_city_shows_most_reviews_first(owner: TestClient, person: Person) -> None:
+    """Step 41: businesses come most reviews first. (Step 53: reviews aren't a benchmark, so
+    no business is marked a likely Top.)"""
     cal, _ = person(Role.COLLECTOR)
     rita, _ = person(Role.REVIEWER)
     many = [
@@ -271,8 +271,7 @@ def test_a_city_shows_most_reviews_first_and_likely_tops(owner: TestClient, pers
     sub = hand_in(cal, {"Tulsa": [STANDARD, *many]})
     city = rita.get(city_url(sub["id"], "Tulsa")).json()
     assert city["businesses"][0]["values"]["business_name"] == "Star Co"
-    assert [b["values"]["business_name"] for b in city["businesses"] if b["likely"]] == ["Star Co"]
-    assert city["benchmark"]["name"] == "Cleaning Benchmark 1"
+    assert "likely" not in city["businesses"][0] and "benchmark" not in city
 
 
 def test_cities_under_10_are_ticked_on_one_page_and_saved_at_once(

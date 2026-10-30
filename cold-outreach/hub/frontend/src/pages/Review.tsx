@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "re
 import {
   api,
   ApiError,
-  type BenchmarkHint,
   type ReviewBusiness,
   type ReviewCity,
   type ReviewFileRow,
@@ -431,15 +430,6 @@ function FileReview({ file, onBack }: { file: ReviewFileRow; onBack: () => void 
   );
 }
 
-function hintText(hint: BenchmarkHint | null): string {
-  if (!hint) return "";
-  const parts = [
-    hint.reviews !== null && `${hint.reviews.toLocaleString()}+ reviews`,
-    hint.rating !== null && `${hint.rating}+ rating`,
-  ].filter(Boolean);
-  return parts.length ? `⭐ meets ${hint.name} (${parts.join(", ")}): a likely Top` : "";
-}
-
 const cellValue = (b: ReviewBusiness, key: string) =>
   key.startsWith("extra:") ? (b.extra[key.slice(6)] ?? "") : (b.values[key] ?? "");
 
@@ -537,7 +527,6 @@ function CityView({
             {row.file_name} · {row.businesses} businesses, most reviews first · tick the Top ones,
             then save.
           </p>
-          {city?.benchmark && <p className="small">{hintText(city.benchmark)}</p>}
         </div>
         <div className="row">
           <span className="small">{chosen.size} Top chosen</span>
@@ -606,11 +595,6 @@ function CityView({
                           toggle(b.key);
                         }}
                       />{" "}
-                      {b.likely && (
-                        <span title="Meets the benchmark: a likely Top" aria-label="Likely Top">
-                          ⭐
-                        </span>
-                      )}
                     </td>
                     {city.columns.map((c) => (
                       <td key={c.key} className="small" title={cellValue(b, c.key)}>
@@ -711,7 +695,6 @@ function SmallCities({ fileId, onSaved }: { fileId: string; onSaved: (text: stri
           </button>
         )}
       </div>
-      {found.benchmark && <p className="small">{hintText(found.benchmark)}</p>}
       {found.cities.length === 0 && <p className="muted files-empty">No city here.</p>}
       {found.cities.map((c) => (
         <section key={id(c)} className="card table-card" aria-label={`${c.name}, ${c.file_name}`}>
@@ -743,11 +726,6 @@ function SmallCities({ fileId, onSaved }: { fileId: string; onSaved: (text: stri
                           checked={on}
                           onChange={() => toggle(id(c), b.key)}
                         />{" "}
-                        {b.likely && (
-                          <span title="Meets the benchmark: a likely Top" aria-label="Likely Top">
-                            ⭐
-                          </span>
-                        )}
                       </td>
                       {found.columns.map((col) => (
                         <td key={col.key} className="small" title={cellValue(b, col.key)}>

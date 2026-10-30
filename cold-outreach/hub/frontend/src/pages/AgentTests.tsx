@@ -340,6 +340,27 @@ function Findings({ details }: { details: Data }) {
   );
 }
 
+/** The niche's standard GBP services (step 53): a suggestion, since DataForSEO doesn't say
+ * which services a profile lists. */
+function StandardServices({ details }: { details: Data }) {
+  const services = (details.standard_services ?? []) as string[];
+  if (services.length === 0) return null;
+  return (
+    <section className="card-inner stack-tight" aria-label="Standard GBP services">
+      <h4>Standard GBP services</h4>
+      <p className="small">
+        A profile in this niche usually lists these services. DataForSEO doesn&apos;t say which ones
+        this profile has, so they are a suggestion, not a finding:
+      </p>
+      <ul className="small">
+        {services.map((name) => (
+          <li key={name}>{name}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 /** Claude's check of the description (step 52): what it names, with its own words. */
 function DescriptionChecks({ checks }: { checks: Data | null | undefined }) {
   if (!checks) return <p className="muted small">Not checked by Claude.</p>;
@@ -356,10 +377,10 @@ function DescriptionChecks({ checks }: { checks: Data | null | undefined }) {
         ["Names the category", said(checks.category)],
         ["Names the city", said(checks.city)],
         [
-          "Main services",
+          "Standard services",
           services.length
             ? services.map((s) => `${s.mentioned ? "✓" : "✗"} ${s.name}`).join(" · ")
-            : "None in the benchmark",
+            : "None in the benchmark's GBP part",
         ],
         ["Checked by", checks.model],
       ]}
@@ -626,6 +647,7 @@ export function TestReportPage({ agentKey, testId }: { agentKey: string; testId:
               {details.agent === "gbp" && details.data ? (
                 <>
                   <Findings details={details} />
+                  <StandardServices details={details} />
                   <GbpData data={details.data as Data} />
                 </>
               ) : (

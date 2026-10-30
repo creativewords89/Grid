@@ -6,16 +6,18 @@ was collected, compared with the batch's benchmark (GBP part), into findings and
 - Something missing from the profile (not claimed, no phone …) is a red finding, without
   a benchmark.
 - What DataForSEO didn't give is never a finding: that check is left out of the score.
-- Reviews are compared and shown, but never scored (PLAN.md section 5).
+- Reviews and ratings are shown in the report, never compared: an agency can't change them
+  (step 53).
 
-The score is 100 points over the parts that could be checked: Basics 20, Categories 35,
-Description 10, Photos 10, Posts 25.
+The score is 100 points over the parts that could be checked: Basics 20, Primary category
+20, Description 10, Photos 20, Posts 30.
 """
 
 from dataclasses import dataclass
 from typing import Any
 
 RED, ORANGE, OK = "red", "orange", "ok"
+SERVICES_WANTED = 3  # standard services the description should name (all, when fewer)
 
 
 @dataclass
@@ -81,7 +83,6 @@ def checks(data: dict[str, Any], gbp: dict[str, Any]) -> list[Check]:
     d = data.get("description") or {}
     p = data.get("photos") or {}
     posts = data.get("posts")
-    r = data.get("reviews") or {}
     out: list[Check | None] = []
 
     # Basics: 20, 4 each.
@@ -96,7 +97,7 @@ def checks(data: dict[str, Any], gbp: dict[str, Any]) -> list[Check]:
     out.append(_present("basics", "GBP_NO_ADDRESS", "Address", 4, b.get("address") or ""))
     out.append(_present("basics", "GBP_NO_HOURS", "Hours", 4, b.get("hours") or ""))
 
-    # Categories: 35 (primary 20, additional 15). GBP services aren't checked.
+    # Primary category: 20.
     right = [x.strip().lower() for x in gbp.get("primary_categories") or [] if x.strip()]
     primary = c.get("primary")
     if right:
@@ -127,43 +128,22 @@ def checks(data: dict[str, Any], gbp: dict[str, Any]) -> list[Check]:
                     gbp.get("primary_categories"),
                 )
             )
-    additional = c.get("additional")
-    out.append(
-        _ratio(
-            "categories",
-            "GBP_FEW_CATEGORIES",
-            "Additional categories",
-            15,
-            len(additional) if isinstance(additional, list) else None,
-            gbp.get("additional_categories"),
-        )
-    )
 
-    # Description: 10 (there 2, length 2, and Claude's check: brand 2, category 2, main
+    # Description: 10 (there 2; Claude's check: business name 3, category 3, standard
     # services 2; the city is shown, not scored).
     text = d.get("text")
     out.append(_present("description", "GBP_NO_DESCRIPTION", "Description", 2, text or ""))
-    out.append(
-        _ratio(
-            "description",
-            "GBP_SHORT_DESCRIPTION",
-            "Description length",
-            2,
-            d.get("length") if text else 0,
-            gbp.get("description_length"),
-        )
-    )
     if text:
-        out.extend(_described(d.get("checks"), gbp))
+        out.extend(_described(d.get("checks")))
 
-    # Photos: 10 (count 6, logo 2, cover 2).
-    out.append(_ratio("photos", "GBP_FEW_PHOTOS", "Photos", 6, p.get("total"), gbp.get("photos")))
+    # Photos: 20 (count 16, logo 2, cover 2).
+    out.append(_ratio("photos", "GBP_FEW_PHOTOS", "Photos", 16, p.get("total"), gbp.get("photos")))
     out.append(_present("photos", "GBP_NO_LOGO", "Logo", 2, p.get("logo") or ""))
     out.append(_present("photos", "GBP_NO_COVER", "Cover photo", 2, p.get("cover") or ""))
 
-    # Posts: 25 (ever posted 10, in 90 days 15).
+    # Posts: 30 (ever posted 10, in 90 days 20).
     if posts is None:
-        out.append(Check("posts", "GBP_NO_POSTS", "Posts: unable to verify", 25, None))
+        out.append(Check("posts", "GBP_NO_POSTS", "Posts: unable to verify", 30, None))
     else:
         out.append(
             Check("posts", "GBP_NO_POSTS", "Has posted", 10, 1.0)
@@ -175,32 +155,12 @@ def checks(data: dict[str, Any], gbp: dict[str, Any]) -> list[Check]:
                 "posts",
                 "GBP_FEW_RECENT_POSTS",
                 "Posts in 90 days",
-                15,
+                20,
                 posts.get("last_90_days"),
                 gbp.get("posts_90_days"),
             )
         )
-
-    # Reviews: shown, never scored.
-    out.append(
-        _ratio(
-            "reviews", "GBP_FEW_REVIEWS", "Reviews", 0, r.get("count"), gbp.get("reviews"), False
-        )
-    )
-    out.append(
-        _ratio("reviews", "GBP_LOW_RATING", "Rating", 0, r.get("rating"), gbp.get("rating"), False)
-    )
-    out.append(
-        _ratio(
-            "reviews",
-            "GBP_FEW_REPLIES",
-            "Review replies (%)",
-            0,
-            r.get("reply_pct"),
-            gbp.get("review_reply_pct"),
-            False,
-        )
-    )
+    # Reviews are shown in the report, never compared: not something an agency can change.
     return [x for x in out if x is not None]
 
 
@@ -230,12 +190,12 @@ def _mention(code: str, what: str, points: float, answer: Any, scored: bool = Tr
     )
 
 
-def _described(checks: Any, gbp: dict[str, Any]) -> list[Check]:
+def _described(checks: Any) -> list[Check]:
     """Claude's check of the description (describe.py): unable to verify without one."""
     checks = checks if isinstance(checks, dict) else {}
     out = [
-        _mention("GBP_DESCRIPTION_NO_BRAND", "Business name", 2, checks.get("brand")),
-        _mention("GBP_DESCRIPTION_NO_CATEGORY", "Primary category", 2, checks.get("category")),
+        _mention("GBP_DESCRIPTION_NO_BRAND", "Business name", 3, checks.get("brand")),
+        _mention("GBP_DESCRIPTION_NO_CATEGORY", "Primary category", 3, checks.get("category")),
         _mention("GBP_DESCRIPTION_NO_CITY", "City", 0, checks.get("city"), scored=False),
     ]
     services = checks.get("services")
@@ -252,10 +212,10 @@ def _described(checks: Any, gbp: dict[str, Any]) -> list[Check]:
     elif services:
         named = [s["name"] for s in services if s.get("mentioned")]
         missing = [s["name"] for s in services if not s.get("mentioned")]
-        needed = min(int(gbp.get("services_in_description") or 3), len(services))
+        needed = min(SERVICES_WANTED, len(services))
         share = min(1.0, len(named) / needed)
         severity = OK if len(named) >= needed else ORANGE if named else RED
-        message = f"{len(named)} of the main services in the description" + (
+        message = f"{len(named)} of the standard services in the description" + (
             f" ({needed} wanted); not named: {', '.join(missing)}" if severity != OK else ""
         )
         out.append(

@@ -381,6 +381,8 @@ def test_a_run_collects_each_lead_and_saves_its_file(
     benchmark = client.get("/api/benchmarks").json()[0]
     assert (one["benchmark_id"], one["benchmark_version"]) == (benchmark["id"], 1)
     assert one["details"]["benchmark"]["name"] == benchmark["name"]
+    # The niche's standard GBP services come with it, as a suggestion.
+    assert one["details"]["standard_services"] == benchmark["gbp"]["standard_services"]
     data = one["details"]["data"]
     assert data["basics"]["website"] == "https://shine.example"
     assert "latest" not in data["reviews"]  # the full reviews are in gbp.json
@@ -413,32 +415,29 @@ def test_a_run_without_the_dataforseo_key_fails_at_once(
 BENCHMARK = {
     "photos": 100,
     "posts_90_days": 12,
-    "additional_categories": 4,
-    "description_length": 600,
     "primary_categories": ["House cleaning service"],
-    "reviews": 200,
+    "standard_services": ["Remodeling", "Roofing", "Demolition", "Painting"],
 }
 
 
 def test_the_profile_is_compared_with_the_benchmark_into_findings_and_a_score() -> None:
-    """Step 51: the lead ÷ the benchmark (red under 25%, orange to 60%), what the profile
-    misses, and a score over what could be checked; reviews shown, never scored."""
+    """Steps 51 and 53: the lead ÷ the benchmark (red under 25%, orange to 60%) for what an
+    agency can improve, what the profile misses, and a score over what could be checked;
+    reviews and ratings are never compared."""
     data = collect.collect(INFO, POSTS, REVIEWS, TODAY)
     found = compare.compare(data, BENCHMARK)
 
     bad = [(f["severity"], f["code"], f["value"], f["benchmark"]) for f in found["findings"]]
-    assert bad[:4] == [
-        ("red", "GBP_SHORT_DESCRIPTION", len(INFO["description"]), 600.0),
+    assert bad[:2] == [
         ("red", "GBP_FEW_RECENT_POSTS", 1, 12.0),
-        ("orange", "GBP_FEW_CATEGORIES", 2, 4.0),
         ("orange", "GBP_FEW_PHOTOS", 48, 100.0),
     ]
-    reviews = next(f for f in found["findings"] if f["code"] == "GBP_FEW_REVIEWS")
-    assert (reviews["severity"], reviews["scored"]) == ("ok", False)  # 126 of 200: shown only
+    assert not any(f["part"] == "reviews" for f in found["findings"])
     # The description's own checks weren't made (no Claude answer): left out of the score.
     assert "GBP_DESCRIPTION_NO_BRAND" in found["unverified"]
-    assert found["score"] == 72
-    assert found["summary"] == "Score 72 · 2 red · 2 orange"
+    # Basics 20 + primary 20 + description 2 + photos 7.68 + 2 + 2 + posts 10 + 1.67 of 92.
+    assert found["score"] == 71
+    assert found["summary"] == "Score 71 · 1 red · 1 orange"
 
 
 def test_a_wrong_primary_category_and_what_the_profile_misses_are_red() -> None:
@@ -555,17 +554,24 @@ def test_no_description_key_or_usable_answer_checks_nothing(claude: type[FakeCla
 
 def test_a_few_main_services_are_enough(claude: type[FakeClaude]) -> None:
     checks = describe.check("k", "claude-opus-5-5", TEXT, "Apex", "x", "Akron", SERVICES)
+    assert checks is not None
     data = collect.collect({**INFO, "description": TEXT}, POSTS, REVIEWS, TODAY)
     data["description"]["checks"] = checks
     found = {f["code"]: f for f in compare.compare(data, BENCHMARK)["findings"]}
     services = found["GBP_DESCRIPTION_FEW_SERVICES"]
-    # 2 of the 4 named, 3 wanted: orange, with what is missing.
+    # 2 of the 4 standard services named, 3 wanted: orange, with what is missing.
     assert services["severity"] == "orange"
     assert "not named: Roofing, Painting" in services["message"]
     assert found["GBP_DESCRIPTION_NO_BRAND"]["severity"] == "ok"
-    enough = compare.compare(data, BENCHMARK | {"services_in_description": 2})
+    two = {**checks, "services": checks["services"][:2]}  # fewer than 3: all are wanted
+    data["description"]["checks"] = {
+        **two,
+        "services": [{**x, "mentioned": True} for x in two["services"]],
+    }
+    enough = compare.compare(data, BENCHMARK)
     named = next(f for f in enough["findings"] if f["code"] == "GBP_DESCRIPTION_FEW_SERVICES")
     assert named["severity"] == "ok"
+    data["description"]["checks"] = checks
     data["description"]["checks"]["city"] = {"mentioned": False, "quote": None}
     city = next(
         f

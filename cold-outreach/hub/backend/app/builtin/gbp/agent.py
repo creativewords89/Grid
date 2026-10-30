@@ -28,7 +28,7 @@ sleep: Callable[[float], None] = time.sleep
 
 MANIFEST: dict[str, Any] = {
     "name": "GBP audit agent",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "description": "Collects each lead's Google Business Profile, posts and latest reviews "
     "from DataForSEO and compares them with the batch's benchmark: findings and a score.",
     "settings": [
@@ -92,6 +92,10 @@ MANIFEST: dict[str, Any] = {
 }
 
 log = logging.getLogger("gbp-audit")
+
+
+def standard_services(benchmark: dict[str, Any] | None) -> list[str]:
+    return [str(x) for x in ((benchmark or {}).get("gbp") or {}).get("standard_services") or []]
 
 
 class Stopped(Exception):
@@ -178,6 +182,8 @@ class Run:
             if benchmark
             else None,
             "data": data or {},
+            # The niche's standard GBP services: a suggestion, not checked on the profile.
+            "standard_services": standard_services(benchmark),
             "findings": (compared or {}).get("findings", []),
             "score": (compared or {}).get("score"),
             "unverified": (compared or {}).get("unverified", []),
@@ -296,17 +302,13 @@ class Run:
     def describe(
         self, lead: dict[str, Any], data: dict[str, Any], benchmark: dict[str, Any] | None
     ) -> dict[str, Any] | None:
-        """Claude's check of the description (brand, category, city, main services), with
-        the key from Connections; None when it can't be made."""
+        """Claude's check of the description (brand, category, city, the benchmark's standard
+        GBP services), with the key from Connections; None when it can't be made."""
         text = data["description"]["text"]
         key = (self.job.get("connections") or {}).get("anthropic", {}).get("anthropic_api_key")
         if not text or not key:
             return None
-        services = [
-            s
-            for s in ((benchmark or {}).get("website") or {}).get("services") or []
-            if s.get("must_have", True)
-        ]
+        services = [{"name": name} for name in standard_services(benchmark)]
         address = data["basics"]["address"] or ""
         parts = [p.strip() for p in address.split(",")]
         city = lead.get("city") or (parts[-2] if len(parts) >= 3 else "")

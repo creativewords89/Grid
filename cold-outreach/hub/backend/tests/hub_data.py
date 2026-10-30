@@ -14,13 +14,10 @@ WEBSITE: dict[str, Any] = {
     "blog": {"posts_per_month": 2, "topics": ["Cost guide", "Move-out checklist"]},
 }
 GBP: dict[str, Any] = {
-    "additional_categories": 4,
+    "primary_categories": ["House cleaning service"],
+    "standard_services": ["Deep cleaning", "Move-out cleaning", "Office cleaning"],
     "photos": 120,
     "posts_90_days": 9,
-    "description_length": 690,
-    "reviews": 150,
-    "rating": 4.8,
-    "review_reply_pct": 85,
 }
 
 

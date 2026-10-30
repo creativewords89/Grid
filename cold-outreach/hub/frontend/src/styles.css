@@ -3596,3 +3596,10 @@ textarea {
   gap: 6px;
   font-size: 0.9rem;
 }
+
+/* A benchmark's GBP part (step 53): the two lists, then the two numbers, two by two. */
+.benchmark-gbp {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
