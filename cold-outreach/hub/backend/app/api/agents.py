@@ -23,8 +23,9 @@ from app.api.schemas import Name, Strict
 from app.auth.deps import CurrentUser, Db
 from app.auth.tokens import hash_secret, now
 from app.builtin import KINDS
-from app.db.models import Agent, Run, RunTrigger, Task
+from app.db.models import Agent, Lead, LeadFile, Run, RunStatus, RunTrigger, Task
 from app.errors import ApiError
+from app.leads import files as lead_files
 from app.permissions import Action, ensure
 from app.runs import service as runs
 
@@ -104,6 +105,7 @@ class AgentOut(BaseModel):
     last_run: RunOut | None
     next_run_at: datetime | None
     spent_today_usd: Decimal
+    results: int  # leads with a result of this agent (deleting it can delete them too)
 
 
 def _out(db: Session, agent: Agent) -> AgentOut:
@@ -138,6 +140,10 @@ def _out(db: Session, agent: Agent) -> AgentOut:
         last_run=RunOut.of(last) if last else None,
         next_run_at=runs.next_run_at(db, agent),
         spent_today_usd=runs.spent_today(db, agent),
+        results=db.scalar(
+            select(func.count()).select_from(Lead).where(Lead.results.has_key(agent.key))
+        )
+        or 0,
     )
 
 
@@ -377,3 +383,28 @@ def stop(key: str, me: CurrentUser, db: Db) -> RunOut:
     db.commit()
     db.refresh(run)
     return RunOut.of(run)
+
+
+@router.delete("/{key}", status_code=204)
+def delete_agent(key: str, me: CurrentUser, db: Db, results: bool = False) -> None:
+    """An Owner deletes an agent (step 49): it leaves the batches that chose it, with its
+    runs. Its results on leads and their files stay, unless `results` is set. Not while it
+    runs: stop it first."""
+    ensure(me, Action.MANAGE_AGENT_TOKENS)
+    agent = _get(db, key)
+    active = service.active_run(db, agent)
+    if active is not None and active.status == RunStatus.RUNNING:
+        raise ApiError(409, "running", "The agent is running: stop it first, then delete it.")
+    stored: list[tuple[str, uuid.UUID]] = []
+    if results:
+        for lead in db.scalars(select(Lead).where(Lead.results.has_key(agent.key))):
+            lead.results = {k: v for k, v in (lead.results or {}).items() if k != agent.key}
+        for row in db.scalars(select(LeadFile).where(LeadFile.agent_key == agent.key)):
+            stored.append((row.lead_id, row.id))
+            db.delete(row)
+    changes = [{"field": "results", "from": None, "to": "deleted" if results else "kept"}]
+    audit.record(db, me, "delete", "agent", agent.key, agent.name, changes)
+    db.delete(agent)
+    db.commit()
+    for lead_id, file_id in stored:
+        lead_files.remove(lead_id, file_id)

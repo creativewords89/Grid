@@ -64,6 +64,7 @@ function agent(overrides: Partial<Agent> = {}): Agent {
     last_run: null,
     next_run_at: "2026-10-28T20:00:00Z",
     spent_today_usd: "0.4000",
+    results: 0,
     ...overrides,
   };
 }
@@ -369,4 +370,43 @@ test("Stop appears while a run is going and asks the server to stop it", async (
 
   expect(await within(card).findByText(/Stop requested\. A running agent stops/)).toBeVisible();
   expect(calls.some((c) => c.method === "POST" && c.path === "/agents/gbp-audit/stop")).toBe(true);
+});
+
+test("the Owner deletes an agent, choosing whether its results go too (step 49)", async () => {
+  let listed = [
+    agent({
+      results: 12,
+      batches: [
+        { id: "b1", name: "Batch 1", status: "running", ready: true, task_name: "GBP Audit" },
+      ],
+    }),
+  ];
+  const calls = mockApi({
+    "GET /auth/me": as("owner"),
+    "GET /agents": () => [200, listed],
+    "DELETE /agents/gbp-audit?results=true": () => {
+      listed = [];
+      return [204, null];
+    },
+  });
+  render(<App />);
+
+  const card = await screen.findByRole("article", { name: "GBP audit" });
+  await userEvent.click(within(card).getByRole("button", { name: "Delete" }));
+  const dialog = await screen.findByRole("dialog", { name: "Delete GBP audit?" });
+  expect(within(dialog).getByText(/leaves the batches that chose it \(Batch 1\)/)).toBeVisible();
+  await userEvent.click(
+    within(dialog).getByRole("checkbox", { name: /Also delete its results on 12 leads/ }),
+  );
+  await userEvent.click(within(dialog).getByRole("button", { name: "Delete agent" }));
+
+  expect(await screen.findByText(/No agents yet/)).toBeVisible();
+  expect(calls.some((c) => c.method === "DELETE" && c.path.endsWith("?results=true"))).toBe(true);
+});
+
+test("an Admin can't delete an agent", async () => {
+  mockApi({ "GET /auth/me": as("admin"), "GET /agents": [200, [agent()]] });
+  render(<App />);
+  const card = await screen.findByRole("article", { name: "GBP audit" });
+  expect(within(card).queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
 });
