@@ -3455,7 +3455,9 @@ textarea {
   gap: 10px;
   align-items: center;
 }
-.files-search {
+/* Grows across a row of filters only: in a page's column a flex basis would make it
+   280px tall (the Top Review search, step 45). */
+.files-filters .files-search {
   flex: 1 1 280px;
 }
 .files-search input {
