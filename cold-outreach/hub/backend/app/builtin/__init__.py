@@ -14,6 +14,7 @@ from typing import Any
 
 from app.builtin import demo
 from app.builtin.client import HubClient
+from app.builtin.gbp import agent as gbp_audit
 from app.config import get_settings
 
 RUNNER_PREFIX = "hub_runner_"  # a marker; the signature after it is the secret
@@ -39,6 +40,15 @@ KINDS: dict[str, Kind] = {
         job=None,
         manifest=demo.MANIFEST,
         run=demo.do_run,
+    ),
+    "gbp-audit": Kind(
+        key="gbp-audit",
+        name="GBP audit agent",
+        about="Collects each lead's Google Business Profile, posts and latest reviews from "
+        "DataForSEO (about $0.01 a lead). It doesn't compare or score yet.",
+        job="gbp-audit",
+        manifest=gbp_audit.MANIFEST,
+        run=gbp_audit.do_run,
     ),
 }
 
