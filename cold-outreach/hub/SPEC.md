@@ -1128,3 +1128,11 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     like Files and Top Review. Its batches stay in the running order (↑ ↓), not by name.
     The niches of the files handed in before get their batch, and unused batches go
     (migration 0030).
+48. **GBP audit agent, collecting** (asked for after step 47; `agents/gbp-audit/SPEC.md`): a
+    built-in agent kind, **GBP audit agent**, doing the GBP Audit task. It finds each ready
+    lead's profile from its GBP link (following short links to the profile's CID) and
+    collects the profile, posts and latest reviews from DataForSEO's Standard queue, with
+    the DataForSEO key from Connections. Each lead gets the status `COLLECTED`, `CLOSED`,
+    `NOT_FOUND`, `NO_GBP_LINK` or `FAILED`, a summary, the collected data as its details
+    and a `gbp.json` file. Nothing is compared or scored yet: comparing with the benchmark
+    and listing opportunities are the next steps.

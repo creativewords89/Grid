@@ -3,6 +3,7 @@
 import json
 import urllib.error
 import urllib.request
+import uuid
 from typing import Any
 
 
@@ -26,3 +27,30 @@ class HubClient:
         except urllib.error.HTTPError as error:
             text = error.read().decode()
             return error.code, json.loads(text) if text else None
+
+    def upload(self, path: str, name: str, content: bytes, content_type: str) -> int:
+        """Save a report file for a lead (POST /leads/{id}/files, multipart)."""
+        boundary = f"hub-{uuid.uuid4().hex}"
+        body = (
+            (
+                f'--{boundary}\r\nContent-Disposition: form-data; name="name"\r\n\r\n{name}\r\n'
+                f'--{boundary}\r\nContent-Disposition: form-data; name="file"; '
+                f'filename="{name}"\r\nContent-Type: {content_type}\r\n\r\n'
+            ).encode()
+            + content
+            + f"\r\n--{boundary}--\r\n".encode()
+        )
+        request = urllib.request.Request(  # noqa: S310  (the Hub's own address)
+            self.base + path,
+            data=body,
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {self.token}",
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:  # noqa: S310
+                return int(response.status)
+        except urllib.error.HTTPError as error:
+            return int(error.code)

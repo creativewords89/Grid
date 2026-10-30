@@ -47,7 +47,10 @@ def add_demo(client: TestClient, name: str = "Demo GBP", job: str = "gbp-audit")
 def test_the_kinds_the_hub_can_run(client: TestClient, owner: User) -> None:
     kinds = client.get("/api/agents/kinds").json()
 
-    assert [(k["key"], k["name"], k["job"]) for k in kinds] == [("demo", "Demo agent", None)]
+    assert [(k["key"], k["name"], k["job"]) for k in kinds] == [
+        ("demo", "Demo agent", None),
+        ("gbp-audit", "GBP audit agent", {"key": "gbp-audit", "name": "GBP Audit"}),
+    ]
 
 
 def test_a_built_in_agent_needs_no_token_and_does_its_job_at_once(
