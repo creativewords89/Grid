@@ -141,13 +141,15 @@ def test_a_ready_city_goes_on_to_its_niche_batch_after_an_hour(
     with Session(clean_engine) as db:
         file_checker.send_due(db)
         db.commit()
-    assert owner.get("/api/batches").json() == []  # not an hour yet
+    # The niche's batch is there since the file was handed in, still without leads.
+    [waiting] = owner.get("/api/batches").json()
+    assert (waiting["name"], waiting["leads"], waiting["files"]) == ("Cleaning", 0, 1)
     _age(clean_engine, sub["id"], 1.01)
     with Session(clean_engine) as db:
         file_checker.send_due(db)
         db.commit()
 
-    # The niche's batch is made, named after it, with its only benchmark.
+    # The niche's batch, named after it, with its only benchmark, gets the city.
     [batch] = owner.get("/api/batches").json()
     assert (batch["name"], batch["niche"], batch["leads"], batch["top"]) == (
         "Cleaning",
@@ -439,3 +441,66 @@ def test_a_batch_shows_its_files_and_a_files_cities(owner: TestClient, person: P
     assert city["list_id"] is not None and city["problems"] == 0
     other = owner.get(f"/api/batches/{batch['id']}/files/{batch['id']}/cities")
     assert other.status_code == 404
+
+
+def test_a_niches_batch_comes_with_its_first_file_and_goes_with_its_last(
+    owner: TestClient, person: Person
+) -> None:
+    """Step 47: Files, Top Review and Batches show the same niches. A niche's batch is made
+    when its first file is handed in and shows the file at once; one left without files,
+    leads or a start goes."""
+    cal, _ = person(Role.COLLECTOR, "Cal")
+    viewer, _ = person(Role.VIEWER)
+    sub = hand_in(cal, FILE)
+    [batch] = viewer.get("/api/batches").json()
+    assert (batch["name"], batch["niche"], batch["leads"], batch["files"]) == (
+        "Cleaning",
+        "Cleaning",
+        0,
+        1,
+    )
+    assert batch["benchmark"]["name"] == "Cleaning Benchmark 1"
+    assert batch["can_delete"] is False  # its niche has a file
+    [found] = viewer.get(f"/api/batches/{batch['id']}/files").json()
+    assert (found["file_name"], found["cities"], found["leads"]) == ("tulsa.xlsx", 0, 0)
+    assert found["cities_in_review"] == 1 and found["in_files"] is False
+    cities = viewer.get(f"/api/batches/{batch['id']}/files/{sub['id']}/cities")
+    assert cities.status_code == 404  # none of its cities is in the batch yet
+
+    # A second file of the niche goes to the same batch.
+    hand_in(
+        cal,
+        {"Waco": [STANDARD, row("Glow", "https://share.google/gw", "254 555 0100", city="Waco")]},
+        name="waco.xlsx",
+    )
+    [batch] = viewer.get("/api/batches").json()
+    assert batch["files"] == 2
+
+    # Its niche changed: the new niche gets its batch, the old one keeps the other file.
+    owner.post("/api/niches", json={"name": "Construction"})
+    moved = owner.patch(f"/api/submissions/{sub['id']}/niche", json={"niche": "Construction"})
+    assert moved.status_code == 200, moved.text
+    shown = {b["name"]: b["files"] for b in viewer.get("/api/batches").json()}
+    assert shown == {"Cleaning": 1, "Construction": 1}
+
+    # The niche's last file deleted: its unused batch goes.
+    waco = next(f for f in owner.get("/api/submissions").json() if f["file_name"] == "waco.xlsx")
+    assert owner.delete(f"/api/submissions/{waco['id']}").status_code == 204
+    assert [b["name"] for b in viewer.get("/api/batches").json()] == ["Construction"]
+
+
+def test_a_batch_with_leads_stays_when_its_niche_has_no_file(
+    owner: TestClient, person: Person
+) -> None:
+    cal, _ = person(Role.COLLECTOR)
+    rita, _ = person(Role.REVIEWER)
+    sub = hand_in(cal, FILE)
+    key = rita.get(city_url(sub["id"], "Tulsa")).json()["businesses"][0]["key"]
+    rita.put(city_url(sub["id"], "Tulsa"), json={"tops": [key]})
+    rita.post(f"/api/submissions/{sub['id']}/to-batch", json={"city": "tulsa"})
+    owner.post("/api/niches", json={"name": "Construction"})
+    moved = owner.patch(f"/api/submissions/{sub['id']}/niche", json={"niche": "Construction"})
+    assert moved.status_code == 200, moved.text
+    shown = {b["name"]: (b["leads"], b["files"]) for b in owner.get("/api/batches").json()}
+    # Tulsa stays in Cleaning with its leads; the file now shows in both.
+    assert shown == {"Cleaning": (12, 1), "Construction": (0, 1)}

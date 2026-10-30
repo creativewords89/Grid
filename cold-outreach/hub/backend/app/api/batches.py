@@ -18,8 +18,9 @@ from app import audit, pipeline
 from app.api.benchmarks import get_benchmark, niche_spelling
 from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
-from app.db.models import Batch, Import, ImportStatus, Lead
+from app.db.models import Batch, FileCity, Import, ImportStatus, Lead
 from app.errors import ApiError
+from app.imports import file_cities
 from app.permissions import Action, can, ensure
 
 router = APIRouter(tags=["batches"])
@@ -40,7 +41,7 @@ class BatchOut(BaseModel):
     benchmark: BenchmarkRef | None
     leads: int
     top: int
-    files: int
+    files: int  # the files it shows (step 47), its niche's among them
     bots: list[str]  # the bots of its tasks
     status: str  # not_started, running or paused
     position: int  # the running order
@@ -58,11 +59,22 @@ def batch_out(db: Session, me: CurrentUser, batch: Batch) -> BatchOut:
             Lead.batch_id == batch.id
         )
     ).one()
-    files = db.scalar(
+    saved = db.scalar(
         select(func.count())
         .select_from(Import)
         .where(Import.batch_id == batch.id, Import.status == ImportStatus.CONFIRMED)
     )
+    # Its niche's files (step 47) and the lead files added on the batch itself.
+    added = db.scalar(
+        select(func.count())
+        .select_from(Import)
+        .where(
+            Import.batch_id == batch.id,
+            Import.status == ImportStatus.CONFIRMED,
+            ~select(FileCity.id).where(FileCity.import_id == Import.id).exists(),
+        )
+    )
+    files = len(file_cities.batch_files(db, batch)) + (added or 0)
     pending = db.scalar(
         select(func.count())
         .select_from(Import)
@@ -84,7 +96,7 @@ def batch_out(db: Session, me: CurrentUser, batch: Batch) -> BatchOut:
         else None,
         leads=leads,
         top=top,
-        files=files or 0,
+        files=files,
         bots=bots,
         status=batch.status,
         position=batch.position,
@@ -93,7 +105,7 @@ def batch_out(db: Session, me: CurrentUser, batch: Batch) -> BatchOut:
         can_edit=staff,
         can_run=can(me, Action.RUN_BATCHES),
         can_rename=staff,
-        can_delete=staff and leads == 0 and not files and not pending,
+        can_delete=staff and leads == 0 and not files and not saved and not pending,
     )
 
 

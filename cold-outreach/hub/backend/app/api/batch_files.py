@@ -9,7 +9,7 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel
 from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, defer, selectinload
 
 from app import pipeline
 from app.api.batches import get_batch
@@ -29,6 +29,7 @@ class BatchFile(BaseModel):
     uploaded_by: str | None
     cities: int  # its cities in this batch
     cities_in_review: int  # its cities still in Top Review (not ready or ready)
+    in_files: bool  # not sent on to Top Review yet: still in Files (step 47)
     leads: int
     top: int
     done: int  # leads every agent of the batch's tasks has finished
@@ -72,11 +73,14 @@ def _cities_of(db: Session, batch_id: uuid.UUID) -> list[FileCity]:
 
 @router.get("/batches/{batch_id}/files", response_model=list[BatchFile])
 def batch_files(batch_id: uuid.UUID, me: CurrentUser, db: Db) -> list[BatchFile]:
-    """The files the batch's cities came from, the oldest first."""
+    """The files the batch's cities came from, and its niche's files whose cities are still
+    in Files or Top Review (step 47), the oldest first."""
     ensure(me, Action.VIEW_HUB)
     batch = get_batch(db, batch_id)
     moved = _cities_of(db, batch.id)
-    by_file: dict[uuid.UUID, list[FileCity]] = {}
+    by_file: dict[uuid.UUID, list[FileCity]] = {
+        file_id: [] for file_id in file_cities.batch_files(db, batch)
+    }
     for city in moved:
         by_file.setdefault(city.submission_id, []).append(city)
     if not by_file:
@@ -85,7 +89,12 @@ def batch_files(batch_id: uuid.UUID, me: CurrentUser, db: Db) -> list[BatchFile]
         db.scalars(
             select(Submission)
             .where(Submission.id.in_(by_file))
-            .options(selectinload(Submission.cities))
+            .options(
+                selectinload(Submission.cities).defer(FileCity.items),
+                defer(Submission.content),
+                defer(Submission.leads),
+                defer(Submission.problems),
+            )
             .order_by(Submission.number)
         )
     )
@@ -94,10 +103,14 @@ def batch_files(batch_id: uuid.UUID, me: CurrentUser, db: Db) -> list[BatchFile]
     out = []
     for sub in subs:
         imports = [c.import_id for c in by_file[sub.id] if c.import_id is not None]
-        leads = list(
-            db.scalars(
-                select(Lead).where(Lead.batch_id == batch.id, Lead.first_import_id.in_(imports))
+        leads = (
+            list(
+                db.scalars(
+                    select(Lead).where(Lead.batch_id == batch.id, Lead.first_import_id.in_(imports))
+                )
             )
+            if imports
+            else []
         )
         workable = sum(1 for lead in leads if lead.level != "Top")
         done = _done_for(flow, leads)
@@ -110,7 +123,10 @@ def batch_files(batch_id: uuid.UUID, me: CurrentUser, db: Db) -> list[BatchFile]
                 cities=len(by_file[sub.id]),
                 cities_in_review=sum(
                     1 for c in sub.cities if file_cities.state(c) in ("needs_top", "ready")
-                ),
+                )
+                if sub.sent_at is not None
+                else 0,
+                in_files=sub.sent_at is None,
                 leads=len(leads),
                 top=len(leads) - workable,
                 done=done,

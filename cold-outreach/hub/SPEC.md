@@ -1117,3 +1117,14 @@ See [../PLAN.md](../PLAN.md) section 9. Hub-specific:
     to Top Review**; a city opens to its leads. A batch's page opens on its **Files** tab
     (the batch's own past imports are its Lead files' **Imports**). (`GET
     /api/batches/{id}/files`, `GET /api/batches/{id}/files/{file_id}/cities`.)
+47. **Files, Top Review and Batches by the same niches** (asked for after step 46): a
+    niche's batch is made when its first file is handed in (or a file's niche is changed
+    to it), not when its first city comes, so the three screens show the same niches. The
+    batch lists every file of its niche at once, also one still in Files (**still in
+    Files**) or with all its cities in Top Review, beside the files a city of which is in
+    it. A batch no file of its niche is left for (deleted, or its niche changed), without
+    leads or saved files and never started, goes; one with leads or results always stays,
+    and a batch whose niche has a file can't be deleted. Batches is as wide as the screen,
+    like Files and Top Review. Its batches stay in the running order (↑ ↓), not by name.
+    The niches of the files handed in before get their batch, and unused batches go
+    (migration 0030).
