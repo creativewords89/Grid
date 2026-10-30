@@ -275,7 +275,7 @@ def test_anthropic_key(client: TestClient, owner: User, monkeypatch: pytest.Monk
                 )
             return []
 
-    monkeypatch.setattr(providers.anthropic, "Anthropic", Claude)
+    monkeypatch.setattr(anthropic, "Anthropic", Claude)
     _save(client, anthropic_api_key="sk-ant-good-key-1234")
     ok = client.post("/api/connections/anthropic/test").json()
     assert (ok["ok"], ok["message"]) == (True, "The key works.")

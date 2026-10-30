@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any, ClassVar
 
+import anthropic
 import httpx2
 import pytest
 from fastapi.testclient import TestClient
@@ -504,7 +505,7 @@ def claude(monkeypatch: pytest.MonkeyPatch) -> type[FakeClaude]:
             {"service": "Painting", "mentioned": False, "quote": ""},
         ],
     }
-    monkeypatch.setattr(describe.anthropic, "Anthropic", FakeClaude)
+    monkeypatch.setattr(anthropic, "Anthropic", FakeClaude)
     return FakeClaude
 
 
