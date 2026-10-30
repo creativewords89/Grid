@@ -421,6 +421,32 @@ export function leadQuery(filters: Record<string, string | number | undefined>):
 
 export type BatchStatus = "not_started" | "running" | "paused";
 
+/** A file the batch's cities came from (step 46). */
+export type BatchFile = {
+  file_id: string;
+  file_name: string;
+  number: number;
+  uploaded_by: string | null;
+  cities: number;
+  cities_in_review: number; // its cities still in Top Review
+  leads: number;
+  top: number;
+  done: number;
+  done_pct: number | null; // of its leads agents work on; null without agents
+};
+
+/** A file's city in the batch (step 46). */
+export type BatchCity = {
+  key: string;
+  name: string;
+  list_id: string | null;
+  active: boolean;
+  leads: number;
+  top: number;
+  done: number;
+  problems: number;
+};
+
 export type FileStatus =
   "checking" | "failed" | "errors" | "final_check" | "top_review" | "in_batch";
 
@@ -1088,6 +1114,10 @@ export const api = {
       top,
     }),
   batchCities: (batchId: string) => request<LeadList[]>("GET", `/batches/${batchId}/cities`),
+  // A batch's files and a file's cities in it (step 46).
+  batchFiles: (batchId: string) => request<BatchFile[]>("GET", `/batches/${batchId}/files`),
+  batchFileCities: (batchId: string, fileId: string) =>
+    request<BatchCity[]>("GET", `/batches/${batchId}/files/${fileId}/cities`),
   switchAllCities: (batchId: string, active: boolean, small?: boolean, ready?: boolean) =>
     request<LeadList[]>("PUT", `/batches/${batchId}/cities`, { active, small, ready }),
   importDeletion: (id: string) =>

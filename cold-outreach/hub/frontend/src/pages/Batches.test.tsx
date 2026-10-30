@@ -106,10 +106,10 @@ test("batches are made by the Hub, one per niche: no New batch, no upload in a b
   expect(await screen.findByText(/One batch per niche/)).toBeVisible();
   expect(screen.queryByRole("button", { name: "+ New batch" })).not.toBeInTheDocument();
   await userEvent.click(await screen.findByRole("button", { name: "Batch 1" }));
-  // A batch opens on its cities: they come from Top Review.
-  expect(await screen.findByRole("tab", { name: "Cities", selected: true })).toBeVisible();
+  // A batch opens on its files: its cities come from them, through Top Review (step 46).
+  expect(await screen.findByRole("tab", { name: "Files", selected: true })).toBeVisible();
   await userEvent.click(screen.getByRole("tab", { name: "Lead files" }));
-  await userEvent.click(screen.getByRole("tab", { name: "Files" }));
+  await userEvent.click(screen.getByRole("tab", { name: "Imports" }));
   expect(screen.queryByRole("form", { name: "Add a lead file" })).not.toBeInTheDocument();
   expect(screen.getByText(/No files yet/)).toBeVisible();
 });
@@ -173,12 +173,12 @@ test("a viewer sees batches and files but can't add; the lists are on Leads", as
   });
   render(<App />);
 
-  expect(await screen.findByText("Cleaning Benchmark 1 (v2)")).toBeVisible();
+  expect(await screen.findByText(/Cleaning Benchmark 1 \(v2\)/)).toBeVisible();
   expect(screen.queryByRole("button", { name: "+ New batch" })).not.toBeInTheDocument();
   expect(screen.queryByRole("switch", { name: "Tulsa · Cleaning on or off" })).toBeNull();
   await userEvent.click(screen.getByRole("button", { name: "Batch 1" }));
   await userEvent.click(screen.getByRole("tab", { name: "Lead files" }));
-  await userEvent.click(screen.getByRole("tab", { name: "Files" }));
+  await userEvent.click(screen.getByRole("tab", { name: "Imports" }));
   expect(await screen.findByText("Saved")).toBeVisible();
   expect(screen.queryByRole("form", { name: "Add a lead file" })).not.toBeInTheDocument();
 });
@@ -535,7 +535,7 @@ test("find a business in every batch", async () => {
   await userEvent.click(within(results).getByRole("button", { name: "Batch 2" }));
 
   expect(await screen.findByRole("heading", { name: "Batch 2" })).toBeVisible();
-  expect(window.location.search).toBe("?batch=b2&tab=cities");
+  expect(window.location.search).toBe("?batch=b2&tab=handed");
 });
 
 test("the cities show 20 a page", async () => {
@@ -670,4 +670,85 @@ test("a city from Top Review is sent back from the batch's files", async () => {
   await userEvent.click(await screen.findByRole("button", { name: "Send back to Top Review" }));
   expect(calls.some((c) => c.path === "/imports/i1/send-back")).toBe(true);
   expect(await screen.findByText(/No files yet/)).toBeVisible();
+});
+
+test("a batch's section opens to its files; a file opens to its cities in the batch", async () => {
+  window.history.pushState(null, "", "/batches");
+  const ohio = {
+    file_id: "f5",
+    file_name: "ohio.xlsx",
+    number: 5,
+    uploaded_by: "Sumi",
+    cities: 2,
+    cities_in_review: 15,
+    leads: 49,
+    top: 3,
+    done: 5,
+    done_pct: 10,
+  };
+  const cities = [
+    {
+      key: "columbus",
+      name: "Columbus",
+      list_id: "l1",
+      active: true,
+      leads: 31,
+      top: 2,
+      done: 5,
+      problems: 0,
+    },
+    {
+      key: "dayton",
+      name: "Dayton",
+      list_id: "l2",
+      active: false,
+      leads: 18,
+      top: 1,
+      done: 0,
+      problems: 2,
+    },
+  ];
+  vi.stubGlobal(
+    "confirm",
+    vi.fn(() => true),
+  );
+  const calls = mockApi({
+    "GET /auth/me": as("owner"),
+    "GET /batches": [
+      200,
+      [batch({ name: "Cleaning", status: "paused", files: 1, leads: 49, bots: ["GBP audit"] })],
+    ],
+    "GET /benchmarks": [200, []],
+    "GET /batches/b1/files": [200, [ohio]],
+    "GET /batches/b1/files/f5/cities": [200, cities],
+    "PATCH /lists/l2": [200, {}],
+    "POST /submissions/f5/cities/dayton/send-back": [200, {}],
+    "POST /batches/b1/start": [200, emptyPipeline],
+  });
+  render(<App />);
+
+  // Closed until opened: the head says what the batch is.
+  const show = await screen.findByRole("button", { name: "Show the files of Cleaning" });
+  expect(show).toHaveAttribute("aria-expanded", "false");
+  expect(screen.getByText(/1 file · 49 businesses · 1 agent/)).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "Resume" }));
+  expect(calls.some((c) => c.path === "/batches/b1/start")).toBe(true);
+  await userEvent.click(show);
+  const files = await screen.findByRole("table", { name: "Cleaning files" });
+  const row = within(files).getByRole("row", { name: /ohio\.xlsx/ });
+  expect(row).toHaveTextContent("15 still in Top Review");
+  expect(row).toHaveTextContent("10%");
+  await userEvent.click(within(row).getByRole("button", { name: "Open ohio.xlsx" }));
+
+  expect(await screen.findByRole("heading", { name: "ohio.xlsx" })).toBeVisible();
+  const tabs = screen.getByRole("navigation", { name: "Cities" });
+  expect(within(tabs).getByRole("button", { name: /On/ })).toHaveTextContent("1");
+  expect(screen.getByRole("row", { name: /Columbus/ })).toHaveTextContent("5 of 29");
+  await userEvent.click(within(tabs).getByRole("button", { name: /Lead Check problems/ }));
+  const dayton = screen.getByRole("row", { name: /Dayton/ });
+  await userEvent.click(within(dayton).getByRole("switch", { name: "Dayton on or off" }));
+  expect(calls.find((c) => c.path === "/lists/l2")?.body).toEqual({ active: true });
+  await userEvent.click(within(dayton).getByRole("button", { name: "Send back to Top Review" }));
+  expect(calls.some((c) => c.path === "/submissions/f5/cities/dayton/send-back")).toBe(true);
+  expect(await screen.findByText("Dayton is back in Top Review.")).toBeVisible();
 });

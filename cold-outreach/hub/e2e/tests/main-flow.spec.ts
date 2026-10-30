@@ -182,9 +182,17 @@ test("a Reviewer gives a city its Top and sends it to the niche's batch now", as
     .getByRole("navigation", { name: "Main" })
     .getByRole("link", { name: "Batches" })
     .click();
-  const batch = page.getByRole("row", { name: /Cleaning Benchmark 1/ });
-  await expect(batch).toContainText("Cleaning");
-  await expect(batch).toContainText("3 · 1 Top");
+  // A section per batch (step 46): its head says what is in it.
+  const batch = page.getByRole("region", { name: "Cleaning batch" });
+  await expect(batch).toContainText("Cleaning Benchmark 1 (v1)");
+  await expect(batch).toContainText("3 businesses · 1 Top");
+  // Opened, it lists the files its cities came from.
+  await batch
+    .getByRole("button", { name: "Show the files of Cleaning" })
+    .click();
+  await expect(
+    batch.getByRole("row", { name: /cleaning-leads\.xlsx/ }),
+  ).toContainText("Cal");
 });
 
 test("the leads are in the niche's batch and download as Excel", async () => {
@@ -201,7 +209,8 @@ test("the leads are in the niche's batch and download as Excel", async () => {
     .getByRole("button", { name: "Cleaning", exact: true })
     .first()
     .click();
-  // It opens on its cities: Dallas has fewer than 10 businesses, muted, on its own tab.
+  // It opens on its files; its cities: Dallas has fewer than 10 businesses, muted.
+  await page.getByRole("tab", { name: "Cities", exact: true }).click();
   await page
     .getByRole("tab", { name: /Small cities \(under 10\) \(1\)/ })
     .click();
@@ -451,6 +460,6 @@ test("a city of 10 businesses or more gets its Top and goes on to the batch", as
     .getByRole("link", { name: "Batches" })
     .click();
   await expect(
-    page.getByRole("row", { name: /Cleaning Benchmark 1/ }),
-  ).toContainText("15 · 2 Top");
+    page.getByRole("region", { name: "Cleaning batch" }),
+  ).toContainText("15 businesses · 2 Top");
 });

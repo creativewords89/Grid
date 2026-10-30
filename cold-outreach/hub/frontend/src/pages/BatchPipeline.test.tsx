@@ -244,8 +244,12 @@ test("the running order: move a batch up", async () => {
   await userEvent.click(await screen.findByRole("button", { name: "Move Florida December up" }));
 
   expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ ids: ["b2", "b1"] });
-  const rows = await screen.findAllByRole("row");
-  expect(rows[1]).toHaveTextContent("Florida December");
+  // A section per batch (step 46), in the running order.
+  await screen.findByRole("button", { name: "Move Texas November down" });
+  const names = screen
+    .getAllByRole("button", { name: /^(Texas November|Florida December)$/ })
+    .map((b) => b.textContent);
+  expect(names).toEqual(["Florida December", "Texas November"]);
 });
 
 test("add a task: its job, its name and what it needs first in this batch", async () => {
