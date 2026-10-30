@@ -152,6 +152,7 @@ class Run:
         summary: str,
         data: dict[str, Any] | None = None,
         compared: dict[str, Any] | None = None,
+        raw: dict[str, Any] | None = None,
     ) -> None:
         benchmark = self.benchmark_of(lead)
         details: dict[str, Any] = {
@@ -173,6 +174,8 @@ class Run:
             "unverified": (compared or {}).get("unverified", []),
         }
         if data is not None:
+            # DataForSEO's own answer for the profile, in the file only: every field it gave.
+            details["raw"] = {"business_info": raw} if raw is not None else {}
             self.hub.upload(
                 f"/leads/{lead['lead_id']}/files",
                 "gbp.json",
@@ -186,6 +189,7 @@ class Run:
             if short.get("posts"):
                 short["posts"]["items"] = short["posts"]["items"][:5]
             details["data"] = short
+            details.pop("raw", None)
         body: dict[str, Any] = {
             "outcome": outcome,
             "status": status,
@@ -301,7 +305,9 @@ class Run:
         }
         for tag in set(found) - set(open_ones):
             data = collect.collect(found[tag], None, None, today)
-            self.save(by_id[tag], "done", "CLOSED", "Permanently closed on Google.", data)
+            self.save(
+                by_id[tag], "done", "CLOSED", "Permanently closed on Google.", data, raw=found[tag]
+            )
 
         def task(tag: str, info: dict[str, Any], **more: Any) -> dict[str, Any]:
             keyword = f"cid:{info['cid']}" if info.get("cid") else str(info.get("title", ""))
@@ -345,7 +351,7 @@ class Run:
             summary = compared["summary"]
             if benchmark is None:
                 summary += " No benchmark: only what the profile misses is found."
-            self.save(by_id[tag], "done", "AUDITED", summary, data, compared)
+            self.save(by_id[tag], "done", "AUDITED", summary, data, compared, raw=info)
 
 
 def _leads(hub: "HubClient", job: dict[str, Any]) -> list[dict[str, Any]]:

@@ -96,23 +96,36 @@ def basics(info: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _services(found: Any) -> list[dict[str, Any]] | None:
+    """The profile's services, as DataForSEO gives them (`services`: a list of objects with a
+    `title` and maybe a `category` and `description`; a dict of lists is flattened). None
+    when it gives none: unable to verify."""
+    if isinstance(found, dict):
+        found = [x for values in found.values() if isinstance(values, list) for x in values]
+    if not isinstance(found, list):
+        return None
+    out = []
+    for item in found:
+        if isinstance(item, dict):
+            name = _text(item.get("title")) or _text(item.get("name"))
+            if name:
+                out.append(
+                    {
+                        "name": name,
+                        "category": _text(item.get("category")),
+                        "description": _text(item.get("description")),
+                    }
+                )
+        elif _text(item):
+            out.append({"name": str(item).strip(), "category": None, "description": None})
+    return out
+
+
 def categories(info: dict[str, Any]) -> dict[str, Any]:
-    services = info.get("services")  # DataForSEO may not give them: None is "unable to verify"
-    listed = None
-    if isinstance(services, list):
-        listed = [
-            {
-                "name": str(s.get("name") or s.get("title") or s)
-                if isinstance(s, dict)
-                else str(s),
-                "description": _text(s.get("description")) if isinstance(s, dict) else None,
-            }
-            for s in services
-        ]
     return {
         "primary": _text(info.get("category")),
         "additional": [str(x) for x in info.get("additional_categories") or []],
-        "services": listed,
+        "services": _services(info.get("services")),
     }
 
 
