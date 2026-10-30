@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, vi } from "vitest";
 import { App } from "../App";
-import type { ReviewCity, ReviewList, ReviewRow } from "../api";
+import type { ReviewCity, ReviewFileRow, ReviewList, ReviewRow } from "../api";
 import { makeUser, mockApi } from "../test/mockApi";
 
 const reviewer = makeUser({ id: "r1", name: "Rita", role: "reviewer" });
@@ -27,6 +27,21 @@ function row(overrides: Partial<ReviewRow> = {}): ReviewRow {
 
 const counts = { needs_top: 1, ready: 1, small: 1 };
 const list = (cities: ReviewRow[]): [number, ReviewList] => [200, { counts, cities }];
+
+const reviewFile: ReviewFileRow = {
+  file_id: "f1",
+  file_name: "tulsa.xlsx",
+  number: 12,
+  niche: "Cleaning",
+  uploaded_by: "Cal",
+  counts,
+};
+
+/** Top Review opens on the niches: open Cleaning, then its file (step 45). */
+async function openFile() {
+  await userEvent.click(await screen.findByRole("button", { name: /^Cleaning\s*1 file/ }));
+  await userEvent.click(screen.getByRole("button", { name: "Open tulsa.xlsx" }));
+}
 
 const city: ReviewCity = {
   key: "tulsa",
@@ -69,15 +84,18 @@ afterEach(() => {
 
 test("a reviewer chooses a city's Top: it is ready, and goes to its batch now if sent", async () => {
   const soon = new Date(Date.now() + 60 * 60_000).toISOString();
-  const ready = row({ key: "austin", name: "Austin", file_id: "f2", tops: 2, state: "ready" });
+  const ready = row({ key: "austin", name: "Austin", file_id: "f1", tops: 2, state: "ready" });
   const calls = mockApi({
     "GET /auth/me": signedIn,
-    "GET /review/cities?show=needs_top": list([row()]),
-    "GET /review/cities?show=ready": list([{ ...ready, moves_at: soon, moves_in: 3600 }]),
-    "GET /review/cities?show=small": list([
+    "GET /review/files": [200, [reviewFile]],
+    "GET /review/cities?show=needs_top&file_id=f1": list([row()]),
+    "GET /review/cities?show=ready&file_id=f1": list([
+      { ...ready, moves_at: soon, moves_in: 3600 },
+    ]),
+    "GET /review/cities?show=small&file_id=f1": list([
       row({ key: "waco", name: "Waco", businesses: 3, state: "small" }),
     ]),
-    "GET /review/small?page=1": [
+    "GET /review/small?page=1&file_id=f1": [
       200,
       {
         total: 1,
@@ -98,13 +116,14 @@ test("a reviewer chooses a city's Top: it is ready, and goes to its batch now if
       200,
       row({ tops: 1, state: "ready", moves_at: soon, moves_in: 3590 }),
     ],
-    "POST /submissions/f2/to-batch": [200, {}],
+    "POST /submissions/f1/to-batch": [200, {}],
   });
   render(<App />);
 
   // Whatever the address, a Reviewer is on Top Review: three lists of cities.
   expect(await screen.findByRole("heading", { name: "Top Review" })).toBeVisible();
   expect(calls.some((c) => c.path.startsWith("/batches"))).toBe(false);
+  await openFile();
   const lists = screen.getByRole("navigation", { name: "Cities" });
   expect(within(lists).getByRole("button", { name: /Not ready/ })).toHaveAttribute(
     "aria-pressed",
@@ -130,25 +149,27 @@ test("a reviewer chooses a city's Top: it is ready, and goes to its batch now if
   const austin = await screen.findByRole("row", { name: /Austin/ });
   await userEvent.click(within(austin).getByRole("button", { name: "Send to batch now" }));
   expect(await screen.findByText("Austin is in its batch.")).toBeVisible();
-  expect(calls.find((c) => c.path === "/submissions/f2/to-batch")?.body).toEqual({
+  expect(calls.find((c) => c.path === "/submissions/f1/to-batch")?.body).toEqual({
     city: "austin",
   });
 });
 
 test("the last list shows at once on a reload, then is brought up to date", async () => {
   window.localStorage.setItem(
-    "top-review:list:needs_top",
+    "top-review:list:f1:needs_top",
     JSON.stringify({ counts, cities: [row({ name: "Kept City", key: "kept" })] }),
   );
   let answer: (value: [number, ReviewList]) => void = () => {};
   mockApi({
     "GET /auth/me": signedIn,
-    "GET /review/cities?show=needs_top": () =>
+    "GET /review/files": [200, [reviewFile]],
+    "GET /review/cities?show=needs_top&file_id=f1": () =>
       new Promise<[number, ReviewList]>((resolve) => {
         answer = resolve;
       }),
   });
   render(<App />);
+  await openFile();
 
   // Shown from what the browser kept: no Loading while the server answers.
   expect(await screen.findByRole("button", { name: "Kept City" })).toBeVisible();
@@ -162,12 +183,14 @@ test("Save & next city opens the next one, fetched ahead; ticks are kept as a dr
   const waco = row({ key: "waco", name: "Waco", file_id: "f1" });
   const calls = mockApi({
     "GET /auth/me": signedIn,
-    "GET /review/cities?show=needs_top": list([row(), waco]),
+    "GET /review/files": [200, [reviewFile]],
+    "GET /review/cities?show=needs_top&file_id=f1": list([row(), waco]),
     "GET /review/files/f1/cities/tulsa": [200, city],
     "GET /review/files/f1/cities/waco": [200, { ...city, key: "waco", name: "Waco" }],
     "PUT /review/files/f1/cities/tulsa": [200, row({ tops: 1, state: "ready", moves_in: 3600 })],
   });
   const { unmount } = render(<App />);
+  await openFile();
 
   await userEvent.click(await screen.findByRole("button", { name: "Tulsa" }));
   // Most reviews first, with ⭐ on the business that meets the benchmark.
@@ -182,6 +205,7 @@ test("Save & next city opens the next one, fetched ahead; ticks are kept as a dr
   // A reload keeps the tick (a draft until saved).
   unmount();
   render(<App />);
+  await openFile();
   await userEvent.click(await screen.findByRole("button", { name: "Tulsa" }));
   expect(await screen.findByRole("checkbox", { name: "Top: Shine 1" })).toBeChecked();
 
@@ -195,11 +219,13 @@ test("Save & next city opens the next one, fetched ahead; ticks are kept as a dr
 test("the keyboard ticks and saves: Space, then Enter", async () => {
   const calls = mockApi({
     "GET /auth/me": signedIn,
-    "GET /review/cities?show=needs_top": list([row()]),
+    "GET /review/files": [200, [reviewFile]],
+    "GET /review/cities?show=needs_top&file_id=f1": list([row()]),
     "GET /review/files/f1/cities/tulsa": [200, city],
     "PUT /review/files/f1/cities/tulsa": [200, row({ tops: 1, state: "ready", moves_in: 3600 })],
   });
   render(<App />);
+  await openFile();
 
   await userEvent.click(await screen.findByRole("button", { name: "Tulsa" }));
   const businesses = await screen.findByLabelText("Businesses of Tulsa");
@@ -219,9 +245,10 @@ test("cities under 10 are ticked on one page and saved at once", async () => {
   });
   const calls = mockApi({
     "GET /auth/me": signedIn,
-    "GET /review/cities?show=needs_top": list([]),
-    "GET /review/cities?show=small": list([]),
-    "GET /review/small?page=1": [
+    "GET /review/files": [200, [reviewFile]],
+    "GET /review/cities?show=needs_top&file_id=f1": list([]),
+    "GET /review/cities?show=small&file_id=f1": list([]),
+    "GET /review/small?page=1&file_id=f1": [
       200,
       {
         total: 2,
@@ -229,12 +256,13 @@ test("cities under 10 are ticked on one page and saved at once", async () => {
         pages: 1,
         columns: city.columns,
         benchmark: null,
-        cities: [small("Waco", "waco", "f1"), small("Enid", "enid", "f2")],
+        cities: [small("Waco", "waco", "f1"), small("Enid", "enid", "f1")],
       },
     ],
     "PUT /review/tops": [200, { saved: 2 }],
   });
   render(<App />);
+  await openFile();
 
   const lists = await screen.findByRole("navigation", { name: "Cities" });
   await userEvent.click(within(lists).getByRole("button", { name: /Cities under 10/ }));
@@ -245,7 +273,46 @@ test("cities under 10 are ticked on one page and saved at once", async () => {
   expect(calls.find((c) => c.path === "/review/tops")?.body).toEqual({
     cities: [
       { file_id: "f1", city: "waco", tops: ["Waco row 3"] },
-      { file_id: "f2", city: "enid", tops: ["Enid row 2"] },
+      { file_id: "f1", city: "enid", tops: ["Enid row 2"] },
     ],
   });
+});
+
+test("Top Review opens on the niches; a niche opens to its files", async () => {
+  const roofs: ReviewFileRow = {
+    ...reviewFile,
+    file_id: "f2",
+    file_name: "roofs.xlsx",
+    niche: "Roofing",
+    counts: { needs_top: 4, ready: 1, small: 0 },
+  };
+  mockApi({
+    "GET /auth/me": signedIn,
+    "GET /review/files": [200, [reviewFile, roofs]],
+    "GET /review/cities?show=needs_top&file_id=f2": list([]),
+  });
+  render(<App />);
+
+  const cleaning = await screen.findByRole("button", { name: /^Cleaning\s*1 file/ });
+  expect(cleaning).toHaveAttribute("aria-expanded", "false");
+  expect(cleaning).toHaveTextContent("1 not ready · 1 ready · 1 under 10");
+  // Closed: no file and no city shows until a niche is opened.
+  expect(screen.queryByRole("table")).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: /^Roofing\s*1 file/ }));
+  const files = screen.getByRole("table", { name: "Roofing files" });
+  expect(within(files).getByRole("row", { name: /roofs\.xlsx/ })).toHaveTextContent("Cal");
+  expect(screen.queryByRole("table", { name: "Cleaning files" })).toBeNull();
+  await userEvent.type(screen.getByRole("searchbox", { name: "Search files" }), "tulsa");
+  expect(screen.getByRole("table", { name: "Cleaning files" })).toBeVisible();
+  expect(screen.queryByRole("table", { name: "Roofing files" })).toBeNull();
+  await userEvent.clear(screen.getByRole("searchbox", { name: "Search files" }));
+
+  await userEvent.click(screen.getByRole("button", { name: "Open roofs.xlsx" }));
+  expect(await screen.findByRole("heading", { name: "roofs.xlsx" })).toBeVisible();
+  expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toHaveTextContent(
+    "Top Review / Roofing / roofs.xlsx",
+  );
+  const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
+  await userEvent.click(within(crumbs).getByRole("link", { name: "Top Review" }));
+  expect(await screen.findByRole("button", { name: /^Cleaning\s*1 file/ })).toBeVisible();
 });

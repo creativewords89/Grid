@@ -12,13 +12,13 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import Select, func, select
-from sqlalchemy.orm import Session, contains_eager, load_only
+from sqlalchemy.orm import Session, contains_eager, defer, load_only
 
 from app import audit
 from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
 from app.auth.tokens import now
-from app.db.models import Batch, Benchmark, FileCity, Submission
+from app.db.models import Batch, Benchmark, FileCity, Submission, User
 from app.errors import ApiError
 from app.imports import check, file_cities
 from app.imports import submissions as files
@@ -68,14 +68,21 @@ def _row(sub: Submission, city: FileCity) -> ReviewCity:
     )
 
 
-def _listed() -> Select[Submission, FileCity]:
-    """The cities in Top Review with their file's name and number only: never its content
-    or businesses, which are megabytes for a file of hundreds of cities."""
-    return (
+def _listed(file_id: uuid.UUID | None = None, items: bool = False) -> Select[Submission, FileCity]:
+    """The cities in Top Review (of one file, or all) with their file's name and number
+    only: never its content or businesses, which are megabytes for a file of hundreds of
+    cities; a city's own businesses only when asked (`items`)."""
+    query = (
         select(Submission, FileCity)
         .join(FileCity, FileCity.submission_id == Submission.id)
         .options(
-            load_only(Submission.id, Submission.file_name, Submission.number, Submission.niche)
+            load_only(
+                Submission.id,
+                Submission.file_name,
+                Submission.number,
+                Submission.niche,
+                Submission.uploaded_by,
+            )
         )
         .where(
             Submission.state == "checked",
@@ -85,18 +92,66 @@ def _listed() -> Select[Submission, FileCity]:
             FileCity.muted == "",
         )
     )
+    if not items:
+        query = query.options(defer(FileCity.items))
+    return query if file_id is None else query.where(Submission.id == file_id)
+
+
+class ReviewFile(BaseModel):
+    """A file in Top Review (step 45): its niche, who handed it in and its cities' counts."""
+
+    file_id: uuid.UUID
+    file_name: str
+    number: int
+    niche: str
+    uploaded_by: str | None
+    counts: dict[str, int]  # needs_top, ready, small
+
+
+@router.get("/review/files", response_model=list[ReviewFile])
+def review_files(me: CurrentUser, db: Db) -> list[ReviewFile]:
+    """The files in Top Review, by niche then the oldest first, with how many of their
+    cities are not ready, ready or under 10 (their cities open one file at a time)."""
+    ensure(me, Action.REVIEW_TOPS)
+    found: dict[uuid.UUID, ReviewFile] = {}
+    uploaders: dict[uuid.UUID, uuid.UUID | None] = {}
+    for sub, city in db.execute(_listed().order_by(Submission.number)):
+        row = found.get(sub.id)
+        if row is None:
+            row = ReviewFile(
+                file_id=sub.id,
+                file_name=sub.file_name,
+                number=sub.number,
+                niche=sub.niche,
+                uploaded_by=None,
+                counts={"needs_top": 0, "ready": 0, "small": 0},
+            )
+            found[sub.id] = row
+            uploaders[sub.id] = sub.uploaded_by
+        row.counts[file_cities.state(city)] += 1
+    names = {
+        user.id: user.name
+        for user in db.scalars(
+            select(User).where(User.id.in_([u for u in uploaders.values() if u is not None]))
+        )
+    }
+    for file_id, row in found.items():
+        uploader = uploaders[file_id]
+        row.uploaded_by = names.get(uploader) if uploader is not None else None
+    return sorted(found.values(), key=lambda f: (f.niche.lower(), f.number))
 
 
 @router.get("/review/cities", response_model=ReviewList)
 def review_cities(
-    me: CurrentUser, db: Db, show: Annotated[Shown, Query()] = "needs_top"
+    me: CurrentUser,
+    db: Db,
+    show: Annotated[Shown, Query()] = "needs_top",
+    file_id: Annotated[uuid.UUID | None, Query()] = None,
 ) -> ReviewList:
-    """The cities in Top Review, the oldest file first: one of the three lists, with how many
-    each list has."""
+    """The cities in Top Review (of one file, step 45, or all), the oldest file first: one of
+    the three lists, with how many each list has."""
     ensure(me, Action.REVIEW_TOPS)
-    # Only the file's name and number come with each city: never its content or businesses,
-    # which are megabytes for a file of hundreds of cities.
-    found = db.execute(_listed().order_by(Submission.number, FileCity.name))
+    found = db.execute(_listed(file_id).order_by(Submission.number, FileCity.name))
     rows = [_row(sub, city) for sub, city in found]
     counts = {
         key: sum(1 for r in rows if r.state == key) for key in ("needs_top", "ready", "small")
@@ -270,14 +325,19 @@ class SmallPage(BaseModel):
 
 @router.get("/review/small", response_model=SmallPage)
 def small_cities(
-    me: CurrentUser, db: Db, page: Annotated[int, Query(ge=1, le=10_000)] = 1
+    me: CurrentUser,
+    db: Db,
+    page: Annotated[int, Query(ge=1, le=10_000)] = 1,
+    file_id: Annotated[uuid.UUID | None, Query()] = None,
 ) -> SmallPage:
     """The cities under 10 without a Top, many on one page with their businesses, to tick
     and save at once (step 41)."""
     ensure(me, Action.REVIEW_TOPS)
     found = [
         (sub, city)
-        for sub, city in db.execute(_listed().order_by(Submission.number, FileCity.name))
+        for sub, city in db.execute(
+            _listed(file_id, items=True).order_by(Submission.number, FileCity.name)
+        )
         if file_cities.state(city) == "small"
     ]
     pages = max(1, -(-len(found) // SMALL_PAGE))

@@ -5,6 +5,7 @@ import {
   type BenchmarkHint,
   type ReviewBusiness,
   type ReviewCity,
+  type ReviewFileRow,
   type ReviewList,
   type ReviewRow,
   type ReviewShown,
@@ -55,7 +56,6 @@ function remember(key: string, value: unknown) {
   }
 }
 
-const listKey = (show: ReviewShown) => `top-review:list:${show}`;
 const draftKey = (fileId: string, city: string) => `top-review:draft:${fileId}:${city}`;
 
 // A city fetched ahead (the next one), so it opens at once.
@@ -81,23 +81,174 @@ function Skeleton({ rows = 6 }: { rows?: number }) {
   );
 }
 
+/** Top Review (step 45): the niches, each opening to its files; a file opens to its cities,
+ * in three lists. */
 export function Review() {
+  const [file, setFile] = useState<ReviewFileRow | null>(null);
+  return file ? (
+    <FileReview key={file.file_id} file={file} onBack={() => setFile(null)} />
+  ) : (
+    <FilesList onOpen={setFile} />
+  );
+}
+
+const FILES_KEY = "top-review:files";
+
+/** The files in Top Review by niche: a niche is closed until opened, a file opens to its
+ * cities. Shown at once from what the browser kept, brought up to date behind. */
+function FilesList({ onOpen }: { onOpen: (file: ReviewFileRow) => void }) {
+  const [files, setFiles] = useState<ReviewFileRow[] | null>(() => recall(FILES_KEY));
+  const [opened, setOpened] = useState<Record<string, boolean>>({});
+  const [search, setSearch] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    api
+      .reviewFiles()
+      .then((found) => {
+        setFiles(found);
+        remember(FILES_KEY, found);
+      })
+      .catch((err: unknown) => setError(message(err, "Not loaded.")));
+  }, []);
+
+  const words = search.toLowerCase().split(/\s+/).filter(Boolean);
+  const shown = (files ?? []).filter((f) =>
+    words.every((w) =>
+      [f.file_name, f.niche, f.uploaded_by ?? ""].join(" ").toLowerCase().includes(w),
+    ),
+  );
+  const niches: { key: string; name: string; files: ReviewFileRow[] }[] = [];
+  for (const f of shown) {
+    const key = f.niche.trim().toLowerCase();
+    const group = niches.find((n) => n.key === key);
+    if (group) group.files.push(f);
+    else niches.push({ key, name: f.niche.trim(), files: [f] });
+  }
+  const sum = (list: ReviewFileRow[], state: ReviewShown) =>
+    list.reduce((total, f) => total + f.counts[state], 0);
+
+  return (
+    <section className="page page-wide">
+      {error && <Alert kind="error">{error}</Alert>}
+      <div className="page-head">
+        <div className="stack-tight">
+          <h1>Top Review</h1>
+          <p className="muted">
+            Open a niche to see its files, then a file to choose its cities' Top.
+          </p>
+        </div>
+      </div>
+      {(files ?? []).length > 0 && (
+        <label className="files-search">
+          <span className="sr-only">Search files</span>
+          <input
+            type="search"
+            placeholder="Search a file, a niche or who handed it in"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </label>
+      )}
+      {files === null ? (
+        <div className="card">
+          <Skeleton />
+        </div>
+      ) : shown.length === 0 ? (
+        <div className="card">
+          <p className="muted files-empty">
+            {files.length === 0 ? "No file is in Top Review." : "No file matches the search."}
+          </p>
+        </div>
+      ) : (
+        niches.map((niche) => {
+          const open = opened[niche.key] ?? words.length > 0; // closed until opened
+          return (
+            <section key={niche.key} className="card table-card files-niche">
+              <button
+                className="files-niche-head"
+                aria-expanded={open}
+                onClick={() => setOpened({ ...opened, [niche.key]: !open })}
+              >
+                <span className="files-niche-title">
+                  <span aria-hidden>{open ? "▾" : "▸"}</span> <strong>{niche.name}</strong>
+                </span>
+                <span className="small muted">
+                  {niche.files.length} {niche.files.length === 1 ? "file" : "files"} ·{" "}
+                  {sum(niche.files, "needs_top")} not ready · {sum(niche.files, "ready")} ready ·{" "}
+                  {sum(niche.files, "small")} under 10
+                </span>
+              </button>
+              {open && (
+                <div className="table-scroll">
+                  <table className="table" aria-label={`${niche.name} files`}>
+                    <thead>
+                      <tr>
+                        <th>File</th>
+                        <th>Handed in by</th>
+                        <th className="num">Not ready</th>
+                        <th className="num">Ready</th>
+                        <th className="num">Under 10</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {niche.files.map((f) => (
+                        <tr key={f.file_id}>
+                          <td>
+                            <button className="link-button cell-strong" onClick={() => onOpen(f)}>
+                              {f.file_name}
+                            </button>
+                            <div className="small muted">F{f.number}</div>
+                          </td>
+                          <td>{f.uploaded_by ?? "—"}</td>
+                          <td className="num">{f.counts.needs_top}</td>
+                          <td className="num">{f.counts.ready}</td>
+                          <td className="num">{f.counts.small}</td>
+                          <td>
+                            <button
+                              className="button button-small button-primary"
+                              aria-label={`Open ${f.file_name}`}
+                              onClick={() => onOpen(f)}
+                            >
+                              Open
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          );
+        })
+      )}
+    </section>
+  );
+}
+
+/** One file's cities (step 45): Not ready, Ready and Cities under 10. */
+function FileReview({ file, onBack }: { file: ReviewFileRow; onBack: () => void }) {
+  const listKey = (show: ReviewShown) => `top-review:list:${file.file_id}:${show}`;
   const [show, setShow] = useState<ReviewShown>("needs_top");
   const [list, setList] = useState<ReviewList | null>(() => recall(listKey("needs_top")));
   const [open, setOpen] = useState<ReviewRow | null>(null);
+  const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
+    const key = `top-review:list:${file.file_id}:${show}`;
     api
-      .reviewCities(show)
+      .reviewCities(show, file.file_id)
       .then((found) => {
         setList(found);
-        remember(listKey(show), found);
+        remember(key, found);
       })
       .catch((err: unknown) => setError(message(err, "Not loaded.")));
-  }, [show]);
+  }, [show, file.file_id]);
   useEffect(load, [load]);
 
   const back = useCallback(
@@ -124,9 +275,14 @@ export function Review() {
     }
   }
 
-  const rows = list?.cities ?? [];
-  const at = open ? rows.findIndex((r) => r.file_id === open.file_id && r.key === open.key) : -1;
+  const words = search.toLowerCase().split(/\s+/).filter(Boolean);
+  const rows = (list?.cities ?? []).filter((r) =>
+    words.every((w) => r.name.toLowerCase().includes(w)),
+  );
+  const at = open ? rows.findIndex((r) => r.key === open.key) : -1;
   const next = at >= 0 ? (rows[at + 1] ?? null) : null;
+  const counts = list?.counts ?? file.counts;
+  const total = counts.needs_top + counts.ready + counts.small;
 
   function saved(row: ReviewRow, goOn: boolean) {
     const text =
@@ -156,14 +312,38 @@ export function Review() {
         />
       ) : (
         <>
+          <nav className="small muted" aria-label="Breadcrumb">
+            <a
+              href="/review"
+              onClick={(e) => {
+                e.preventDefault();
+                onBack();
+              }}
+            >
+              Top Review
+            </a>{" "}
+            / {file.niche} / {file.file_name}
+          </nav>
           <div className="page-head">
             <div className="stack-tight">
-              <h1>Top Review</h1>
+              <h1>{file.file_name}</h1>
               <p className="muted">
-                Choose the Top businesses of each city. A city with a Top goes on to its niche's
-                batch an hour later, or now with Send to batch now.
+                {file.niche} · F{file.number}
+                {file.uploaded_by && ` · handed in by ${file.uploaded_by}`} · {counts.ready} of{" "}
+                {total} {total === 1 ? "city" : "cities"} with a Top
               </p>
             </div>
+            {show !== "small" && (
+              <label className="files-search review-search">
+                <span className="sr-only">Search cities</span>
+                <input
+                  type="search"
+                  placeholder="Search a city"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </label>
+            )}
           </div>
           <nav className="files-tabs" aria-label="Cities">
             {LISTS.map(([key, label]) => (
@@ -178,20 +358,18 @@ export function Review() {
                 }}
               >
                 {label}
-                {(list?.counts[key] ?? 0) > 0 && (
-                  <span className="files-tab-count">{list?.counts[key]}</span>
-                )}
+                {counts[key] > 0 && <span className="files-tab-count">{counts[key]}</span>}
               </button>
             ))}
           </nav>
           <p className="small muted">{LISTS.find(([key]) => key === show)?.[2]}</p>
           {show === "small" ? (
-            <SmallCities onSaved={(text) => back(text)} />
+            <SmallCities fileId={file.file_id} onSaved={(text) => back(text)} />
           ) : (
             <div className="card table-card">
               {list === null ? (
                 <Skeleton />
-              ) : list.cities.length === 0 ? (
+              ) : rows.length === 0 ? (
                 <p className="muted files-empty">No city here.</p>
               ) : (
                 <div className="table-scroll">
@@ -199,15 +377,13 @@ export function Review() {
                     <thead>
                       <tr>
                         <th>City</th>
-                        <th>File</th>
-                        <th>Niche</th>
                         <th className="num">Businesses</th>
                         <th className="num">Top</th>
                         <th />
                       </tr>
                     </thead>
                     <tbody>
-                      {list.cities.map((row) => (
+                      {rows.map((row) => (
                         <tr key={`${row.file_id}-${row.key}`}>
                           <td>
                             <button
@@ -221,10 +397,6 @@ export function Review() {
                               {row.name}
                             </button>
                           </td>
-                          <td className="small">
-                            {row.file_name} <span className="muted">· F{row.number}</span>
-                          </td>
-                          <td>{row.niche}</td>
                           <td className="num">{row.businesses.toLocaleString()}</td>
                           <td className="num">{row.tops > 0 ? row.tops : "—"}</td>
                           <td>
@@ -459,9 +631,11 @@ function CityView({
 }
 
 /** The cities under 10 on one page (step 41): tick their Tops and save them all at once. */
-function SmallCities({ onSaved }: { onSaved: (text: string) => void }) {
+function SmallCities({ fileId, onSaved }: { fileId: string; onSaved: (text: string) => void }) {
   const [page, setPage] = useState(1);
-  const [found, setFound] = useState<SmallPage | null>(() => recall("top-review:small:1"));
+  const [found, setFound] = useState<SmallPage | null>(() =>
+    recall(`top-review:small:${fileId}:1`),
+  );
   const [chosen, setChosen] = useState<Record<string, string[]>>(
     () => recall("top-review:draft:small") ?? {},
   );
@@ -470,13 +644,13 @@ function SmallCities({ onSaved }: { onSaved: (text: string) => void }) {
 
   useEffect(() => {
     api
-      .smallCities(page)
+      .smallCities(page, fileId)
       .then((got) => {
         setFound(got);
-        remember(`top-review:small:${page}`, got);
+        remember(`top-review:small:${fileId}:${page}`, got);
       })
       .catch((err: unknown) => setError(message(err, "Not loaded.")));
-  }, [page]);
+  }, [page, fileId]);
 
   const id = (c: { file_id: string; key: string }) => `${c.file_id}:${c.key}`;
   function toggle(city: string, key: string) {
