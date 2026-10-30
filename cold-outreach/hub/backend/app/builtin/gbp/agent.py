@@ -28,7 +28,7 @@ sleep: Callable[[float], None] = time.sleep
 
 MANIFEST: dict[str, Any] = {
     "name": "GBP audit agent",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "description": "Collects each lead's Google Business Profile, posts and latest reviews "
     "from DataForSEO and compares them with the batch's benchmark: findings and a score.",
     "settings": [
@@ -58,6 +58,14 @@ MANIFEST: dict[str, Any] = {
             "default": 50,
             "min": 0,
             "max": 100,
+        },
+        {
+            "key": "high_priority",
+            "type": "bool",
+            "label": "Faster DataForSEO queue",
+            "help": "DataForSEO's high priority: results in minutes, at about twice the cost. "
+            "Tests always use it.",
+            "default": False,
         },
         {
             "key": "wait_minutes",
@@ -108,6 +116,8 @@ class Run:
         self.done = self.failed = self.skipped = 0
         self.cost = 0.0
         self.benchmarks: dict[str, dict[str, Any] | None] = {}
+        # DataForSEO's high priority (2) for tests, so a report comes in minutes.
+        self.priority = 2 if job.get("test") or self.config.get("high_priority") else 1
 
     def benchmark_of(self, lead: dict[str, Any]) -> dict[str, Any] | None:
         """The benchmark of the lead's batch (GET /benchmarks/{id}), read once a run; None
@@ -142,6 +152,7 @@ class Run:
         summary: str,
         data: dict[str, Any] | None = None,
         compared: dict[str, Any] | None = None,
+        raw: dict[str, Any] | None = None,
     ) -> None:
         benchmark = self.benchmark_of(lead)
         details: dict[str, Any] = {
@@ -163,6 +174,8 @@ class Run:
             "unverified": (compared or {}).get("unverified", []),
         }
         if data is not None:
+            # DataForSEO's own answer for the profile, in the file only: every field it gave.
+            details["raw"] = {"business_info": raw} if raw is not None else {}
             self.hub.upload(
                 f"/leads/{lead['lead_id']}/files",
                 "gbp.json",
@@ -176,6 +189,7 @@ class Run:
             if short.get("posts"):
                 short["posts"]["items"] = short["posts"]["items"][:5]
             details["data"] = short
+            details.pop("raw", None)
         body: dict[str, Any] = {
             "outcome": outcome,
             "status": status,
@@ -244,6 +258,7 @@ class Run:
                     "location_code": US,
                     "language_code": "en",
                     "tag": lead["lead_id"],
+                    "priority": self.priority,
                 }
             )
         by_id = {lead["lead_id"]: lead for lead in leads}
@@ -266,7 +281,19 @@ class Run:
                     self.save(lead, "done", "NOT_FOUND", "No Google Business Profile found.")
                 else:
                     found[tag] = info
+                    self.found(lead, info)
         self.extras(by_id, found)
+
+    def found(self, lead: dict[str, Any], info: dict[str, Any]) -> None:
+        """Say a lead's profile is found while its posts and reviews are on their way: not
+        finished yet (tried again if the run ends before), and not counted."""
+        body = {
+            "outcome": "failed",
+            "status": "PROFILE_FOUND",
+            "summary": f"Profile found: {info.get('title') or 'no name'}. Waiting for its posts "
+            "and reviews from DataForSEO.",
+        }
+        self.hub.call("PUT", f"/leads/{lead['lead_id']}/result", body)
 
     def extras(self, by_id: dict[str, dict[str, Any]], found: dict[str, dict[str, Any]]) -> None:
         """The posts and reviews of the profiles found, then each lead's result."""
@@ -278,7 +305,9 @@ class Run:
         }
         for tag in set(found) - set(open_ones):
             data = collect.collect(found[tag], None, None, today)
-            self.save(by_id[tag], "done", "CLOSED", "Permanently closed on Google.", data)
+            self.save(
+                by_id[tag], "done", "CLOSED", "Permanently closed on Google.", data, raw=found[tag]
+            )
 
         def task(tag: str, info: dict[str, Any], **more: Any) -> dict[str, Any]:
             keyword = f"cid:{info['cid']}" if info.get("cid") else str(info.get("title", ""))
@@ -287,6 +316,7 @@ class Run:
                 "location_code": US,
                 "language_code": "en",
                 "tag": tag,
+                "priority": self.priority,
                 **more,
             }
 
@@ -321,7 +351,7 @@ class Run:
             summary = compared["summary"]
             if benchmark is None:
                 summary += " No benchmark: only what the profile misses is found."
-            self.save(by_id[tag], "done", "AUDITED", summary, data, compared)
+            self.save(by_id[tag], "done", "AUDITED", summary, data, compared, raw=info)
 
 
 def _leads(hub: "HubClient", job: dict[str, Any]) -> list[dict[str, Any]]:

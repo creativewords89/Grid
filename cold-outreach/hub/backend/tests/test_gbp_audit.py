@@ -371,6 +371,7 @@ def test_a_run_collects_each_lead_and_saves_its_file(
     data = one["details"]["data"]
     assert data["basics"]["website"] == "https://shine.example"
     assert "latest" not in data["reviews"]  # the full reviews are in gbp.json
+    assert all(task["priority"] == 1 for _, task in fake.posted)  # the Standard queue
     # Posts and reviews are asked by the profile's CID, never for a closed one.
     asked = [(e, t["keyword"]) for e, t in fake.posted if e != dataforseo.INFO]
     assert sorted(asked) == [
@@ -382,6 +383,9 @@ def test_a_run_collects_each_lead_and_saves_its_file(
     saved = client.get(f"/api/leads/L-000001/files/{files[0]['id']}").json()
     assert saved["data"]["reviews"]["latest"][0]["text"] == "Great"
     assert saved["findings"] and saved["score"] == one["score"]
+    # DataForSEO's own answer stays in the file, so every field it gives can be checked.
+    assert saved["raw"]["business_info"]["cid"] == INFO["cid"]
+    assert "raw" not in one["details"]
 
 
 def test_a_run_without_the_dataforseo_key_fails_at_once(
@@ -442,3 +446,29 @@ def test_what_dataforseo_didnt_give_is_left_out_of_the_score() -> None:
     assert all(f["code"] not in found["unverified"] for f in found["findings"])
     # Without a benchmark only what the profile misses counts.
     assert compare.compare(collect.collect(INFO, POSTS, None, TODAY), None)["score"] == 100
+
+
+def test_services_are_read_as_dataforseo_gives_them() -> None:
+    """DataForSEO's `services`: objects with a title and maybe a category and description;
+    none given is unable to verify, never "no services"."""
+    listed = {
+        **INFO,
+        "services": [
+            {"title": "Demolition", "category": "Construction company"},
+            {"title": "Remodeling", "description": "Kitchens and baths"},
+            {"category": "no title: left out"},
+        ],
+    }
+    found = collect.collect(listed, None, None, TODAY)["categories"]["services"]
+    assert found == [
+        {"name": "Demolition", "category": "Construction company", "description": None},
+        {"name": "Remodeling", "category": None, "description": "Kitchens and baths"},
+    ]
+    grouped = {**INFO, "services": {"Construction company": [{"title": "Demolition"}]}}
+    assert collect.collect(grouped, None, None, TODAY)["categories"]["services"] == [
+        {"name": "Demolition", "category": None, "description": None}
+    ]
+    assert (
+        collect.collect({**INFO, "services": None}, None, None, TODAY)["categories"]["services"]
+        is None
+    )

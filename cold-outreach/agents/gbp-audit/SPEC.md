@@ -32,9 +32,14 @@ compared with the lead file.
 
 ## 3. DataForSEO
 
-- Standard queue only, United States (location 2840), English: **Business Info**, **Updates**
+- Standard queue, United States (location 2840), English: **Business Info**, **Updates**
   (the latest *Posts to collect*, 20 by default; charged per 10) and **Reviews** (the latest
-  *Reviews to collect*, 50 by default, newest first). About $0.01 a lead.
+  *Reviews to collect*, 50 by default, newest first). About $0.01 a lead. The Standard
+  queue can take half an hour or more for posts and reviews: a **test** (hub step 50) always
+  uses DataForSEO's high priority (results in minutes, about twice the cost), and runs do
+  when *Faster DataForSEO queue* is on.
+- A lead whose profile is found shows `PROFILE_FOUND` ("waiting for its posts and reviews")
+  until its result is saved; it isn't finished, so a run that ends first tries it again.
 - Tasks are posted at once (100 per request, each tagged with its Lead ID) and fetched until
   ready, at most *Longest wait* (60 minutes by default); a lead not ready by then is tried
   again on the next run. The agent reports to the Hub while it waits, so Stop and the budget
@@ -98,5 +103,6 @@ The collected data against the batch's benchmark (GBP part); an empty box isn't 
 
 ## 7. Settings
 
-Leads per run (50), Posts to collect (20), Reviews to collect (50), Longest wait for
+Leads per run (50), Posts to collect (20), Reviews to collect (50), Faster DataForSEO queue
+(off), Longest wait for
 DataForSEO (60 minutes). Daily limit and budget are the Hub's (Agents screen).
