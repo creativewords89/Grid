@@ -78,7 +78,8 @@ test('invoices tracker', async ({ page }) => {
 	// Year view: the cycle's cell is Paid, nothing owed.
 	await page.locator('.bl-seg').getByRole('button', { name: 'Year view' }).click();
 	const year = page.locator('.bl-yrow', { hasText: 'Cycle Co' });
-	await expect(year.locator('button.bl-cell')).toHaveText('Paid');
+	// (On the 1st of a month the new cycle's cell is in the year too.)
+	await expect(year.locator('button.bl-cell.b-paid')).toHaveText('Paid');
 	await expect(year.locator('.bl-owed')).toHaveText('—');
 	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/invoices-year.png' });
 

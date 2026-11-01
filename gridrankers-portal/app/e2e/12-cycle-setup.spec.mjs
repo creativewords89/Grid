@@ -37,17 +37,26 @@ test('assign and review a new cycle', async ({ page }) => {
 	await showStrip(page, left > 0 ? 'New cycle for Cycle Co.' : 'Cycle Co: new cycle setup is');
 
 	// Today's reminder in Notifications and on the bell: no dismiss, and the bell keeps it new.
-	const reminder = box('Notifications').locator('.nf-must-item', { hasText: 'Cycle Co' });
+	const reminder = box('Notifications').locator('.nf-must-item', { hasText: /New cycle for Cycle Co|Cycle Co: new cycle setup/ });
 	await expect(reminder).toContainText(reminderText('\\d+ unassigned, 3 to review'));
+	// And what wasn't finished last cycle (days 1–3): Cycle blogs (1 of 2), Cycle pages and the open meeting task.
+	const leftover = box('Notifications').locator('.nf-must-item', { hasText: /Cycle Co: \d+ tasks? not finished in/ });
+	if (left > 0) {
+		await expect(leftover).toContainText(/Cycle Co: 3 tasks not finished in \w{3} — move to \w{3} or leave them/);
+		await expect(leftover.getByRole('button')).toHaveText(['Move unfinished']);
+		await expect(setup).toContainText(/Unfinished from \w{3} · 3 to move or leave/);
+	} else {
+		await expect(leftover).toHaveCount(0);
+	}
 	await expect(reminder.getByRole('button')).toHaveText(['Open setup']);
 	// Under the filter chips, not above them.
 	const [chips, rem] = [await box('Notifications').locator('.nf-chips').boundingBox(), await reminder.boundingBox()];
 	expect(rem.y).toBeGreaterThan(chips.y + chips.height - 1);
 	await page.locator('.md-bell-btn').click();
-	await expect(page.locator('.md-pop li.must', { hasText: 'Cycle Co' })).toHaveClass(/new/);
+	await expect(page.locator('.md-pop li.must', { hasText: /New cycle for Cycle Co|Cycle Co: new cycle setup/ })).toHaveClass(/new/);
 	await page.locator('.md-bell-btn').click();
 	await page.locator('.md-bell-btn').click();
-	await expect(page.locator('.md-pop li.must.new', { hasText: 'Cycle Co' })).toHaveCount(1);
+	await expect(page.locator('.md-pop li.must.new', { hasText: /New cycle for Cycle Co|Cycle Co: new cycle setup/ })).toHaveCount(1);
 	await page.locator('.md-bell-btn').click();
 	// Mark all read clears the rest but never the reminder (opening the bell clears nothing).
 	const markAll = box('Notifications').getByRole('button', { name: 'Mark all read' });
@@ -117,8 +126,17 @@ test('assign and review a new cycle', async ({ page }) => {
 	await expect(page.locator('.md-strip', { hasText: 'Cycle Co' })).toHaveCount(0);
 	// Done: the reminder goes away by itself.
 	await expect(reminder).toHaveCount(0);
+	// Cycle pages is still unfinished (days 1–3): its reminder and the box's Move unfinished stay,
+	// even when the setup is done; Move unfinished opens the Unfinished part.
+	if (left > 0) {
+		await expect(leftover).toContainText(/Cycle Co: 1 task not finished in/);
+		await leftover.getByRole('button', { name: 'Move unfinished' }).click();
+		await expect(dlg.getByRole('heading', { name: /^Unfinished from / })).toBeInViewport();
+		await dlg.getByRole('button', { name: 'Close' }).last().click();
+		await expect(setup.getByRole('button', { name: 'Move unfinished' })).toBeVisible();
+	}
 	await page.locator('.md-bell-btn').click();
-	await expect(page.locator('.md-pop li.must', { hasText: 'Cycle Co' })).toHaveCount(0);
+	await expect(page.locator('.md-pop li.must', { hasText: /New cycle for Cycle Co|Cycle Co: new cycle setup/ })).toHaveCount(0);
 	await page.locator('.md-bell-btn').click();
 
 	// A Team Member cannot review a cycle; Max got the feedback as a notice.

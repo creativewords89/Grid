@@ -19,6 +19,8 @@ export default function PersonReports({ memberId, onBack, backLabel }) {
 	const [error, setError] = useState('');
 	const [asking, setAsking] = useState(false);
 	const bar = useRef(null);
+	// Early in a month with no reports yet, open on last month (once, until ‹ › is used).
+	const first = useRef(true);
 	const person = data.members[memberId];
 
 	useEffect(() => {
@@ -26,7 +28,16 @@ export default function PersonReports({ memberId, onBack, backLabel }) {
 		setRes(null);
 		api
 			.get('daily-reports', { member: memberId, month })
-			.then((r) => live && setRes(r))
+			.then((r) => {
+				if (!live) return;
+				if (first.current && !(r.reports || []).length && month === today.slice(0, 7)) {
+					first.current = false;
+					setMonth(shiftMonth(month, -1));
+					return;
+				}
+				first.current = false;
+				setRes(r);
+			})
 			.catch((err) => live && setError(err.message));
 		return () => {
 			live = false;

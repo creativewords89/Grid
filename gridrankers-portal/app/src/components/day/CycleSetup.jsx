@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { usePortal } from '../../context.js';
 import { allReminders, cycleLabel, cycleSetup, lastCycleCount, unfinishedOf } from '../../lib/cycleSetup.js';
 import { isBiweekly, isSplit } from '../../lib/cycles.js';
@@ -207,9 +207,18 @@ function UnfinishedRow({ c, u, from, to }) {
 	);
 }
 
-export function ReviewCycleDialog({ c, onClose }) {
+export function ReviewCycleDialog({ c, onClose, focus = false }) {
 	const { data, today } = usePortal();
 	const unfinished = unfinishedOf(data, c, today);
+	// Opened with "Move unfinished": straight to the Unfinished part.
+	useEffect(() => {
+		if (!focus) return undefined;
+		const t = window.setTimeout(() => {
+			const h = document.getElementById('csUnfinished');
+			if (h) h.scrollIntoView({ block: 'start' });
+		}, 60);
+		return () => window.clearTimeout(t);
+	}, [focus]);
 	const from = cycleLabel(c.prev);
 	const to = cycleLabel(c.cycle);
 	return (
@@ -249,7 +258,7 @@ export function ReviewCycleDialog({ c, onClose }) {
 				)}
 				{unfinished.length > 0 && (
 					<>
-						<h3 className="cs-h">
+						<h3 className="cs-h" id="csUnfinished">
 							Unfinished from {from} <span className="muted">· {unfinished.length} · they stay in {from} unless you move them</span>
 						</h3>
 						<ul className="cs-list" aria-label="Unfinished">
@@ -272,9 +281,14 @@ export function ReviewCycleDialog({ c, onClose }) {
 
 // What a setup reminder's button does: Open setup → the New cycle setup box; Assign people → the
 // project's Monthly Tasks.
+// "Move unfinished" (a reminder, or the setup box): the project whose Review last cycle opens at
+// its Unfinished part once My day shows the setup box.
+let pendingUnfinished = '';
+
 export function useReminderAction() {
 	const { setProject, setView } = usePortal();
 	return (r) => {
+		if (r.kind === 'unfinished') pendingUnfinished = r.project.id;
 		if (r.kind === 'invoice') {
 			setView('invoices');
 			return;
@@ -306,7 +320,7 @@ export function SetupReminders() {
 			{list.map((r) => (
 				<div key={r.key} className={'nf-must-item t-' + r.tone}>
 					<span className="nf-ic" aria-hidden="true">
-						{r.kind === 'unassigned' ? '👤' : r.kind === 'invoice' ? '🧾' : r.kind === 'chase' ? '✉' : '!'}
+						{r.kind === 'unassigned' ? '👤' : r.kind === 'invoice' ? '🧾' : r.kind === 'chase' ? '✉' : r.kind === 'unfinished' ? '↪' : '!'}
 					</span>
 					<span className="nf-body">
 						<span className="nf-top">
@@ -330,6 +344,18 @@ export default function CycleSetup() {
 	const { data, today, setProject, setView } = usePortal();
 	const list = useMemo(() => cycleSetup(data, today), [data, today]);
 	const [open, setOpen] = useState('');
+	const [focus, setFocus] = useState(false);
+	useEffect(() => {
+		const take = () => {
+			if (!pendingUnfinished) return;
+			setOpen(pendingUnfinished);
+			setFocus(true);
+			pendingUnfinished = '';
+		};
+		take();
+		window.addEventListener('grp:cycle-setup', take);
+		return () => window.removeEventListener('grp:cycle-setup', take);
+	}, []);
 	if (!list.length) return null;
 	const current = list.find((c) => c.project.id === open);
 
@@ -353,7 +379,17 @@ export default function CycleSetup() {
 							<Step ok={assignedOk} label="Assign monthly tasks" sub={`${c.assigned} of ${c.tasks.length} have people`} />
 							{c.prev && <Step ok={c.reviewed === c.last.length} label="Review monthly tasks" sub={`${c.reviewed} of ${c.last.length} reviewed`} />}
 							{c.prev && <Step ok={c.meetingReviewed === c.meeting.length} label="Review meeting minutes" sub={`${c.meetingReviewed} of ${c.meeting.length} reviewed`} />}
-							{!c.done && (
+							{c.prev && c.unfinished > 0 && (
+								<div className="cs-step cs-step-un">
+									<span className="cs-tick" aria-hidden="true">
+										↪
+									</span>
+									<span>
+										<b>Unfinished from {cycleLabel(c.prev)}</b> <span className="muted">· {c.unfinished} to move or leave (optional)</span>
+									</span>
+								</div>
+							)}
+							{(!c.done || c.unfinished > 0) && (
 								<div className="cs-btns">
 									{!assignedOk && (
 										<button type="button" className="btn small primary" onClick={() => (setProject(c.project.id), setView('monthly'))}>
@@ -365,13 +401,18 @@ export default function CycleSetup() {
 											Review last cycle
 										</button>
 									)}
+									{c.prev && c.unfinished > 0 && (
+										<button type="button" className="btn small" onClick={() => (setOpen(c.project.id), setFocus(true))}>
+											Move unfinished
+										</button>
+									)}
 								</div>
 							)}
 						</div>
 					);
 				})}
 			</div>
-			{current && current.prev && <ReviewCycleDialog c={current} onClose={() => setOpen('')} />}
+			{current && current.prev && <ReviewCycleDialog c={current} focus={focus} onClose={() => (setOpen(''), setFocus(false))} />}
 		</section>
 	);
 }

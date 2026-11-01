@@ -136,7 +136,9 @@ describe('new cycle setup', () => {
 		const bell = bellItems(d, LEAD, '2026-10-02');
 		expect(bell[0]).toMatchObject({ key: 'setup:p1:2026-10-02', unread: true, sticky: true });
 		// Not twice: the message band's copy stays off the bell.
-		expect(bell.filter((i) => i.text.includes('Acme'))).toHaveLength(1);
+		expect(bell.filter((i) => i.text.includes('New cycle for Acme'))).toHaveLength(1);
+		// And what wasn't finished last cycle (Blogs 3 of 4, Pages 0 of 2), to move or leave.
+		expect(bell.filter((i) => i.key.startsWith('unfinished:')).map((i) => i.text)).toEqual(['Acme: 2 tasks not finished in Sep — move to Oct or leave them']);
 		expect(bellItems(d, MAX, '2026-10-02').some((i) => i.sticky)).toBe(false);
 	});
 });
@@ -176,5 +178,37 @@ describe('unfinished from last cycle', () => {
 			['t2', null],
 			['m1', 'm1'],
 		]);
+	});
+});
+
+describe('unfinished reminders and every open meeting task', () => {
+	it('lists open meeting tasks with a past deadline or none, not ones still due', () => {
+		const d = fixture();
+		d.meeting_tasks = {
+			old: { id: 'old', project_id: 'p1', title: 'Old fix', status: 'todo', deadline: { type: 'date', date: '2026-08-20' }, created_at: '2026-08-10 09:00:00' },
+			none: { id: 'none', project_id: 'p1', title: 'No deadline', status: 'doing', deadline: { type: 'none' }, created_at: '2026-09-05 09:00:00' },
+			later: { id: 'later', project_id: 'p1', title: 'Due later', status: 'todo', deadline: { type: 'date', date: '2026-10-20' }, created_at: '2026-09-05 09:00:00' },
+			fresh: { id: 'fresh', project_id: 'p1', title: 'Added this cycle', status: 'todo', created_at: '2026-10-01 09:00:00' },
+			gen: { id: 'gen', project_id: '', title: 'General', status: 'todo', created_at: '2026-09-05 09:00:00' },
+		};
+		const [c] = cycleSetup(d, '2026-10-02');
+		expect(unfinishedOf(d, c, '2026-10-02').filter((u) => u.kind === 'meeting').map((u) => u.task.id)).toEqual(['none', 'old']);
+		expect(c.unfinished).toBe(4);
+	});
+
+	it('reminds leaders on days 1–3, also after the setup is done, until everything is moved', () => {
+		const d = fixture();
+		Object.values(d.monthly_tasks).forEach((t) => (t.assignees = [{ id: 'max', n: 1 }]));
+		d.projects.p1.cycle_reviews = { '2026-09': { t1: { ok: true }, t2: { ok: true } } };
+		const keys = (day, who = LEAD) => setupReminders(d, who, day).map((r) => r.key);
+		expect(keys('2026-10-02')).toEqual(['unfinished:p1:2026-10-02']);
+		expect(keys('2026-10-04')).toEqual([]);
+		expect(keys('2026-10-02', MAX)).toEqual([]);
+		// Both moved: the reminder goes.
+		d.meeting_tasks = {
+			c1: { id: 'c1', project_id: 'p1', title: 'Blogs — 1 left from Sep', status: 'todo', carried: { from: 'monthly', task_id: 't1', cycle: '2026-09' }, created_at: '2026-10-02 09:00:00' },
+			c2: { id: 'c2', project_id: 'p1', title: 'Pages — 2 left from Sep', status: 'todo', carried: { from: 'monthly', task_id: 't2', cycle: '2026-09' }, created_at: '2026-10-02 09:00:00' },
+		};
+		expect(keys('2026-10-02')).toEqual([]);
 	});
 });
