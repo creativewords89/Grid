@@ -1,3 +1,4 @@
+import { localYmd } from './format.js';
 import { isManager } from './roles.js';
 
 export const PRI = { urgent: 0, high: 1, normal: 2, low: 3 };
@@ -30,3 +31,13 @@ export const liveTask = (data, t) => isGeneral(t) || !!data.projects[t.project_i
 export const homeName = (data, t) => (isGeneral(t) ? GENERAL_NAME : data.projects[t.project_id] ? data.projects[t.project_id].name : '');
 // The view that shows a meeting task: its project's board, or the General tasks board.
 export const boardOf = (t) => (isGeneral(t) ? 'general' : 'board');
+
+// A meeting task belongs to the cycle containing its meeting date (or created date) — or, once
+// moved into a new cycle from Review last cycle (SPEC.md 6.11), to the cycle after the one it was
+// moved from. `range` is the board's cycle, `prevKey` the key of the cycle before it.
+export const taskCycleDate = (t) => t.meeting_date || localYmd(t.created_at);
+export function inBoardCycle(t, range, prevKey) {
+	if (t.carried && t.carried.from === 'meeting' && t.carried.cycle) return t.carried.cycle === prevKey;
+	const d = taskCycleDate(t);
+	return d >= range.start && d <= range.end;
+}
