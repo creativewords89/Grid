@@ -4,7 +4,7 @@ import { myProjects } from '../lib/day.js';
 import { feedOf } from '../lib/feed.js';
 import { pendingReviews } from '../lib/reviews.js';
 import { emptyData } from '../lib/store.js';
-import { GENERAL, boardOf, homeName, isGeneral, liveTask } from '../lib/tasks.js';
+import { GENERAL, boardOf, homeName, inBoardCycle, isGeneral, liveTask } from '../lib/tasks.js';
 
 const TODAY = '2026-10-06';
 const NOW = Date.parse('2026-10-06T12:00:00Z');
@@ -53,5 +53,21 @@ describe('General tasks (SPEC.md 6.13)', () => {
 		expect(item).toMatchObject({ title: 'New general task: “Renew domain”', open: { project_id: '', tab: 'general' } });
 		d.meeting_tasks.g1.review = { state: 'pending', submittedBy: 'max', submittedAt: '2026-10-06 10:00:00' };
 		expect(pendingReviews(d).map((r) => [r.id, r.tab, r.where])).toEqual([['g1', 'general', 'General task']]);
+	});
+});
+
+// A meeting task moved into the new cycle (SPEC.md 6.11) shows on that cycle's board.
+describe('which cycle a meeting task is on', () => {
+	const oct = { start: '2026-10-01', end: '2026-10-31', key: '2026-10' };
+	const nov = { start: '2026-11-01', end: '2026-11-30', key: '2026-11' };
+	const task = { meeting_date: '2026-10-12', created_at: '2026-10-12 09:00:00' };
+	const moved = { ...task, carried: { from: 'meeting', task_id: 'm1', cycle: '2026-10', label: 'Oct' } };
+	it('is the cycle of its meeting date', () => {
+		expect([inBoardCycle(task, oct, '2026-09'), inBoardCycle(task, nov, '2026-10')]).toEqual([true, false]);
+	});
+	it('is the cycle after the one it was moved from', () => {
+		expect([inBoardCycle(moved, oct, '2026-09'), inBoardCycle(moved, nov, '2026-10')]).toEqual([false, true]);
+		// A catch-up task keeps its own meeting date.
+		expect(inBoardCycle({ meeting_date: '2026-11-02', carried: { from: 'monthly', cycle: '2026-10' } }, nov, '2026-10')).toBe(true);
 	});
 });

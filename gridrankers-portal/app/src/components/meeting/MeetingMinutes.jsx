@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { usePortal } from '../../context.js';
 import { cycleFill, cycleRange, daysBetween } from '../../lib/cycles.js';
 import { localYmd, short } from '../../lib/format.js';
-import { assigneesOf, searchText, sortOpen } from '../../lib/tasks.js';
+import { assigneesOf, inBoardCycle, searchText, sortOpen } from '../../lib/tasks.js';
 import { rowsOf } from '../../lib/store.js';
 import Avatar from '../Avatar.jsx';
 import CycleBar from '../CycleBar.jsx';
@@ -12,7 +12,7 @@ import TaskDetails from './TaskDetails.jsx';
 import useTaskActions from './useTaskActions.js';
 
 // A meeting task belongs to the cycle containing its meeting date (or created date).
-export const taskCycleDate = (t) => t.meeting_date || localYmd(t.created_at);
+export { taskCycleDate } from '../../lib/tasks.js';
 
 function UrgentBanner({ items, onOpen }) {
 	const { data, today } = usePortal();
@@ -112,10 +112,10 @@ export default function MeetingMinutes() {
 	const P = cycleRange(p, cycleOff, today);
 	const q = search.trim().toLowerCase();
 	const members = data.members;
+	const prevKey = cycleRange(p, cycleOff - 1, today).key;
 	const items = rowsOf(data, 'meeting_tasks').filter((t) => {
 		if (t.project_id !== p.id) return false;
-		const d = taskCycleDate(t);
-		if (d < P.start || d > P.end) return false;
+		if (!inBoardCycle(t, P, prevKey)) return false;
 		if (!q) return true;
 		return searchText([t.title, t.notes, t.url, ...assigneesOf(t, members).map((a) => members[a.id].name)]).includes(q);
 	});

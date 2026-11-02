@@ -26,7 +26,7 @@ test('assign and review a new cycle', async ({ page }) => {
 	// A meeting task due last cycle (the day before this cycle started) and still open.
 	await signIn(page, LEAD);
 	const cycleCoId = (await apiCall(page, 'GET', 'projects')).json.find((p) => p.name === 'Cycle Co').id;
-	expect((await apiCall(page, 'POST', 'meeting-tasks', { project_id: cycleCoId, title: 'Cycle photos', assignees: [{ id: 'tm_max', n: 1 }], deadline: { type: 'date', date: beforeStart } })).status).toBe(201);
+	expect((await apiCall(page, 'POST', 'meeting-tasks', { project_id: cycleCoId, title: 'Cycle photos', meeting_date: beforeStart, assignees: [{ id: 'tm_max', n: 1 }], deadline: { type: 'date', date: beforeStart } })).status).toBe(201);
 	await page.reload();
 	const setup = box('New cycle setup').locator('.cs-proj', { hasText: 'Cycle Co' });
 	// Cycle blogs has Max; Cycle pages (and any standard tasks grp_daily added) have nobody yet.
