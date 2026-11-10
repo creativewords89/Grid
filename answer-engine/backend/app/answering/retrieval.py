@@ -48,6 +48,7 @@ def retrieve(db: Session, store: VectorStore, query: str) -> Retrieval:
                 text=verified.search_text(va),
                 score=round(hit.score, 4),
                 kind="verified",
+                group=va.answer_group or "",
             )
         )
 

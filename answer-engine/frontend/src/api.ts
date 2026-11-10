@@ -455,9 +455,12 @@ export type VerifiedRow = {
   needs_check: boolean;
   needs_check_reason: string | null;
   approved_by: Person | null;
-  origin: "review" | "admin" | "marketing";
+  origin: "review" | "admin" | "marketing" | "import";
   version: number;
   updated_at: string;
+  applies_when: string | null;
+  also_asked: string | null;
+  answer_group: string | null;
 };
 
 export type VerifiedDetail = VerifiedRow & {
@@ -470,6 +473,7 @@ export type VerifiedDetail = VerifiedRow & {
 export type VerifiedPage = {
   items: VerifiedRow[];
   can_manage: boolean;
+  can_import: boolean;
   counts: Record<"active" | "disabled" | "expired" | "needs_check" | "all", number>;
 };
 
@@ -481,9 +485,18 @@ export type VerifiedVersion = {
   at: string;
 };
 
+export type VerifiedImport = {
+  created: number;
+  updated: number;
+  unchanged: number;
+  skipped: { row: number; reason: string }[];
+};
+
 export type VerifiedPatch = {
   question?: string;
   answer?: string;
+  applies_when?: string;
+  also_asked?: string;
   expires_at?: string;
   clear_expiry?: boolean;
   checked?: boolean;
@@ -908,6 +921,8 @@ export const api = {
       `/verified?show=${encodeURIComponent(show)}${q ? `&q=${encodeURIComponent(q)}` : ""}`,
     ),
   getVerified: (id: string) => request<VerifiedDetail>("GET", `/verified/${id}`),
+  importVerified: (file: File, onProgress?: (pct: number) => void) =>
+    sendFile<VerifiedImport>("/verified/import", "file", file, onProgress),
   updateVerified: (id: string, patch: VerifiedPatch) =>
     request<VerifiedDetail>("PATCH", `/verified/${id}`, patch),
   disableVerified: (id: string) => request<VerifiedDetail>("POST", `/verified/${id}/disable`),

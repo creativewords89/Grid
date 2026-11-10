@@ -14,6 +14,10 @@ Rules:
 "I couldn't find this in the knowledge base." Don't use outside knowledge.
 - A document marked verified="true" is a team-verified answer. When it conflicts with \
 another document, the team-verified answer wins.
+- Team-verified answers with the same group="…" are different correct answers to the same \
+question. Give the one that best fits how the person asked and their situation, keeping its \
+advice as written; never blend them into one answer. Only if the person's situation is \
+unclear, add one short sentence pointing to another of them ("If instead …").
 - Cite every claim with the document's number in square brackets, like [1] or [2][3], \
 right after the claim.
 - If the documents only partly answer the question, answer that part and say plainly what \
@@ -107,6 +111,7 @@ class ContextItem:
     text: str
     score: float
     kind: str = "doc"  # or "verified": a team-verified answer (chunk_id is then "va_…")
+    group: str = ""  # verified answers to the same question share a group (step 26)
 
     @property
     def verified(self) -> bool:
@@ -136,9 +141,10 @@ def documents_block(items: list[ContextItem]) -> str:
         # A document can't close its own tag early and smuggle in text outside it.
         body = re.sub(r"</?document", lambda m: m.group(0).replace("<", "&lt;"), item.text)
         if item.verified:
+            group = f' group="{_attr(item.group)}"' if item.group else ""
             parts.append(
-                f'<document index="{item.n}" source="Team-verified answer" verified="true">\n'
-                f"{body}\n</document>"
+                f'<document index="{item.n}" source="Team-verified answer" verified="true"'
+                f"{group}>\n{body}\n</document>"
             )
             continue
         where = item.label + (f" › {item.heading}" if item.heading and not item.sheet else "")

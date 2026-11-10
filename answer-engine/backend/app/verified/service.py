@@ -82,17 +82,24 @@ def all_live_records(db: Session) -> set[str]:
 
 
 def search_text(va: VerifiedAnswer) -> str:
-    return f"Q: {va.question}\nA: {va.answer}"
+    """What is searched, and what Claude reads. Empty parts are left out (step 26)."""
+    parts = [f"Q: {va.question}"]
+    if va.also_asked:
+        parts.append(f"Also asked as: {va.also_asked}")
+    if va.applies_when:
+        parts.append(f"When it applies: {va.applies_when}")
+    parts.append(f"A: {va.answer}")
+    return "\n".join(parts)
 
 
-def _sync(db: Session, va: VerifiedAnswer) -> None:
+def sync(db: Session, va: VerifiedAnswer) -> None:
     if is_live(va):
         outbox.upsert(db, VERIFIED, [va.record_id])
     else:
         outbox.delete(db, VERIFIED, [va.record_id])
 
 
-def _version(db: Session, va: VerifiedAnswer, by: User | None) -> None:
+def add_version(db: Session, va: VerifiedAnswer, by: User | None) -> None:
     db.add(
         VerifiedAnswerVersion(
             verified_answer_id=va.id,
@@ -191,8 +198,8 @@ def from_answer(
         db.add(va)
         action = "create"
     db.flush()
-    _version(db, va, by)
-    _sync(db, va)
+    add_version(db, va, by)
+    sync(db, va)
     audit.record(db, by, action, "verified_answer", va.id, va.question)
     return va
 
@@ -221,10 +228,14 @@ def edit(
     change_expiry: bool = False,
     expires_at: datetime | None = None,  # with change_expiry; None = never expires
     checked: bool = False,
+    applies_when: str | None = None,  # step 26; "" clears it
+    also_asked: str | None = None,
 ) -> VerifiedAnswer:
     before = {
         "question": va.question,
         "answer": va.answer,
+        "applies_when": va.applies_when,
+        "also_asked": va.also_asked,
         "expires_at": va.expires_at.isoformat() if va.expires_at else None,
         "needs_check": va.needs_check,
     }
@@ -236,6 +247,12 @@ def edit(
         )
         text_changed = (new_q, new_a) != (va.question, va.answer)
         va.question, va.answer = new_q, new_a
+    for name, value in (("applies_when", applies_when), ("also_asked", also_asked)):
+        if value is not None:
+            cleaned = value.strip() or None
+            if cleaned != getattr(va, name):
+                setattr(va, name, cleaned)
+                text_changed = True
     if change_expiry:
         va.expires_at = expires_at
         if va.status == VerifiedStatus.EXPIRED and not is_expired(va):
@@ -247,17 +264,19 @@ def edit(
         va.needs_check_reason = None
     if text_changed:
         va.version += 1
-        _version(db, va, by)
+        add_version(db, va, by)
     after = {
         "question": va.question,
         "answer": va.answer,
+        "applies_when": va.applies_when,
+        "also_asked": va.also_asked,
         "expires_at": va.expires_at.isoformat() if va.expires_at else None,
         "needs_check": va.needs_check,
     }
     changes = audit.diff(before, after)
     if changes:
         audit.record(db, by, "update", "verified_answer", va.id, va.question, changes)
-        _sync(db, va)
+        sync(db, va)
     return va
 
 
@@ -277,7 +296,7 @@ def set_status(db: Session, va: VerifiedAnswer, by: User | None, status: Verifie
         va.question,
         [{"field": "status", "from": before, "to": status.value}],
     )
-    _sync(db, va)
+    sync(db, va)
 
 
 def restore_version(db: Session, va: VerifiedAnswer, by: User, version: int) -> VerifiedAnswer:
@@ -312,7 +331,7 @@ def restore(db: Session, va: VerifiedAnswer, by: User) -> None:
     if va.status == VerifiedStatus.ACTIVE and is_expired(va):
         va.status = VerifiedStatus.EXPIRED
     audit.record(db, by, "restore", "verified_answer", va.id, va.question)
-    _sync(db, va)
+    sync(db, va)
 
 
 def purge(db: Session, va: VerifiedAnswer, by: User | None) -> None:

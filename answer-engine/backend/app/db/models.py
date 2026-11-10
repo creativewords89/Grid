@@ -585,6 +585,7 @@ class VerifiedOrigin(enum.StrEnum):
     REVIEW = "review"
     ADMIN = "admin"
     MARKETING = "marketing"
+    IMPORT = "import"  # from an uploaded file (step 26)
 
 
 class VerifiedAnswer(TimestampMixin, Base):
@@ -617,10 +618,21 @@ class VerifiedAnswer(TimestampMixin, Base):
         ForeignKey("users.id", ondelete="SET NULL")
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Step 26: several correct answers to one question share an answer group.
+    applies_when: Mapped[str | None] = mapped_column(Text)
+    also_asked: Mapped[str | None] = mapped_column(Text)
+    answer_group: Mapped[str | None] = mapped_column(Text)
+    import_key: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         Index("ix_verified_answers_origin_answer", "origin_answer_id"),
         Index("ix_verified_answers_sources", "source_file_ids", postgresql_using="gin"),
+        Index(
+            "uq_verified_answers_import_key",
+            "import_key",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL AND import_key IS NOT NULL"),
+        ),
     )
 
     @property

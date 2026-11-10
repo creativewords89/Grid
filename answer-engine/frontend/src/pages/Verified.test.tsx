@@ -21,10 +21,14 @@ const row = {
   origin: "review" as const,
   version: 2,
   updated_at: "2026-10-08T10:00:00Z",
+  applies_when: null,
+  also_asked: null,
+  answer_group: null,
 };
 const page: VerifiedPage = {
   items: [row],
   can_manage: true,
+  can_import: false,
   counts: { active: 1, disabled: 0, expired: 0, needs_check: 1, all: 1 },
 };
 const detail: VerifiedDetail = {
@@ -91,6 +95,8 @@ test("editing saves the new answer", async () => {
   expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({
     question: row.question,
     answer: "Two weeks.",
+    applies_when: "",
+    also_asked: "",
   });
   expect(screen.getByText("Onboarding.pdf (deleted)")).toBeVisible();
   expect(screen.getByRole("button", { name: "Restore this version" })).toBeVisible();
@@ -108,4 +114,74 @@ test("people who can't manage only read", async () => {
   expect(await screen.findByText("Usually 1-2 weeks.", { exact: false })).toBeVisible();
   expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Mark as checked" })).toBeNull();
+});
+
+/** Uploads go through XMLHttpRequest (for progress). */
+function fakeUpload(body: unknown) {
+  const sent: string[] = [];
+  class FakeXHR {
+    status = 0;
+    responseText = "";
+    upload: { onprogress: ((e: ProgressEvent) => void) | null } = { onprogress: null };
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    open(_method: string, url: string) {
+      sent.push(url);
+    }
+    setRequestHeader() {}
+    send() {
+      setTimeout(() => {
+        this.status = 200;
+        this.responseText = JSON.stringify(body);
+        this.onload?.();
+      });
+    }
+  }
+  vi.stubGlobal("XMLHttpRequest", FakeXHR);
+  return sent;
+}
+
+test("an Owner imports a file and sees what was added, updated and skipped", async () => {
+  const sent = fakeUpload({
+    created: 2,
+    updated: 1,
+    unchanged: 0,
+    skipped: [{ row: 7, reason: "No question or no answer." }],
+  });
+  const imported = {
+    ...row,
+    id: "v2",
+    question: "Should I show my address?",
+    applies_when: "If customers visit you",
+    origin: "import" as const,
+    needs_check: false,
+  };
+  mockApi({
+    "GET /auth/me": [200, { user: makeUser({ role: "owner" }), csrf_token: "t" }],
+    "GET /reviews/count": [200, { waiting: 0 }],
+    "GET /verified?show=active": [200, { ...page, items: [imported], can_import: true }],
+  });
+  render(<App />);
+
+  expect(await screen.findByText("When it applies: If customers visit you")).toBeVisible();
+  await userEvent.upload(
+    screen.getByLabelText("Import verified answers"),
+    new File(["question,answer"], "facebook-answers.csv"),
+  );
+
+  expect(await screen.findByText(/Added 2 answers, updated 1, unchanged 0\./)).toBeVisible();
+  expect(screen.getByText("Row 7: No question or no answer.")).toBeVisible();
+  expect(sent).toEqual(["/api/verified/import"]);
+});
+
+test("people who can't import don't see the button", async () => {
+  mockApi({
+    "GET /auth/me": reviewer,
+    "GET /reviews/count": [200, { waiting: 0 }],
+    "GET /verified?show=active": [200, page],
+  });
+  render(<App />);
+
+  expect(await screen.findByText(row.question)).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Import from a file" })).toBeNull();
 });
