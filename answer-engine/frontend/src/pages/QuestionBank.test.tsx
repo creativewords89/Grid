@@ -218,6 +218,30 @@ test("a link from a verified answer opens its set and thread", async () => {
   expect(screen.getByRole("button", { name: "All 1", pressed: true })).toBeVisible();
 });
 
+test("the thread's breadcrumb filters the list to its topic", async () => {
+  const other = { ...row, id: "t5", key: "s5", title: "How do I get reviews?", topic: "Reviews" };
+  mockApi({
+    ...base,
+    "GET /qb/sets/s1/threads": [
+      200,
+      { ...list, items: [row, other], counts: { ...list.counts, todo: 2 } },
+    ],
+  });
+  render(<App />);
+
+  const list_ = await screen.findByRole("complementary", { name: "Questions" });
+  expect(await within(list_).findByText("How do I get reviews?")).toBeVisible();
+  const crumbs = await screen.findByRole("navigation", { name: "Breadcrumb" });
+  expect(crumbs).toHaveTextContent("Local SEO group›Google Business Profile›Profile Edits & Info");
+
+  await userEvent.click(within(crumbs).getByRole("button", { name: "Google Business Profile" }));
+
+  expect(screen.getByLabelText("Topic")).toHaveValue("Google Business Profile");
+  expect(within(list_).queryByText("How do I get reviews?")).toBeNull();
+  await userEvent.click(within(crumbs).getByRole("button", { name: "Local SEO group" }));
+  expect(within(list_).getByText("How do I get reviews?")).toBeVisible();
+});
+
 test("the set picker switches sets and is remembered", async () => {
   mockApi({
     ...base,

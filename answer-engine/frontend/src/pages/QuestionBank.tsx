@@ -200,6 +200,13 @@ function SetView({
   const shownId = openId ?? view[0]?.id ?? null;
 
   // A similar thread opened from a thread: shown in the list too, even if filtered out.
+  // The thread's breadcrumb filters the list to its set, topic or subtopic.
+  const showTopic = (to: string, toSub = "") => {
+    setTopic(to);
+    setSub(toSub);
+    setQ("");
+    setFilter("all");
+  };
   const openThread = (id: string) => {
     if (!view.some((t) => t.id === id)) {
       setFilter("all");
@@ -275,7 +282,15 @@ function SetView({
       </div>
     );
   else if (shownId)
-    right = <Thread key={shownId} id={shownId} onSaved={onSaved} onOpen={openThread} />;
+    right = (
+      <Thread
+        key={shownId}
+        id={shownId}
+        onSaved={onSaved}
+        onOpen={openThread}
+        onTopic={showTopic}
+      />
+    );
   else right = <p className="muted qb-panel">Choose a question.</p>;
 
   return (
@@ -682,10 +697,12 @@ function Thread({
   id,
   onSaved,
   onOpen,
+  onTopic,
 }: {
   id: string;
   onSaved: (row: FbThreadRow) => void;
   onOpen: (id: string) => void;
+  onTopic: (topic: string, subtopic?: string) => void;
 }) {
   const [t, setT] = useState<FbThreadDetail | null>(null);
   const [title, setTitle] = useState("");
@@ -845,10 +862,40 @@ function Thread({
   return (
     <>
       <main className="fb-thread">
-        <p className="fb-crumbs">
-          {[t.topic, t.subtopic].filter(Boolean).join(" › ")}
+        <nav className="fb-crumbs" aria-label="Breadcrumb">
+          <button
+            className="fb-crumb"
+            title="Show every question in this set"
+            onClick={() => onTopic("")}
+          >
+            {t.set_name}
+          </button>
+          {t.topic && (
+            <>
+              <span aria-hidden="true">›</span>
+              <button
+                className="fb-crumb"
+                title="Show this topic's questions"
+                onClick={() => onTopic(t.topic)}
+              >
+                {t.topic}
+              </button>
+            </>
+          )}
+          {t.topic && t.subtopic && (
+            <>
+              <span aria-hidden="true">›</span>
+              <button
+                className="fb-crumb"
+                title="Show this subtopic's questions"
+                onClick={() => onTopic(t.topic, t.subtopic)}
+              >
+                {t.subtopic}
+              </button>
+            </>
+          )}
           {t.noise && <span className="tag tag-warn">Probably not a question</span>}
-        </p>
+        </nav>
         <h1>{t.answer.title}</h1>
         <h2 className="fb-h">The question, as asked</h2>
         <div className="fb-grid" data-n={Math.min(t.posts.length, 3)}>
