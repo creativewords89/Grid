@@ -606,26 +606,30 @@ function Detail({
               <p className="muted small">
                 Each is a separate correct answer; the best fit is used when answering.
               </p>
-              <ul className="review-list">
+              <div className="va-others">
                 {va.group.map((g, n) =>
                   g.id === va.id ? null : (
-                    <li key={g.id} className="card">
-                      <button className="review-row" onClick={() => onOpen(g.id)}>
-                        <span className="review-num">Answer {n + 1}</span>
-                        <span className="review-main">
-                          {g.applies_when && (
-                            <strong className="review-q">When it applies: {g.applies_when}</strong>
-                          )}
-                          <span className="muted small va-answer">{firstLine(g.answer)}</span>
-                        </span>
+                    <article key={g.id} className="card va-other" aria-label={`Answer ${n + 1}`}>
+                      <div className="va-answer-head">
+                        <span className="va-label">Answer {n + 1}</span>
+                        {g.applies_when && (
+                          <span className="tag">When it applies: {g.applies_when}</span>
+                        )}
                         {g.status !== "active" && (
                           <span className={`pill pill-va-${g.status}`}>{g.status}</span>
                         )}
-                      </button>
-                    </li>
+                        <button
+                          className="button button-small va-open"
+                          onClick={() => onOpen(g.id)}
+                        >
+                          Open to edit
+                        </button>
+                      </div>
+                      <Markdown text={g.answer} />
+                    </article>
                   ),
                 )}
-              </ul>
+              </div>
             </section>
           )}
           {va.sources.length > 0 && (

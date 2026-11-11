@@ -3403,3 +3403,19 @@ details.original summary {
 .va-answer-card {
   border-left: 4px solid var(--ok);
 }
+
+.va-others {
+  display: grid;
+  gap: 10px;
+}
+
+.va-other {
+  display: grid;
+  gap: 8px;
+  padding: 16px 20px;
+  border-left: 4px solid var(--border);
+}
+
+.va-open {
+  margin-left: auto;
+}

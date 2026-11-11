@@ -278,7 +278,9 @@ test("an answer is set apart from its question and lists the other answers", asy
   expect(within(answer).getByText("When it applies: If customers visit you")).toBeVisible();
   expect(screen.getByText("Also asked as")).toBeVisible();
   const others = screen.getByRole("region", { name: "Other answers to this question" });
-  await userEvent.click(within(others).getByRole("button", { name: /Answer 2/ }));
+  // Shown in full, not just the first line.
+  expect(within(others).getByText("Set service areas.", { exact: false })).toBeVisible();
+  await userEvent.click(within(others).getByRole("button", { name: "Open to edit" }));
 
   expect(await screen.findByText("Answer 2 of 2")).toBeVisible();
   expect(window.location.search).toBe("?id=v2");
