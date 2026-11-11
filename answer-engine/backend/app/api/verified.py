@@ -54,7 +54,17 @@ class VerifiedRow(BaseModel):
     subtopic: str
 
 
+class GroupAnswer(BaseModel):
+    """Another correct answer to the same question (step 26: never merged)."""
+
+    id: uuid.UUID
+    answer: str
+    applies_when: str | None
+    status: str
+
+
 class VerifiedDetail(VerifiedRow):
+    group: list[GroupAnswer]  # every answer to this question, this one included, in order
     sources: list[dict[str, Any]]
     origin_answer_id: uuid.UUID | None
     created_at: datetime
@@ -257,8 +267,26 @@ def detail(db: Db, va: VerifiedAnswer, me: User) -> VerifiedDetail:
         }
         for file_id in va.source_file_ids
     ]
+    group = (
+        db.scalars(
+            select(VerifiedAnswer)
+            .where(
+                VerifiedAnswer.answer_group == va.answer_group,
+                VerifiedAnswer.deleted_at.is_(None),
+            )
+            .order_by(VerifiedAnswer.import_key, VerifiedAnswer.created_at)
+        ).all()
+        if va.answer_group
+        else [va]
+    )
     return VerifiedDetail(
         **_row(va, people),
+        group=[
+            GroupAnswer(
+                id=g.id, answer=g.answer, applies_when=g.applies_when, status=_shown_status(g)
+            )
+            for g in group
+        ],
         sources=sources,
         origin_answer_id=va.origin_answer_id,
         created_at=va.created_at,

@@ -472,6 +472,8 @@ export type VerifiedTopic = {
 };
 
 export type VerifiedDetail = VerifiedRow & {
+  /** Every answer to this question, this one included, in order (step 26: never merged). */
+  group: { id: string; answer: string; applies_when: string | null; status: VerifiedStatus }[];
   sources: { file_id: string; name: string; available: boolean }[];
   origin_answer_id: string | null;
   created_at: string;

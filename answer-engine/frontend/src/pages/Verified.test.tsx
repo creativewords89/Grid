@@ -42,6 +42,7 @@ const page: VerifiedPage = {
 };
 const detail: VerifiedDetail = {
   ...row,
+  group: [{ id: "v1", answer: row.answer, applies_when: null, status: "active" }],
   sources: [{ file_id: "f1", name: "Onboarding.pdf", available: false }],
   origin_answer_id: "a1",
   created_at: "2026-10-01T10:00:00Z",
@@ -238,4 +239,47 @@ test("answers are grouped by topic and a topic can be chosen", async () => {
 
   expect(screen.queryByText("Is Yext worth it?")).toBeNull();
   expect(screen.getByRole("region", { name: "Verification" })).toHaveTextContent(row.question);
+});
+
+test("an answer is set apart from its question and lists the other answers", async () => {
+  window.history.pushState(null, "", "/verified?id=v1");
+  const two: VerifiedDetail = {
+    ...detail,
+    question: "Should I show my address?",
+    applies_when: "If customers visit you",
+    also_asked: "Hi all, I run a shop and wonder about my address",
+    group: [
+      {
+        id: "v1",
+        answer: "Yes, show it.",
+        applies_when: "If customers visit you",
+        status: "active",
+      },
+      {
+        id: "v2",
+        answer: "No, hide it.\nSet service areas.",
+        applies_when: "If you travel to customers",
+        status: "active",
+      },
+    ],
+  };
+  mockApi({
+    "GET /auth/me": reviewer,
+    "GET /reviews/count": [200, { waiting: 0 }],
+    "GET /verified/v1": [200, two],
+    "GET /verified/v1/history": [200, []],
+    "GET /verified/v2": [200, { ...two, id: "v2", answer: "No, hide it.\nSet service areas." }],
+    "GET /verified/v2/history": [200, []],
+  });
+  render(<App />);
+
+  const answer = await screen.findByRole("region", { name: "Answer" });
+  expect(within(answer).getByText("Answer 1 of 2")).toBeVisible();
+  expect(within(answer).getByText("When it applies: If customers visit you")).toBeVisible();
+  expect(screen.getByText("Also asked as")).toBeVisible();
+  const others = screen.getByRole("region", { name: "Other answers to this question" });
+  await userEvent.click(within(others).getByRole("button", { name: /Answer 2/ }));
+
+  expect(await screen.findByText("Answer 2 of 2")).toBeVisible();
+  expect(window.location.search).toBe("?id=v2");
 });
