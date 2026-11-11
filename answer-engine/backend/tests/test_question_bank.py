@@ -1,6 +1,7 @@
-"""Facebook answers (SPEC section 6.9a, step 27)."""
+"""Question Bank: sets of real questions answered into verified answers (SPEC 6.9a, 27, 29)."""
 
 import json
+import uuid
 from collections.abc import Callable
 from typing import Any
 
@@ -11,9 +12,11 @@ from sqlalchemy.orm import Session
 
 from app.api.conversations import answerer_dep
 from app.db.models import (
+    AuditEntry,
     FbStatus,
     FbThread,
     KbOp,
+    QuestionSet,
     Role,
     User,
     VerifiedAnswer,
@@ -86,25 +89,52 @@ def boss(make_user: UserFactory, web: Callable[[User], TestClient]) -> TestClien
     return web(make_user(Role.OWNER, name="Olivia"))
 
 
-def load(client: TestClient, data: Any) -> Any:
+def make_set(client: TestClient, name: str = "Local SEO group", **extra: Any) -> str:
+    response = client.post("/api/qb/sets", json={"name": name, "source": "Facebook", **extra})
+    assert response.status_code == 201, response.text
+    return str(response.json()["id"])
+
+
+def first_set(client: TestClient) -> str:
+    return str(client.get("/api/qb/sets").json()["items"][0]["id"])
+
+
+def load(
+    client: TestClient, data: Any, set_id: str | None = None, name: str = "facebook-data.json"
+) -> Any:
     raw = json.dumps(data).encode() if not isinstance(data, bytes) else data
-    return client.post("/api/fb/load", files={"file": ("facebook-data.json", raw)})
+    sid = set_id or first_set(client)
+    return client.post(f"/api/qb/sets/{sid}/load", files={"file": (name, raw)})
+
+
+def threads(client: TestClient, set_id: str | None = None) -> Any:
+    return client.get(f"/api/qb/sets/{set_id or first_set(client)}/threads").json()
 
 
 @pytest.fixture
-def loaded(boss: TestClient) -> TestClient:
-    assert load(boss, {"posts": POSTS, "threads": THREADS}).status_code == 200
+def boss_set(boss: TestClient) -> TestClient:
+    make_set(boss)
     return boss
 
 
-def thread_id(client: TestClient, key: str) -> str:
-    items = client.get("/api/fb/threads").json()["items"]
+@pytest.fixture
+def loaded(boss_set: TestClient) -> TestClient:
+    assert load(boss_set, {"posts": POSTS, "threads": THREADS}).status_code == 200
+    return boss_set
+
+
+def thread_id(client: TestClient, key: str, set_id: str | None = None) -> str:
+    items = threads(client, set_id)["items"]
     return str(next(t["id"] for t in items if t["key"] == key))
+
+
+def prefix(db: Session) -> str:
+    return db.scalars(select(QuestionSet)).first().prefix  # type: ignore[union-attr]
 
 
 def save(client: TestClient, key: str, status: str, items: Any = None, title: str = "") -> Any:
     return client.put(
-        f"/api/fb/threads/{thread_id(client, key)}/answer",
+        f"/api/qb/threads/{thread_id(client, key)}/answer",
         json={"title": title, "items": TWO if items is None else items, "status": status},
     )
 
@@ -123,12 +153,13 @@ def live(db: Session) -> list[VerifiedAnswer]:
 # --- loading the data file -------------------------------------------------------------------
 
 
-def test_loading_the_data_file(boss: TestClient, db: Session) -> None:
-    response = load(boss, {"posts": POSTS, "threads": THREADS})
+def test_loading_the_data_file(boss_set: TestClient, db: Session) -> None:
+    response = load(boss_set, {"posts": POSTS, "threads": THREADS})
 
-    assert response.json() == {"posts": 2, "threads": 3, "answers": 0}
-    page = boss.get("/api/fb/threads").json()
-    assert page["can_load"] is True
+    assert response.json() == {"posts": 2, "threads": 3, "answers": 0, "skipped": []}
+    page = threads(boss_set)
+    assert page["can_manage"] is True
+    assert page["set"]["name"] == "Local SEO group" and page["set"]["total"] == 3
     assert page["counts"] == {"todo": 3, "draft": 0, "approved": 0, "skipped": 0}
     # Most discussed first, questions before the noise pile.
     assert [t["key"] for t in page["items"]] == ["s315", "s316", "noise"]
@@ -145,22 +176,22 @@ def test_loading_again_updates_threads_but_never_saved_answers(
     body = load(loaded, {"posts": POSTS, "threads": renamed, "answers": answers}).json()
 
     assert body["answers"] == 0
-    detail = loaded.get(f"/api/fb/threads/{thread_id(loaded, 's315')}").json()
+    detail = loaded.get(f"/api/qb/threads/{thread_id(loaded, 's315')}").json()
     assert detail["title"] == "New title?"
     assert detail["answer"]["status"] == "draft"
     assert [i["text"] for i in detail["answer"]["items"]] == [t["text"] for t in TWO]
 
 
-def test_answers_in_the_file_arrive_with_their_status(boss: TestClient, db: Session) -> None:
+def test_answers_in_the_file_arrive_with_their_status(boss_set: TestClient, db: Session) -> None:
     answers = {
         "s315": {"title": "Towns in a roofer's GBP?", "status": "final", "angles": TWO},
         "s316": {"status": "skip", "angles": []},
     }
 
-    body = load(boss, {"posts": POSTS, "threads": THREADS, "answers": answers}).json()
+    body = load(boss_set, {"posts": POSTS, "threads": THREADS, "answers": answers}).json()
 
     assert body["answers"] == 2
-    counts = boss.get("/api/fb/threads").json()["counts"]
+    counts = threads(boss_set)["counts"]
     assert (counts["approved"], counts["skipped"]) == (1, 1)
     # Approved ones are verified straight away, one per answer.
     assert [(v.question, v.answer) for v in live(db)] == [
@@ -172,15 +203,15 @@ def test_answers_in_the_file_arrive_with_their_status(boss: TestClient, db: Sess
 @pytest.mark.parametrize(
     ("content", "message"),
     [
-        (b"not json", "Facebook data file"),
+        (b"not json", "can't be read"),
         (json.dumps({"posts": "x", "threads": []}).encode(), "expected shape"),
         (json.dumps({"posts": [{"row": "1"}], "threads": []}).encode(), "expected shape"),
     ],
 )
 def test_a_bad_file_changes_nothing(
-    boss: TestClient, db: Session, content: bytes, message: str
+    boss_set: TestClient, db: Session, content: bytes, message: str
 ) -> None:
-    response = load(boss, content)
+    response = load(boss_set, content)
 
     assert response.status_code == 422
     assert message in response.json()["error"]["message"]
@@ -193,8 +224,9 @@ def test_a_bad_file_changes_nothing(
 def test_a_thread_has_its_post_comments_and_similar_threads(loaded: TestClient) -> None:
     save(loaded, "s316", "draft", [{"label": "", "picks": [], "text": "Only real areas."}])
 
-    detail = loaded.get(f"/api/fb/threads/{thread_id(loaded, 's315')}").json()
+    detail = loaded.get(f"/api/qb/threads/{thread_id(loaded, 's315')}").json()
 
+    assert detail["set_name"] == "Local SEO group"
     [post] = detail["posts"]
     assert post["row"] == 315 and post["comments"][0][0] == "Ann"
     assert post["picked"] == [["0", "e"], ["1", "t"]]
@@ -219,8 +251,10 @@ def test_two_selected_answers_stay_separate_when_approved(loaded: TestClient, db
     assert response.status_code == 200
     assert [i["text"] for i in response.json()["answer"]["items"]] == [t["text"] for t in TWO]
     one, two = live(db)
-    assert (one.import_key, two.import_key) == ("fb:s315:1", "fb:s315:2")
-    assert one.answer_group == two.answer_group == "fb:s315"
+    p = prefix(db)
+    assert p.startswith("qb-")
+    assert (one.import_key, two.import_key) == (f"{p}:s315:1", f"{p}:s315:2")
+    assert one.answer_group == two.answer_group == f"{p}:s315"
     assert (one.applies_when, two.applies_when) == ("Broad service area", None)
     assert one.question == "Should my GBP description list towns?"
     assert one.also_asked == POSTS[0]["question"]
@@ -254,10 +288,10 @@ def test_draft_skip_and_clear_take_answers_out_of_search(loaded: TestClient, db:
 
     save(loaded, "s315", "skipped")
     assert {v.status for v in live(db)} == {VerifiedStatus.DISABLED}
-    assert loaded.get("/api/fb/threads").json()["counts"]["skipped"] == 1
+    assert threads(loaded)["counts"]["skipped"] == 1
 
     save(loaded, "s315", "approved")
-    cleared = loaded.delete(f"/api/fb/threads/{thread_id(loaded, 's315')}/answer").json()
+    cleared = loaded.delete(f"/api/qb/threads/{thread_id(loaded, 's315')}/answer").json()
     assert cleared["answer"]["status"] == "todo" and cleared["answer"]["items"] == []
     assert {v.status for v in live(db)} == {VerifiedStatus.DISABLED}
 
@@ -286,7 +320,7 @@ def test_answers_that_cant_be_saved(
 
 
 def rework(client: TestClient, key: str, **body: Any) -> Any:
-    return client.post(f"/api/fb/threads/{thread_id(client, key)}/rework", json=body)
+    return client.post(f"/api/qb/threads/{thread_id(client, key)}/rework", json=body)
 
 
 def test_fit_to_post_sends_the_post_and_lists_the_changes(
@@ -340,39 +374,197 @@ def test_without_a_claude_key(loaded: TestClient) -> None:
     assert rework(loaded, "s315", mode="polish", text="Answer.").status_code == 503
 
 
-# --- who can do what ---------------------------------------------------------------------------
+# --- sets ----------------------------------------------------------------------------------------
+
+
+def test_sets_are_listed_with_their_progress(loaded: TestClient) -> None:
+    other = make_set(loaded, "Reddit r/localseo", source="Reddit", url="https://reddit.com/r/x")
+    save(loaded, "s315", "approved")
+
+    listed = loaded.get("/api/qb/sets").json()
+
+    assert listed["can_manage"] is True
+    first, second = listed["items"]
+    assert (first["name"], first["total"], first["counts"]["approved"]) == (
+        "Local SEO group",
+        3,
+        1,
+    )
+    assert (second["id"], second["source"], second["total"]) == (other, "Reddit", 0)
+    assert second["counts"] == {"todo": 0, "draft": 0, "approved": 0, "skipped": 0}
 
 
 @pytest.mark.parametrize(
-    ("role", "work", "load_ok"), [(Role.REVIEWER, True, False), (Role.USER, False, False)]
+    ("name", "status"), [(" ", 422), ("x" * 121, 422), ("local seo GROUP", 409)]
 )
-def test_who_can_work_and_load(
+def test_names_that_cant_be_used(boss_set: TestClient, db: Session, name: str, status: int) -> None:
+    assert boss_set.post("/api/qb/sets", json={"name": name}).status_code == status
+    assert len(db.scalars(select(QuestionSet)).all()) == 1
+
+
+def test_sets_keep_their_questions_and_answers_apart(loaded: TestClient, db: Session) -> None:
+    other = make_set(loaded, "Client emails")
+    # The same keys and rows in another set are different threads.
+    load(loaded, {"posts": POSTS, "threads": THREADS}, other)
+    save(loaded, "s315", "approved")
+    loaded.put(
+        f"/api/qb/threads/{thread_id(loaded, 's315', other)}/answer",
+        json={"items": [{"text": "Emails answer."}], "status": "approved"},
+    )
+
+    assert threads(loaded)["counts"]["approved"] == 1
+    assert threads(loaded, other)["counts"]["approved"] == 1
+    keys = [v.import_key or "" for v in live(db)]
+    assert len(keys) == 3 and len({k.rsplit(":", 2)[0] for k in keys}) == 2
+    detail = loaded.get(f"/api/qb/threads/{thread_id(loaded, 's316', other)}").json()
+    # Similar threads come from the same set only.
+    assert [s["title"] for s in detail["similar"]] == [THREADS[0]["title"]]
+    assert detail["similar"][0]["items"][0]["text"] == "Emails answer."
+
+
+def test_renaming_a_set(boss_set: TestClient, db: Session) -> None:
+    sid = first_set(boss_set)
+
+    response = boss_set.patch(f"/api/qb/sets/{sid}", json={"name": "FB group 2026", "url": "u"})
+
+    assert response.json()["name"] == "FB group 2026" and response.json()["url"] == "u"
+    entries = db.scalars(select(AuditEntry).where(AuditEntry.entity == "question_set")).all()
+    assert [e.action for e in entries] == ["create", "update"]
+
+
+def test_deleting_a_set_trashes_its_verified_answers(loaded: TestClient, db: Session) -> None:
+    keep = make_set(loaded, "Keep me")
+    load(loaded, {"posts": POSTS, "threads": THREADS}, keep)
+    loaded.put(
+        f"/api/qb/threads/{thread_id(loaded, 's315', keep)}/answer",
+        json={"items": [{"text": "Kept."}], "status": "approved"},
+    )
+    save(loaded, "s315", "approved")
+    gone = first_set(loaded)
+
+    assert loaded.delete(f"/api/qb/sets/{gone}").status_code == 204
+
+    assert [s["name"] for s in loaded.get("/api/qb/sets").json()["items"]] == ["Keep me"]
+    assert [v.answer for v in live(db)] == ["Kept."]
+    assert db.scalars(select(FbThread).where(FbThread.set_id == uuid.UUID(gone))).all() == []
+    assert loaded.get(f"/api/qb/sets/{gone}/threads").status_code == 404
+
+
+# --- uploading a spreadsheet ---------------------------------------------------------------------
+
+SHEET = (
+    "Question,Details,Link,Asked by,Topic,Comments,Answer\n"
+    'Do I need a website for GBP?,"I run a mobile car wash.\nNo site yet.",https://x.co/1,Sam,'
+    'GBP,"Ann: Not required.\nIt helps though",\n'
+    "How often should I post?,,,,Posts,,Once a week is plenty.\n"
+    ",only details,,,,,\n"
+    "Do I need a website for GBP?,,,,,,\n"
+)
+
+
+def test_a_csv_becomes_a_set_of_threads(boss_set: TestClient, db: Session) -> None:
+    response = load(boss_set, SHEET.encode(), name="questions.csv")
+
+    body = response.json()
+    assert (body["threads"], body["answers"]) == (3, 1)
+    assert body["skipped"] == [{"row": 4, "reason": "No question."}]
+    page = threads(boss_set)
+    # Most discussed first, then in file order; a repeated question is its own thread.
+    assert [(t["key"], t["title"]) for t in page["items"]] == [
+        ("r2", "Do I need a website for GBP?"),
+        ("r3", "How often should I post?"),
+        ("r5", "Do I need a website for GBP?"),
+    ]
+    assert page["counts"]["draft"] == 1  # an answer in the file is a draft to check
+    first = boss_set.get(f"/api/qb/threads/{page['items'][0]['id']}").json()
+    [post] = first["posts"]
+    assert post["question"] == "I run a mobile car wash.\nNo site yet."
+    assert (post["url"], post["author"], post["row"]) == ("https://x.co/1", "Sam", 2)
+    assert post["comments"] == [["Ann", "Not required.", []], ["", "It helps though", []]]
+    # Uploading the same file again updates instead of adding.
+    assert load(boss_set, SHEET.encode(), name="questions.csv").json()["threads"] == 3
+    assert threads(boss_set)["set"]["total"] == 3
+
+
+@pytest.mark.parametrize(
+    ("content", "name", "code"),
+    [
+        (b"answer\nSome answer\n", "a.csv", "no_columns"),
+        (b"question\n\n", "a.csv", "empty"),
+        (b"%PDF-1.4 not a sheet", "a.pdf", "unsupported"),
+    ],
+)
+def test_spreadsheets_that_cant_be_used(
+    boss_set: TestClient, db: Session, content: bytes, name: str, code: str
+) -> None:
+    response = load(boss_set, content, name=name)
+
+    assert response.json()["error"]["code"] == code
+    assert db.scalars(select(FbThread)).all() == []
+
+
+# --- answers given before ------------------------------------------------------------------------
+
+
+def test_answers_given_before_are_found_in_every_set(loaded: TestClient) -> None:
+    other = make_set(loaded, "Reddit")
+    load(loaded, {"posts": POSTS, "threads": THREADS}, other)
+    save(loaded, "s315", "approved")
+    mine = thread_id(loaded, "s315", other)
+
+    found = loaded.get(
+        "/api/qb/answers", params={"q": "Should my roofer GBP list towns?", "other_than": mine}
+    ).json()
+
+    [hit] = found
+    assert (hit["set_name"], hit["status"]) == ("Local SEO group", "approved")
+    assert [i["text"] for i in hit["items"]] == [t["text"] for t in TWO]
+    assert loaded.get("/api/qb/answers", params={"q": "a an"}).json() == []
+
+
+# --- who can do what ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("role", "work"), [(Role.REVIEWER, True), (Role.USER, False)])
+def test_who_can_work_and_manage_sets(
     loaded: TestClient,
     make_user: UserFactory,
     web: Callable[[User], TestClient],
     role: Role,
     work: bool,
-    load_ok: bool,
 ) -> None:
     client = web(make_user(role))
+    sid = first_set(loaded)
     tid = thread_id(loaded, "s315")
     ok = 200 if work else 403
 
-    listed = client.get("/api/fb/threads")
+    listed = client.get("/api/qb/sets")
     assert listed.status_code == ok
     if work:
-        assert listed.json()["can_load"] is load_ok
-    assert client.get(f"/api/fb/threads/{tid}").status_code == ok
+        assert listed.json()["can_manage"] is False
+    page = client.get(f"/api/qb/sets/{sid}/threads")
+    assert page.status_code == ok
+    if work:
+        assert page.json()["can_manage"] is False
+    assert client.get(f"/api/qb/threads/{tid}").status_code == ok
+    assert client.get("/api/qb/answers", params={"q": "towns"}).status_code == ok
     assert (
-        client.put(f"/api/fb/threads/{tid}/answer", json={"items": TWO, "status": "draft"})
+        client.put(f"/api/qb/threads/{tid}/answer", json={"items": TWO, "status": "draft"})
     ).status_code == ok
-    assert client.delete(f"/api/fb/threads/{tid}/answer").status_code == ok
+    assert client.delete(f"/api/qb/threads/{tid}/answer").status_code == ok
     assert (
-        client.post(f"/api/fb/threads/{tid}/rework", json={"mode": "fit", "text": "x"})
+        client.post(f"/api/qb/threads/{tid}/rework", json={"mode": "fit", "text": "x"})
     ).status_code == ok
-    assert load(client, {"posts": [], "threads": []}).status_code == 403
+    # Only Owners manage sets.
+    assert client.post("/api/qb/sets", json={"name": "Mine"}).status_code == 403
+    assert client.patch(f"/api/qb/sets/{sid}", json={"name": "Mine"}).status_code == 403
+    assert load(client, {"posts": [], "threads": []}, sid).status_code == 403
+    assert client.delete(f"/api/qb/sets/{sid}").status_code == 403
+    assert loaded.get("/api/qb/sets").json()["items"][0]["name"] == "Local SEO group"
 
 
 def test_signing_in_is_needed(client: TestClient) -> None:
-    assert client.get("/api/fb/threads").status_code == 401
-    assert load(client, {"posts": [], "threads": []}).status_code == 401
+    sid = uuid.uuid4()
+    assert client.get("/api/qb/sets").status_code == 401
+    assert client.get(f"/api/qb/sets/{sid}/threads").status_code == 401
+    assert client.post("/api/qb/sets", json={"name": "x"}).status_code == 401

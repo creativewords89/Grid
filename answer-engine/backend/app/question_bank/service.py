@@ -1,8 +1,9 @@
-"""Facebook answers (SPEC section 6.9a, step 27).
+"""Question Bank (SPEC section 6.9a, steps 27 and 29).
 
-Owners and Reviewers answer the group's questions one thread at a time. Each selected or
-written answer is kept separate; approving a thread turns each of its answers into a
-verified answer (origin `facebook`), so it is searched like any other within seconds.
+Real questions come in sets (a Facebook group, Reddit, client emails…). Owners and Reviewers
+answer them one thread at a time. Each selected or written answer is kept separate;
+approving a thread turns each of its answers into a verified answer (origin `facebook`, the
+Question Bank's origin since step 27), so it is searched like any other within seconds.
 """
 
 import contextlib
@@ -12,7 +13,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select, true
 from sqlalchemy.orm import Session
 
 from app import audit
@@ -25,6 +26,7 @@ from app.db.models import (
     FbPost,
     FbStatus,
     FbThread,
+    QuestionSet,
     UsageKind,
     User,
     VerifiedAnswer,
@@ -35,6 +37,8 @@ from app.verified import service as verified
 from app.verified.service import MAX_TEXT, VerifiedError
 
 MAX_ANSWERS = 6
+MAX_THREADS = 20_000  # per set
+MAX_NAME = 120
 MAX_LABEL = 500
 MAX_TITLE = 2000
 STATUS_FROM_FILE = {
@@ -83,7 +87,12 @@ def comment_at(post: FbPost, path: str) -> tuple[str, str] | None:
 
 
 def posts_of(db: Session, thread: FbThread) -> list[FbPost]:
-    by_row = {p.row: p for p in db.scalars(select(FbPost).where(FbPost.row.in_(thread.rows)))}
+    by_row = {
+        p.row: p
+        for p in db.scalars(
+            select(FbPost).where(FbPost.set_id == thread.set_id, FbPost.row.in_(thread.rows))
+        )
+    }
     return [by_row[r] for r in thread.rows if r in by_row]
 
 
@@ -178,8 +187,13 @@ def clear(db: Session, thread: FbThread, by: User) -> None:
     audit.record(db, by, "clear", "fb_thread", thread.id, thread.title[:255])
 
 
+def _group(thread: FbThread) -> str:
+    """The answer group of a thread's verified answers; their import keys are `{group}:{n}`."""
+    return f"{thread.question_set.prefix}:{thread.key}"
+
+
 def _prefix(thread: FbThread) -> str:
-    return f"fb:{thread.key}:"
+    return f"{_group(thread)}:"
 
 
 def verified_of(db: Session, thread: FbThread) -> dict[str, VerifiedAnswer]:
@@ -215,7 +229,7 @@ def sync_verified(db: Session, thread: FbThread, by: User) -> None:
                 answer=text,
                 applies_when=label or None,
                 also_asked=wordings or None,
-                answer_group=f"fb:{thread.key}",
+                answer_group=_group(thread),
                 import_key=key,
                 status=VerifiedStatus.ACTIVE,
                 origin=VerifiedOrigin.FACEBOOK,
@@ -314,15 +328,15 @@ def _require(condition: bool, what: str) -> None:
         raise FbError(422, "invalid", f"The data file isn't in the expected shape ({what}).")
 
 
-def load(db: Session, data: Any, by: User) -> Loaded:
-    """Add or update posts (by row) and threads (by key). Saved answers are never touched;
-    answers in the file fill threads that have none (SPEC 6.9a). The caller commits."""
+def load(db: Session, qset: QuestionSet, data: Any, by: User) -> Loaded:
+    """Add or update a set's posts (by row) and threads (by key). Saved answers are never
+    touched; answers in the file fill threads that have none (SPEC 6.9a). The caller commits."""
     _require(isinstance(data, dict), "not an object")
     posts, threads = data.get("posts"), data.get("threads")
     _require(isinstance(posts, list) and isinstance(threads, list), "posts and threads")
     loaded = Loaded()
 
-    have_posts = {p.row: p for p in db.scalars(select(FbPost))}
+    have_posts = {p.row: p for p in db.scalars(select(FbPost).where(FbPost.set_id == qset.id))}
     talk: dict[int, int] = {}
     for raw in posts:
         _require(isinstance(raw, dict), "a post")
@@ -333,7 +347,7 @@ def load(db: Session, data: Any, by: User) -> Loaded:
         _require(isinstance(comments, list) and isinstance(picked, list), "comments")
         post = have_posts.get(row)
         if post is None:
-            post = FbPost(row=row, question=question)
+            post = FbPost(set_id=qset.id, row=row, question=question)
             db.add(post)
             have_posts[row] = post
         post.question = question
@@ -347,7 +361,9 @@ def load(db: Session, data: Any, by: User) -> Loaded:
         talk[row] = count_comments(comments)
         loaded.posts += 1
 
-    have_threads = {t.key: t for t in db.scalars(select(FbThread))}
+    have_threads = {
+        t.key: t for t in db.scalars(select(FbThread).where(FbThread.set_id == qset.id))
+    }
     for raw in threads:
         _require(isinstance(raw, dict), "a thread")
         key, title, rows = raw.get("key"), raw.get("title"), raw.get("rows")
@@ -361,7 +377,7 @@ def load(db: Session, data: Any, by: User) -> Loaded:
         )
         thread = have_threads.get(key)
         if thread is None:
-            thread = FbThread(key=key, title=title)
+            thread = FbThread(set_id=qset.id, question_set=qset, key=key, title=title)
             db.add(thread)
             have_threads[key] = thread
         thread.title = title
@@ -376,6 +392,8 @@ def load(db: Session, data: Any, by: User) -> Loaded:
 
     answers = data.get("answers") or {}
     _require(isinstance(answers, dict), "answers")
+    if len(have_threads) > MAX_THREADS:
+        raise FbError(422, "too_many", f"A set holds at most {MAX_THREADS:,} questions.")
     for key, raw in answers.items():
         thread = have_threads.get(key)
         if thread is None or thread.status != FbStatus.TODO or thread.answers:
@@ -399,3 +417,129 @@ def get(db: Session, thread_id: uuid.UUID) -> FbThread:
     if thread is None:
         raise FbError(404, "not_found", "That thread doesn't exist.")
     return thread
+
+
+# --- sets (step 29) -------------------------------------------------------------------------
+
+
+def get_set(db: Session, set_id: uuid.UUID) -> QuestionSet:
+    qset = db.get(QuestionSet, set_id)
+    if qset is None:
+        raise FbError(404, "not_found", "That question set doesn't exist.")
+    return qset
+
+
+def _clean_name(db: Session, name: str, other_than: uuid.UUID | None = None) -> str:
+    name = re.sub(r"\s+", " ", name).strip()
+    if not name:
+        raise FbError(422, "invalid", "Give the set a name, e.g. “Reddit r/localseo”.")
+    if len(name) > MAX_NAME:
+        raise FbError(422, "invalid", f"Keep the name under {MAX_NAME} characters.")
+    clash = db.scalar(
+        select(QuestionSet).where(
+            func.lower(QuestionSet.name) == name.lower(),
+            QuestionSet.id != other_than if other_than else true(),
+        )
+    )
+    if clash is not None:
+        raise FbError(409, "exists", "A set with this name already exists.")
+    return name
+
+
+def create_set(db: Session, by: User, name: str, source: str = "", url: str = "") -> QuestionSet:
+    qset = QuestionSet(
+        name=_clean_name(db, name),
+        source=_one_line(source, 100),
+        url=url.strip()[:500],
+        prefix=f"qb-{uuid.uuid4().hex[:12]}",
+        created_by=by.id,
+    )
+    db.add(qset)
+    db.flush()
+    audit.record(db, by, "create", "question_set", qset.id, qset.name)
+    return qset
+
+
+def update_set(
+    db: Session,
+    qset: QuestionSet,
+    by: User,
+    name: str | None = None,
+    source: str | None = None,
+    url: str | None = None,
+) -> None:
+    changes = []
+    if name is not None and name.strip() != qset.name:
+        new = _clean_name(db, name, other_than=qset.id)
+        changes.append({"field": "name", "from": qset.name, "to": new})
+        qset.name = new
+    if source is not None:
+        qset.source = _one_line(source, 100)
+    if url is not None:
+        qset.url = url.strip()[:500]
+    audit.record(db, by, "update", "question_set", qset.id, qset.name, changes or None)
+
+
+def delete_set(db: Session, qset: QuestionSet, by: User) -> int:
+    """Delete a set with its questions. Its verified answers go to the trash (restorable)."""
+    trashed = 0
+    for va in db.scalars(
+        select(VerifiedAnswer).where(
+            VerifiedAnswer.import_key.startswith(f"{qset.prefix}:", autoescape=True),
+            VerifiedAnswer.deleted_at.is_(None),
+        )
+    ):
+        verified.delete(db, va, by)
+        trashed += 1
+    audit.record(db, by, "delete", "question_set", qset.id, qset.name)
+    db.delete(qset)
+    return trashed
+
+
+def set_counts(db: Session) -> dict[uuid.UUID, dict[str, int]]:
+    counts: dict[uuid.UUID, dict[str, int]] = {}
+    for set_id, status, n in db.execute(
+        select(FbThread.set_id, FbThread.status, func.count()).group_by(
+            FbThread.set_id, FbThread.status
+        )
+    ):
+        counts.setdefault(set_id, {s.value: 0 for s in FbStatus})[status.value] = n
+    return counts
+
+
+# --- answers given before, in any set ---------------------------------------------------------
+
+
+def _words(text: str) -> list[str]:
+    return [w for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) >= 3][:12]
+
+
+def answered_like(
+    db: Session, text: str, other_than: uuid.UUID | None = None, limit: int = 8
+) -> list[FbThread]:
+    """Threads with saved answers (approved or draft) whose question shares the most words
+    with `text`, from every set: answers written once can be reused anywhere."""
+    words = _words(text)
+    if not words:
+        return []
+    candidates = db.scalars(
+        select(FbThread)
+        .where(
+            FbThread.status.in_((FbStatus.APPROVED, FbStatus.DRAFT)),
+            FbThread.id != other_than if other_than else true(),
+            or_(
+                *[
+                    func.coalesce(FbThread.answer_title, FbThread.title).ilike(f"%{w}%")
+                    for w in words
+                ]
+            ),
+        )
+        .limit(300)
+    ).all()
+
+    def score(t: FbThread) -> tuple[int, int]:
+        have = set(_words(t.answer_title or t.title))
+        return (len(have & set(words)), t.status == FbStatus.APPROVED)
+
+    ranked = sorted(candidates, key=score, reverse=True)
+    return [t for t in ranked if any(str(a.get("text") or "").strip() for a in t.answers)][:limit]

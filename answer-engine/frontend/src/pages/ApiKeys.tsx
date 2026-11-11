@@ -17,7 +17,7 @@ export function ApiKeys() {
   const [keys, setKeys] = useState<ApiKeyRow[] | null>(null);
   const [scopes, setScopes] = useState<Record<string, string>>({});
   const [name, setName] = useState("");
-  const [chosen, setChosen] = useState<string[]>(["facebook"]);
+  const [chosen, setChosen] = useState<string[]>(["question_bank"]);
   const [expiry, setExpiry] = useState("90");
   const [token, setToken] = useState("");
   const [copied, setCopied] = useState(false);
@@ -67,8 +67,8 @@ export function ApiKeys() {
     <div className="card stack">
       <h2>API keys</h2>
       <p className="muted">
-        For scripts and assistants that load or save Facebook answers without signing in. A key acts
-        as the Owner who made it, but only for what you tick. Treat it like a password.
+        For scripts and assistants that work the Question Bank without signing in. A key acts as the
+        Owner who made it, but only for what you tick. Treat it like a password.
       </p>
       {notice && <Alert kind={notice.kind}>{notice.text}</Alert>}
       {token && (

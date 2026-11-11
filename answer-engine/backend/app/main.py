@@ -15,12 +15,12 @@ from app.api import (
     auth,
     connections,
     conversations,
-    facebook,
     files,
     health,
     kb,
     me,
     notifications,
+    question_bank,
     reviews,
     setup,
     system,
@@ -97,7 +97,7 @@ def create_app() -> FastAPI:
         usage,
         system,
         voice,
-        facebook,
+        question_bank,
         api_keys,
     ):
         app.include_router(module.router, prefix="/api")

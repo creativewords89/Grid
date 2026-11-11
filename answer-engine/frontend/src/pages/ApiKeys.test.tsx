@@ -5,14 +5,15 @@ import { ApiKeys } from "./ApiKeys";
 import { mockApi } from "../test/mockApi";
 
 const scopes = {
-  facebook: "Facebook answers: load the data file, read and save threads, Polish and Fit",
+  question_bank:
+    "Question Bank: manage sets, upload questions, read and save threads, Polish and Fit",
   verified_import: "Import verified answers from a file",
 };
 const key = {
   id: "k1",
   name: "Claude data sync",
   prefix: "ae_AbCdE",
-  scopes: ["facebook"],
+  scopes: ["question_bank"],
   made_by: { id: "u1", name: "Olivia" },
   created_at: "2026-11-11T10:00:00Z",
   expires_at: null,
@@ -38,7 +39,7 @@ test("creating a key shows it once, with the chosen scopes and expiry", async ()
   expect(screen.getByText(/You won't see it again/)).toBeVisible();
   expect(calls.find((c) => c.method === "POST")?.body).toEqual({
     name: "Claude data sync",
-    scopes: ["facebook", "verified_import"],
+    scopes: ["question_bank", "verified_import"],
     expires_days: null,
   });
   await userEvent.click(screen.getByRole("button", { name: "I've saved it" }));

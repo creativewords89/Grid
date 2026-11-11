@@ -13,7 +13,7 @@ import { SetPassword } from "./pages/SetPassword";
 import { Settings } from "./pages/Settings";
 import { SignIn } from "./pages/SignIn";
 import { Users } from "./pages/Users";
-import { FacebookAnswers } from "./pages/FacebookAnswers";
+import { QuestionBank } from "./pages/QuestionBank";
 import { Verified } from "./pages/Verified";
 import { usePath } from "./router";
 import { reviewsChanged } from "./events";
@@ -47,7 +47,8 @@ function Routes() {
   else if (path === "/settings" && user.role === "owner") page = <Settings />;
   else if (path === "/answer-log" && user.role !== "user") page = <AnswerLog />;
   else if (path === "/verified") page = <Verified />;
-  else if (path === "/facebook" && user.role !== "user") page = <FacebookAnswers />;
+  else if ((path === "/question-bank" || path === "/facebook") && user.role !== "user")
+    page = <QuestionBank />;
   else if (path === "/reviews" && user.role !== "user")
     page = <ReviewQueue onChange={reviewsChanged} />;
   else if (path === "/marketing") page = <Marketing />;
