@@ -1,16 +1,18 @@
 """`/api/verified`: the Verified Answers screen (SPEC sections 6.9 and 7.4).
 
 Everyone can read them; Owners and Reviewers can edit, disable, set an expiry and delete.
+Owners can import them from a file (step 26).
 """
 
 import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, File, Query, UploadFile
 from pydantic import BaseModel, StringConstraints
 from sqlalchemy import select
 
+from app import settings_store
 from app.api.answer_log import Person
 from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
@@ -22,8 +24,10 @@ from app.db.models import (
     VerifiedStatus,
 )
 from app.errors import ApiError
+from app.files import service as files
+from app.files import storage
 from app.permissions import Action, can, ensure
-from app.verified import service
+from app.verified import importing, service
 from app.verified.service import VerifiedError
 
 router = APIRouter(prefix="/verified", tags=["verified"])
@@ -43,6 +47,9 @@ class VerifiedRow(BaseModel):
     origin: str
     version: int
     updated_at: datetime
+    applies_when: str | None
+    also_asked: str | None
+    answer_group: str | None
 
 
 class VerifiedDetail(VerifiedRow):
@@ -55,7 +62,20 @@ class VerifiedDetail(VerifiedRow):
 class VerifiedPage(BaseModel):
     items: list[VerifiedRow]
     can_manage: bool
+    can_import: bool
     counts: dict[str, int]
+
+
+class SkippedRow(BaseModel):
+    row: int
+    reason: str
+
+
+class ImportOut(BaseModel):
+    created: int
+    updated: int
+    unchanged: int
+    skipped: list[SkippedRow]
 
 
 class VersionOut(BaseModel):
@@ -69,6 +89,8 @@ class VersionOut(BaseModel):
 class PatchIn(Strict):
     question: Annotated[str, StringConstraints(max_length=2000)] | None = None
     answer: Annotated[str, StringConstraints(max_length=20000)] | None = None
+    applies_when: Annotated[str, StringConstraints(max_length=500)] | None = None
+    also_asked: Annotated[str, StringConstraints(max_length=4000)] | None = None
     expires_at: datetime | None = None
     clear_expiry: bool = False
     checked: bool = False
@@ -106,6 +128,9 @@ def _row(va: VerifiedAnswer, people: dict[uuid.UUID, Person]) -> dict[str, Any]:
         "origin": va.origin.value,
         "version": va.version,
         "updated_at": va.updated_at,
+        "applies_when": va.applies_when,
+        "also_asked": va.also_asked,
+        "answer_group": va.answer_group,
     }
 
 
@@ -148,11 +173,19 @@ def list_verified(
         chosen = [v for v in every if _shown_status(v) == show]
     words = q.strip().lower()
     if words:
-        chosen = [v for v in chosen if words in v.question.lower() or words in v.answer.lower()]
+        chosen = [
+            v
+            for v in chosen
+            if words in v.question.lower()
+            or words in v.answer.lower()
+            or words in (v.applies_when or "").lower()
+            or words in (v.also_asked or "").lower()
+        ]
     people = _people(db, {v.approved_by for v in chosen})
     return VerifiedPage(
         items=[VerifiedRow(**_row(v, people)) for v in chosen[:500]],
         can_manage=can(me, Action.MANAGE_VERIFIED),
+        can_import=can(me, Action.IMPORT_VERIFIED),
         counts=counts,
     )
 
@@ -176,6 +209,32 @@ def detail(db: Db, va: VerifiedAnswer, me: User) -> VerifiedDetail:
         origin_answer_id=va.origin_answer_id,
         created_at=va.created_at,
         can_manage=can(me, Action.MANAGE_VERIFIED),
+    )
+
+
+@router.post("/import", response_model=ImportOut)
+def import_file(me: CurrentUser, db: Db, file: Annotated[UploadFile, File()]) -> ImportOut:
+    """Import verified answers from a CSV or Excel file: one per row, never merged (step 26)."""
+    ensure(me, Action.IMPORT_VERIFIED)
+    name = files.clean_name(file.filename)
+    max_mb = settings_store.get_int(db, "max_upload_mb")
+    try:
+        received = storage.receive(file.file, max_mb * 1024 * 1024)
+    except storage.TooLarge:
+        raise ApiError(413, "too_large", f"This file is bigger than {max_mb} MB.") from None
+    try:
+        parsed = importing.parse_file(received.temp_path, name)
+    except VerifiedError as error:
+        raise _raise(error) from None
+    finally:
+        received.temp_path.unlink(missing_ok=True)
+    result = importing.apply(db, parsed, me)
+    db.commit()
+    return ImportOut(
+        created=result.created,
+        updated=result.updated,
+        unchanged=result.unchanged,
+        skipped=[SkippedRow(row=s.row, reason=s.reason) for s in result.skipped],
     )
 
 
@@ -204,6 +263,8 @@ def update_verified(
             change_expiry=change_expiry,
             expires_at=None if body.clear_expiry else body.expires_at,
             checked=body.checked,
+            applies_when=body.applies_when,
+            also_asked=body.also_asked,
         )
     except VerifiedError as error:
         raise _raise(error) from None

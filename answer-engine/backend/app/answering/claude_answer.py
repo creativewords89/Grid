@@ -19,6 +19,7 @@ from app.answering.prompts import (
     CHECK_SCHEMA,
     CHECK_SYSTEM,
     DRAFT_SYSTEM,
+    REWORK_SYSTEM,
     REWRITE_SYSTEM,
     VOICE_GUIDE_SYSTEM,
 )
@@ -61,6 +62,7 @@ class Answerer(Protocol):
     def check(self, prompt: str) -> CheckResult: ...
     def draft(self, prompt: str) -> Completion: ...
     def voice_guide(self, prompt: str) -> Completion: ...
+    def rework(self, prompt: str) -> Completion: ...
 
 
 def parse_check(completion: Completion) -> CheckResult:
@@ -182,6 +184,19 @@ class ClaudeAnswerer:
             fallbacks="default",
             output_config={"effort": self.effort},
             system=[{"type": "text", "text": VOICE_GUIDE_SYSTEM}],
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return _completion(message)
+
+    def rework(self, prompt: str) -> Completion:
+        """Polish one Facebook answer, or fit it to its post (SPEC 6.9a)."""
+        message = self.client.beta.messages.create(
+            model=self.answer_model,
+            max_tokens=DRAFT_MAX_TOKENS,
+            betas=[FALLBACK_BETA],
+            fallbacks="default",
+            output_config={"effort": self.effort},
+            system=[{"type": "text", "text": REWORK_SYSTEM}],
             messages=[{"role": "user", "content": prompt}],
         )
         return _completion(message)

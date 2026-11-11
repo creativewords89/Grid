@@ -585,6 +585,8 @@ class VerifiedOrigin(enum.StrEnum):
     REVIEW = "review"
     ADMIN = "admin"
     MARKETING = "marketing"
+    IMPORT = "import"  # from an uploaded file (step 26)
+    FACEBOOK = "facebook"  # approved on the Facebook answers page (step 27)
 
 
 class VerifiedAnswer(TimestampMixin, Base):
@@ -617,10 +619,21 @@ class VerifiedAnswer(TimestampMixin, Base):
         ForeignKey("users.id", ondelete="SET NULL")
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Step 26: several correct answers to one question share an answer group.
+    applies_when: Mapped[str | None] = mapped_column(Text)
+    also_asked: Mapped[str | None] = mapped_column(Text)
+    answer_group: Mapped[str | None] = mapped_column(Text)
+    import_key: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         Index("ix_verified_answers_origin_answer", "origin_answer_id"),
         Index("ix_verified_answers_sources", "source_file_ids", postgresql_using="gin"),
+        Index(
+            "uq_verified_answers_import_key",
+            "import_key",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL AND import_key IS NOT NULL"),
+        ),
     )
 
     @property
@@ -888,3 +901,59 @@ class VoiceExample(TimestampMixin, Base):
     @property
     def record_id(self) -> str:
         return f"vx_{self.id.hex}"
+
+
+# --- Facebook answers (SPEC section 6.9a, step 27) -------------------------------------------
+
+
+class FbStatus(enum.StrEnum):
+    TODO = "todo"
+    DRAFT = "draft"
+    APPROVED = "approved"
+    SKIPPED = "skipped"
+
+
+class FbPost(TimestampMixin, Base):
+    """A post scraped from the Facebook group, with its comments as they appear there."""
+
+    __tablename__ = "fb_posts"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    row: Mapped[int] = mapped_column(Integer, unique=True)
+    url: Mapped[str] = mapped_column(Text, default="")
+    author: Mapped[str | None] = mapped_column(Text)
+    question: Mapped[str] = mapped_column(Text)
+    summary: Mapped[str] = mapped_column(Text, default="")
+    note: Mapped[str | None] = mapped_column(Text)
+    pinned: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    comments: Mapped[list[Any]] = mapped_column(JSONB, default=list, server_default="[]")
+    picked: Mapped[list[Any]] = mapped_column(JSONB, default=list, server_default="[]")
+
+
+class FbThread(TimestampMixin, Base):
+    """One question to answer: usually one post. Its answers become verified answers."""
+
+    __tablename__ = "fb_threads"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    key: Mapped[str] = mapped_column(Text, unique=True)
+    title: Mapped[str] = mapped_column(Text)
+    topic: Mapped[str] = mapped_column(Text, default="")
+    subtopic: Mapped[str] = mapped_column(Text, default="")
+    rows: Mapped[list[int]] = mapped_column(ARRAY(Integer), default=list, server_default="{}")
+    noise: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    talk: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0"
+    )  # comments, for sorting
+    similar: Mapped[str | None] = mapped_column(Text)
+    answer_title: Mapped[str | None] = mapped_column(Text)
+    answers: Mapped[list[Any]] = mapped_column(JSONB, default=list, server_default="[]")
+    status: Mapped[FbStatus] = mapped_column(
+        _enum(FbStatus, "fb_status"), default=FbStatus.TODO, server_default="todo"
+    )
+    answered_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (Index("ix_fb_threads_similar", "similar"),)

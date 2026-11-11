@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   api,
   ApiError,
   type VerifiedDetail,
+  type VerifiedImport,
   type VerifiedPage,
   type VerifiedVersion,
 } from "../api";
@@ -49,6 +50,7 @@ function List({ onOpen }: { onOpen: (id: string) => void }) {
   const [q, setQ] = useState("");
   const [page, setPage] = useState<VerifiedPage | null>(null);
   const [error, setError] = useState("");
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     let current = true;
@@ -62,12 +64,13 @@ function List({ onOpen }: { onOpen: (id: string) => void }) {
     return () => {
       current = false;
     };
-  }, [show, q]);
+  }, [show, q, reload]);
 
   return (
     <>
       <div className="page-head">
         <h1>Verified Answers</h1>
+        {page?.can_import && <ImportButton onDone={() => setReload((n) => n + 1)} />}
       </div>
       <p className="muted">
         Answers our team has checked. They are used first when answering, and they win when a
@@ -100,6 +103,9 @@ function List({ onOpen }: { onOpen: (id: string) => void }) {
               <button className="review-row" onClick={() => onOpen(row.id)}>
                 <span className="review-main">
                   <strong>{row.question}</strong>
+                  {row.applies_when && (
+                    <span className="tag">When it applies: {row.applies_when}</span>
+                  )}
                   <span className="muted small">{firstLine(row.answer)}</span>
                   <span className="muted small">
                     {row.approved_by ? `Approved by ${row.approved_by.name} · ` : ""}
@@ -119,12 +125,83 @@ function List({ onOpen }: { onOpen: (id: string) => void }) {
   );
 }
 
+/** Import verified answers from a CSV or Excel file: one per row, never merged (step 26). */
+function ImportButton({ onDone }: { onDone: () => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [progress, setProgress] = useState<number | null>(null);
+  const [result, setResult] = useState<VerifiedImport | null>(null);
+  const [error, setError] = useState("");
+
+  async function upload(file: File) {
+    setError("");
+    setResult(null);
+    setProgress(0);
+    try {
+      setResult(await api.importVerified(file, setProgress));
+      onDone();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Not imported.");
+    } finally {
+      setProgress(null);
+      if (input.current) input.current.value = "";
+    }
+  }
+
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  return (
+    <div className="va-import">
+      <input
+        ref={input}
+        type="file"
+        accept=".xlsx,.csv"
+        className="sr-only"
+        id="va-import"
+        aria-label="Import verified answers"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void upload(file);
+        }}
+      />
+      <button
+        className="button button-primary"
+        disabled={progress !== null}
+        onClick={() => input.current?.click()}
+      >
+        {progress !== null ? `Importing… ${progress}%` : "Import from a file"}
+      </button>
+      {error && <Alert kind="error">{error}</Alert>}
+      {result && (
+        <Alert kind="success">
+          Added {plural(result.created, "answer")}, updated {result.updated}, unchanged{" "}
+          {result.unchanged}.
+          {result.skipped.length > 0 && (
+            <>
+              {" "}
+              Skipped {plural(result.skipped.length, "row")}:
+              <ul className="small">
+                {result.skipped.slice(0, 20).map((s) => (
+                  <li key={s.row}>
+                    Row {s.row}: {s.reason}
+                  </li>
+                ))}
+                {result.skipped.length > 20 && <li>…and {result.skipped.length - 20} more.</li>}
+              </ul>
+            </>
+          )}
+        </Alert>
+      )}
+    </div>
+  );
+}
+
 function Detail({ id, onBack }: { id: string; onBack: () => void }) {
   const [va, setVa] = useState<VerifiedDetail | null>(null);
   const [versions, setVersions] = useState<VerifiedVersion[]>([]);
   const [editing, setEditing] = useState(false);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
+  const [applies, setApplies] = useState("");
+  const [also, setAlso] = useState("");
   const [expiry, setExpiry] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState<{ kind: "error" | "success"; text: string } | null>(null);
@@ -160,7 +237,10 @@ function Detail({ id, onBack }: { id: string; onBack: () => void }) {
 
   function save(event: FormEvent) {
     event.preventDefault();
-    void run(() => api.updateVerified(id, { question, answer }), "Saved. Search is updated.");
+    void run(
+      () => api.updateVerified(id, { question, answer, applies_when: applies, also_asked: also }),
+      "Saved. Search is updated.",
+    );
   }
 
   function saveExpiry(event: FormEvent) {
@@ -217,6 +297,21 @@ function Detail({ id, onBack }: { id: string; onBack: () => void }) {
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
               />
+              <label htmlFor="va-applies">When it applies (optional)</label>
+              <input
+                id="va-applies"
+                className="input"
+                placeholder="e.g. If you have a storefront"
+                value={applies}
+                onChange={(e) => setApplies(e.target.value)}
+              />
+              <label htmlFor="va-also">Also asked as (optional, separate wordings with ||)</label>
+              <input
+                id="va-also"
+                className="input"
+                value={also}
+                onChange={(e) => setAlso(e.target.value)}
+              />
               <label htmlFor="va-answer">Answer</label>
               <textarea
                 id="va-answer"
@@ -234,6 +329,22 @@ function Detail({ id, onBack }: { id: string; onBack: () => void }) {
             </form>
           ) : (
             <div className="card">
+              {(va.applies_when || va.also_asked) && (
+                <dl className="va-meta">
+                  {va.applies_when && (
+                    <>
+                      <dt>When it applies</dt>
+                      <dd>{va.applies_when}</dd>
+                    </>
+                  )}
+                  {va.also_asked && (
+                    <>
+                      <dt>Also asked as</dt>
+                      <dd>{va.also_asked}</dd>
+                    </>
+                  )}
+                </dl>
+              )}
               <Markdown text={va.answer} />
             </div>
           )}
@@ -244,6 +355,8 @@ function Detail({ id, onBack }: { id: string; onBack: () => void }) {
                 onClick={() => {
                   setQuestion(va.question);
                   setAnswer(va.answer);
+                  setApplies(va.applies_when ?? "");
+                  setAlso(va.also_asked ?? "");
                   setEditing(true);
                 }}
               >
