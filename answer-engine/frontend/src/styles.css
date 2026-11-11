@@ -3230,3 +3230,120 @@ details.original summary {
   color: var(--muted);
   font-weight: 400;
 }
+
+/* Verified Answers grouped by topic (step 30) */
+.va-layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.va-topics {
+  position: sticky;
+  top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.va-topic {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.va-topic:hover {
+  background: var(--surface-2);
+}
+
+.va-topic[aria-current="true"] {
+  background: var(--info-bg);
+  color: var(--brand);
+  font-weight: 600;
+}
+
+.va-subtopic {
+  padding-left: 24px;
+  font-size: 13px;
+}
+
+.va-count {
+  flex: none;
+  min-width: 24px;
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--muted);
+  background: var(--surface-2);
+  border-radius: 999px;
+}
+
+.va-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.va-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.va-answer {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.va-topic-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.va-topic-fields > span {
+  display: grid;
+  gap: 6px;
+}
+
+@media (max-width: 900px) {
+  .va-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .va-topics {
+    position: static;
+    max-height: 240px;
+  }
+
+  .va-topic-fields {
+    grid-template-columns: 1fr;
+  }
+}

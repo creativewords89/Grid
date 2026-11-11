@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.answering.prompts import ANSWER_SYSTEM
@@ -269,6 +269,69 @@ def test_editing_when_it_applies_and_the_wordings(boss: TestClient, db: Session)
     )
     listed = boss.get("/api/verified?q=showroom").json()["items"]
     assert [row["id"] for row in listed] == [str(first.id)]
+
+
+# --- topics (step 30) ---------------------------------------------------------------------------
+
+
+def test_the_list_is_grouped_by_topic_with_counts(boss: TestClient, db: Session) -> None:
+    upload(boss, TWO_ANSWERS + '"Is SEO dead?",,"No.",,,,\n')
+
+    page = boss.get("/api/verified").json()
+
+    assert page["topics"] == [
+        {
+            "name": "GBP",
+            "count": 3,
+            "subtopics": [{"name": "SAB", "count": 2}, {"name": "Verification", "count": 1}],
+        },
+        {"name": "", "count": 1, "subtopics": [{"name": "", "count": 1}]},
+    ]
+    # Grouped: topic, then subtopic, "No topic" last.
+    assert [(r["topic"], r["subtopic"]) for r in page["items"]] == [
+        ("GBP", "SAB"),
+        ("GBP", "SAB"),
+        ("GBP", "Verification"),
+        ("", ""),
+    ]
+    one = boss.get("/api/verified", params={"topic": "GBP", "subtopic": "Verification"}).json()
+    assert [r["question"] for r in one["items"]] == ["How long does verification take?"]
+    assert len(one["topics"]) == 2  # the topic list doesn't shrink with the filter
+    none = boss.get("/api/verified", params={"topic": ""}).json()
+    assert [r["question"] for r in none["items"]] == ["Is SEO dead?"]
+
+
+def test_changing_a_topic_needs_no_new_version_or_search_update(
+    boss: TestClient, db: Session
+) -> None:
+    upload(boss, TWO_ANSWERS)
+    first = answers(db)[0]
+    db.execute(delete(KbOp))
+    db.commit()
+
+    body = boss.patch(
+        f"/api/verified/{first.id}", json={"topic": "  Google  Business Profile ", "subtopic": ""}
+    ).json()
+
+    assert (body["topic"], body["subtopic"], body["version"]) == ("Google Business Profile", "", 1)
+    assert db.scalars(select(KbOp)).all() == []
+    entry = db.scalars(
+        select(AuditEntry).where(
+            AuditEntry.action == "update", AuditEntry.entity_id == str(first.id)
+        )
+    ).one()
+    assert {c["field"] for c in entry.changes} == {"topic", "subtopic"}
+
+
+def test_importing_again_fills_in_topics(boss: TestClient, db: Session) -> None:
+    upload(boss, TWO_ANSWERS.replace(",GBP,", ",,"))
+    assert {va.topic for va in answers(db)} == {""}
+
+    body = upload(boss, TWO_ANSWERS).json()
+
+    assert body["updated"] == 3
+    assert {va.topic for va in answers(db)} == {"GBP"}
+    assert {va.version for va in answers(db)} == {1}
 
 
 # --- who can import ---------------------------------------------------------------------------

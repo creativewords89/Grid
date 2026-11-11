@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, vi } from "vitest";
 import type { VerifiedDetail, VerifiedPage } from "../api";
@@ -24,12 +24,21 @@ const row = {
   applies_when: null,
   also_asked: null,
   answer_group: null,
+  topic: "Google Business Profile",
+  subtopic: "Verification",
 };
 const page: VerifiedPage = {
   items: [row],
   can_manage: true,
   can_import: false,
   counts: { active: 1, disabled: 0, expired: 0, needs_check: 1, all: 1 },
+  topics: [
+    {
+      name: "Google Business Profile",
+      count: 1,
+      subtopics: [{ name: "Verification", count: 1 }],
+    },
+  ],
 };
 const detail: VerifiedDetail = {
   ...row,
@@ -97,6 +106,8 @@ test("editing saves the new answer", async () => {
     answer: "Two weeks.",
     applies_when: "",
     also_asked: "",
+    topic: "Google Business Profile",
+    subtopic: "Verification",
   });
   expect(screen.getByText("Onboarding.pdf (deleted)")).toBeVisible();
   expect(screen.getByRole("button", { name: "Restore this version" })).toBeVisible();
@@ -184,4 +195,47 @@ test("people who can't import don't see the button", async () => {
 
   expect(await screen.findByText(row.question)).toBeVisible();
   expect(screen.queryByRole("button", { name: "Import from a file" })).toBeNull();
+});
+
+test("answers are grouped by topic and a topic can be chosen", async () => {
+  const citations = {
+    ...row,
+    id: "v3",
+    question: "Is Yext worth it?",
+    topic: "Citations",
+    subtopic: "Tools",
+    needs_check: false,
+  };
+  const loose = { ...row, id: "v4", question: "Is SEO dead?", topic: "", subtopic: "" };
+  mockApi({
+    "GET /auth/me": reviewer,
+    "GET /reviews/count": [200, { waiting: 0 }],
+    "GET /verified?show=active": [
+      200,
+      {
+        ...page,
+        items: [citations, row, loose],
+        topics: [
+          { name: "Citations", count: 1, subtopics: [{ name: "Tools", count: 1 }] },
+          ...page.topics,
+          { name: "", count: 1, subtopics: [{ name: "", count: 1 }] },
+        ],
+      },
+    ],
+  });
+  render(<App />);
+
+  const topics = await screen.findByRole("navigation", { name: "Topics" });
+  expect(
+    within(topics)
+      .getAllByRole("button")
+      .map((b) => b.textContent),
+  ).toEqual(["All topics3", "Citations1", "Google Business Profile1", "No topic1"]);
+  expect(screen.getByRole("region", { name: "Citations" })).toHaveTextContent("Is Yext worth it?");
+  expect(screen.getByRole("region", { name: "No topic" })).toHaveTextContent("Is SEO dead?");
+
+  await userEvent.click(within(topics).getByRole("button", { name: /Google Business Profile/ }));
+
+  expect(screen.queryByText("Is Yext worth it?")).toBeNull();
+  expect(screen.getByRole("region", { name: "Verification" })).toHaveTextContent(row.question);
 });

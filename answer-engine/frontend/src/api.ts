@@ -461,6 +461,14 @@ export type VerifiedRow = {
   applies_when: string | null;
   also_asked: string | null;
   answer_group: string | null;
+  topic: string;
+  subtopic: string;
+};
+
+export type VerifiedTopic = {
+  name: string;
+  count: number;
+  subtopics: { name: string; count: number }[];
 };
 
 export type VerifiedDetail = VerifiedRow & {
@@ -475,6 +483,7 @@ export type VerifiedPage = {
   can_manage: boolean;
   can_import: boolean;
   counts: Record<"active" | "disabled" | "expired" | "needs_check" | "all", number>;
+  topics: VerifiedTopic[];
 };
 
 export type VerifiedVersion = {
@@ -592,6 +601,8 @@ export type VerifiedPatch = {
   answer?: string;
   applies_when?: string;
   also_asked?: string;
+  topic?: string;
+  subtopic?: string;
   expires_at?: string;
   clear_expiry?: boolean;
   checked?: boolean;

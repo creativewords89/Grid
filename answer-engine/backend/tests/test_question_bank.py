@@ -259,6 +259,8 @@ def test_two_selected_answers_stay_separate_when_approved(loaded: TestClient, db
     assert one.question == "Should my GBP description list towns?"
     assert one.also_asked == POSTS[0]["question"]
     assert {v.origin for v in (one, two)} == {VerifiedOrigin.FACEBOOK}
+    # Step 30: the thread's topic groups them on the Verified Answers page.
+    assert (one.topic, one.subtopic) == ("Google Business Profile", "Profile Edits & Info")
     queued = [
         r
         for op in db.scalars(select(KbOp).where(KbOp.namespace == VERIFIED))
