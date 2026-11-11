@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type React from "react";
 import {
   api,
   ApiError,
@@ -9,12 +10,16 @@ import {
   type FbThreadDetail,
   type FbThreadList,
   type FbThreadRow,
+  type QbEarlier,
+  type QbLoaded,
+  type QuestionSet,
+  type QuestionSetList,
 } from "../api";
 import { Alert } from "../components/ui";
 
-// Facebook answers (SPEC section 6.9a, step 27): answer the group's questions one thread at a
-// time. Each selected comment is its own answer (never merged); approving a thread turns its
-// answers into verified answers.
+// Question Bank (SPEC section 6.9a, steps 27 and 29): real questions in sets (a Facebook group,
+// Reddit, client emails…), answered one thread at a time. Each selected comment is its own
+// answer (never merged); approving a thread turns its answers into verified answers.
 
 type Filter = FbStatus | "all";
 const STATUS_LABEL: Record<FbStatus, string> = {
@@ -53,7 +58,93 @@ function countAll(c: FbComment): number {
   return (c[2] ?? []).reduce((n, r) => n + 1 + countAll(r), 0);
 }
 
-export function FacebookAnswers() {
+const SET_KEY = "qb-set";
+const SOURCES = ["Facebook group", "Reddit", "Client emails", "Sales calls", "Support chat"];
+
+function storedSet(): string {
+  try {
+    return window.localStorage.getItem(SET_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function rememberSet(id: string) {
+  try {
+    window.localStorage.setItem(SET_KEY, id);
+  } catch {
+    // Storage blocked: the first set opens next time.
+  }
+}
+
+type Panel = "new" | "settings" | null;
+
+export function QuestionBank() {
+  const [sets, setSets] = useState<QuestionSetList | null>(null);
+  const [error, setError] = useState("");
+  const [setId, setSetId] = useState(storedSet);
+  const [panel, setPanel] = useState<Panel>(null);
+
+  const reloadSets = useCallback(() => {
+    api
+      .qbSets()
+      .then((data) => (setSets(data), setError("")))
+      .catch((err: unknown) => setError(message(err, "Not loaded.")));
+  }, []);
+  useEffect(reloadSets, [reloadSets]);
+
+  const choose = (id: string) => {
+    rememberSet(id);
+    setSetId(id);
+    setPanel(null);
+  };
+
+  if (error) return <Alert kind="error">{error}</Alert>;
+  if (!sets) return <p className="loading">Loading…</p>;
+  const current = sets.items.find((x) => x.id === setId) ?? sets.items[0];
+  if (!current)
+    return (
+      <section className="page">
+        <h1>Question Bank</h1>
+        <p className="muted">
+          Real questions people asked, in sets: a Facebook group, Reddit, client emails. Answer them
+          here and approved answers go straight into the knowledge base.
+        </p>
+        {sets.can_manage ? (
+          <NewSet onCreated={(qset) => (reloadSets(), choose(qset.id))} />
+        ) : (
+          <p className="muted">No question sets yet. An Owner adds the first one.</p>
+        )}
+      </section>
+    );
+  return (
+    <SetView
+      key={current.id}
+      current={current}
+      sets={sets}
+      panel={panel}
+      onPanel={setPanel}
+      onChoose={choose}
+      onSetsChanged={reloadSets}
+    />
+  );
+}
+
+function SetView({
+  current,
+  sets,
+  panel,
+  onPanel,
+  onChoose,
+  onSetsChanged,
+}: {
+  current: QuestionSet;
+  sets: QuestionSetList;
+  panel: Panel;
+  onPanel: (p: Panel) => void;
+  onChoose: (id: string) => void;
+  onSetsChanged: () => void;
+}) {
   const [list, setList] = useState<FbThreadList | null>(null);
   const [error, setError] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -64,10 +155,10 @@ export function FacebookAnswers() {
 
   const reload = useCallback(() => {
     api
-      .fbThreads()
+      .fbThreads(current.id)
       .then((data) => (setList(data), setError("")))
       .catch((err: unknown) => setError(message(err, "Not loaded.")));
-  }, []);
+  }, [current.id]);
   useEffect(reload, [reload]);
 
   const base = useMemo(() => {
@@ -124,127 +215,282 @@ export function FacebookAnswers() {
           }
         : old,
     );
+  const loaded = () => (reload(), onSetsChanged());
 
   if (error) return <Alert kind="error">{error}</Alert>;
   if (!list) return <p className="loading">Loading…</p>;
-  if (!list.items.length)
-    return (
-      <section className="page">
-        <h1>Facebook answers</h1>
-        {list.can_load ? (
-          <LoadFile onLoaded={reload} />
-        ) : (
-          <p className="muted">
-            Nothing to answer yet. An Owner loads the Facebook data file first.
-          </p>
-        )}
-      </section>
-    );
 
   const total = list.items.length;
-  const done = list.counts.approved + list.counts.skipped;
+  const counts = list.counts;
+  let right: React.ReactNode;
+  if (panel === "new")
+    right = (
+      <div className="qb-panel">
+        <NewSet
+          onCreated={(qset) => (onSetsChanged(), onChoose(qset.id))}
+          onCancel={() => onPanel(null)}
+        />
+      </div>
+    );
+  else if (panel === "settings")
+    right = (
+      <div className="qb-panel">
+        <SetSettings
+          qset={list.set}
+          onChanged={loaded}
+          onDeleted={() => (onPanel(null), onSetsChanged())}
+          onClose={() => onPanel(null)}
+        />
+      </div>
+    );
+  else if (!total)
+    right = (
+      <div className="qb-panel">
+        <h1>{list.set.name}</h1>
+        {list.can_manage ? (
+          <UploadBox setId={list.set.id} onLoaded={loaded} first />
+        ) : (
+          <p className="muted">This set has no questions yet. An Owner uploads them.</p>
+        )}
+      </div>
+    );
+  else if (shownId) right = <Thread key={shownId} id={shownId} onSaved={onSaved} />;
+  else right = <p className="muted qb-panel">Choose a question.</p>;
+
   return (
     <div className="fb-page">
-      <aside className="fb-list" aria-label="Threads">
+      <aside className="fb-list" aria-label="Questions">
         <div className="fb-head">
-          <strong>Facebook answers</strong>
-          <span className="muted small">
-            {list.counts.approved} approved · {list.counts.draft} drafts · {list.counts.skipped}{" "}
-            skipped · {total - done - list.counts.draft} to do
-          </span>
-          <div className="fb-bar" aria-hidden="true">
-            <i style={{ width: `${(list.counts.approved / total) * 100}%` }} />
-          </div>
-        </div>
-        <input
-          type="search"
-          className="input"
-          placeholder="Search questions or a row number"
-          aria-label="Search"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        <select
-          className="input"
-          aria-label="Topic"
-          value={topic}
-          onChange={(e) => (setTopic(e.target.value), setSub(""))}
-        >
-          <option value="">All topics</option>
-          {topics.map((t) => (
-            <option key={t} value={t}>
-              {tagLabel(
-                t,
-                list.items.filter((x) => x.topic === t),
-              )}
-            </option>
-          ))}
-        </select>
-        <select
-          className="input"
-          aria-label="Subtopic"
-          value={sub}
-          disabled={!topic}
-          onChange={(e) => setSub(e.target.value)}
-        >
-          <option value="">All subtopics</option>
-          {subtopics.map((s) => (
-            <option key={s} value={s}>
-              {tagLabel(
-                s,
-                list.items.filter((x) => x.topic === topic && x.subtopic === s),
-              )}
-            </option>
-          ))}
-        </select>
-        <div className="fb-chips" role="group" aria-label="Status">
-          {CHIPS.map(([key, label]) => (
-            <button
-              key={key}
-              className="fb-chip"
-              aria-pressed={filter === key}
-              onClick={() => setFilter(key)}
-            >
-              {label} {key === "all" ? base.length : base.filter((t) => t.status === key).length}
-            </button>
-          ))}
-        </div>
-        <ul className="fb-threads">
-          {view.map((t) => (
-            <li key={t.id}>
-              <button aria-current={t.id === shownId} onClick={() => setOpenId(t.id)}>
-                <span className={`fb-dot fb-dot-${t.status}`} aria-label={STATUS_LABEL[t.status]} />
-                <span className="fb-t">{t.title}</span>
-                <span className="muted small">
-                  Row {t.rows.join(", ")} · {plural(t.talk, "comment")} · {t.subtopic || t.topic}
-                </span>
+          <strong>Question Bank</strong>
+          <select
+            className="input"
+            aria-label="Question set"
+            value={current.id}
+            onChange={(e) => onChoose(e.target.value)}
+          >
+            {sets.items.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.name} ({x.counts.approved}/{x.total})
+              </option>
+            ))}
+          </select>
+          {list.can_manage && (
+            <div className="row qb-set-actions">
+              <button
+                className="button button-small"
+                aria-pressed={panel === "new"}
+                onClick={() => onPanel(panel === "new" ? null : "new")}
+              >
+                + New set
               </button>
-            </li>
-          ))}
-          {!view.length && <li className="muted small">Nothing matches these filters.</li>}
-        </ul>
+              <button
+                className="button button-small"
+                aria-pressed={panel === "settings"}
+                onClick={() => onPanel(panel === "settings" ? null : "settings")}
+              >
+                Set settings
+              </button>
+            </div>
+          )}
+          {total > 0 && (
+            <>
+              <span className="muted small">
+                {counts.approved} approved · {counts.draft} drafts · {counts.skipped} skipped ·{" "}
+                {counts.todo} to do
+              </span>
+              <div className="fb-bar" aria-hidden="true">
+                <i style={{ width: `${(counts.approved / total) * 100}%` }} />
+              </div>
+            </>
+          )}
+        </div>
+        {total > 0 && (
+          <>
+            <input
+              type="search"
+              className="input"
+              placeholder="Search questions or a row number"
+              aria-label="Search"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+            {topics.length > 0 && (
+              <select
+                className="input"
+                aria-label="Topic"
+                value={topic}
+                onChange={(e) => (setTopic(e.target.value), setSub(""))}
+              >
+                <option value="">All topics</option>
+                {topics.map((t) => (
+                  <option key={t} value={t}>
+                    {tagLabel(
+                      t,
+                      list.items.filter((x) => x.topic === t),
+                    )}
+                  </option>
+                ))}
+              </select>
+            )}
+            {topic && subtopics.length > 0 && (
+              <select
+                className="input"
+                aria-label="Subtopic"
+                value={sub}
+                onChange={(e) => setSub(e.target.value)}
+              >
+                <option value="">All subtopics</option>
+                {subtopics.map((x) => (
+                  <option key={x} value={x}>
+                    {tagLabel(
+                      x,
+                      list.items.filter((y) => y.topic === topic && y.subtopic === x),
+                    )}
+                  </option>
+                ))}
+              </select>
+            )}
+            <div className="fb-chips" role="group" aria-label="Status">
+              {CHIPS.map(([key, label]) => (
+                <button
+                  key={key}
+                  className="fb-chip"
+                  aria-pressed={filter === key}
+                  onClick={() => setFilter(key)}
+                >
+                  {label}{" "}
+                  {key === "all" ? base.length : base.filter((t) => t.status === key).length}
+                </button>
+              ))}
+            </div>
+            <ul className="fb-threads">
+              {view.map((t) => (
+                <li key={t.id}>
+                  <button
+                    aria-current={!panel && t.id === shownId}
+                    onClick={() => (onPanel(null), setOpenId(t.id))}
+                  >
+                    <span
+                      className={`fb-dot fb-dot-${t.status}`}
+                      aria-label={STATUS_LABEL[t.status]}
+                    />
+                    <span className="fb-t">{t.title}</span>
+                    <span className="muted small">
+                      Row {t.rows.join(", ")} · {plural(t.talk, "comment")}
+                      {t.subtopic || t.topic ? ` · ${t.subtopic || t.topic}` : ""}
+                    </span>
+                  </button>
+                </li>
+              ))}
+              {!view.length && <li className="muted small">Nothing matches these filters.</li>}
+            </ul>
+          </>
+        )}
       </aside>
-      {shownId ? (
-        <Thread key={shownId} id={shownId} onSaved={onSaved} />
-      ) : (
-        <p className="muted">Choose a thread.</p>
-      )}
+      {right}
     </div>
   );
 }
 
-function LoadFile({ onLoaded }: { onLoaded: () => void }) {
+function NewSet({
+  onCreated,
+  onCancel,
+}: {
+  onCreated: (qset: QuestionSet) => void;
+  onCancel?: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [source, setSource] = useState("");
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function create(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      onCreated(await api.qbCreateSet({ name, source, url }));
+    } catch (err) {
+      setError(message(err, "Not created."));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <form className="card stack qb-form" onSubmit={(e) => void create(e)}>
+      <h2>New question set</h2>
+      <p className="muted small">
+        A set is one batch of real questions from one place. You upload its questions next.
+      </p>
+      <label htmlFor="qb-name">Name</label>
+      <input
+        id="qb-name"
+        className="input"
+        required
+        maxLength={120}
+        placeholder="e.g. Reddit r/localseo, Client emails 2026"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+      />
+      <label htmlFor="qb-source">Where the questions come from (optional)</label>
+      <input
+        id="qb-source"
+        className="input"
+        list="qb-sources"
+        value={source}
+        onChange={(e) => setSource(e.target.value)}
+      />
+      <datalist id="qb-sources">
+        {SOURCES.map((x) => (
+          <option key={x} value={x} />
+        ))}
+      </datalist>
+      <label htmlFor="qb-url">Link (optional)</label>
+      <input
+        id="qb-url"
+        className="input"
+        placeholder="The group or page, for reference"
+        value={url}
+        onChange={(e) => setUrl(e.target.value)}
+      />
+      {error && <Alert kind="error">{error}</Alert>}
+      <div className="row">
+        <button className="button button-primary" disabled={busy || !name.trim()}>
+          Create the set
+        </button>
+        {onCancel && (
+          <button type="button" className="button" onClick={onCancel}>
+            Cancel
+          </button>
+        )}
+      </div>
+    </form>
+  );
+}
+
+function UploadBox({
+  setId,
+  onLoaded,
+  first = false,
+}: {
+  setId: string;
+  onLoaded: () => void;
+  first?: boolean;
+}) {
   const input = useRef<HTMLInputElement>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const [result, setResult] = useState<QbLoaded | null>(null);
   async function upload(file: File) {
     setError("");
+    setResult(null);
     setProgress(0);
     try {
-      await api.fbLoad(file, setProgress);
+      const out = await api.qbLoad(setId, file, setProgress);
+      setResult(out);
       onLoaded();
     } catch (err) {
-      setError(message(err, "Not loaded."));
+      setError(message(err, "Not uploaded."));
     } finally {
       setProgress(null);
       if (input.current) input.current.value = "";
@@ -252,17 +498,20 @@ function LoadFile({ onLoaded }: { onLoaded: () => void }) {
   }
   return (
     <div className="card stack">
-      <p>
-        Load the Facebook data file (facebook-data.json) to start. Answers already saved in it come
-        too.
+      <h2>{first ? "Upload the questions" : "Upload more questions"}</h2>
+      <p className="muted small">
+        A CSV or Excel file with a <b>question</b> column, one question per row. Optional columns:{" "}
+        <b>details</b> (the post as it was asked), <b>link</b>, <b>asked by</b>, <b>topic</b>,{" "}
+        <b>subtopic</b>, <b>comments</b> (one per line, “Name: text”) and <b>answer</b> (saved as a
+        draft to check). The JSON data file from the Facebook scrape works too. Uploading again adds
+        new questions and updates known ones; saved answers are never changed.
       </p>
       <input
         ref={input}
         type="file"
-        accept=".json"
+        accept=".json,.csv,.xlsx"
         className="sr-only"
-        id="fb-load"
-        aria-label="Facebook data file"
+        aria-label="Questions file"
         onChange={(e) => {
           const file = e.target.files?.[0];
           if (file) void upload(file);
@@ -273,9 +522,135 @@ function LoadFile({ onLoaded }: { onLoaded: () => void }) {
         disabled={progress !== null}
         onClick={() => input.current?.click()}
       >
-        {progress !== null ? `Loading… ${progress}%` : "Load the data file"}
+        {progress !== null ? `Uploading… ${progress}%` : "Choose a file"}
       </button>
       {error && <Alert kind="error">{error}</Alert>}
+      {result && (
+        <Alert kind="success">
+          {plural(result.threads, "question")} in this set now
+          {result.answers ? `, ${plural(result.answers, "answer")} from the file` : ""}.
+          {result.skipped.length > 0 &&
+            ` Skipped ${plural(result.skipped.length, "row")}: ${result.skipped
+              .slice(0, 5)
+              .map((x) => `row ${x.row} (${x.reason})`)
+              .join("; ")}${result.skipped.length > 5 ? "…" : ""}`}
+        </Alert>
+      )}
+    </div>
+  );
+}
+
+function SetSettings({
+  qset,
+  onChanged,
+  onDeleted,
+  onClose,
+}: {
+  qset: QuestionSet;
+  onChanged: () => void;
+  onDeleted: () => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(qset.name);
+  const [source, setSource] = useState(qset.source);
+  const [url, setUrl] = useState(qset.url);
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ kind: "error" | "success"; text: string } | null>(null);
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setNote(null);
+    try {
+      await api.qbUpdateSet(qset.id, { name, source, url });
+      setNote({ kind: "success", text: "Saved." });
+      onChanged();
+    } catch (err) {
+      setNote({ kind: "error", text: message(err, "Not saved.") });
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function remove() {
+    setBusy(true);
+    try {
+      await api.qbDeleteSet(qset.id);
+      onDeleted();
+    } catch (err) {
+      setNote({ kind: "error", text: message(err, "Not deleted.") });
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="stack">
+      <div className="row fb-between">
+        <h1>{qset.name}</h1>
+        <button className="button button-small" onClick={onClose}>
+          Close
+        </button>
+      </div>
+      <form className="card stack qb-form" onSubmit={(e) => void save(e)}>
+        <h2>Name and source</h2>
+        <label htmlFor="qbs-name">Name</label>
+        <input
+          id="qbs-name"
+          className="input"
+          required
+          maxLength={120}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <label htmlFor="qbs-source">Where the questions come from</label>
+        <input
+          id="qbs-source"
+          className="input"
+          list="qbs-sources"
+          value={source}
+          onChange={(e) => setSource(e.target.value)}
+        />
+        <datalist id="qbs-sources">
+          {SOURCES.map((x) => (
+            <option key={x} value={x} />
+          ))}
+        </datalist>
+        <label htmlFor="qbs-url">Link</label>
+        <input
+          id="qbs-url"
+          className="input"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+        />
+        {note && <Alert kind={note.kind}>{note.text}</Alert>}
+        <div className="row">
+          <button className="button button-primary" disabled={busy || !name.trim()}>
+            Save
+          </button>
+        </div>
+      </form>
+      <UploadBox setId={qset.id} onLoaded={onChanged} />
+      <div className="card stack qb-danger">
+        <h2>Delete this set</h2>
+        <p className="muted small">
+          Removes its {plural(qset.total, "question")} and their saved answers. The{" "}
+          {plural(qset.counts.approved, "approved question")}’ verified answers go to the trash,
+          where an Owner can restore them. Type the set’s name to confirm.
+        </p>
+        <input
+          className="input"
+          aria-label="Type the set's name to confirm"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+        />
+        <div className="row">
+          <button
+            className="button button-danger"
+            disabled={busy || confirm.trim() !== qset.name}
+            onClick={() => void remove()}
+          >
+            Delete the set
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -293,6 +668,7 @@ function Thread({ id, onSaved }: { id: string; onSaved: (row: FbThreadRow) => vo
     null,
   );
   const [undo, setUndo] = useState<Undo>(null);
+  const [earlier, setEarlier] = useState<QbEarlier[]>([]);
 
   const apply = (data: FbThreadDetail) => {
     setT(data);
@@ -300,10 +676,24 @@ function Thread({ id, onSaved }: { id: string; onSaved: (row: FbThreadRow) => vo
     setItems(data.answer.items);
   };
   useEffect(() => {
+    let live = true;
     api
       .fbThread(id)
-      .then((data) => (apply(data), setShowAll(!data.posts.some((p) => p.picked.length))))
+      .then((data) => {
+        if (!live) return;
+        apply(data);
+        setShowAll(!data.posts.some((p) => p.picked.length));
+        // Answers already written for similar questions, in any set, to reuse.
+        const near = new Set(data.similar.map((x) => x.id));
+        api
+          .qbEarlier(data.answer.title, data.id)
+          .then((found) => live && setEarlier(found.filter((x) => !near.has(x.id))))
+          .catch(() => undefined);
+      })
       .catch((err: unknown) => setNote({ kind: "error", text: message(err, "Not loaded.") }));
+    return () => {
+      live = false;
+    };
   }, [id]);
 
   const dirty =
@@ -431,7 +821,7 @@ function Thread({ id, onSaved }: { id: string; onSaved: (row: FbThreadRow) => vo
           {t.noise && <span className="tag tag-warn">Probably not a question</span>}
         </p>
         <h1>{t.answer.title}</h1>
-        <h2 className="fb-h">Facebook thread</h2>
+        <h2 className="fb-h">The question, as asked</h2>
         <div className="fb-grid" data-n={Math.min(t.posts.length, 3)}>
           {t.posts.map((p) => (
             <PostCard key={p.row} post={p} />
@@ -476,8 +866,37 @@ function Thread({ id, onSaved }: { id: string; onSaved: (row: FbThreadRow) => vo
             </div>
           </>
         )}
+        {earlier.length > 0 && (
+          <details className="qb-earlier">
+            <summary className="fb-h">Answered before ({earlier.length})</summary>
+            <div className="fb-similar">
+              {earlier.map((x) => (
+                <article key={x.id} className={`card fb-sim fb-sim-${x.status}`}>
+                  <strong>{x.title}</strong>
+                  <span className="muted small">
+                    {x.set_name} · {STATUS_LABEL[x.status]}
+                  </span>
+                  {x.items
+                    .filter((i) => i.text)
+                    .map((i, n) => (
+                      <p key={n} className="fb-sim-ans">
+                        {i.label && <b>{i.label}: </b>}
+                        {i.text}
+                      </p>
+                    ))}
+                  <div className="row">
+                    <button className="button button-small" onClick={() => reuse(x.items, false)}>
+                      Use{" "}
+                      {x.items.filter((i) => i.text).length > 1 ? "these answers" : "this answer"}
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </details>
+        )}
         <div className="fb-h fb-h-row">
-          <h2 className="fb-h">{showAll ? "All comments, as on Facebook" : "Picked answers"}</h2>
+          <h2 className="fb-h">{showAll ? "All comments, as posted" : "Picked answers"}</h2>
           <button className="button button-small" onClick={() => setShowAll(!showAll)}>
             {showAll ? "Show picked only" : "Show all comments"}
           </button>
@@ -500,9 +919,7 @@ function Thread({ id, onSaved }: { id: string; onSaved: (row: FbThreadRow) => vo
                   className={`card fb-cmt${n !== undefined ? " fb-picked" : ""}`}
                 >
                   <div className="muted small fb-meta">
-                    <a href={p.url} target="_blank" rel="noopener noreferrer">
-                      Row {p.row} ↗
-                    </a>
+                    <RowLink post={p} />
                     {n !== undefined && n < p.pinned && <span className="tag">Pinned</span>}
                     {n !== undefined && <span>Pick {n + 1}</span>}
                     {countAll(c) > 0 && (
@@ -523,7 +940,7 @@ function Thread({ id, onSaved }: { id: string; onSaved: (row: FbThreadRow) => vo
             });
           })}
           {t.posts.every((p) => !p.comments.length) && (
-            <p className="muted">Nobody replied on Facebook. Write your own answer, or skip it.</p>
+            <p className="muted">No replies were captured. Write your own answer, or skip it.</p>
           )}
         </div>
       </main>
@@ -660,6 +1077,16 @@ function Thread({ id, onSaved }: { id: string; onSaved: (row: FbThreadRow) => vo
   );
 }
 
+function RowLink({ post }: { post: FbPost }) {
+  return post.url ? (
+    <a href={post.url} target="_blank" rel="noopener noreferrer">
+      Row {post.row} ↗
+    </a>
+  ) : (
+    <span>Row {post.row}</span>
+  );
+}
+
 function PostCard({ post }: { post: FbPost }) {
   const [more, setMore] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -667,9 +1094,7 @@ function PostCard({ post }: { post: FbPost }) {
   return (
     <article className="card fb-post">
       <div className="muted small fb-meta">
-        <a href={post.url} target="_blank" rel="noopener noreferrer">
-          Row {post.row} ↗
-        </a>
+        <RowLink post={post} />
         {post.author && <span>asked by {post.author}</span>}
         <button
           className="button button-small fb-copy"

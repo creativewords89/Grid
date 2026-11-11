@@ -499,7 +499,7 @@ export type ApiKeyRow = {
   revoked_at: string | null;
 };
 
-// --- Facebook answers (step 27) ---------------------------------------------------------------
+// --- Question Bank (steps 27 and 29) ------------------------------------------------------------
 
 export type FbStatus = "todo" | "draft" | "approved" | "skipped";
 
@@ -532,7 +532,36 @@ export type FbPost = {
   picked: [string, string][];
 };
 
+export type QuestionSet = {
+  id: string;
+  name: string;
+  source: string;
+  url: string;
+  total: number;
+  counts: Record<FbStatus, number>;
+  created_at: string;
+};
+
+export type QuestionSetList = { items: QuestionSet[]; can_manage: boolean };
+
+export type QbLoaded = {
+  posts: number;
+  threads: number;
+  answers: number;
+  skipped: { row: number; reason: string }[];
+};
+
+export type QbEarlier = {
+  id: string;
+  set_name: string;
+  title: string;
+  status: FbStatus;
+  items: FbItem[];
+};
+
 export type FbThreadDetail = FbThreadRow & {
+  set_id: string;
+  set_name: string;
   posts: FbPost[];
   similar: { id: string; title: string; status: FbStatus; rows: number[]; items: FbItem[] }[];
   answer: {
@@ -545,9 +574,10 @@ export type FbThreadDetail = FbThreadRow & {
 };
 
 export type FbThreadList = {
+  set: QuestionSet;
   items: FbThreadRow[];
   counts: Record<FbStatus, number>;
-  can_load: boolean;
+  can_manage: boolean;
 };
 
 export type VerifiedImport = {
@@ -991,24 +1021,30 @@ export const api = {
   createApiKey: (body: { name: string; scopes: string[]; expires_days: number | null }) =>
     request<{ key: ApiKeyRow; token: string }>("POST", "/api-keys", body),
   revokeApiKey: (id: string) => request<void>("DELETE", `/api-keys/${id}`),
-  fbThreads: () => request<FbThreadList>("GET", "/fb/threads"),
-  fbThread: (id: string) => request<FbThreadDetail>("GET", `/fb/threads/${id}`),
+  qbSets: () => request<QuestionSetList>("GET", "/qb/sets"),
+  qbCreateSet: (body: { name: string; source: string; url: string }) =>
+    request<QuestionSet>("POST", "/qb/sets", body),
+  qbUpdateSet: (id: string, body: { name?: string; source?: string; url?: string }) =>
+    request<QuestionSet>("PATCH", `/qb/sets/${id}`, body),
+  qbDeleteSet: (id: string) => request<void>("DELETE", `/qb/sets/${id}`),
+  qbLoad: (setId: string, file: File, onProgress?: (pct: number) => void) =>
+    sendFile<QbLoaded>(`/qb/sets/${setId}/load`, "file", file, onProgress),
+  fbThreads: (setId: string) => request<FbThreadList>("GET", `/qb/sets/${setId}/threads`),
+  qbEarlier: (q: string, otherThan: string) =>
+    request<QbEarlier[]>(
+      "GET",
+      `/qb/answers?${new URLSearchParams({ q, other_than: otherThan }).toString()}`,
+    ),
+  fbThread: (id: string) => request<FbThreadDetail>("GET", `/qb/threads/${id}`),
   fbSave: (
     id: string,
     body: { title: string; items: FbItem[]; status: "draft" | "approved" | "skipped" },
-  ) => request<FbThreadDetail>("PUT", `/fb/threads/${id}/answer`, body),
-  fbClear: (id: string) => request<FbThreadDetail>("DELETE", `/fb/threads/${id}/answer`),
+  ) => request<FbThreadDetail>("PUT", `/qb/threads/${id}/answer`, body),
+  fbClear: (id: string) => request<FbThreadDetail>("DELETE", `/qb/threads/${id}/answer`),
   fbRework: (
     id: string,
     body: { mode: "polish" | "fit"; text: string; label?: string; instruction?: string },
-  ) => request<{ answer: string; changes: string[] }>("POST", `/fb/threads/${id}/rework`, body),
-  fbLoad: (file: File, onProgress?: (pct: number) => void) =>
-    sendFile<{ posts: number; threads: number; answers: number }>(
-      "/fb/load",
-      "file",
-      file,
-      onProgress,
-    ),
+  ) => request<{ answer: string; changes: string[] }>("POST", `/qb/threads/${id}/rework`, body),
   importVerified: (file: File, onProgress?: (pct: number) => void) =>
     sendFile<VerifiedImport>("/verified/import", "file", file, onProgress),
   updateVerified: (id: string, patch: VerifiedPatch) =>

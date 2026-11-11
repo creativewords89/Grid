@@ -22,11 +22,12 @@ USED_EVERY = timedelta(minutes=1)  # last_used_at is written at most this often
 
 # What each scope may reach. Nothing else is reachable with a key.
 SCOPES: dict[str, re.Pattern[str]] = {
-    "facebook": re.compile(r"^/api/fb(/|$)"),
+    "question_bank": re.compile(r"^/api/qb(/|$)"),
     "verified_import": re.compile(r"^/api/verified/import$"),
 }
 SCOPE_LABELS = {
-    "facebook": "Facebook answers: load the data file, read and save threads, Polish and Fit",
+    "question_bank": "Question Bank: manage sets, upload questions, read and save threads, "
+    "Polish and Fit",
     "verified_import": "Import verified answers from a file",
 }
 

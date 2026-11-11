@@ -606,7 +606,7 @@ class VerifiedOrigin(enum.StrEnum):
     ADMIN = "admin"
     MARKETING = "marketing"
     IMPORT = "import"  # from an uploaded file (step 26)
-    FACEBOOK = "facebook"  # approved on the Facebook answers page (step 27)
+    FACEBOOK = "facebook"  # approved in the Question Bank (steps 27, 29)
 
 
 class VerifiedAnswer(TimestampMixin, Base):
@@ -923,7 +923,23 @@ class VoiceExample(TimestampMixin, Base):
         return f"vx_{self.id.hex}"
 
 
-# --- Facebook answers (SPEC section 6.9a, step 27) -------------------------------------------
+# --- Question Bank (SPEC section 6.9a, steps 27 and 29) -------------------------------------
+
+
+class QuestionSet(TimestampMixin, Base):
+    """One batch of real questions from one source (a Facebook group, Reddit, client emails…).
+    `prefix` starts the import keys of the verified answers made from it, so sets never clash."""
+
+    __tablename__ = "question_sets"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    name: Mapped[str] = mapped_column(Text, unique=True)
+    source: Mapped[str] = mapped_column(Text, default="", server_default="")
+    url: Mapped[str] = mapped_column(Text, default="", server_default="")
+    prefix: Mapped[str] = mapped_column(Text, unique=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
 
 
 class FbStatus(enum.StrEnum):
@@ -934,12 +950,15 @@ class FbStatus(enum.StrEnum):
 
 
 class FbPost(TimestampMixin, Base):
-    """A post scraped from the Facebook group, with its comments as they appear there."""
+    """A question as it was asked (a post), with its comments as they appear there."""
 
     __tablename__ = "fb_posts"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
-    row: Mapped[int] = mapped_column(Integer, unique=True)
+    set_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("question_sets.id", ondelete="CASCADE"), index=True
+    )
+    row: Mapped[int] = mapped_column(Integer)
     url: Mapped[str] = mapped_column(Text, default="")
     author: Mapped[str | None] = mapped_column(Text)
     question: Mapped[str] = mapped_column(Text)
@@ -949,6 +968,8 @@ class FbPost(TimestampMixin, Base):
     comments: Mapped[list[Any]] = mapped_column(JSONB, default=list, server_default="[]")
     picked: Mapped[list[Any]] = mapped_column(JSONB, default=list, server_default="[]")
 
+    __table_args__ = (UniqueConstraint("set_id", "row", name="uq_fb_posts_set_row"),)
+
 
 class FbThread(TimestampMixin, Base):
     """One question to answer: usually one post. Its answers become verified answers."""
@@ -956,7 +977,10 @@ class FbThread(TimestampMixin, Base):
     __tablename__ = "fb_threads"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
-    key: Mapped[str] = mapped_column(Text, unique=True)
+    set_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("question_sets.id", ondelete="CASCADE"), index=True
+    )
+    key: Mapped[str] = mapped_column(Text)
     title: Mapped[str] = mapped_column(Text)
     topic: Mapped[str] = mapped_column(Text, default="")
     subtopic: Mapped[str] = mapped_column(Text, default="")
@@ -976,4 +1000,9 @@ class FbThread(TimestampMixin, Base):
     )
     answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    __table_args__ = (Index("ix_fb_threads_similar", "similar"),)
+    question_set: Mapped[QuestionSet] = relationship()
+
+    __table_args__ = (
+        Index("ix_fb_threads_similar", "similar"),
+        UniqueConstraint("set_id", "key", name="uq_fb_threads_set_key"),
+    )

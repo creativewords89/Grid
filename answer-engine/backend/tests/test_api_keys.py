@@ -39,7 +39,7 @@ def bare(app_factory: Callable[[], TestClient]) -> TestClient:
 
 
 def make_key(boss: TestClient, scopes: list[str] | None = None, **extra: Any) -> Any:
-    body = {"name": "Claude data sync", "scopes": scopes or ["facebook"], **extra}
+    body = {"name": "Claude data sync", "scopes": scopes or ["question_bank"], **extra}
     return boss.post("/api/api-keys", json=body)
 
 
@@ -48,22 +48,34 @@ def bearer(token: str) -> dict[str, str]:
 
 
 def load(client: TestClient, token: str) -> Any:
+    """Upload DATA to the first question set, making one if there is none."""
+    sets = client.get("/api/qb/sets", headers=bearer(token))
+    if sets.status_code != 200:
+        return sets
+    items = sets.json()["items"]
+    sid = (
+        items[0]["id"]
+        if items
+        else client.post("/api/qb/sets", json={"name": "Data"}, headers=bearer(token)).json()["id"]
+    )
     raw = json.dumps(DATA).encode()
-    return client.post("/api/fb/load", files={"file": ("data.json", raw)}, headers=bearer(token))
+    return client.post(
+        f"/api/qb/sets/{sid}/load", files={"file": ("data.json", raw)}, headers=bearer(token)
+    )
 
 
 # --- creating keys ----------------------------------------------------------------------------
 
 
 def test_a_key_is_shown_once_and_stored_hashed(boss: TestClient, db: Session) -> None:
-    response = make_key(boss, ["verified_import", "facebook"], expires_days=30)
+    response = make_key(boss, ["verified_import", "question_bank"], expires_days=30)
 
     assert response.status_code == 201
     body = response.json()
     token = body["token"]
     assert token.startswith("ae_") and len(token) > 40
     assert body["key"]["prefix"] == token[:8]
-    assert body["key"]["scopes"] == ["facebook", "verified_import"]
+    assert body["key"]["scopes"] == ["question_bank", "verified_import"]
     assert body["key"]["made_by"]["name"] == "Olivia"
     stored = db.scalars(select(ApiKey)).one()
     assert stored.token_hash == hash_secret(token) and token not in stored.token_hash
@@ -71,7 +83,7 @@ def test_a_key_is_shown_once_and_stored_hashed(boss: TestClient, db: Session) ->
     assert timedelta(days=29) < stored.expires_at - now() <= timedelta(days=30)
     listed = boss.get("/api/api-keys").json()
     assert "token" not in json.dumps(listed["items"])
-    assert set(listed["scopes"]) == {"facebook", "verified_import"}
+    assert set(listed["scopes"]) == {"question_bank", "verified_import"}
     assert (
         db.scalars(select(AuditEntry).where(AuditEntry.entity == "api_key")).one().action
         == "create"
@@ -81,10 +93,11 @@ def test_a_key_is_shown_once_and_stored_hashed(boss: TestClient, db: Session) ->
 @pytest.mark.parametrize(
     "body",
     [
-        {"name": " ", "scopes": ["facebook"]},
+        {"name": " ", "scopes": ["question_bank"]},
         {"name": "x", "scopes": []},
         {"name": "x", "scopes": ["users"]},
-        {"name": "x", "scopes": ["facebook"], "expires_days": 7},
+        {"name": "x", "scopes": ["facebook"]},
+        {"name": "x", "scopes": ["question_bank"], "expires_days": 7},
     ],
 )
 def test_keys_that_cant_be_made(boss: TestClient, db: Session, body: dict[str, Any]) -> None:
@@ -107,7 +120,8 @@ def test_only_owners_manage_keys(
     sign_in(c, make_user(role).email)
 
     assert c.get("/api/api-keys").status_code == 403
-    assert c.post("/api/api-keys", json={"name": "x", "scopes": ["facebook"]}).status_code == 403
+    body = {"name": "x", "scopes": ["question_bank"]}
+    assert c.post("/api/api-keys", json=body).status_code == 403
     assert c.delete(f"/api/api-keys/{key_id}").status_code == 403
 
 
@@ -119,8 +133,8 @@ def test_a_key_reaches_only_its_scopes_and_needs_no_csrf(
 ) -> None:
     token = make_key(boss).json()["token"]
 
-    assert load(bare, token).json() == {"posts": 1, "threads": 1, "answers": 0}
-    assert bare.get("/api/fb/threads", headers=bearer(token)).status_code == 200
+    assert load(bare, token).json() == {"posts": 1, "threads": 1, "answers": 0, "skipped": []}
+    assert bare.get("/api/qb/sets", headers=bearer(token)).status_code == 200
     # Outside its scopes: refused, even though its Owner could do it.
     assert bare.get("/api/verified", headers=bearer(token)).status_code == 403
     assert bare.get("/api/users", headers=bearer(token)).status_code == 403
@@ -147,16 +161,11 @@ def test_the_import_scope(boss: TestClient, bare: TestClient) -> None:
     )
 
     assert imported.status_code == 200 and imported.json()["created"] == 1
-    assert bare.get("/api/fb/threads", headers=bearer(token)).status_code == 403
+    assert bare.get("/api/qb/sets", headers=bearer(token)).status_code == 403
 
 
 def test_cookies_still_need_the_csrf_token(boss: TestClient) -> None:
-    raw = json.dumps(DATA).encode()
-    no_csrf = boss.post(
-        "/api/fb/load",
-        files={"file": ("data.json", raw)},
-        headers={"X-CSRF-Token": "wrong"},
-    )
+    no_csrf = boss.post("/api/qb/sets", json={"name": "x"}, headers={"X-CSRF-Token": "wrong"})
 
     assert no_csrf.status_code == 403
 
@@ -201,13 +210,13 @@ def test_last_used_is_written_at_most_once_a_minute(
 ) -> None:
     token = make_key(boss).json()["token"]
 
-    bare.get("/api/fb/threads", headers=bearer(token))
+    bare.get("/api/qb/sets", headers=bearer(token))
     db.expire_all()
     key = db.scalars(select(ApiKey)).one()
     first = key.last_used_at
     assert first is not None and key.last_used_ip
 
-    bare.get("/api/fb/threads", headers=bearer(token))
+    bare.get("/api/qb/sets", headers=bearer(token))
     db.expire_all()
     assert db.scalars(select(ApiKey)).one().last_used_at == first
 
@@ -217,10 +226,12 @@ def test_actions_with_a_key_are_the_owners(
 ) -> None:
     token = make_key(boss).json()["token"]
     load(bare, token)
-    tid = bare.get("/api/fb/threads", headers=bearer(token)).json()["items"][0]["id"]
+    sid = bare.get("/api/qb/sets", headers=bearer(token)).json()["items"][0]["id"]
+    page = bare.get(f"/api/qb/sets/{sid}/threads", headers=bearer(token)).json()
+    tid = page["items"][0]["id"]
 
     saved = bare.put(
-        f"/api/fb/threads/{tid}/answer",
+        f"/api/qb/threads/{tid}/answer",
         json={"items": [{"text": "Hide it if nobody visits."}], "status": "approved"},
         headers=bearer(token),
     )

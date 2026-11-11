@@ -3066,3 +3066,48 @@ details.original summary {
   overflow-wrap: anywhere;
   user-select: all;
 }
+
+/* Question Bank sets (step 29) */
+.qb-panel {
+  grid-column: 2 / -1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 20px 24px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.qb-panel > * {
+  max-width: 720px;
+}
+
+.qb-form label {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.qb-set-actions {
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.qb-danger {
+  border-color: var(--error);
+}
+
+.qb-earlier > summary {
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.qb-earlier[open] > summary {
+  margin-bottom: 8px;
+}
+
+@media (max-width: 760px) {
+  .qb-panel {
+    grid-column: 1;
+    padding: 16px;
+  }
+}

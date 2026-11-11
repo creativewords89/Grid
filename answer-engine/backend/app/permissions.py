@@ -32,8 +32,9 @@ class Action(enum.StrEnum):
     ADMIN_REVIEW = "admin_review"  # review any answer from the Answer Log
     VIEW_VERIFIED = "view_verified"
     MANAGE_VERIFIED = "manage_verified"  # edit / disable / expiry / delete
-    IMPORT_VERIFIED = "import_verified"  # import verified answers / load Facebook data (26, 27)
-    WORK_FACEBOOK = "work_facebook"  # the Facebook answers page (step 27)
+    IMPORT_VERIFIED = "import_verified"  # import verified answers from a file (step 26)
+    WORK_QUESTION_BANK = "work_question_bank"  # answer Question Bank threads (steps 27, 29)
+    MANAGE_QUESTION_SETS = "manage_question_sets"  # create, upload to, rename, delete sets (29)
     MANAGE_API_KEYS = "manage_api_keys"  # create and revoke API keys (step 28)
     WORK_THREADS = "work_threads"  # create, add replies, draft, mark as posted
     CLOSE_THREAD = "close_thread"  # close / reopen, obj required
@@ -67,7 +68,8 @@ _ANY: dict[Action, frozenset[Role]] = {
     Action.VIEW_VERIFIED: _ALL,
     Action.MANAGE_VERIFIED: _STAFF,
     Action.IMPORT_VERIFIED: _OWNER,
-    Action.WORK_FACEBOOK: _STAFF,
+    Action.WORK_QUESTION_BANK: _STAFF,
+    Action.MANAGE_QUESTION_SETS: _OWNER,
     Action.MANAGE_API_KEYS: _OWNER,
     Action.WORK_THREADS: _ALL,
     Action.CLOSE_THREAD: _STAFF,

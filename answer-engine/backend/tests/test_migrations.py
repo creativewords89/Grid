@@ -53,3 +53,30 @@ def test_migrations_match_models(fresh_database_url: str) -> None:
         engine.dispose()
 
     assert diff == []
+
+
+def test_existing_facebook_threads_become_the_first_set(fresh_database_url: str) -> None:
+    """Step 29: the threads answered before keep their verified answers' keys (prefix fb)."""
+    cfg = alembic_config(fresh_database_url)
+    command.upgrade(cfg, "0019")
+    engine = create_engine(fresh_database_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO fb_posts (id, row, question) VALUES (gen_random_uuid(), 1, 'Q?');"
+                    "INSERT INTO fb_threads (id, key, title, rows) "
+                    "VALUES (gen_random_uuid(), 's1', 'Q?', '{1}')"
+                )
+            )
+        command.upgrade(cfg, "head")
+        with engine.connect() as conn:
+            name, prefix, sid = conn.execute(
+                text("SELECT name, prefix, id FROM question_sets")
+            ).one()
+            assert (name, prefix) == ("Facebook group", "fb")
+            posts = conn.execute(text("SELECT set_id FROM fb_posts")).scalars().all()
+            threads = conn.execute(text("SELECT set_id FROM fb_threads")).scalars().all()
+            assert posts == threads == [sid]
+    finally:
+        engine.dispose()
