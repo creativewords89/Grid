@@ -80,11 +80,11 @@ function Queue({ onOpen }: { onOpen: (id: string) => void }) {
         <ul className="review-list">
           {rows.map((row) => (
             <li key={row.id} className="card">
-              <button className="review-row" onClick={() => onOpen(row.id)}>
+              <button className="review-row" title={row.question} onClick={() => onOpen(row.id)}>
                 <span className="review-num">#R-{row.number}</span>
                 <span className="review-main">
-                  <strong>{row.question}</strong>
-                  <span className="muted small">
+                  <strong className="review-q">{row.question}</strong>
+                  <span className="muted small review-meta">
                     {row.reason_label} · {row.asked_by?.name ?? "Someone"} · {row.channel} ·{" "}
                     {ago(row.created_at)}
                   </span>

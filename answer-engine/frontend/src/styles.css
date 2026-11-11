@@ -1284,12 +1284,17 @@ label.inline {
   gap: 8px;
 }
 
+.review-list > li.card {
+  padding: 0;
+  overflow: hidden;
+}
+
 .review-row {
   display: flex;
-  gap: 12px;
-  align-items: center;
+  gap: 14px;
+  align-items: flex-start;
   width: 100%;
-  padding: 12px 16px;
+  padding: 14px 18px;
   font: inherit;
   color: inherit;
   text-align: left;
@@ -1298,7 +1303,15 @@ label.inline {
   cursor: pointer;
 }
 
+.review-row:hover {
+  background: var(--surface-2);
+}
+
 .review-num {
+  flex: none;
+  min-width: 48px;
+  padding-top: 1px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--muted);
   white-space: nowrap;
@@ -1306,9 +1319,31 @@ label.inline {
 
 .review-main {
   display: grid;
-  gap: 2px;
+  gap: 4px;
   flex: 1;
   min-width: 0;
+}
+
+/* Long questions: two lines here, the whole question when the review is opened. */
+.review-q {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.review-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-row > .pill {
+  flex: none;
 }
 
 .pill-open,
@@ -3109,5 +3144,61 @@ details.original summary {
   .qb-panel {
     grid-column: 1;
     padding: 16px;
+  }
+}
+
+@media (max-width: 760px) {
+  .review-meta {
+    white-space: normal;
+  }
+}
+
+/* Answer Log table: long questions take two lines; the other columns stay on one. */
+.log-table td {
+  vertical-align: top;
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
+.log-table .num {
+  text-align: center;
+}
+
+.log-question {
+  width: 100%;
+  min-width: 260px;
+}
+
+.log-q {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font: inherit;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: 0;
+  padding: 0;
+  margin-bottom: 4px;
+  cursor: pointer;
+}
+
+.log-q:hover {
+  color: var(--brand);
+  text-decoration: underline;
+}
+
+.log-date {
+  display: grid;
+  gap: 2px;
+}
+
+@media (max-width: 760px) {
+  .log-question {
+    min-width: 0;
   }
 }
