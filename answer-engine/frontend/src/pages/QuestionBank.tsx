@@ -194,6 +194,21 @@ function SetView({
   // The chosen thread stays open after saving, even when it leaves the filtered list.
   const shownId = openId ?? view[0]?.id ?? null;
 
+  // A similar thread opened from a thread: shown in the list too, even if filtered out.
+  const openThread = (id: string) => {
+    if (!view.some((t) => t.id === id)) {
+      setFilter("all");
+      setQ("");
+      setTopic("");
+      setSub("");
+    }
+    setOpenId(id);
+  };
+  const listRef = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    listRef.current?.querySelector('[aria-current="true"]')?.scrollIntoView?.({ block: "nearest" });
+  }, [shownId]);
+
   const onSaved = (row: FbThreadRow) => {
     setOpenId(row.id); // stays open even if it leaves the filtered list
     updateRow(row);
@@ -254,7 +269,8 @@ function SetView({
         )}
       </div>
     );
-  else if (shownId) right = <Thread key={shownId} id={shownId} onSaved={onSaved} />;
+  else if (shownId)
+    right = <Thread key={shownId} id={shownId} onSaved={onSaved} onOpen={openThread} />;
   else right = <p className="muted qb-panel">Choose a question.</p>;
 
   return (
@@ -363,7 +379,7 @@ function SetView({
                 </button>
               ))}
             </div>
-            <ul className="fb-threads">
+            <ul className="fb-threads" ref={listRef}>
               {view.map((t) => (
                 <li key={t.id}>
                   <button
@@ -657,7 +673,15 @@ function SetSettings({
 
 type Undo = { index: number; text: string } | null;
 
-function Thread({ id, onSaved }: { id: string; onSaved: (row: FbThreadRow) => void }) {
+function Thread({
+  id,
+  onSaved,
+  onOpen,
+}: {
+  id: string;
+  onSaved: (row: FbThreadRow) => void;
+  onOpen: (id: string) => void;
+}) {
   const [t, setT] = useState<FbThreadDetail | null>(null);
   const [title, setTitle] = useState("");
   const [items, setItems] = useState<FbItem[]>([]);
@@ -833,7 +857,13 @@ function Thread({ id, onSaved }: { id: string; onSaved: (row: FbThreadRow) => vo
             <div className="fb-similar">
               {t.similar.map((s) => (
                 <article key={s.id} className={`card fb-sim fb-sim-${s.status}`}>
-                  <strong>{s.title}</strong>
+                  <button
+                    className="fb-sim-open"
+                    title="Open this thread"
+                    onClick={() => onOpen(s.id)}
+                  >
+                    {s.title}
+                  </button>
                   <span className="muted small">
                     Row {s.rows.join(", ")} · {STATUS_LABEL[s.status]}
                   </span>

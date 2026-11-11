@@ -3207,3 +3207,26 @@ details.original summary {
     min-width: 0;
   }
 }
+
+/* A similar thread's title opens it. */
+.fb-sim-open {
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.fb-sim-open:hover {
+  color: var(--brand);
+  text-decoration: underline;
+}
+
+.fb-sim-open::after {
+  content: " →";
+  color: var(--muted);
+  font-weight: 400;
+}
