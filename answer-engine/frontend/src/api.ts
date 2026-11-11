@@ -485,6 +485,57 @@ export type VerifiedVersion = {
   at: string;
 };
 
+// --- Facebook answers (step 27) ---------------------------------------------------------------
+
+export type FbStatus = "todo" | "draft" | "approved" | "skipped";
+
+/** A comment as on Facebook: [name, text, replies]. */
+export type FbComment = [string, string, FbComment[]];
+
+export type FbThreadRow = {
+  id: string;
+  key: string;
+  title: string;
+  topic: string;
+  subtopic: string;
+  status: FbStatus;
+  noise: boolean;
+  rows: number[];
+  talk: number;
+};
+
+export type FbItem = { label: string; picks: string[]; text: string };
+
+export type FbPost = {
+  row: number;
+  url: string;
+  author: string | null;
+  question: string;
+  summary: string;
+  note: string | null;
+  pinned: number;
+  comments: FbComment[];
+  picked: [string, string][];
+};
+
+export type FbThreadDetail = FbThreadRow & {
+  posts: FbPost[];
+  similar: { id: string; title: string; status: FbStatus; rows: number[]; items: FbItem[] }[];
+  answer: {
+    title: string;
+    items: FbItem[];
+    status: FbStatus;
+    answered_by: Person | null;
+    answered_at: string | null;
+  };
+};
+
+export type FbThreadList = {
+  items: FbThreadRow[];
+  counts: Record<FbStatus, number>;
+  can_load: boolean;
+};
+
 export type VerifiedImport = {
   created: number;
   updated: number;
@@ -921,6 +972,24 @@ export const api = {
       `/verified?show=${encodeURIComponent(show)}${q ? `&q=${encodeURIComponent(q)}` : ""}`,
     ),
   getVerified: (id: string) => request<VerifiedDetail>("GET", `/verified/${id}`),
+  fbThreads: () => request<FbThreadList>("GET", "/fb/threads"),
+  fbThread: (id: string) => request<FbThreadDetail>("GET", `/fb/threads/${id}`),
+  fbSave: (
+    id: string,
+    body: { title: string; items: FbItem[]; status: "draft" | "approved" | "skipped" },
+  ) => request<FbThreadDetail>("PUT", `/fb/threads/${id}/answer`, body),
+  fbClear: (id: string) => request<FbThreadDetail>("DELETE", `/fb/threads/${id}/answer`),
+  fbRework: (
+    id: string,
+    body: { mode: "polish" | "fit"; text: string; label?: string; instruction?: string },
+  ) => request<{ answer: string; changes: string[] }>("POST", `/fb/threads/${id}/rework`, body),
+  fbLoad: (file: File, onProgress?: (pct: number) => void) =>
+    sendFile<{ posts: number; threads: number; answers: number }>(
+      "/fb/load",
+      "file",
+      file,
+      onProgress,
+    ),
   importVerified: (file: File, onProgress?: (pct: number) => void) =>
     sendFile<VerifiedImport>("/verified/import", "file", file, onProgress),
   updateVerified: (id: string, patch: VerifiedPatch) =>

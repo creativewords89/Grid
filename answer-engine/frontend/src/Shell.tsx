@@ -13,6 +13,7 @@ const NAV: NavItem[] = [
   { path: "/documents", label: "Documents" },
   { path: "/marketing", label: "Marketing" },
   { path: "/verified", label: "Verified Answers" },
+  { path: "/facebook", label: "Facebook answers", roles: ["owner", "reviewer"] },
   { path: "/reviews", label: "Review Queue", roles: ["owner", "reviewer"] },
   { path: "/answer-log", label: "Answer Log", roles: ["owner", "reviewer"] },
   { path: "/users", label: "Users", roles: ["owner"] },

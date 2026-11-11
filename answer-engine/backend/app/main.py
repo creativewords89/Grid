@@ -14,6 +14,7 @@ from app.api import (
     auth,
     connections,
     conversations,
+    facebook,
     files,
     health,
     kb,
@@ -95,6 +96,7 @@ def create_app() -> FastAPI:
         usage,
         system,
         voice,
+        facebook,
     ):
         app.include_router(module.router, prefix="/api")
     return app

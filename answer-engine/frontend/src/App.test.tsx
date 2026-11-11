@@ -69,13 +69,25 @@ test.each([
       "Documents",
       "Marketing",
       "Verified Answers",
+      "Facebook answers",
       "Review Queue",
       "Answer Log",
       "Users",
       "Settings",
     ],
   ],
-  ["reviewer", ["Ask", "Documents", "Marketing", "Verified Answers", "Review Queue", "Answer Log"]],
+  [
+    "reviewer",
+    [
+      "Ask",
+      "Documents",
+      "Marketing",
+      "Verified Answers",
+      "Facebook answers",
+      "Review Queue",
+      "Answer Log",
+    ],
+  ],
   ["user", ["Ask", "Documents", "Marketing", "Verified Answers"]],
 ] as const)("the %s sees their sidebar", async (role, items) => {
   mockApi({ "GET /auth/me": [200, { user: makeUser({ role }), csrf_token: "t" }] });

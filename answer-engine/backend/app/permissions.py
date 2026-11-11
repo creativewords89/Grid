@@ -32,7 +32,8 @@ class Action(enum.StrEnum):
     ADMIN_REVIEW = "admin_review"  # review any answer from the Answer Log
     VIEW_VERIFIED = "view_verified"
     MANAGE_VERIFIED = "manage_verified"  # edit / disable / expiry / delete
-    IMPORT_VERIFIED = "import_verified"  # import verified answers from a file (step 26)
+    IMPORT_VERIFIED = "import_verified"  # import verified answers / load Facebook data (26, 27)
+    WORK_FACEBOOK = "work_facebook"  # the Facebook answers page (step 27)
     WORK_THREADS = "work_threads"  # create, add replies, draft, mark as posted
     CLOSE_THREAD = "close_thread"  # close / reopen, obj required
     DELETE_THREAD = "delete_thread"
@@ -65,6 +66,7 @@ _ANY: dict[Action, frozenset[Role]] = {
     Action.VIEW_VERIFIED: _ALL,
     Action.MANAGE_VERIFIED: _STAFF,
     Action.IMPORT_VERIFIED: _OWNER,
+    Action.WORK_FACEBOOK: _STAFF,
     Action.WORK_THREADS: _ALL,
     Action.CLOSE_THREAD: _STAFF,
     Action.DELETE_THREAD: _OWNER,
