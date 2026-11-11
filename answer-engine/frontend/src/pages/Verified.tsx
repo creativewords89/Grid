@@ -56,7 +56,10 @@ export function Verified() {
           key={openId}
           id={openId}
           startEditing={editOnOpen}
-          onBack={() => open(null)}
+          onBack={(to) => {
+            if (to) setPick(to);
+            open(null);
+          }}
           onOpen={open}
         />
       ) : (
@@ -341,7 +344,7 @@ function Detail({
 }: {
   id: string;
   startEditing?: boolean;
-  onBack: () => void;
+  onBack: (to?: Pick) => void;
   onOpen: (id: string, edit?: boolean) => void;
 }) {
   const [va, setVa] = useState<VerifiedDetail | null>(null);
@@ -434,9 +437,37 @@ function Detail({
 
   return (
     <>
-      <button className="link-button" onClick={onBack}>
-        ← Verified Answers
-      </button>
+      <nav className="crumbs" aria-label="Breadcrumb">
+        <button className="link-button" onClick={() => onBack({ topic: null, subtopic: null })}>
+          Verified Answers
+        </button>
+        {va && (
+          <>
+            <span aria-hidden="true">›</span>
+            <button
+              className="link-button"
+              onClick={() => onBack({ topic: va.topic, subtopic: null })}
+            >
+              {va.topic || NO_TOPIC}
+            </button>
+            {va.subtopic && (
+              <>
+                <span aria-hidden="true">›</span>
+                <button
+                  className="link-button"
+                  onClick={() => onBack({ topic: va.topic, subtopic: va.subtopic })}
+                >
+                  {va.subtopic}
+                </button>
+              </>
+            )}
+            <span aria-hidden="true">›</span>
+            <span className="crumbs-here" aria-current="page" title={va.question}>
+              {va.question}
+            </span>
+          </>
+        )}
+      </nav>
       {notice && <Alert kind={notice.kind}>{notice.text}</Alert>}
       {va && (
         <div className="stack">
@@ -447,11 +478,25 @@ function Detail({
               <span className={`pill pill-va-${va.status}`}>
                 {{ active: "Active", disabled: "Disabled", expired: "Expired" }[va.status]}
               </span>{" "}
-              {va.topic && `${[va.topic, va.subtopic].filter(Boolean).join(" › ")} · `}
               Version {va.version}
               {va.approved_by && ` · approved by ${va.approved_by.name}`} ·{" "}
               {formatDate(va.updated_at)}
             </p>
+            {va.origin_thread && (
+              <p className="small va-from">
+                From the Question Bank:{" "}
+                <a
+                  href={`/question-bank?set=${va.origin_thread.set_id}&thread=${va.origin_thread.id}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    const o = va.origin_thread;
+                    if (o) navigate(`/question-bank?set=${o.set_id}&thread=${o.id}`);
+                  }}
+                >
+                  {va.origin_thread.set_name} · Row {va.origin_thread.rows.join(", ")}
+                </a>
+              </p>
+            )}
             {va.also_asked && !editing && <AlsoAsked text={va.also_asked} />}
           </div>
           {va.needs_check && (

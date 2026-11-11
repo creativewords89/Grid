@@ -269,6 +269,28 @@ def test_two_selected_answers_stay_separate_when_approved(loaded: TestClient, db
     assert sorted(queued) == sorted([one.record_id, two.record_id])
 
 
+def test_a_verified_answer_traces_back_to_its_thread(
+    loaded: TestClient,
+    db: Session,
+    make_user: UserFactory,
+    web: Callable[[User], TestClient],
+) -> None:
+    save(loaded, "s315", "approved")
+    one = live(db)[0]
+
+    origin = loaded.get(f"/api/verified/{one.id}").json()["origin_thread"]
+
+    assert origin == {
+        "id": thread_id(loaded, "s315"),
+        "set_id": first_set(loaded),
+        "set_name": "Local SEO group",
+        "rows": [315],
+    }
+    # Users can't open the Question Bank, so they don't get the link.
+    user = web(make_user(Role.USER))
+    assert user.get(f"/api/verified/{one.id}").json()["origin_thread"] is None
+
+
 def test_approving_again_updates_and_removes_answers(loaded: TestClient, db: Session) -> None:
     save(loaded, "s315", "approved")
     first = live(db)[0]
