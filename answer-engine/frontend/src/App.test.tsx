@@ -102,6 +102,24 @@ test.each([
   ).toEqual(items);
 });
 
+test("the sidebar can be hidden and the choice is remembered", async () => {
+  window.localStorage.removeItem("nav-hidden");
+  mockApi({
+    "GET /auth/me": [200, { user: makeUser(), csrf_token: "t" }],
+    "GET /conversations": [200, []],
+  });
+  render(<App />);
+
+  const nav = await screen.findByRole("navigation", { name: "Main" });
+  await userEvent.click(screen.getByRole("button", { name: "Hide menu" }));
+
+  expect(nav).toHaveClass("hidden");
+  expect(window.localStorage.getItem("nav-hidden")).toBe("1");
+  await userEvent.click(screen.getByRole("button", { name: "Show menu" }));
+  expect(nav).not.toHaveClass("hidden");
+  window.localStorage.removeItem("nav-hidden");
+});
+
 test("forgot password sends the email and shows the neutral reply", async () => {
   const calls = mockApi({
     "GET /auth/me": unauthenticated,

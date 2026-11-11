@@ -41,6 +41,28 @@ function useWaitingReviews(path: string, staff: boolean): [number, (n: number) =
 }
 
 const POLL_MS = 15_000;
+const NAV_HIDDEN_KEY = "nav-hidden";
+
+/** Desktop: hide the sidebar to give the page more room. Remembered in this browser. */
+function useNavHidden(): [boolean, () => void] {
+  const [hidden, setHidden] = useState(() => {
+    try {
+      return window.localStorage.getItem(NAV_HIDDEN_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggle = () =>
+    setHidden((was) => {
+      try {
+        window.localStorage.setItem(NAV_HIDDEN_KEY, was ? "0" : "1");
+      } catch {
+        // Storage blocked: the choice lasts until the page reloads.
+      }
+      return !was;
+    });
+  return [hidden, toggle];
+}
 
 /** Live updates (SPEC section 2): poll every 15 s while the tab is visible, and tell the
  * screens what changed. */
@@ -83,6 +105,7 @@ export function Shell({ path, children }: { path: string; children: ReactNode })
   const { user, signOut } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const [navHidden, toggleNavHidden] = useNavHidden();
   const [waiting, setWaiting] = useWaitingReviews(
     path,
     user?.role === "owner" || user?.role === "reviewer",
@@ -104,6 +127,15 @@ export function Shell({ path, children }: { path: string; children: ReactNode })
           aria-label="Menu"
           aria-expanded={navOpen}
           onClick={() => setNavOpen(!navOpen)}
+        >
+          ☰
+        </button>
+        <button
+          className="icon-button nav-collapse"
+          aria-label={navHidden ? "Show menu" : "Hide menu"}
+          title={navHidden ? "Show menu" : "Hide menu"}
+          aria-expanded={!navHidden}
+          onClick={toggleNavHidden}
         >
           ☰
         </button>
@@ -141,7 +173,10 @@ export function Shell({ path, children }: { path: string; children: ReactNode })
         </div>
       </header>
       <div className="body">
-        <nav className={`sidebar ${navOpen ? "open" : ""}`} aria-label="Main">
+        <nav
+          className={`sidebar${navOpen ? " open" : ""}${navHidden ? " hidden" : ""}`}
+          aria-label="Main"
+        >
           {NAV.filter((item) => !item.roles || item.roles.includes(user.role)).map((item) => (
             <a
               key={item.path}
