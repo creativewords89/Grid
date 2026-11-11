@@ -95,7 +95,7 @@ test("editing saves the new answer", async () => {
   });
   render(<App />);
 
-  await userEvent.click(await screen.findByRole("button", { name: "Edit" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Edit answer" }));
   const box = screen.getByLabelText("Answer");
   await userEvent.clear(box);
   await userEvent.type(box, "Two weeks.");
@@ -124,7 +124,7 @@ test("people who can't manage only read", async () => {
   render(<App />);
 
   expect(await screen.findByText("Usually 1-2 weeks.", { exact: false })).toBeVisible();
-  expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+  expect(screen.queryByRole("button", { name: /Edit/ })).toBeNull();
   expect(screen.queryByRole("button", { name: "Mark as checked" })).toBeNull();
 });
 
@@ -241,45 +241,51 @@ test("answers are grouped by topic and a topic can be chosen", async () => {
   expect(screen.getByRole("region", { name: "Verification" })).toHaveTextContent(row.question);
 });
 
-test("an answer is set apart from its question and lists the other answers", async () => {
+test("every answer to a question sits side by side, each with its own actions", async () => {
   window.history.pushState(null, "", "/verified?id=v1");
+  const group = [
+    { id: "v1", answer: "Yes, show it.", applies_when: "If customers visit you", status: "active" },
+    {
+      id: "v2",
+      answer: "No, hide it.\n\nSet service areas.",
+      applies_when: "If you travel to customers",
+      status: "active",
+    },
+    { id: "v3", answer: "It depends.", applies_when: null, status: "disabled" },
+  ] as VerifiedDetail["group"];
   const two: VerifiedDetail = {
     ...detail,
     question: "Should I show my address?",
+    answer: "Yes, show it.",
     applies_when: "If customers visit you",
     also_asked: "Hi all, I run a shop and wonder about my address",
-    group: [
-      {
-        id: "v1",
-        answer: "Yes, show it.",
-        applies_when: "If customers visit you",
-        status: "active",
-      },
-      {
-        id: "v2",
-        answer: "No, hide it.\nSet service areas.",
-        applies_when: "If you travel to customers",
-        status: "active",
-      },
-    ],
+    group,
   };
-  mockApi({
+  const calls = mockApi({
     "GET /auth/me": reviewer,
     "GET /reviews/count": [200, { waiting: 0 }],
     "GET /verified/v1": [200, two],
     "GET /verified/v1/history": [200, []],
-    "GET /verified/v2": [200, { ...two, id: "v2", answer: "No, hide it.\nSet service areas." }],
+    "POST /verified/v2/disable": [200, two],
+    "GET /verified/v2": [200, { ...two, id: "v2", answer: group[1]!.answer }],
     "GET /verified/v2/history": [200, []],
+    "GET /verified?show=all": [200, page],
   });
   render(<App />);
 
-  const answer = await screen.findByRole("region", { name: "Answer" });
-  expect(within(answer).getByText("Answer 1 of 2")).toBeVisible();
-  expect(within(answer).getByText("When it applies: If customers visit you")).toBeVisible();
+  const answers = await screen.findByRole("region", { name: "Answers" });
+  expect(answers.querySelector(".va-grid")).toHaveAttribute("data-n", "3");
+  const second = within(answers).getByRole("article", { name: "Answer 2" });
+  expect(within(second).getByText("When it applies: If you travel to customers")).toBeVisible();
+  expect(within(second).getByText("Set service areas.")).toBeVisible();
+  expect(within(answers).getByRole("article", { name: "Answer 3" })).toHaveTextContent("Disabled");
   expect(screen.getByText("Also asked as")).toBeVisible();
-  const others = screen.getByRole("region", { name: "Other answers to this question" });
-  await userEvent.click(within(others).getByRole("button", { name: /Answer 2/ }));
 
-  expect(await screen.findByText("Answer 2 of 2")).toBeVisible();
+  await userEvent.click(within(second).getByRole("button", { name: "Disable" }));
+  expect(calls.some((c) => c.method === "POST" && c.path === "/verified/v2/disable")).toBe(true);
+
+  // Edit on another answer opens it, ready to edit.
+  await userEvent.click(within(second).getByRole("button", { name: "Edit answer 2" }));
+  expect(await screen.findByLabelText("Answer")).toHaveValue("No, hide it.\n\nSet service areas.");
   expect(window.location.search).toBe("?id=v2");
 });

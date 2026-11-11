@@ -43,14 +43,22 @@ export function Verified() {
   const [openId, setOpenId] = useState<string | null>(idFromUrl);
   // Kept here so going back from an answer returns to the same topic.
   const [pick, setPick] = useState<Pick>({ topic: null, subtopic: null });
-  const open = (id: string | null) => {
+  const [editOnOpen, setEditOnOpen] = useState(false);
+  const open = (id: string | null, edit = false) => {
+    setEditOnOpen(edit);
     setOpenId(id);
     navigate(id ? `/verified?id=${id}` : "/verified", true);
   };
   return (
     <section className="page page-wide">
       {openId ? (
-        <Detail key={openId} id={openId} onBack={() => open(null)} onOpen={open} />
+        <Detail
+          key={openId}
+          id={openId}
+          startEditing={editOnOpen}
+          onBack={() => open(null)}
+          onOpen={open}
+        />
       ) : (
         <List onOpen={open} pick={pick} onPick={setPick} />
       )}
@@ -327,12 +335,14 @@ function AlsoAsked({ text }: { text: string }) {
 
 function Detail({
   id,
+  startEditing = false,
   onBack,
   onOpen,
 }: {
   id: string;
+  startEditing?: boolean;
   onBack: () => void;
-  onOpen: (id: string) => void;
+  onOpen: (id: string, edit?: boolean) => void;
 }) {
   const [va, setVa] = useState<VerifiedDetail | null>(null);
   const [versions, setVersions] = useState<VerifiedVersion[]>([]);
@@ -345,7 +355,7 @@ function Detail({
   const [subtopic, setSubtopic] = useState("");
   const [known, setKnown] = useState<VerifiedTopic[]>([]);
   const [expiry, setExpiry] = useState("");
-  const [deleting, setDeleting] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ kind: "error" | "success"; text: string } | null>(null);
 
   const load = useCallback(() => {
@@ -354,6 +364,7 @@ function Detail({
       .then((data) => {
         setVa(data);
         setExpiry(data.expires_at ? data.expires_at.slice(0, 10) : "");
+        if (startEditing) edit(data);
       })
       .catch((err: unknown) =>
         setNotice({ kind: "error", text: err instanceof ApiError ? err.message : "Not loaded." }),
@@ -362,8 +373,25 @@ function Detail({
       .verifiedHistory(id)
       .then(setVersions)
       .catch(() => setVersions([]));
+    // Only on the first load: opened with "Edit" from another answer's box.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
   useEffect(load, [load]);
+
+  function edit(data: VerifiedDetail) {
+    setQuestion(data.question);
+    setAnswer(data.answer);
+    setApplies(data.applies_when ?? "");
+    setAlso(data.also_asked ?? "");
+    setTopic(data.topic);
+    setSubtopic(data.subtopic);
+    setEditing(true);
+    // The topics already used, to pick from.
+    api
+      .listVerified("all", "")
+      .then((found) => setKnown(found.topics))
+      .catch(() => undefined);
+  }
 
   async function run(call: () => Promise<unknown>, done: string) {
     setNotice(null);
@@ -519,73 +547,106 @@ function Detail({
               </div>
             </form>
           ) : (
-            <>
-              <section className="va-answer-block" aria-label="Answer">
-                <div className="va-answer-head">
-                  <span className="va-label va-label-answer">
-                    {va.group.length > 1
-                      ? `Answer ${va.group.findIndex((g) => g.id === va.id) + 1} of ${va.group.length}`
-                      : "Answer"}
+            <section className="va-answers" aria-label="Answers">
+              <h2 className="va-group-head">
+                {va.group.length > 1 ? "Answers" : "Answer"}
+                {va.group.length > 1 && <span className="va-count">{va.group.length}</span>}
+                {va.group.length > 1 && (
+                  <span className="va-hint">
+                    Each is correct on its own; the best fit is used when answering.
                   </span>
-                  {va.applies_when && (
-                    <span className="tag">When it applies: {va.applies_when}</span>
-                  )}
-                </div>
-                <div className="card va-answer-card">
-                  <Markdown text={va.answer} />
-                </div>
-              </section>
-            </>
+                )}
+              </h2>
+              <div className="va-grid" data-n={Math.min(va.group.length, 3)}>
+                {va.group.map((g, n) => {
+                  const mine = g.id === va.id;
+                  const name = va.group.length > 1 ? `Answer ${n + 1}` : "Answer";
+                  return (
+                    <article
+                      key={g.id}
+                      className={`card va-col${mine && va.group.length > 1 ? " va-col-on" : ""}`}
+                      aria-label={name}
+                    >
+                      <div className="va-answer-head">
+                        <span className="va-label va-label-answer">{name}</span>
+                        {g.status !== "active" && (
+                          <span className={`pill pill-va-${g.status}`}>
+                            {
+                              { active: "Active", disabled: "Disabled", expired: "Expired" }[
+                                g.status
+                              ]
+                            }
+                          </span>
+                        )}
+                      </div>
+                      {g.applies_when && (
+                        <span className="tag va-when">When it applies: {g.applies_when}</span>
+                      )}
+                      <div className="va-col-text">
+                        <Markdown text={mine ? va.answer : g.answer} />
+                      </div>
+                      {va.can_manage && (
+                        <div className="row">
+                          <button
+                            className="button button-small"
+                            aria-label={`Edit ${name.toLowerCase()}`}
+                            onClick={() => (mine ? edit(va) : onOpen(g.id, true))}
+                          >
+                            Edit
+                          </button>
+                          {g.status === "active" ? (
+                            <button
+                              className="button button-small"
+                              onClick={() =>
+                                void run(
+                                  () => api.disableVerified(g.id),
+                                  `${name} disabled: it's no longer used.`,
+                                )
+                              }
+                            >
+                              Disable
+                            </button>
+                          ) : (
+                            <button
+                              className="button button-small"
+                              onClick={() =>
+                                void run(
+                                  () => api.enableVerified(g.id),
+                                  `${name} enabled: it's used again.`,
+                                )
+                              }
+                            >
+                              Enable
+                            </button>
+                          )}
+                          <button
+                            className="button button-small button-danger"
+                            onClick={() => setDeleting(g.id)}
+                          >
+                            Delete
+                          </button>
+                          {!mine && (
+                            <button
+                              className="link-button small va-open"
+                              onClick={() => onOpen(g.id)}
+                            >
+                              History
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
           )}
           {va.can_manage && !editing && (
-            <div className="row">
-              <button
-                className="button"
-                onClick={() => {
-                  setQuestion(va.question);
-                  setAnswer(va.answer);
-                  setApplies(va.applies_when ?? "");
-                  setAlso(va.also_asked ?? "");
-                  setTopic(va.topic);
-                  setSubtopic(va.subtopic);
-                  setEditing(true);
-                  // The topics already used, to pick from.
-                  api
-                    .listVerified("all", "")
-                    .then((data) => setKnown(data.topics))
-                    .catch(() => undefined);
-                }}
-              >
-                Edit
-              </button>
-              {va.status === "active" ? (
-                <button
-                  className="button"
-                  onClick={() =>
-                    void run(() => api.disableVerified(id), "Disabled: it's no longer used.")
-                  }
-                >
-                  Disable
-                </button>
-              ) : (
-                <button
-                  className="button"
-                  onClick={() =>
-                    void run(() => api.enableVerified(id), "Enabled: it's used again.")
-                  }
-                >
-                  Enable
-                </button>
-              )}
-              <button className="button button-danger" onClick={() => setDeleting(true)}>
-                Delete
-              </button>
-            </div>
-          )}
-          {va.can_manage && (
             <form className="card row" onSubmit={saveExpiry}>
               <label className="inline" htmlFor="va-expiry">
-                Expires on
+                {va.group.length > 1
+                  ? `Answer ${va.group.findIndex((g) => g.id === va.id) + 1} expires on`
+                  : "Expires on"}
               </label>
               <input
                 id="va-expiry"
@@ -596,37 +657,6 @@ function Detail({
               />
               <button className="button">{expiry ? "Set expiry" : "Never expires"}</button>
             </form>
-          )}
-          {!editing && va.group.length > 1 && (
-            <section aria-label="Other answers to this question">
-              <h2 className="va-group-head">
-                Other answers to this question
-                <span className="va-count">{va.group.length - 1}</span>
-              </h2>
-              <p className="muted small">
-                Each is a separate correct answer; the best fit is used when answering.
-              </p>
-              <ul className="review-list">
-                {va.group.map((g, n) =>
-                  g.id === va.id ? null : (
-                    <li key={g.id} className="card">
-                      <button className="review-row" onClick={() => onOpen(g.id)}>
-                        <span className="review-num">Answer {n + 1}</span>
-                        <span className="review-main">
-                          {g.applies_when && (
-                            <strong className="review-q">When it applies: {g.applies_when}</strong>
-                          )}
-                          <span className="muted small va-answer">{firstLine(g.answer)}</span>
-                        </span>
-                        {g.status !== "active" && (
-                          <span className={`pill pill-va-${g.status}`}>{g.status}</span>
-                        )}
-                      </button>
-                    </li>
-                  ),
-                )}
-              </ul>
-            </section>
           )}
           {va.sources.length > 0 && (
             <div>
@@ -652,7 +682,11 @@ function Detail({
           )}
           {versions.length > 0 && (
             <div>
-              <h3>History</h3>
+              <h3>
+                {va.group.length > 1
+                  ? `History of answer ${va.group.findIndex((g) => g.id === va.id) + 1}`
+                  : "History"}
+              </h3>
               <ul className="history">
                 {versions.map((v) => (
                   <li key={v.version}>
@@ -679,16 +713,26 @@ function Detail({
           )}
         </div>
       )}
-      {deleting && va && (
+      {deleting !== null && va && (
         <Confirm
           title="Delete this verified answer?"
           message="It stops being used at once. The Owner can restore it from the trash for 30 days."
           confirmLabel="Delete"
           danger
-          onClose={() => setDeleting(false)}
+          onClose={() => setDeleting(null)}
           onConfirm={() => {
-            setDeleting(false);
-            void api.deleteVerified(id).then(onBack);
+            const gone = deleting;
+            setDeleting(null);
+            const left = va.group.find((g) => g.id !== gone);
+            void api
+              .deleteVerified(gone)
+              .then(() => (gone !== id ? load() : left ? onOpen(left.id) : onBack()))
+              .catch((err: unknown) =>
+                setNotice({
+                  kind: "error",
+                  text: err instanceof ApiError ? err.message : "Not deleted.",
+                }),
+              );
           }}
         />
       )}

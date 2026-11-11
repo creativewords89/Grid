@@ -3384,11 +3384,6 @@ details.original summary {
   overflow: hidden;
 }
 
-.va-answer-block {
-  display: grid;
-  gap: 8px;
-}
-
 .va-answer-head {
   display: flex;
   flex-wrap: wrap;
@@ -3400,6 +3395,63 @@ details.original summary {
   color: var(--ok);
 }
 
-.va-answer-card {
-  border-left: 4px solid var(--ok);
+/* All answers to a question side by side: at most 3 in a row, more wrap. */
+.va-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(var(--va-cols, 1), minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.va-grid[data-n="2"] {
+  --va-cols: 2;
+}
+
+.va-grid[data-n="3"] {
+  --va-cols: 3;
+}
+
+.va-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  border-top: 4px solid var(--ok);
+}
+
+.va-col-on {
+  outline: 2px solid var(--ok);
+  outline-offset: -1px;
+}
+
+.va-col-text {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.va-when {
+  align-self: flex-start;
+}
+
+.va-hint {
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.va-open {
+  margin-left: auto;
+}
+
+@media (max-width: 1100px) {
+  .va-grid[data-n="3"] {
+    --va-cols: 2;
+  }
+}
+
+@media (max-width: 700px) {
+  .va-grid {
+    --va-cols: 1 !important;
+  }
 }
