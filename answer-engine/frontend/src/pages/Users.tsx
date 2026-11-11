@@ -62,7 +62,7 @@ export function Users() {
   }
 
   return (
-    <section className="page">
+    <section className="page page-wide">
       <div className="page-head">
         <h1>Users</h1>
         <button className="button button-primary" onClick={() => setInviting(true)}>

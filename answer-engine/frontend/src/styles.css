@@ -429,6 +429,11 @@ a {
   gap: 16px;
 }
 
+/* Lists and tables use the whole width of the screen; forms stay narrow to read. */
+.page-wide {
+  max-width: 1800px;
+}
+
 .page h1 {
   margin: 0;
 }

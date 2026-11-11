@@ -41,7 +41,7 @@ export function Documents() {
   const isOwner = user?.role === "owner";
 
   return (
-    <section className="page">
+    <section className="page page-wide">
       <div className="page-head">
         <h1>Documents</h1>
       </div>
