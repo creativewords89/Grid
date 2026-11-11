@@ -185,6 +185,28 @@ test("answers given before in another set can be reused", async () => {
   expect(screen.getByLabelText("Answer")).toHaveValue("List the main town only.");
 });
 
+test("a similar thread opens when its title is clicked", async () => {
+  const other = {
+    ...detail,
+    id: "t2",
+    key: "s316",
+    title: "Can a plumber add city names to services?",
+    rows: [316],
+    similar: [],
+    answer: { ...detail.answer, title: "Can a plumber add city names to services?" },
+  };
+  mockApi({ ...base, "GET /qb/threads/t2": [200, other] });
+  render(<App />);
+
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Can a plumber add city names to services?" }),
+  );
+
+  expect(
+    await screen.findByRole("heading", { name: "Can a plumber add city names to services?" }),
+  ).toBeVisible();
+});
+
 test("the set picker switches sets and is remembered", async () => {
   mockApi({
     ...base,
