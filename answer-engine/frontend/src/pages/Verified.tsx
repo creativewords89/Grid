@@ -50,7 +50,7 @@ export function Verified() {
   return (
     <section className="page page-wide">
       {openId ? (
-        <Detail id={openId} onBack={() => open(null)} />
+        <Detail key={openId} id={openId} onBack={() => open(null)} onOpen={open} />
       ) : (
         <List onOpen={open} pick={pick} onPick={setPick} />
       )}
@@ -308,7 +308,32 @@ function ImportButton({ onDone }: { onDone: () => void }) {
   );
 }
 
-function Detail({ id, onBack }: { id: string; onBack: () => void }) {
+/** The post's own wording: long, so two lines until opened. */
+function AlsoAsked({ text }: { text: string }) {
+  const [more, setMore] = useState(false);
+  const long = text.length > 220;
+  return (
+    <div className="va-also">
+      <span className="va-label">Also asked as</span>
+      <p className={long && !more ? "va-clamp" : undefined}>{text}</p>
+      {long && (
+        <button className="link-button small" onClick={() => setMore(!more)}>
+          {more ? "Show less" : "Show more"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function Detail({
+  id,
+  onBack,
+  onOpen,
+}: {
+  id: string;
+  onBack: () => void;
+  onOpen: (id: string) => void;
+}) {
   const [va, setVa] = useState<VerifiedDetail | null>(null);
   const [versions, setVersions] = useState<VerifiedVersion[]>([]);
   const [editing, setEditing] = useState(false);
@@ -387,7 +412,8 @@ function Detail({ id, onBack }: { id: string; onBack: () => void }) {
       {notice && <Alert kind={notice.kind}>{notice.text}</Alert>}
       {va && (
         <div className="stack">
-          <div>
+          <div className="va-question">
+            <span className="va-label">Question</span>
             <h1>{va.question}</h1>
             <p className="muted">
               <span className={`pill pill-va-${va.status}`}>
@@ -398,6 +424,7 @@ function Detail({ id, onBack }: { id: string; onBack: () => void }) {
               {va.approved_by && ` · approved by ${va.approved_by.name}`} ·{" "}
               {formatDate(va.updated_at)}
             </p>
+            {va.also_asked && !editing && <AlsoAsked text={va.also_asked} />}
           </div>
           {va.needs_check && (
             <Alert kind="info">
@@ -492,25 +519,23 @@ function Detail({ id, onBack }: { id: string; onBack: () => void }) {
               </div>
             </form>
           ) : (
-            <div className="card">
-              {(va.applies_when || va.also_asked) && (
-                <dl className="va-meta">
+            <>
+              <section className="va-answer-block" aria-label="Answer">
+                <div className="va-answer-head">
+                  <span className="va-label va-label-answer">
+                    {va.group.length > 1
+                      ? `Answer ${va.group.findIndex((g) => g.id === va.id) + 1} of ${va.group.length}`
+                      : "Answer"}
+                  </span>
                   {va.applies_when && (
-                    <>
-                      <dt>When it applies</dt>
-                      <dd>{va.applies_when}</dd>
-                    </>
+                    <span className="tag">When it applies: {va.applies_when}</span>
                   )}
-                  {va.also_asked && (
-                    <>
-                      <dt>Also asked as</dt>
-                      <dd>{va.also_asked}</dd>
-                    </>
-                  )}
-                </dl>
-              )}
-              <Markdown text={va.answer} />
-            </div>
+                </div>
+                <div className="card va-answer-card">
+                  <Markdown text={va.answer} />
+                </div>
+              </section>
+            </>
           )}
           {va.can_manage && !editing && (
             <div className="row">
@@ -571,6 +596,37 @@ function Detail({ id, onBack }: { id: string; onBack: () => void }) {
               />
               <button className="button">{expiry ? "Set expiry" : "Never expires"}</button>
             </form>
+          )}
+          {!editing && va.group.length > 1 && (
+            <section aria-label="Other answers to this question">
+              <h2 className="va-group-head">
+                Other answers to this question
+                <span className="va-count">{va.group.length - 1}</span>
+              </h2>
+              <p className="muted small">
+                Each is a separate correct answer; the best fit is used when answering.
+              </p>
+              <ul className="review-list">
+                {va.group.map((g, n) =>
+                  g.id === va.id ? null : (
+                    <li key={g.id} className="card">
+                      <button className="review-row" onClick={() => onOpen(g.id)}>
+                        <span className="review-num">Answer {n + 1}</span>
+                        <span className="review-main">
+                          {g.applies_when && (
+                            <strong className="review-q">When it applies: {g.applies_when}</strong>
+                          )}
+                          <span className="muted small va-answer">{firstLine(g.answer)}</span>
+                        </span>
+                        {g.status !== "active" && (
+                          <span className={`pill pill-va-${g.status}`}>{g.status}</span>
+                        )}
+                      </button>
+                    </li>
+                  ),
+                )}
+              </ul>
+            </section>
           )}
           {va.sources.length > 0 && (
             <div>

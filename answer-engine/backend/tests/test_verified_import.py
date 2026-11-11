@@ -271,6 +271,20 @@ def test_editing_when_it_applies_and_the_wordings(boss: TestClient, db: Session)
     assert [row["id"] for row in listed] == [str(first.id)]
 
 
+def test_an_answer_lists_every_answer_to_its_question(boss: TestClient, db: Session) -> None:
+    upload(boss, TWO_ANSWERS)
+    first, second, third = answers(db)
+
+    group = boss.get(f"/api/verified/{second.id}").json()["group"]
+
+    assert [(g["id"], g["applies_when"]) for g in group] == [
+        (str(first.id), "If customers visit you"),
+        (str(second.id), "If you travel to customers"),
+    ]
+    alone = boss.get(f"/api/verified/{third.id}").json()["group"]
+    assert [g["id"] for g in alone] == [str(third.id)]
+
+
 # --- topics (step 30) ---------------------------------------------------------------------------
 
 
