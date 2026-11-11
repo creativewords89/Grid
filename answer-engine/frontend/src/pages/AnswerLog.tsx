@@ -29,6 +29,19 @@ function dateTime(value: string): string {
   return new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
+/** The date on one line and the time under it, so the column stays narrow. */
+function DateCell({ value }: { value: string }) {
+  const at = new Date(value);
+  return (
+    <span className="log-date">
+      {at.toLocaleDateString(undefined, { dateStyle: "medium" })}
+      <span className="muted small">
+        {at.toLocaleTimeString(undefined, { timeStyle: "short" })}
+      </span>
+    </span>
+  );
+}
+
 function percent(value: number | null): string {
   return value === null ? "—" : `${value}%`;
 }
@@ -172,7 +185,7 @@ function Answers() {
       {error && <Alert kind="error">{error}</Alert>}
       {data && (
         <div className="card table-card">
-          <table className="table">
+          <table className="table log-table">
             <thead>
               <tr>
                 <th>Question</th>
@@ -180,15 +193,15 @@ function Answers() {
                 <th>Status</th>
                 <th className="hide-narrow">Asked by</th>
                 <th className="hide-narrow">Date</th>
-                <th className="hide-narrow">Sources</th>
-                <th className="hide-narrow">Feedback</th>
+                <th className="hide-narrow num">Sources</th>
+                <th className="hide-narrow num">Feedback</th>
               </tr>
             </thead>
             <tbody>
               {data.items.map((row) => (
                 <tr key={row.id}>
-                  <td>
-                    <button className="link-button" onClick={() => setOpen(row.id)}>
+                  <td className="log-question">
+                    <button className="log-q" title={row.question} onClick={() => setOpen(row.id)}>
                       {row.question}
                     </button>
                     <div className="muted small">
@@ -199,11 +212,13 @@ function Answers() {
                   <td>
                     <ConfidenceCell row={row} />
                   </td>
-                  <td>{STATUS_NAMES[row.status]}</td>
-                  <td className="hide-narrow">{row.asked_by?.name ?? "—"}</td>
-                  <td className="hide-narrow">{dateTime(row.created_at)}</td>
-                  <td className="hide-narrow">{row.source_count}</td>
-                  <td className="hide-narrow">
+                  <td className="nowrap">{STATUS_NAMES[row.status]}</td>
+                  <td className="hide-narrow nowrap">{row.asked_by?.name ?? "—"}</td>
+                  <td className="hide-narrow nowrap">
+                    <DateCell value={row.created_at} />
+                  </td>
+                  <td className="hide-narrow num">{row.source_count}</td>
+                  <td className="hide-narrow num">
                     {row.feedback === "up" ? "👍" : row.feedback === "down" ? "👎" : ""}
                   </td>
                 </tr>
