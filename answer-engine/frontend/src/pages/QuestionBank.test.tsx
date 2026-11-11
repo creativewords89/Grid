@@ -207,6 +207,17 @@ test("a similar thread opens when its title is clicked", async () => {
   ).toBeVisible();
 });
 
+test("a link from a verified answer opens its set and thread", async () => {
+  window.history.pushState(null, "", "/question-bank?set=s1&thread=t1");
+  window.localStorage.setItem("qb-set", "s2");
+  mockApi(base);
+  render(<App />);
+
+  expect(await screen.findByRole("heading", { name: row.title })).toBeVisible();
+  expect(screen.getByLabelText("Question set")).toHaveValue("s1");
+  expect(screen.getByRole("button", { name: "All 1", pressed: true })).toBeVisible();
+});
+
 test("the set picker switches sets and is remembered", async () => {
   mockApi({
     ...base,

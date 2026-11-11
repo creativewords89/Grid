@@ -17,10 +17,13 @@ from app.api.answer_log import Person
 from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
 from app.db.models import (
+    FbThread,
+    QuestionSet,
     StoredFile,
     User,
     VerifiedAnswer,
     VerifiedAnswerVersion,
+    VerifiedOrigin,
     VerifiedStatus,
 )
 from app.errors import ApiError
@@ -63,7 +66,17 @@ class GroupAnswer(BaseModel):
     status: str
 
 
+class OriginThread(BaseModel):
+    """The Question Bank thread an answer was approved from (step 29), to trace it back."""
+
+    id: uuid.UUID
+    set_id: uuid.UUID
+    set_name: str
+    rows: list[int]
+
+
 class VerifiedDetail(VerifiedRow):
+    origin_thread: OriginThread | None
     group: list[GroupAnswer]  # every answer to this question, this one included, in order
     sources: list[dict[str, Any]]
     origin_answer_id: uuid.UUID | None
@@ -254,6 +267,21 @@ def _topics(rows: list[VerifiedAnswer]) -> list[TopicCount]:
     ]
 
 
+def _origin_thread(db: Db, va: VerifiedAnswer) -> OriginThread | None:
+    if va.origin != VerifiedOrigin.FACEBOOK or not va.answer_group:
+        return None
+    prefix, _, key = va.answer_group.partition(":")
+    found = db.execute(
+        select(FbThread, QuestionSet)
+        .join(QuestionSet, QuestionSet.id == FbThread.set_id)
+        .where(QuestionSet.prefix == prefix, FbThread.key == key)
+    ).first()
+    if found is None:
+        return None
+    thread, qset = found
+    return OriginThread(id=thread.id, set_id=qset.id, set_name=qset.name, rows=thread.rows)
+
+
 def detail(db: Db, va: VerifiedAnswer, me: User) -> VerifiedDetail:
     people = _people(db, {va.approved_by})
     files = {
@@ -281,6 +309,8 @@ def detail(db: Db, va: VerifiedAnswer, me: User) -> VerifiedDetail:
     )
     return VerifiedDetail(
         **_row(va, people),
+        # Only for people who can open the Question Bank (it holds commenters' names).
+        origin_thread=_origin_thread(db, va) if can(me, Action.WORK_QUESTION_BANK) else None,
         group=[
             GroupAnswer(
                 id=g.id, answer=g.answer, applies_when=g.applies_when, status=_shown_status(g)

@@ -3455,3 +3455,35 @@ details.original summary {
     --va-cols: 1 !important;
   }
 }
+
+/* Breadcrumb on a verified answer: Verified Answers › topic › subtopic › question. */
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.crumbs .link-button {
+  text-decoration: none;
+}
+
+.crumbs .link-button:hover {
+  text-decoration: underline;
+}
+
+.crumbs-here {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.va-from {
+  margin: 0;
+  color: var(--muted);
+}

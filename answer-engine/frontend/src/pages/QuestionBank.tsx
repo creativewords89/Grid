@@ -82,7 +82,9 @@ type Panel = "new" | "settings" | null;
 export function QuestionBank() {
   const [sets, setSets] = useState<QuestionSetList | null>(null);
   const [error, setError] = useState("");
-  const [setId, setSetId] = useState(storedSet);
+  // A link from a verified answer (?set=…&thread=…) opens that thread.
+  const [link] = useState(() => new URLSearchParams(window.location.search));
+  const [setId, setSetId] = useState(() => link.get("set") ?? storedSet());
   const [panel, setPanel] = useState<Panel>(null);
 
   const reloadSets = useCallback(() => {
@@ -126,6 +128,7 @@ export function QuestionBank() {
       onPanel={setPanel}
       onChoose={choose}
       onSetsChanged={reloadSets}
+      firstThread={current.id === link.get("set") ? link.get("thread") : null}
     />
   );
 }
@@ -137,7 +140,9 @@ function SetView({
   onPanel,
   onChoose,
   onSetsChanged,
+  firstThread,
 }: {
+  firstThread: string | null;
   current: QuestionSet;
   sets: QuestionSetList;
   panel: Panel;
@@ -147,11 +152,11 @@ function SetView({
 }) {
   const [list, setList] = useState<FbThreadList | null>(null);
   const [error, setError] = useState("");
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(firstThread);
   const [q, setQ] = useState("");
   const [topic, setTopic] = useState("");
   const [sub, setSub] = useState("");
-  const [filter, setFilter] = useState<Filter>("todo");
+  const [filter, setFilter] = useState<Filter>(firstThread ? "all" : "todo");
 
   const reload = useCallback(() => {
     api

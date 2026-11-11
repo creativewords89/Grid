@@ -42,6 +42,7 @@ const page: VerifiedPage = {
 };
 const detail: VerifiedDetail = {
   ...row,
+  origin_thread: null,
   group: [{ id: "v1", answer: row.answer, applies_when: null, status: "active" }],
   sources: [{ file_id: "f1", name: "Onboarding.pdf", available: false }],
   origin_answer_id: "a1",
@@ -288,4 +289,40 @@ test("every answer to a question sits side by side, each with its own actions", 
   await userEvent.click(within(second).getByRole("button", { name: "Edit answer 2" }));
   expect(await screen.findByLabelText("Answer")).toHaveValue("No, hide it.\n\nSet service areas.");
   expect(window.location.search).toBe("?id=v2");
+});
+
+test("a breadcrumb shows the topic and leads back to it, and the source thread is linked", async () => {
+  window.history.pushState(null, "", "/verified?id=v1");
+  mockApi({
+    "GET /auth/me": reviewer,
+    "GET /reviews/count": [200, { waiting: 0 }],
+    "GET /verified/v1": [
+      200,
+      {
+        ...detail,
+        origin_thread: { id: "t9", set_id: "s1", set_name: "Facebook group", rows: [604] },
+      },
+    ],
+    "GET /verified/v1/history": [200, []],
+    "GET /verified?show=active": [200, page],
+  });
+  render(<App />);
+
+  const crumbs = await screen.findByRole("navigation", { name: "Breadcrumb" });
+  await within(crumbs).findByRole("button", { name: "Verification" });
+  expect(crumbs).toHaveTextContent(
+    `Verified Answers›Google Business Profile›Verification›${row.question}`,
+  );
+  expect(screen.getByRole("link", { name: "Facebook group · Row 604" })).toHaveAttribute(
+    "href",
+    "/question-bank?set=s1&thread=t9",
+  );
+
+  await userEvent.click(within(crumbs).getByRole("button", { name: "Google Business Profile" }));
+
+  const topics = await screen.findByRole("navigation", { name: "Topics" });
+  expect(within(topics).getByRole("button", { name: /Google Business Profile/ })).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
 });
