@@ -5,6 +5,7 @@ transaction (SPEC 6.4): active ones are upserted into the `verified` namespace, 
 expired and deleted ones are removed. The caller commits.
 """
 
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -230,8 +231,12 @@ def edit(
     checked: bool = False,
     applies_when: str | None = None,  # step 26; "" clears it
     also_asked: str | None = None,
+    topic: str | None = None,  # step 30; "" clears it
+    subtopic: str | None = None,
 ) -> VerifiedAnswer:
     before = {
+        "topic": va.topic,
+        "subtopic": va.subtopic,
         "question": va.question,
         "answer": va.answer,
         "applies_when": va.applies_when,
@@ -253,6 +258,9 @@ def edit(
             if cleaned != getattr(va, name):
                 setattr(va, name, cleaned)
                 text_changed = True
+    for name, value in (("topic", topic), ("subtopic", subtopic)):
+        if value is not None:
+            setattr(va, name, clean_topic(value))
     if change_expiry:
         va.expires_at = expires_at
         if va.status == VerifiedStatus.EXPIRED and not is_expired(va):
@@ -266,6 +274,8 @@ def edit(
         va.version += 1
         add_version(db, va, by)
     after = {
+        "topic": va.topic,
+        "subtopic": va.subtopic,
         "question": va.question,
         "answer": va.answer,
         "applies_when": va.applies_when,
@@ -276,8 +286,17 @@ def edit(
     changes = audit.diff(before, after)
     if changes:
         audit.record(db, by, "update", "verified_answer", va.id, va.question, changes)
-        sync(db, va)
+        # Topics only group the page: Pinecone needs no update for them.
+        if any(c.get("field") not in ("topic", "subtopic") for c in changes):
+            sync(db, va)
     return va
+
+
+MAX_TOPIC = 100
+
+
+def clean_topic(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()[:MAX_TOPIC]
 
 
 def set_status(db: Session, va: VerifiedAnswer, by: User | None, status: VerifiedStatus) -> None:

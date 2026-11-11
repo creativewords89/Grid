@@ -231,6 +231,8 @@ def sync_verified(db: Session, thread: FbThread, by: User) -> None:
                 also_asked=wordings or None,
                 answer_group=_group(thread),
                 import_key=key,
+                topic=verified.clean_topic(thread.topic),
+                subtopic=verified.clean_topic(thread.subtopic),
                 status=VerifiedStatus.ACTIVE,
                 origin=VerifiedOrigin.FACEBOOK,
                 created_by=by.id,
@@ -243,7 +245,17 @@ def sync_verified(db: Session, thread: FbThread, by: User) -> None:
             verified.sync(db, made)
             audit.record(db, by, "create", "verified_answer", made.id, made.question)
             continue
-        verified.edit(db, current, by, question, text, applies_when=label, also_asked=wordings)
+        verified.edit(
+            db,
+            current,
+            by,
+            question,
+            text,
+            applies_when=label,
+            also_asked=wordings,
+            topic=thread.topic,
+            subtopic=thread.subtopic,
+        )
         current.approved_by = by.id
         if current.status != VerifiedStatus.ACTIVE:
             # An expiry date that has passed is left for a person to decide.

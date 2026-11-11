@@ -644,6 +644,9 @@ class VerifiedAnswer(TimestampMixin, Base):
     also_asked: Mapped[str | None] = mapped_column(Text)
     answer_group: Mapped[str | None] = mapped_column(Text)
     import_key: Mapped[str | None] = mapped_column(Text)
+    # Step 30: grouped on the Verified Answers page, like the Question Bank.
+    topic: Mapped[str] = mapped_column(Text, default="", server_default="")
+    subtopic: Mapped[str] = mapped_column(Text, default="", server_default="")
 
     __table_args__ = (
         Index("ix_verified_answers_origin_answer", "origin_answer_id"),

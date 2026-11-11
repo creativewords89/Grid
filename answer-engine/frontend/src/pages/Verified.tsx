@@ -5,6 +5,8 @@ import {
   type VerifiedDetail,
   type VerifiedImport,
   type VerifiedPage,
+  type VerifiedRow,
+  type VerifiedTopic,
   type VerifiedVersion,
 } from "../api";
 import { Markdown } from "../components/Markdown";
@@ -32,20 +34,102 @@ function firstLine(text: string): string {
   return line.length > 160 ? `${line.slice(0, 159)}…` : line;
 }
 
+const NO_TOPIC = "No topic";
+
+/** The chosen topic and subtopic; null is "all". "" is "No topic". */
+type Pick = { topic: string | null; subtopic: string | null };
+
 export function Verified() {
   const [openId, setOpenId] = useState<string | null>(idFromUrl);
+  // Kept here so going back from an answer returns to the same topic.
+  const [pick, setPick] = useState<Pick>({ topic: null, subtopic: null });
   const open = (id: string | null) => {
     setOpenId(id);
     navigate(id ? `/verified?id=${id}` : "/verified", true);
   };
   return (
     <section className="page page-wide">
-      {openId ? <Detail id={openId} onBack={() => open(null)} /> : <List onOpen={open} />}
+      {openId ? (
+        <Detail id={openId} onBack={() => open(null)} />
+      ) : (
+        <List onOpen={open} pick={pick} onPick={setPick} />
+      )}
     </section>
   );
 }
 
-function List({ onOpen }: { onOpen: (id: string) => void }) {
+/** Rows in groups: by topic, or by subtopic once a topic is chosen. Rows come sorted. */
+function groupsOf(rows: VerifiedRow[], bySubtopic: boolean): [string, VerifiedRow[]][] {
+  const groups: [string, VerifiedRow[]][] = [];
+  for (const row of rows) {
+    const name = bySubtopic ? row.subtopic : row.topic;
+    const last = groups.at(-1);
+    if (last && last[0] === name) last[1].push(row);
+    else groups.push([name, [row]]);
+  }
+  return groups;
+}
+
+function TopicNav({
+  topics,
+  total,
+  pick,
+  onPick,
+}: {
+  topics: VerifiedTopic[];
+  total: number;
+  pick: Pick;
+  onPick: (p: Pick) => void;
+}) {
+  return (
+    <nav className="va-topics" aria-label="Topics">
+      <button
+        className="va-topic"
+        aria-current={pick.topic === null}
+        onClick={() => onPick({ topic: null, subtopic: null })}
+      >
+        <span>All topics</span>
+        <span className="va-count">{total}</span>
+      </button>
+      {topics.map((t) => (
+        <div key={t.name}>
+          <button
+            className="va-topic"
+            aria-current={pick.topic === t.name && pick.subtopic === null}
+            aria-expanded={pick.topic === t.name}
+            onClick={() => onPick({ topic: t.name, subtopic: null })}
+          >
+            <span>{t.name || NO_TOPIC}</span>
+            <span className="va-count">{t.count}</span>
+          </button>
+          {pick.topic === t.name &&
+            t.subtopics.length > 1 &&
+            t.subtopics.map((sub) => (
+              <button
+                key={sub.name}
+                className="va-topic va-subtopic"
+                aria-current={pick.subtopic === sub.name}
+                onClick={() => onPick({ topic: t.name, subtopic: sub.name })}
+              >
+                <span>{sub.name || "Other"}</span>
+                <span className="va-count">{sub.count}</span>
+              </button>
+            ))}
+        </div>
+      ))}
+    </nav>
+  );
+}
+
+function List({
+  onOpen,
+  pick,
+  onPick,
+}: {
+  onOpen: (id: string) => void;
+  pick: Pick;
+  onPick: (p: Pick) => void;
+}) {
   const [show, setShow] = useState<Show>("active");
   const [q, setQ] = useState("");
   const [page, setPage] = useState<VerifiedPage | null>(null);
@@ -65,6 +149,12 @@ function List({ onOpen }: { onOpen: (id: string) => void }) {
       current = false;
     };
   }, [show, q, reload]);
+
+  const shown = (page?.items ?? []).filter(
+    (row) =>
+      (pick.topic === null || row.topic === pick.topic) &&
+      (pick.subtopic === null || row.subtopic === pick.subtopic),
+  );
 
   return (
     <>
@@ -97,29 +187,53 @@ function List({ onOpen }: { onOpen: (id: string) => void }) {
       {error && <Alert kind="error">{error}</Alert>}
       {page && page.items.length === 0 && <p className="muted">Nothing here.</p>}
       {page && page.items.length > 0 && (
-        <ul className="review-list">
-          {page.items.map((row) => (
-            <li key={row.id} className="card">
-              <button className="review-row" onClick={() => onOpen(row.id)}>
-                <span className="review-main">
-                  <strong>{row.question}</strong>
-                  {row.applies_when && (
-                    <span className="tag">When it applies: {row.applies_when}</span>
-                  )}
-                  <span className="muted small">{firstLine(row.answer)}</span>
-                  <span className="muted small">
-                    {row.approved_by ? `Approved by ${row.approved_by.name} · ` : ""}
-                    {formatDate(row.updated_at)}
-                    {row.expires_at && ` · Expires ${formatDate(row.expires_at)}`}
-                  </span>
-                  {row.needs_check && (
-                    <span className="tag tag-warn">{row.needs_check_reason ?? "Needs check"}</span>
-                  )}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <div className="va-layout">
+          <TopicNav topics={page.topics} total={page.items.length} pick={pick} onPick={onPick} />
+          <div className="va-groups">
+            {groupsOf(shown, pick.topic !== null).map(([name, rows]) => {
+              const label = name || (pick.topic === null ? NO_TOPIC : "Other");
+              return (
+                <section key={name} className="va-group" aria-label={label}>
+                  <h2 className="va-group-head">
+                    {label}
+                    <span className="va-count">{rows.length}</span>
+                  </h2>
+                  <ul className="review-list">
+                    {rows.map((row) => (
+                      <li key={row.id} className="card">
+                        <button
+                          className="review-row"
+                          title={row.question}
+                          onClick={() => onOpen(row.id)}
+                        >
+                          <span className="review-main">
+                            <strong className="review-q">{row.question}</strong>
+                            {row.applies_when && (
+                              <span className="tag">When it applies: {row.applies_when}</span>
+                            )}
+                            <span className="muted small va-answer">{firstLine(row.answer)}</span>
+                            <span className="muted small">
+                              {pick.topic === null && row.subtopic ? `${row.subtopic} · ` : ""}
+                              {row.approved_by ? `Approved by ${row.approved_by.name} · ` : ""}
+                              {formatDate(row.updated_at)}
+                              {row.expires_at && ` · Expires ${formatDate(row.expires_at)}`}
+                            </span>
+                            {row.needs_check && (
+                              <span className="tag tag-warn">
+                                {row.needs_check_reason ?? "Needs check"}
+                              </span>
+                            )}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              );
+            })}
+            {shown.length === 0 && <p className="muted">Nothing in this topic here.</p>}
+          </div>
+        </div>
       )}
     </>
   );
@@ -202,6 +316,9 @@ function Detail({ id, onBack }: { id: string; onBack: () => void }) {
   const [answer, setAnswer] = useState("");
   const [applies, setApplies] = useState("");
   const [also, setAlso] = useState("");
+  const [topic, setTopic] = useState("");
+  const [subtopic, setSubtopic] = useState("");
+  const [known, setKnown] = useState<VerifiedTopic[]>([]);
   const [expiry, setExpiry] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState<{ kind: "error" | "success"; text: string } | null>(null);
@@ -238,7 +355,15 @@ function Detail({ id, onBack }: { id: string; onBack: () => void }) {
   function save(event: FormEvent) {
     event.preventDefault();
     void run(
-      () => api.updateVerified(id, { question, answer, applies_when: applies, also_asked: also }),
+      () =>
+        api.updateVerified(id, {
+          question,
+          answer,
+          applies_when: applies,
+          also_asked: also,
+          topic,
+          subtopic,
+        }),
       "Saved. Search is updated.",
     );
   }
@@ -268,6 +393,7 @@ function Detail({ id, onBack }: { id: string; onBack: () => void }) {
               <span className={`pill pill-va-${va.status}`}>
                 {{ active: "Active", disabled: "Disabled", expired: "Expired" }[va.status]}
               </span>{" "}
+              {va.topic && `${[va.topic, va.subtopic].filter(Boolean).join(" › ")} · `}
               Version {va.version}
               {va.approved_by && ` · approved by ${va.approved_by.name}`} ·{" "}
               {formatDate(va.updated_at)}
@@ -297,6 +423,44 @@ function Detail({ id, onBack }: { id: string; onBack: () => void }) {
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
               />
+              <div className="va-topic-fields">
+                <span>
+                  <label htmlFor="va-topic">Topic</label>
+                  <input
+                    id="va-topic"
+                    className="input"
+                    list="va-topic-list"
+                    placeholder="e.g. Google Business Profile"
+                    value={topic}
+                    onChange={(e) => setTopic(e.target.value)}
+                  />
+                </span>
+                <span>
+                  <label htmlFor="va-subtopic">Subtopic</label>
+                  <input
+                    id="va-subtopic"
+                    className="input"
+                    list="va-subtopic-list"
+                    placeholder="e.g. Reviews"
+                    value={subtopic}
+                    onChange={(e) => setSubtopic(e.target.value)}
+                  />
+                </span>
+                <datalist id="va-topic-list">
+                  {known
+                    .filter((t) => t.name)
+                    .map((t) => (
+                      <option key={t.name} value={t.name} />
+                    ))}
+                </datalist>
+                <datalist id="va-subtopic-list">
+                  {(known.find((t) => t.name === topic)?.subtopics ?? [])
+                    .filter((x) => x.name)
+                    .map((x) => (
+                      <option key={x.name} value={x.name} />
+                    ))}
+                </datalist>
+              </div>
               <label htmlFor="va-applies">When it applies (optional)</label>
               <input
                 id="va-applies"
@@ -357,7 +521,14 @@ function Detail({ id, onBack }: { id: string; onBack: () => void }) {
                   setAnswer(va.answer);
                   setApplies(va.applies_when ?? "");
                   setAlso(va.also_asked ?? "");
+                  setTopic(va.topic);
+                  setSubtopic(va.subtopic);
                   setEditing(true);
+                  // The topics already used, to pick from.
+                  api
+                    .listVerified("all", "")
+                    .then((data) => setKnown(data.topics))
+                    .catch(() => undefined);
                 }}
               >
                 Edit

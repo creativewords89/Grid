@@ -50,6 +50,8 @@ class VerifiedRow(BaseModel):
     applies_when: str | None
     also_asked: str | None
     answer_group: str | None
+    topic: str
+    subtopic: str
 
 
 class VerifiedDetail(VerifiedRow):
@@ -59,11 +61,25 @@ class VerifiedDetail(VerifiedRow):
     can_manage: bool
 
 
+class SubtopicCount(BaseModel):
+    name: str
+    count: int
+
+
+class TopicCount(BaseModel):
+    """A topic in the chosen tab (and search), with its subtopics; "" is "No topic"."""
+
+    name: str
+    count: int
+    subtopics: list[SubtopicCount]
+
+
 class VerifiedPage(BaseModel):
     items: list[VerifiedRow]
     can_manage: bool
     can_import: bool
     counts: dict[str, int]
+    topics: list[TopicCount]
 
 
 class SkippedRow(BaseModel):
@@ -91,6 +107,8 @@ class PatchIn(Strict):
     answer: Annotated[str, StringConstraints(max_length=20000)] | None = None
     applies_when: Annotated[str, StringConstraints(max_length=500)] | None = None
     also_asked: Annotated[str, StringConstraints(max_length=4000)] | None = None
+    topic: Annotated[str, StringConstraints(max_length=200)] | None = None
+    subtopic: Annotated[str, StringConstraints(max_length=200)] | None = None
     expires_at: datetime | None = None
     clear_expiry: bool = False
     checked: bool = False
@@ -131,6 +149,8 @@ def _row(va: VerifiedAnswer, people: dict[uuid.UUID, Person]) -> dict[str, Any]:
         "applies_when": va.applies_when,
         "also_asked": va.also_asked,
         "answer_group": va.answer_group,
+        "topic": va.topic,
+        "subtopic": va.subtopic,
     }
 
 
@@ -151,6 +171,8 @@ def list_verified(
     db: Db,
     show: Show = "active",
     q: Annotated[str, Query(max_length=200)] = "",
+    topic: Annotated[str | None, Query(max_length=200)] = None,  # "" = no topic
+    subtopic: Annotated[str | None, Query(max_length=200)] = None,
 ) -> VerifiedPage:
     ensure(me, Action.VIEW_VERIFIED)
     every = db.scalars(
@@ -181,13 +203,45 @@ def list_verified(
             or words in (v.applies_when or "").lower()
             or words in (v.also_asked or "").lower()
         ]
+    topics = _topics(chosen)
+    if topic is not None:
+        chosen = [v for v in chosen if v.topic == topic]
+        if subtopic is not None:
+            chosen = [v for v in chosen if v.subtopic == subtopic]
+    # Grouped by topic, then subtopic; "No topic" last; newest first within a group.
+    chosen.sort(
+        key=lambda v: (v.topic == "", v.topic.lower(), v.subtopic == "", v.subtopic.lower())
+    )
     people = _people(db, {v.approved_by for v in chosen})
     return VerifiedPage(
-        items=[VerifiedRow(**_row(v, people)) for v in chosen[:500]],
+        items=[VerifiedRow(**_row(v, people)) for v in chosen[:1000]],
         can_manage=can(me, Action.MANAGE_VERIFIED),
         can_import=can(me, Action.IMPORT_VERIFIED),
         counts=counts,
+        topics=topics,
     )
+
+
+def _group_order(v: VerifiedAnswer) -> tuple[bool, str, bool, str]:
+    return (v.topic == "", v.topic.lower(), v.subtopic == "", v.subtopic.lower())
+
+
+def _topics(rows: list[VerifiedAnswer]) -> list[TopicCount]:
+    found: dict[str, dict[str, int]] = {}
+    for v in rows:
+        subs = found.setdefault(v.topic, {})
+        subs[v.subtopic] = subs.get(v.subtopic, 0) + 1
+    return [
+        TopicCount(
+            name=name,
+            count=sum(subs.values()),
+            subtopics=[
+                SubtopicCount(name=sub, count=n)
+                for sub, n in sorted(subs.items(), key=lambda x: (x[0] == "", x[0].lower()))
+            ],
+        )
+        for name, subs in sorted(found.items(), key=lambda x: (x[0] == "", x[0].lower()))
+    ]
 
 
 def detail(db: Db, va: VerifiedAnswer, me: User) -> VerifiedDetail:
@@ -265,6 +319,8 @@ def update_verified(
             checked=body.checked,
             applies_when=body.applies_when,
             also_asked=body.also_asked,
+            topic=body.topic,
+            subtopic=body.subtopic,
         )
     except VerifiedError as error:
         raise _raise(error) from None

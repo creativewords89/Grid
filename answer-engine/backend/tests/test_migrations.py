@@ -80,3 +80,33 @@ def test_existing_facebook_threads_become_the_first_set(fresh_database_url: str)
             assert posts == threads == [sid]
     finally:
         engine.dispose()
+
+
+def test_verified_answers_take_their_threads_topics(fresh_database_url: str) -> None:
+    """Step 30: answers approved in the Question Bank get their thread's topic."""
+    cfg = alembic_config(fresh_database_url)
+    command.upgrade(cfg, "0020")
+    engine = create_engine(fresh_database_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO question_sets (id, name, prefix) "
+                    "VALUES ('00000000-0000-0000-0000-000000000001', 'FB', 'fb');"
+                    "INSERT INTO fb_threads (id, set_id, key, title, topic, subtopic) "
+                    "VALUES (gen_random_uuid(), '00000000-0000-0000-0000-000000000001', "
+                    "'s1', 'Q?', 'GBP', 'Reviews');"
+                    "INSERT INTO verified_answers (id, question, answer, status, origin, "
+                    "version, answer_group, import_key) VALUES "
+                    "(gen_random_uuid(), 'Q?', 'A.', 'active', 'facebook', 1, 'fb:s1', 'fb:s1:1'),"
+                    "(gen_random_uuid(), 'Other?', 'B.', 'active', 'admin', 1, NULL, NULL)"
+                )
+            )
+        command.upgrade(cfg, "head")
+        with engine.connect() as conn:
+            rows = conn.execute(
+                text("SELECT topic, subtopic FROM verified_answers ORDER BY question")
+            ).all()
+            assert [tuple(r) for r in rows] == [("", ""), ("GBP", "Reviews")]
+    finally:
+        engine.dispose()

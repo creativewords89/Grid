@@ -47,6 +47,8 @@ _HEADERS = {
         "angle",
         "perspective",
     },
+    "topic": {"topic", "category"},
+    "subtopic": {"subtopic", "sub topic", "sub-topic"},
     "also": {
         "similar_questions",
         "similar questions",
@@ -66,6 +68,8 @@ class Row:
     also_asked: str
     import_key: str = ""
     group: str = ""
+    topic: str = ""
+    subtopic: str = ""
 
 
 @dataclass
@@ -223,6 +227,8 @@ def parse_file(path: Path, filename: str) -> Parsed:
                 also_asked=_also(_cell(cells, columns.get("also"))),
                 import_key=f"{group}|{slot}",
                 group=group,
+                topic=service.clean_topic(_cell(cells, columns.get("topic"))),
+                subtopic=service.clean_topic(_cell(cells, columns.get("subtopic"))),
             )
         )
         if len(parsed.rows) > MAX_ROWS:
@@ -257,6 +263,8 @@ def apply(db: Session, parsed: Parsed, by: User) -> Result:
                     also_asked=row.also_asked or None,
                     answer_group=row.group,
                     import_key=row.import_key,
+                    topic=row.topic,
+                    subtopic=row.subtopic,
                     status=VerifiedStatus.ACTIVE,
                     origin=VerifiedOrigin.IMPORT,
                     created_by=by.id,
@@ -275,6 +283,8 @@ def apply(db: Session, parsed: Parsed, by: User) -> Result:
             and va.answer == row.answer
             and (va.applies_when or "") == row.applies_when
             and (va.also_asked or "") == row.also_asked
+            and va.topic == row.topic
+            and va.subtopic == row.subtopic
         )
         if same:
             result.unchanged += 1
@@ -287,6 +297,8 @@ def apply(db: Session, parsed: Parsed, by: User) -> Result:
             row.answer,
             applies_when=row.applies_when,
             also_asked=row.also_asked,
+            topic=row.topic,
+            subtopic=row.subtopic,
         )
         va.answer_group = row.group
         va.approved_by = by.id
