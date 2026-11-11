@@ -485,6 +485,20 @@ export type VerifiedVersion = {
   at: string;
 };
 
+// --- API keys (step 28) ---------------------------------------------------------------------
+
+export type ApiKeyRow = {
+  id: string;
+  name: string;
+  prefix: string;
+  scopes: string[];
+  made_by: Person;
+  created_at: string;
+  expires_at: string | null;
+  last_used_at: string | null;
+  revoked_at: string | null;
+};
+
 // --- Facebook answers (step 27) ---------------------------------------------------------------
 
 export type FbStatus = "todo" | "draft" | "approved" | "skipped";
@@ -972,6 +986,11 @@ export const api = {
       `/verified?show=${encodeURIComponent(show)}${q ? `&q=${encodeURIComponent(q)}` : ""}`,
     ),
   getVerified: (id: string) => request<VerifiedDetail>("GET", `/verified/${id}`),
+  apiKeys: () =>
+    request<{ items: ApiKeyRow[]; scopes: Record<string, string> }>("GET", "/api-keys"),
+  createApiKey: (body: { name: string; scopes: string[]; expires_days: number | null }) =>
+    request<{ key: ApiKeyRow; token: string }>("POST", "/api-keys", body),
+  revokeApiKey: (id: string) => request<void>("DELETE", `/api-keys/${id}`),
   fbThreads: () => request<FbThreadList>("GET", "/fb/threads"),
   fbThread: (id: string) => request<FbThreadDetail>("GET", `/fb/threads/${id}`),
   fbSave: (

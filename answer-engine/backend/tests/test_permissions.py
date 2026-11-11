@@ -30,6 +30,7 @@ SPEC_TABLE: dict[Action, tuple[Rule, Rule, Rule]] = {
     Action.MANAGE_VERIFIED: ("any", "any", "no"),
     Action.IMPORT_VERIFIED: ("any", "no", "no"),
     Action.WORK_FACEBOOK: ("any", "any", "no"),
+    Action.MANAGE_API_KEYS: ("any", "no", "no"),
     Action.WORK_THREADS: ("any", "any", "any"),
     Action.CLOSE_THREAD: ("any", "any", "own"),
     Action.DELETE_THREAD: ("any", "no", "no"),

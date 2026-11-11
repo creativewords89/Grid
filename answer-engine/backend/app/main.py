@@ -10,6 +10,7 @@ from app import __version__, errors, logs
 from app.api import (
     answer_log,
     answers,
+    api_keys,
     audit_log,
     auth,
     connections,
@@ -97,6 +98,7 @@ def create_app() -> FastAPI:
         system,
         voice,
         facebook,
+        api_keys,
     ):
         app.include_router(module.router, prefix="/api")
     return app

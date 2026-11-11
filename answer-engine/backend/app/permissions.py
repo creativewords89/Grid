@@ -34,6 +34,7 @@ class Action(enum.StrEnum):
     MANAGE_VERIFIED = "manage_verified"  # edit / disable / expiry / delete
     IMPORT_VERIFIED = "import_verified"  # import verified answers / load Facebook data (26, 27)
     WORK_FACEBOOK = "work_facebook"  # the Facebook answers page (step 27)
+    MANAGE_API_KEYS = "manage_api_keys"  # create and revoke API keys (step 28)
     WORK_THREADS = "work_threads"  # create, add replies, draft, mark as posted
     CLOSE_THREAD = "close_thread"  # close / reopen, obj required
     DELETE_THREAD = "delete_thread"
@@ -67,6 +68,7 @@ _ANY: dict[Action, frozenset[Role]] = {
     Action.MANAGE_VERIFIED: _STAFF,
     Action.IMPORT_VERIFIED: _OWNER,
     Action.WORK_FACEBOOK: _STAFF,
+    Action.MANAGE_API_KEYS: _OWNER,
     Action.WORK_THREADS: _ALL,
     Action.CLOSE_THREAD: _STAFF,
     Action.DELETE_THREAD: _OWNER,

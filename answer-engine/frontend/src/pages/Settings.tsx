@@ -9,6 +9,7 @@ import {
 } from "../api";
 import { Alert, Confirm, Field } from "../components/ui";
 import { plural } from "../format";
+import { ApiKeys } from "./ApiKeys";
 import { Connections } from "./Connections";
 import { Answering, History, Limits, System, Usage } from "./SettingsCards";
 
@@ -25,6 +26,7 @@ export function Settings() {
       <Limits />
       <Usage />
       <System />
+      <ApiKeys />
       <History />
     </section>
   );

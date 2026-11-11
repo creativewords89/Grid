@@ -103,6 +103,26 @@ class AuthSession(TimestampMixin, Base):
     __table_args__ = (Index("ix_sessions_user_id", "user_id"),)
 
 
+class ApiKey(TimestampMixin, Base):
+    """A key a script or assistant uses instead of a browser session (SPEC section 4, step 28).
+    Only its SHA-256 is stored; it acts as the Owner who made it, within its scopes."""
+
+    __tablename__ = "api_keys"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(100))
+    prefix: Mapped[str] = mapped_column(String(16))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    scopes: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list, server_default="{}")
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_ip: Mapped[str | None] = mapped_column(String(45))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped[User] = relationship()
+
+
 class AuthToken(TimestampMixin, Base):
     __tablename__ = "auth_tokens"
 

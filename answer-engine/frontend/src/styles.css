@@ -2990,3 +2990,15 @@ details.original summary {
     grid-column: 1;
   }
 }
+
+/* Settings → API keys (step 28) */
+.api-key {
+  display: block;
+  margin: 8px 0;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
