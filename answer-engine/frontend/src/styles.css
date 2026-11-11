@@ -412,6 +412,10 @@ a {
   display: none;
 }
 
+.sidebar.hidden {
+  display: none;
+}
+
 .main {
   flex: 1;
   min-width: 0;
@@ -1027,6 +1031,10 @@ a.button {
 
   .nav-toggle {
     display: block;
+  }
+
+  .nav-collapse {
+    display: none;
   }
 
   .sidebar {
@@ -2730,28 +2738,62 @@ details.original summary {
   margin: 0;
 }
 
-/* Facebook answers (step 27): thread list | thread | your answer */
+/* Facebook answers (step 27): thread list | thread | your answer, each scrolling on its own */
+.main:has(.fb-page) {
+  padding: 0;
+}
 .fb-page {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr) minmax(320px, 440px);
-  gap: 16px;
-  align-items: start;
+  grid-template-columns: 280px minmax(0, 1fr) minmax(340px, 400px);
+  height: calc(100vh - 53px);
+  overflow: hidden;
 }
 .fb-list,
+.fb-thread,
 .fb-answer {
-  position: sticky;
-  top: 12px;
-  max-height: calc(100vh - 24px);
+  min-width: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+}
+.fb-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 12px;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+}
+.fb-list > .input {
+  width: 100%;
+  min-width: 0;
+}
+.fb-thread {
+  padding: 20px 24px 40px;
+}
+.fb-thread h1 {
+  font-size: 19px;
+  line-height: 1.3;
+  margin: 4px 0 0;
+}
+.fb-answer {
   display: grid;
   gap: 8px;
   align-content: start;
-}
-.fb-answer {
+  padding: 16px;
+  border-left: 1px solid var(--border);
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 14px;
+}
+.fb-answer h2 {
+  font-size: 16px;
+}
+.fb-answer h3 {
+  font-size: 14px;
+  margin: 8px 0 0;
+}
+.fb-answer .input,
+.fb-answer .textarea {
+  width: 100%;
+  min-width: 0;
 }
 .fb-head {
   display: grid;
@@ -2817,6 +2859,16 @@ details.original summary {
 }
 .fb-t {
   font-weight: 500;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.fb-threads .muted {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .fb-dot {
   width: 12px;
@@ -2969,24 +3021,36 @@ details.original summary {
   padding: 8px;
   background: var(--surface-2);
 }
-@media (max-width: 1100px) {
+@media (max-width: 1200px) {
   .fb-page {
     grid-template-columns: 260px minmax(0, 1fr);
   }
   .fb-answer {
     grid-column: 2;
-    position: static;
-    max-height: none;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    overflow: visible;
+  }
+  .fb-page > .fb-thread {
+    overflow: visible;
+  }
+  .fb-page {
+    grid-template-rows: auto;
+    overflow-y: auto;
   }
 }
 @media (max-width: 760px) {
   .fb-page {
     grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    overflow: visible;
   }
-  .fb-list,
+  .fb-list {
+    max-height: 50vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
   .fb-answer {
-    position: static;
-    max-height: none;
     grid-column: 1;
   }
 }
