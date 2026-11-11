@@ -29,7 +29,7 @@ export function ReviewQueue({ onChange }: { onChange?: () => void }) {
   };
 
   return (
-    <section className="page">
+    <section className="page page-wide">
       {openId ? (
         <Review id={openId} onBack={() => open(null)} onChange={() => onChange?.()} />
       ) : (

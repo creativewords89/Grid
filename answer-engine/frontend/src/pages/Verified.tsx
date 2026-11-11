@@ -39,7 +39,7 @@ export function Verified() {
     navigate(id ? `/verified?id=${id}` : "/verified", true);
   };
   return (
-    <section className="page">
+    <section className="page page-wide">
       {openId ? <Detail id={openId} onBack={() => open(null)} /> : <List onOpen={open} />}
     </section>
   );

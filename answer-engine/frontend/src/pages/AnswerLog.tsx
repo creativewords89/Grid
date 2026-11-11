@@ -55,7 +55,7 @@ function minutes(value: number | null): string {
 export function AnswerLog() {
   const [tab, setTab] = useState<"answers" | "gaps">("answers");
   return (
-    <section className="page">
+    <section className="page page-wide">
       <div className="page-head">
         <h1>Answer Log</h1>
       </div>
