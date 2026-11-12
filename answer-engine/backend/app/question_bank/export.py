@@ -1,7 +1,7 @@
 """Download a set's approved questions and answers as Excel (SPEC section 6.9a, step 32).
 
-One sheet per group: per topic, or per subtopic once a topic is chosen. One row per
-question, its answers side by side (Answer 1, When answer 1 applies, Answer 2…), never
+No summary sheet. One sheet per group: per topic, or per subtopic once a topic is chosen.
+One row per question, its answers side by side (Answer 1, When answer 1 applies, Answer 2…), never
 merged. Text from Facebook is written as text, never as a formula.
 """
 
@@ -18,7 +18,6 @@ from openpyxl.worksheet._write_only import WriteOnlyWorksheet
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.tokens import now
 from app.db.models import FbPost, FbStatus, FbThread, QuestionSet, User
 
 MAX_CELL = 32_000  # Excel holds 32,767 characters in a cell
@@ -110,17 +109,7 @@ def build(
         groups.setdefault(name, []).append(t)
 
     book = Workbook(write_only=True)
-    taken = {"summary"}
-    summary = book.create_sheet("Summary")
-    summary.column_dimensions["A"].width = 40
-    summary.column_dimensions["B"].width = 12
-    summary.column_dimensions["C"].width = 12
-    summary.append([_cell(summary, f"{qset.name}: approved questions and answers")])
-    scope = " › ".join(x or "No topic" for x in (topic, subtopic) if x is not None)
-    summary.append([_cell(summary, f"Topic: {scope}" if scope else "All topics")])
-    summary.append([_cell(summary, f"Downloaded {now().strftime('%Y-%m-%d %H:%M')} UTC")])
-    summary.append([])
-    summary.append(_header(summary, ["Sheet", "Questions", "Answers"]))
+    taken: set[str] = set()
 
     for name, rows in groups.items():
         label = name or ("Other" if by_subtopic else "No topic")
@@ -135,11 +124,9 @@ def build(
             names += [f"Answer {n}", f"When answer {n} applies"]
         names += ["Approved by", "Approved on"]
         ws.append(_header(ws, names))
-        answers = 0
         for t in rows:
             found = [posts[r] for r in t.rows if r in posts]
             items = _answers(t)
-            answers += len(items)
             row = [
                 _cell(ws, t.answer_title or t.title, _WRAP),
                 _cell(ws, "\n\n---\n\n".join(p.question.strip() for p in found), _WRAP),
@@ -154,11 +141,9 @@ def build(
                 _cell(ws, t.answered_at.strftime("%Y-%m-%d") if t.answered_at else "", _TOP),
             ]
             ws.append(row)
-        summary.append(
-            [_cell(summary, ws.title), _cell(summary, len(rows)), _cell(summary, answers)]
-        )
-    if not groups:
-        summary.append([_cell(summary, "No approved questions here yet.")])
+    if not groups:  # a workbook needs a sheet
+        empty = book.create_sheet("Approved")
+        empty.append([_cell(empty, "No approved questions here yet.")])
 
     out = io.BytesIO()
     book.save(out)

@@ -612,7 +612,7 @@ def test_downloading_a_set_gives_one_sheet_per_topic_with_answers_side_by_side(
 
     assert "Local%20SEO%20group%20-%20approved.xlsx" in response.headers["content-disposition"]
     book = workbook(response)
-    assert book.sheetnames == ["Summary", "Google Business Profile"]
+    assert book.sheetnames == ["Google Business Profile"]
     rows = list(book["Google Business Profile"].iter_rows(values_only=True))
     assert rows[0] == (
         "Question",
@@ -639,8 +639,6 @@ def test_downloading_a_set_gives_one_sheet_per_topic_with_answers_side_by_side(
     assert second[0] == "Should my GBP description list towns?"
     assert second[4:8] == (TWO[0]["text"], "Broad service area", TWO[1]["text"], None)
     assert second[8] == "Olivia"
-    summary = list(book["Summary"].iter_rows(values_only=True))
-    assert ("Google Business Profile", 2, 3) in summary
 
 
 def test_drafts_and_skipped_are_left_out_and_a_topic_splits_by_subtopic(
@@ -654,18 +652,29 @@ def test_drafts_and_skipped_are_left_out_and_a_topic_splits_by_subtopic(
         loaded.get(f"/api/qb/sets/{sid}/export", params={"topic": "Google Business Profile"})
     )
 
-    assert book.sheetnames == ["Summary", "Profile Edits & Info"]
+    assert book.sheetnames == ["Profile Edits & Info"]
     assert len(list(book["Profile Edits & Info"].iter_rows())) == 2
     empty = workbook(loaded.get(f"/api/qb/sets/{sid}/export", params={"topic": "Reviews"}))
-    assert empty.sheetnames == ["Summary"]
+    assert empty.sheetnames == ["Approved"]
+    assert empty["Approved"]["A1"].value == "No approved questions here yet."
 
 
 def test_sheet_names_are_valid_and_unique() -> None:
-    taken = {"summary"}
+    taken: set[str] = set()
 
-    names = [sheet_name(n, taken) for n in ["Summary", "Q&A: Tools/Apps?", "x" * 40, "x" * 40, ""]]
+    names = [
+        sheet_name(n, taken)
+        for n in ["Reviews", "reviews", "Q&A: Tools/Apps?", "x" * 40, "x" * 40, ""]
+    ]
 
-    assert names == ["Summary (2)", "Q&A  Tools Apps", "x" * 31, "x" * 27 + " (2)", "Other"]
+    assert names == [
+        "Reviews",
+        "reviews (2)",
+        "Q&A  Tools Apps",
+        "x" * 31,
+        "x" * 27 + " (2)",
+        "Other",
+    ]
 
 
 # --- who can do what ---------------------------------------------------------------------------
