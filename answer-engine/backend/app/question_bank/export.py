@@ -1,7 +1,7 @@
 """Download a set's approved questions and answers as Excel (SPEC section 6.9a, step 32).
 
 No summary sheet. One sheet per group: per topic, or per subtopic once a topic is chosen.
-One row per question, its answers side by side (Answer 1, When answer 1 applies, Answer 2…), never
+One row per question, its answers side by side (Answer 1, Answer 2…, as many as needed), never
 merged. Text from Facebook is written as text, never as a formula.
 """
 
@@ -18,7 +18,7 @@ from openpyxl.worksheet._write_only import WriteOnlyWorksheet
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import FbPost, FbStatus, FbThread, QuestionSet, User
+from app.db.models import FbPost, FbStatus, FbThread, QuestionSet
 
 MAX_CELL = 32_000  # Excel holds 32,767 characters in a cell
 _BAD_SHEET = re.compile(r"[\[\]:*?/\\]")
@@ -96,12 +96,6 @@ def build(
             )
         )
     }
-    people = {
-        u.id: u.name
-        for u in db.scalars(
-            select(User).where(User.id.in_({t.answered_by for t in threads if t.answered_by}))
-        )
-    }
     by_subtopic = topic is not None
     groups: dict[str, list[FbThread]] = {}
     for t in threads:
@@ -115,14 +109,12 @@ def build(
         label = name or ("Other" if by_subtopic else "No topic")
         ws = book.create_sheet(sheet_name(label, taken))
         width = max(1, *(len(_answers(t)) for t in rows))
-        widths = [50, 60, 22, 22] + [60, 28] * width + [20, 14]
+        widths = [50, 60, 22, 22] + [60] * width
         for i, w in enumerate(widths):
             ws.column_dimensions[_letter(i)].width = w
         ws.freeze_panes = "B2"
         names = ["Question", "Description", "Topic", "Subtopic"]
-        for n in range(1, width + 1):
-            names += [f"Answer {n}", f"When answer {n} applies"]
-        names += ["Approved by", "Approved on"]
+        names += [f"Answer {n}" for n in range(1, width + 1)]
         ws.append(_header(ws, names))
         for t in rows:
             found = [posts[r] for r in t.rows if r in posts]
@@ -133,13 +125,7 @@ def build(
                 _cell(ws, t.topic, _TOP),
                 _cell(ws, t.subtopic, _TOP),
             ]
-            for n in range(width):
-                text, when = items[n] if n < len(items) else ("", "")
-                row += [_cell(ws, text, _WRAP), _cell(ws, when, _WRAP)]
-            row += [
-                _cell(ws, people.get(t.answered_by, "") if t.answered_by else "", _TOP),
-                _cell(ws, t.answered_at.strftime("%Y-%m-%d") if t.answered_at else "", _TOP),
-            ]
+            row += [_cell(ws, items[n][0] if n < len(items) else "", _WRAP) for n in range(width)]
             ws.append(row)
     if not groups:  # a workbook needs a sheet
         empty = book.create_sheet("Approved")
