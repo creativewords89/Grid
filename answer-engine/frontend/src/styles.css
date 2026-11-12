@@ -3503,3 +3503,65 @@ details.original summary {
   margin: 0;
   color: var(--muted);
 }
+
+/* Suggested answers in the answer panel (step 31). */
+.qb-suggest {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  background: var(--info-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.qb-suggest-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.qb-suggest-head .muted {
+  margin-left: auto;
+  font-weight: 400;
+}
+
+.qb-suggest > p {
+  margin: 0;
+}
+
+.qb-sug {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.qb-sug-meta {
+  gap: 6px;
+}
+
+.qb-sug-q {
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.qb-sug-when {
+  justify-self: start;
+}
+
+.qb-sug-a {
+  margin: 0;
+  font-size: 14px;
+  white-space: pre-line;
+}

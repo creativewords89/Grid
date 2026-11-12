@@ -9,19 +9,20 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Response, UploadFile
 from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import select
 
 from app import audit, settings_store
 from app.answering.claude_answer import Answerer
 from app.api.answer_log import Person
-from app.api.conversations import NOT_SET_UP, answerer_dep
+from app.api.conversations import NOT_SET_UP, answerer_dep, store_dep
 from app.api.schemas import Strict
 from app.auth.deps import CurrentUser, Db
 from app.db.models import FbStatus, FbThread, QuestionSet, User
 from app.errors import ApiError
 from app.files import storage
+from app.kb.store import VectorStore
 from app.permissions import Action, can, ensure
 from app.question_bank import service, sheet
 from app.question_bank.service import FbError
@@ -147,14 +148,19 @@ class LoadOut(BaseModel):
     skipped: list[SkippedRow] = Field(default_factory=list)
 
 
-class Earlier(BaseModel):
-    """A thread answered before, in any set: its answers can be reused."""
+class SuggestionOut(BaseModel):
+    """An answer already given to a question that means the same (step 31)."""
 
-    id: uuid.UUID
+    kind: Literal["verified", "draft"]
+    question: str
+    answer: str
+    applies_when: str
+    score: float
+    match: Literal["strong", "possible"]
+    verified_id: uuid.UUID | None
+    thread_id: uuid.UUID | None
     set_name: str
-    title: str
-    status: str
-    items: list[AnswerItem]
+    rows: list[int] | None
 
 
 def _raise(error: FbError) -> ApiError:
@@ -372,25 +378,17 @@ def load(
 # --- threads -------------------------------------------------------------------------------------
 
 
-@router.get("/answers", response_model=list[Earlier])
-def answered_before(
+@router.get("/threads/{thread_id}/suggestions", response_model=list[SuggestionOut])
+def suggestions(
+    thread_id: uuid.UUID,
     me: CurrentUser,
     db: Db,
-    q: Annotated[str, Query(max_length=500)] = "",
-    other_than: uuid.UUID | None = None,
-) -> list[Earlier]:
-    """Answers already written for similar questions, in any set."""
+    store: Annotated[VectorStore | None, Depends(store_dep)],
+) -> list[SuggestionOut]:
+    """Suggested answers: answers already given to questions that mean the same, any set."""
     ensure(me, Action.WORK_QUESTION_BANK)
-    return [
-        Earlier(
-            id=t.id,
-            set_name=t.question_set.name,
-            title=t.answer_title or t.title,
-            status=t.status.value,
-            items=_items(t),
-        )
-        for t in service.answered_like(db, q, other_than)
-    ]
+    thread = _thread(db, thread_id)
+    return [SuggestionOut(**vars(s)) for s in service.suggest(db, store, thread)]
 
 
 @router.get("/threads/{thread_id}", response_model=ThreadDetail)

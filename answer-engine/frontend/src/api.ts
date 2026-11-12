@@ -564,12 +564,18 @@ export type QbLoaded = {
   skipped: { row: number; reason: string }[];
 };
 
-export type QbEarlier = {
-  id: string;
+/** An answer already given to a question that means the same (step 31). */
+export type QbSuggestion = {
+  kind: "verified" | "draft";
+  question: string;
+  answer: string;
+  applies_when: string;
+  score: number;
+  match: "strong" | "possible";
+  verified_id: string | null;
+  thread_id: string | null;
   set_name: string;
-  title: string;
-  status: FbStatus;
-  items: FbItem[];
+  rows: number[] | null;
 };
 
 export type FbThreadDetail = FbThreadRow & {
@@ -1045,11 +1051,8 @@ export const api = {
   qbLoad: (setId: string, file: File, onProgress?: (pct: number) => void) =>
     sendFile<QbLoaded>(`/qb/sets/${setId}/load`, "file", file, onProgress),
   fbThreads: (setId: string) => request<FbThreadList>("GET", `/qb/sets/${setId}/threads`),
-  qbEarlier: (q: string, otherThan: string) =>
-    request<QbEarlier[]>(
-      "GET",
-      `/qb/answers?${new URLSearchParams({ q, other_than: otherThan }).toString()}`,
-    ),
+  qbSuggestions: (threadId: string) =>
+    request<QbSuggestion[]>("GET", `/qb/threads/${threadId}/suggestions`),
   fbThread: (id: string) => request<FbThreadDetail>("GET", `/qb/threads/${id}`),
   fbSave: (
     id: string,
