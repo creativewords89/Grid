@@ -24,8 +24,9 @@ from app.db.models import (
     VerifiedStatus,
 )
 from app.kb.store import VERIFIED
+from app.verified.service import search_text
 from tests.conftest import UserFactory, sign_in
-from tests.fakes import FakeAnswerer
+from tests.fakes import FakeAnswerer, FakeStore
 
 POSTS: list[dict[str, Any]] = [
     {
@@ -527,23 +528,65 @@ def test_spreadsheets_that_cant_be_used(
     assert db.scalars(select(FbThread)).all() == []
 
 
-# --- answers given before ------------------------------------------------------------------------
+# --- suggested answers (step 31) ----------------------------------------------------------------
 
 
-def test_answers_given_before_are_found_in_every_set(loaded: TestClient) -> None:
+def index(db: Session, store: FakeStore) -> None:
+    """What the sync worker would put in Pinecone: every live verified answer."""
+    db.expire_all()
+    space = store.data.setdefault(VERIFIED, {})
+    for va in live(db):
+        if va.status == VerifiedStatus.ACTIVE:
+            space[va.record_id] = {"_id": va.record_id, "text": search_text(va)}
+
+
+def suggestions(client: TestClient, key: str, set_id: str | None = None) -> Any:
+    return client.get(f"/api/qb/threads/{thread_id(client, key, set_id)}/suggestions").json()
+
+
+def test_approved_answers_are_suggested_by_meaning_from_any_set(
+    loaded: TestClient, db: Session, store: FakeStore
+) -> None:
     other = make_set(loaded, "Reddit")
     load(loaded, {"posts": POSTS, "threads": THREADS}, other)
     save(loaded, "s315", "approved")
-    mine = thread_id(loaded, "s315", other)
+    index(db, store)
 
-    found = loaded.get(
-        "/api/qb/answers", params={"q": "Should my roofer GBP list towns?", "other_than": mine}
-    ).json()
+    found = suggestions(loaded, "s315", other)
 
-    [hit] = found
-    assert (hit["set_name"], hit["status"]) == ("Local SEO group", "approved")
-    assert [i["text"] for i in hit["items"]] == [t["text"] for t in TWO]
-    assert loaded.get("/api/qb/answers", params={"q": "a an"}).json() == []
+    assert [(s["kind"], s["answer"], s["applies_when"]) for s in found] == [
+        ("verified", TWO[0]["text"], "Broad service area"),
+        ("verified", TWO[1]["text"], ""),
+    ]
+    first = found[0]
+    assert first["match"] == "strong" and first["score"] == 1.0
+    assert (first["set_name"], first["rows"]) == ("Local SEO group", [315])
+    assert first["thread_id"] == thread_id(loaded, "s315")
+    assert store.searched[-1] == THREADS[0]["title"]
+    # A thread never gets its own answers back.
+    assert suggestions(loaded, "s315") == []
+
+
+def test_drafts_in_other_threads_are_suggested_by_words(loaded: TestClient) -> None:
+    save(loaded, "s316", "draft", [{"label": "", "picks": [], "text": "Only where you work."}])
+
+    found = suggestions(loaded, "s315")
+
+    assert [(s["kind"], s["answer"], s["match"]) for s in found] == [
+        ("draft", "Only where you work.", "possible")
+    ]
+    assert found[0]["verified_id"] is None and found[0]["set_name"] == "Local SEO group"
+
+
+def test_without_search_approved_answers_are_found_by_words(
+    loaded: TestClient, db: Session, store: FakeStore
+) -> None:
+    save(loaded, "s316", "approved", [{"label": "", "picks": [], "text": "Only where you work."}])
+    store.fail = 1  # Pinecone is unreachable
+
+    found = suggestions(loaded, "s315")
+
+    assert [(s["kind"], s["answer"]) for s in found] == [("verified", "Only where you work.")]
 
 
 # --- who can do what ---------------------------------------------------------------------------
@@ -571,7 +614,7 @@ def test_who_can_work_and_manage_sets(
     if work:
         assert page.json()["can_manage"] is False
     assert client.get(f"/api/qb/threads/{tid}").status_code == ok
-    assert client.get("/api/qb/answers", params={"q": "towns"}).status_code == ok
+    assert client.get(f"/api/qb/threads/{tid}/suggestions").status_code == ok
     assert (
         client.put(f"/api/qb/threads/{tid}/answer", json={"items": TWO, "status": "draft"})
     ).status_code == ok

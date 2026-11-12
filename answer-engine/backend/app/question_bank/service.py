@@ -16,7 +16,7 @@ from typing import Any
 from sqlalchemy import func, or_, select, true
 from sqlalchemy.orm import Session
 
-from app import audit
+from app import audit, settings_store
 from app.ai import usage as usage_log
 from app.ai.usage import Usage
 from app.answering.claude_answer import Answerer
@@ -33,6 +33,7 @@ from app.db.models import (
     VerifiedOrigin,
     VerifiedStatus,
 )
+from app.kb.store import VERIFIED, VectorStore
 from app.verified import service as verified
 from app.verified.service import MAX_TEXT, VerifiedError
 
@@ -517,6 +518,105 @@ def set_counts(db: Session) -> dict[uuid.UUID, dict[str, int]]:
     ):
         counts.setdefault(set_id, {s.value: 0 for s in FbStatus})[status.value] = n
     return counts
+
+
+# --- suggested answers (step 31) ----------------------------------------------------------------
+
+STRONG_MATCH = 0.60  # reranker score from which a suggestion is called a strong match
+MAX_SUGGESTIONS = 8
+
+
+@dataclass
+class Suggestion:
+    kind: str  # "verified" (approved, found by meaning) or "draft" (another thread's draft)
+    question: str
+    answer: str
+    applies_when: str
+    score: float  # 0..1
+    match: str  # "strong" or "possible"
+    verified_id: uuid.UUID | None = None
+    thread_id: uuid.UUID | None = None
+    set_name: str = ""
+    rows: list[int] | None = None
+
+
+def _origin(db: Session, va: VerifiedAnswer) -> FbThread | None:
+    if va.origin != VerifiedOrigin.FACEBOOK or not va.answer_group:
+        return None
+    prefix, _, key = va.answer_group.partition(":")
+    return db.scalar(
+        select(FbThread)
+        .join(QuestionSet, QuestionSet.id == FbThread.set_id)
+        .where(QuestionSet.prefix == prefix, FbThread.key == key)
+    )
+
+
+def suggest(db: Session, store: VectorStore | None, thread: FbThread) -> list[Suggestion]:
+    """Answers already given to questions that mean the same as this thread's: approved ones
+    found by meaning in the `verified` namespace (the Ask page's search), then drafts in
+    other threads by shared words. Never this thread's own answers. A search that fails
+    (or no Pinecone) falls back to words, approved answers included."""
+    question = thread.answer_title or thread.title
+    found: list[Suggestion] = []
+    by_meaning = False
+    if store is not None:
+        try:
+            model = str(settings_store.get(db, "rerank_model"))
+            hits = store.search(VERIFIED, question, 20, model, MAX_SUGGESTIONS)
+            by_meaning = True
+        except Exception:  # Pinecone unreachable: words only
+            hits = []
+        minimum = settings_store.get_float(db, "min_relevance")
+        live = verified.live_by_record(db, [h.id for h in hits])
+        own = _group(thread)
+        for hit in hits:
+            va = live.get(hit.id)
+            if va is None or hit.score < minimum or va.answer_group == own:
+                continue
+            origin = _origin(db, va)
+            found.append(
+                Suggestion(
+                    kind="verified",
+                    question=va.question,
+                    answer=va.answer,
+                    applies_when=va.applies_when or "",
+                    score=round(hit.score, 4),
+                    match="strong" if hit.score >= STRONG_MATCH else "possible",
+                    verified_id=va.id,
+                    thread_id=origin.id if origin else None,
+                    set_name=origin.question_set.name if origin else "",
+                    rows=origin.rows if origin else None,
+                )
+            )
+    words = set(_words(question))
+    for other in answered_like(db, question, thread.id, limit=MAX_SUGGESTIONS):
+        if by_meaning and other.status == FbStatus.APPROVED:
+            continue  # already searched by meaning
+        shared = len(words & set(_words(other.answer_title or other.title)))
+        for item in other.answers:
+            text = str(item.get("text") or "").strip()
+            if text:
+                found.append(
+                    Suggestion(
+                        kind="verified" if other.status == FbStatus.APPROVED else "draft",
+                        question=other.answer_title or other.title,
+                        answer=text,
+                        applies_when=str(item.get("label") or ""),
+                        score=round(shared / max(len(words), 1), 4),
+                        match="possible",
+                        thread_id=other.id,
+                        set_name=other.question_set.name,
+                        rows=other.rows,
+                    )
+                )
+    seen: set[str] = set()
+    unique = []
+    for s in found:
+        text_key = re.sub(r"\s+", " ", s.answer).strip().lower()
+        if text_key not in seen:
+            seen.add(text_key)
+            unique.append(s)
+    return unique[:MAX_SUGGESTIONS]
 
 
 # --- answers given before, in any set ---------------------------------------------------------

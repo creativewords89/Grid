@@ -79,7 +79,6 @@ const detail: FbThreadDetail = {
   answer: { title: row.title, items: [], status: "todo", answered_by: null, answered_at: null },
 };
 
-const earlierPath = `/qb/answers?${new URLSearchParams({ q: row.title, other_than: "t1" }).toString()}`;
 const base = {
   "GET /auth/me": owner,
   "GET /reviews/count": [200, { waiting: 0 }] as [number, unknown],
@@ -158,31 +157,36 @@ test("fit to post keeps the answer and lists what changed", async () => {
   expect(screen.getByLabelText("Answer")).toHaveValue("Mention the main town naturally.");
 });
 
-test("answers given before in another set can be reused", async () => {
+test("a suggested answer from another thread can be used as a separate answer", async () => {
   mockApi({
     ...base,
-    [`GET ${earlierPath}`]: [
+    "GET /qb/threads/t1/suggestions": [
       200,
       [
         {
-          id: "t9",
+          kind: "verified",
+          question: "Should I list towns in my GBP?",
+          answer: "List the main town only.",
+          applies_when: "If you serve one area",
+          score: 0.82,
+          match: "strong",
+          verified_id: "v9",
+          thread_id: "t9",
           set_name: "Reddit r/localseo",
-          title: "Should I list towns in my GBP?",
-          status: "approved",
-          items: [{ label: "", picks: [], text: "List the main town only." }],
+          rows: [12],
         },
       ],
     ],
   });
   render(<App />);
 
-  const before = await screen.findByText("Answered before (1)");
-  await userEvent.click(before);
-  const box = within(before.closest("details")!);
-  expect(box.getByText(/Reddit r\/localseo · Approved/)).toBeVisible();
-  await userEvent.click(box.getByRole("button", { name: "Use this answer" }));
+  const box = await screen.findByRole("region", { name: "Suggested answers" });
+  expect(within(box).getByText("Strong match")).toBeVisible();
+  expect(within(box).getByText("From Reddit r/localseo · Row 12")).toBeVisible();
+  await userEvent.click(within(box).getByRole("button", { name: "Use this answer" }));
 
   expect(screen.getByLabelText("Answer")).toHaveValue("List the main town only.");
+  expect(within(box).getByRole("button", { name: "Added ✓" })).toBeDisabled();
 });
 
 test("a similar thread opens when its title is clicked", async () => {

@@ -10,7 +10,7 @@ import {
   type FbThreadDetail,
   type FbThreadList,
   type FbThreadRow,
-  type QbEarlier,
+  type QbSuggestion,
   type QbLoaded,
   type QuestionSet,
   type QuestionSetList,
@@ -714,7 +714,6 @@ function Thread({
     null,
   );
   const [undo, setUndo] = useState<Undo>(null);
-  const [earlier, setEarlier] = useState<QbEarlier[]>([]);
 
   const apply = (data: FbThreadDetail) => {
     setT(data);
@@ -729,12 +728,6 @@ function Thread({
         if (!live) return;
         apply(data);
         setShowAll(!data.posts.some((p) => p.picked.length));
-        // Answers already written for similar questions, in any set, to reuse.
-        const near = new Set(data.similar.map((x) => x.id));
-        api
-          .qbEarlier(data.answer.title, data.id)
-          .then((found) => live && setEarlier(found.filter((x) => !near.has(x.id))))
-          .catch(() => undefined);
       })
       .catch((err: unknown) => setNote({ kind: "error", text: message(err, "Not loaded.") }));
     return () => {
@@ -948,35 +941,6 @@ function Thread({
             </div>
           </>
         )}
-        {earlier.length > 0 && (
-          <details className="qb-earlier">
-            <summary className="fb-h">Answered before ({earlier.length})</summary>
-            <div className="fb-similar">
-              {earlier.map((x) => (
-                <article key={x.id} className={`card fb-sim fb-sim-${x.status}`}>
-                  <strong>{x.title}</strong>
-                  <span className="muted small">
-                    {x.set_name} · {STATUS_LABEL[x.status]}
-                  </span>
-                  {x.items
-                    .filter((i) => i.text)
-                    .map((i, n) => (
-                      <p key={n} className="fb-sim-ans">
-                        {i.label && <b>{i.label}: </b>}
-                        {i.text}
-                      </p>
-                    ))}
-                  <div className="row">
-                    <button className="button button-small" onClick={() => reuse(x.items, false)}>
-                      Use{" "}
-                      {x.items.filter((i) => i.text).length > 1 ? "these answers" : "this answer"}
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </details>
-        )}
         <div className="fb-h fb-h-row">
           <h2 className="fb-h">{showAll ? "All comments, as posted" : "Picked answers"}</h2>
           <button className="button button-small" onClick={() => setShowAll(!showAll)}>
@@ -1041,6 +1005,14 @@ function Thread({
           className="input"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
+        />
+        <Suggestions
+          threadId={id}
+          have={items}
+          onUse={(x) => (
+            setUndo(null),
+            setItems([...items, { label: x.applies_when, picks: [], text: x.answer }])
+          )}
         />
         <h3>
           Answers{" "}
@@ -1156,6 +1128,86 @@ function Thread({
         </div>
       </section>
     </>
+  );
+}
+
+const norm = (text: string) => text.replace(/\s+/g, " ").trim().toLowerCase();
+
+/** Suggested answers (step 31): answers already given to questions that mean the same, from
+ * every set. Use one and it becomes a separate answer here, to fit or edit like any other. */
+function Suggestions({
+  threadId,
+  have,
+  onUse,
+}: {
+  threadId: string;
+  have: FbItem[];
+  onUse: (s: QbSuggestion) => void;
+}) {
+  const [found, setFound] = useState<QbSuggestion[] | null>(null);
+  const [open, setOpen] = useState(true);
+  useEffect(() => {
+    let live = true;
+    api
+      .qbSuggestions(threadId)
+      .then((data) => live && setFound(data))
+      .catch(() => live && setFound([]));
+    return () => {
+      live = false;
+    };
+  }, [threadId]);
+  if (!found?.length) return null;
+  const used = new Set(have.map((i) => norm(i.text)));
+  return (
+    <section className="qb-suggest" aria-label="Suggested answers">
+      <button className="qb-suggest-head" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span>💡 Suggested answers</span>
+        <span className="va-count">{found.length}</span>
+        <span className="muted small">{open ? "Hide" : "Show"}</span>
+      </button>
+      {open && (
+        <>
+          <p className="muted small">
+            Already given to questions that mean the same. Use one, then Fit to post.
+          </p>
+          {found.map((x, n) => (
+            <SuggestionCard key={n} s={x} used={used.has(norm(x.answer))} onUse={() => onUse(x)} />
+          ))}
+        </>
+      )}
+    </section>
+  );
+}
+
+function SuggestionCard({ s, used, onUse }: { s: QbSuggestion; used: boolean; onUse: () => void }) {
+  const [more, setMore] = useState(false);
+  const long = s.answer.length > 260;
+  const from = s.set_name
+    ? `${s.set_name}${s.rows?.length ? ` · Row ${s.rows.join(", ")}` : ""}`
+    : "";
+  return (
+    <article className="qb-sug">
+      <div className="row qb-sug-meta">
+        <span className={`tag ${s.match === "strong" ? "tag-ok" : ""}`}>
+          {s.match === "strong" ? "Strong match" : "Possible match"}
+        </span>
+        <span className="muted small">{s.kind === "draft" ? "Draft" : "Verified"}</span>
+      </div>
+      <strong className="qb-sug-q">{s.question}</strong>
+      {from && <span className="muted small">From {from}</span>}
+      {s.applies_when && <span className="tag qb-sug-when">When it applies: {s.applies_when}</span>}
+      <p className={`qb-sug-a${long && !more ? " fb-clamp" : ""}`}>{s.answer}</p>
+      <div className="row">
+        <button className="button button-small" disabled={used} onClick={onUse}>
+          {used ? "Added ✓" : "Use this answer"}
+        </button>
+        {long && (
+          <button className="link-button small" onClick={() => setMore(!more)}>
+            {more ? "Show less" : "Show all"}
+          </button>
+        )}
+      </div>
+    </article>
   );
 }
 
