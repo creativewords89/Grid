@@ -126,11 +126,11 @@ def build(
         label = name or ("Other" if by_subtopic else "No topic")
         ws = book.create_sheet(sheet_name(label, taken))
         width = max(1, *(len(_answers(t)) for t in rows))
-        widths = [50, 60, 22, 22, 10, 40] + [60, 28] * width + [20, 14]
+        widths = [50, 60, 22, 22] + [60, 28] * width + [20, 14]
         for i, w in enumerate(widths):
             ws.column_dimensions[_letter(i)].width = w
         ws.freeze_panes = "B2"
-        names = ["Question", "Description", "Topic", "Subtopic", "Row", "Post link"]
+        names = ["Question", "Description", "Topic", "Subtopic"]
         for n in range(1, width + 1):
             names += [f"Answer {n}", f"When answer {n} applies"]
         names += ["Approved by", "Approved on"]
@@ -145,8 +145,6 @@ def build(
                 _cell(ws, "\n\n---\n\n".join(p.question.strip() for p in found), _WRAP),
                 _cell(ws, t.topic, _TOP),
                 _cell(ws, t.subtopic, _TOP),
-                _cell(ws, ", ".join(str(r) for r in t.rows), _TOP),
-                _cell(ws, "\n".join(p.url for p in found if p.url), _WRAP),
             ]
             for n in range(width):
                 text, when = items[n] if n < len(items) else ("", "")
