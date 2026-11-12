@@ -619,8 +619,6 @@ def test_downloading_a_set_gives_one_sheet_per_topic_with_answers_side_by_side(
         "Description",
         "Topic",
         "Subtopic",
-        "Row",
-        "Post link",
         "Answer 1",
         "When answer 1 applies",
         "Answer 2",
@@ -629,20 +627,18 @@ def test_downloading_a_set_gives_one_sheet_per_topic_with_answers_side_by_side(
         "Approved on",
     )
     first = rows[1]
-    assert first[:6] == (
+    assert first[:4] == (
         "Can a plumber add city names to GBP services?",
         POSTS[1]["question"],
         "Google Business Profile",
         "Products & Services",
-        "316",
-        POSTS[1]["url"],
     )
     # Text that looks like a formula stays text.
-    assert first[6] == "=1+1 is not advice" and first[8] is None
+    assert first[4] == "=1+1 is not advice" and first[6] is None
     second = rows[2]
     assert second[0] == "Should my GBP description list towns?"
-    assert second[6:10] == (TWO[0]["text"], "Broad service area", TWO[1]["text"], None)
-    assert second[10] == "Olivia"
+    assert second[4:8] == (TWO[0]["text"], "Broad service area", TWO[1]["text"], None)
+    assert second[8] == "Olivia"
     summary = list(book["Summary"].iter_rows(values_only=True))
     assert ("Google Business Profile", 2, 3) in summary
 
