@@ -329,6 +329,21 @@ function SetView({
             </div>
           )}
           {total > 0 && (
+            <DownloadLink
+              setId={list.set.id}
+              topic={topic}
+              sub={sub}
+              approved={
+                list.items.filter(
+                  (t) =>
+                    t.status === "approved" &&
+                    (!topic || t.topic === topic) &&
+                    (!sub || t.subtopic === sub),
+                ).length
+              }
+            />
+          )}
+          {total > 0 && (
             <>
               <span className="muted small">
                 {counts.approved} approved · {counts.draft} drafts · {counts.skipped} skipped ·{" "}
@@ -425,6 +440,35 @@ function SetView({
       </aside>
       {right}
     </div>
+  );
+}
+
+/** Download the approved questions and answers as Excel, for the topic chosen (step 32). */
+function DownloadLink({
+  setId,
+  topic,
+  sub,
+  approved,
+}: {
+  setId: string;
+  topic: string;
+  sub: string;
+  approved: number;
+}) {
+  const url = api.qbExportUrl(setId, topic || undefined, topic && sub ? sub : undefined);
+  const sheets = !topic ? "one sheet per topic" : !sub ? "one sheet per subtopic" : "one sheet";
+  if (!approved)
+    return <span className="muted small">No approved answers to download here yet.</span>;
+  return (
+    <a
+      className="button button-small qb-download"
+      href={url}
+      download
+      title={`Excel: ${sheets}, answers side by side`}
+    >
+      ⬇ Download {plural(approved, "approved question")}
+      {topic ? ` in ${sub || topic}` : ""} (.xlsx)
+    </a>
   );
 }
 

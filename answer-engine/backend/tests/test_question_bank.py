@@ -1,5 +1,6 @@
 """Question Bank: sets of real questions answered into verified answers (SPEC 6.9a, 27, 29)."""
 
+import io
 import json
 import uuid
 from collections.abc import Callable
@@ -24,6 +25,7 @@ from app.db.models import (
     VerifiedStatus,
 )
 from app.kb.store import VERIFIED
+from app.question_bank.export import sheet_name
 from app.verified.service import search_text
 from tests.conftest import UserFactory, sign_in
 from tests.fakes import FakeAnswerer, FakeStore
@@ -589,6 +591,87 @@ def test_without_search_approved_answers_are_found_by_words(
     assert [(s["kind"], s["answer"]) for s in found] == [("verified", "Only where you work.")]
 
 
+# --- downloading approved answers (step 32) -----------------------------------------------------
+
+
+def workbook(response: Any) -> Any:
+    from openpyxl import load_workbook
+
+    assert response.status_code == 200, response.text
+    return load_workbook(io.BytesIO(response.content))
+
+
+def test_downloading_a_set_gives_one_sheet_per_topic_with_answers_side_by_side(
+    loaded: TestClient, db: Session
+) -> None:
+    save(loaded, "s315", "approved", title="Should my GBP description list towns?")
+    save(loaded, "s316", "approved", [{"label": "", "picks": [], "text": "=1+1 is not advice"}])
+    sid = first_set(loaded)
+
+    response = loaded.get(f"/api/qb/sets/{sid}/export")
+
+    assert "Local%20SEO%20group%20-%20approved.xlsx" in response.headers["content-disposition"]
+    book = workbook(response)
+    assert book.sheetnames == ["Summary", "Google Business Profile"]
+    rows = list(book["Google Business Profile"].iter_rows(values_only=True))
+    assert rows[0] == (
+        "Question",
+        "Description",
+        "Topic",
+        "Subtopic",
+        "Row",
+        "Post link",
+        "Answer 1",
+        "When answer 1 applies",
+        "Answer 2",
+        "When answer 2 applies",
+        "Approved by",
+        "Approved on",
+    )
+    first = rows[1]
+    assert first[:6] == (
+        "Can a plumber add city names to GBP services?",
+        POSTS[1]["question"],
+        "Google Business Profile",
+        "Products & Services",
+        "316",
+        POSTS[1]["url"],
+    )
+    # Text that looks like a formula stays text.
+    assert first[6] == "=1+1 is not advice" and first[8] is None
+    second = rows[2]
+    assert second[0] == "Should my GBP description list towns?"
+    assert second[6:10] == (TWO[0]["text"], "Broad service area", TWO[1]["text"], None)
+    assert second[10] == "Olivia"
+    summary = list(book["Summary"].iter_rows(values_only=True))
+    assert ("Google Business Profile", 2, 3) in summary
+
+
+def test_drafts_and_skipped_are_left_out_and_a_topic_splits_by_subtopic(
+    loaded: TestClient,
+) -> None:
+    save(loaded, "s315", "approved")
+    save(loaded, "s316", "draft")
+    sid = first_set(loaded)
+
+    book = workbook(
+        loaded.get(f"/api/qb/sets/{sid}/export", params={"topic": "Google Business Profile"})
+    )
+
+    assert book.sheetnames == ["Summary", "Profile Edits & Info"]
+    assert len(list(book["Profile Edits & Info"].iter_rows())) == 2
+    empty = workbook(loaded.get(f"/api/qb/sets/{sid}/export", params={"topic": "Reviews"}))
+    assert empty.sheetnames == ["Summary"]
+
+
+def test_sheet_names_are_valid_and_unique() -> None:
+    taken = {"summary"}
+
+    names = [sheet_name(n, taken) for n in ["Summary", "Q&A: Tools/Apps?", "x" * 40, "x" * 40, ""]]
+
+    assert names == ["Summary (2)", "Q&A  Tools Apps", "x" * 31, "x" * 27 + " (2)", "Other"]
+
+
 # --- who can do what ---------------------------------------------------------------------------
 
 
@@ -615,6 +698,7 @@ def test_who_can_work_and_manage_sets(
         assert page.json()["can_manage"] is False
     assert client.get(f"/api/qb/threads/{tid}").status_code == ok
     assert client.get(f"/api/qb/threads/{tid}/suggestions").status_code == ok
+    assert client.get(f"/api/qb/sets/{sid}/export").status_code == ok
     assert (
         client.put(f"/api/qb/threads/{tid}/answer", json={"items": TWO, "status": "draft"})
     ).status_code == ok

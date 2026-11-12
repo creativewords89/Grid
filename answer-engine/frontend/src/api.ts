@@ -1051,6 +1051,14 @@ export const api = {
   qbLoad: (setId: string, file: File, onProgress?: (pct: number) => void) =>
     sendFile<QbLoaded>(`/qb/sets/${setId}/load`, "file", file, onProgress),
   fbThreads: (setId: string) => request<FbThreadList>("GET", `/qb/sets/${setId}/threads`),
+  /** The set's approved questions and answers as Excel (step 32); "" topic = no topic. */
+  qbExportUrl: (setId: string, topic?: string, subtopic?: string) => {
+    const query = new URLSearchParams();
+    if (topic !== undefined) query.set("topic", topic);
+    if (topic !== undefined && subtopic !== undefined) query.set("subtopic", subtopic);
+    const q = query.toString();
+    return `/api/qb/sets/${setId}/export${q ? `?${q}` : ""}`;
+  },
   qbSuggestions: (threadId: string) =>
     request<QbSuggestion[]>("GET", `/qb/threads/${threadId}/suggestions`),
   fbThread: (id: string) => request<FbThreadDetail>("GET", `/qb/threads/${id}`),
