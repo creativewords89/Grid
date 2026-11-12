@@ -3565,3 +3565,11 @@ details.original summary {
   font-size: 14px;
   white-space: pre-line;
 }
+
+/* Download approved answers (step 32). */
+.qb-download {
+  justify-content: center;
+  text-align: center;
+  text-decoration: none;
+  white-space: normal;
+}

@@ -246,6 +246,32 @@ test("the thread's breadcrumb filters the list to its topic", async () => {
   expect(within(list_).getByText("How do I get reviews?")).toBeVisible();
 });
 
+test("the approved answers download as Excel for the chosen topic", async () => {
+  const done = {
+    ...row,
+    id: "t7",
+    key: "s7",
+    title: "Do reviews matter?",
+    status: "approved" as const,
+  };
+  mockApi({
+    ...base,
+    "GET /qb/sets/s1/threads": [
+      200,
+      { ...list, items: [row, done], counts: { ...list.counts, approved: 1 } },
+    ],
+  });
+  render(<App />);
+
+  const link = await screen.findByRole("link", { name: /Download 1 approved question/ });
+  expect(link).toHaveAttribute("href", "/api/qb/sets/s1/export");
+  await userEvent.selectOptions(screen.getByLabelText("Topic"), "Google Business Profile");
+  expect(screen.getByRole("link", { name: /in Google Business Profile/ })).toHaveAttribute(
+    "href",
+    "/api/qb/sets/s1/export?topic=Google+Business+Profile",
+  );
+});
+
 test("the set picker switches sets and is remembered", async () => {
   mockApi({
     ...base,

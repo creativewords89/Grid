@@ -5,11 +5,13 @@ rename, upload to and delete sets. Users don't see it: the comments carry people
 """
 
 import json
+import re
 import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
 from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import select
 
@@ -24,6 +26,7 @@ from app.errors import ApiError
 from app.files import storage
 from app.kb.store import VectorStore
 from app.permissions import Action, can, ensure
+from app.question_bank import export as export_xlsx
 from app.question_bank import service, sheet
 from app.question_bank.service import FbError
 
@@ -372,6 +375,36 @@ def load(
     db.commit()
     return LoadOut(
         posts=loaded.posts, threads=loaded.threads, answers=loaded.answers, skipped=skipped
+    )
+
+
+@router.get("/sets/{set_id}/export")
+def export(
+    set_id: uuid.UUID,
+    me: CurrentUser,
+    db: Db,
+    topic: Annotated[str | None, Query(max_length=200)] = None,  # "" = no topic
+    subtopic: Annotated[str | None, Query(max_length=200)] = None,
+) -> Response:
+    """The set's approved questions and answers as Excel: one sheet per topic, or per
+    subtopic when a topic is given; answers side by side (step 32)."""
+    ensure(me, Action.WORK_QUESTION_BANK)
+    qset = _set(db, set_id)
+    content, count = export_xlsx.build(db, qset, topic, subtopic)
+    audit.record(
+        db, me, "export", "question_set", qset.id, qset.name, [{"field": "questions", "to": count}]
+    )
+    db.commit()
+    parts = [qset.name, *(x for x in (topic, subtopic) if x), "approved"]
+    name = re.sub(r'[\\/:*?"<>|]+', " ", " - ".join(parts)).strip()[:150] + ".xlsx"
+    return Response(
+        content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="export.xlsx"; '
+            f"filename*=UTF-8''{quote(name)}",
+            "Cache-Control": "private, no-store",
+        },
     )
 
 
