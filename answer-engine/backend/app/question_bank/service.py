@@ -522,8 +522,10 @@ def set_counts(db: Session) -> dict[uuid.UUID, dict[str, int]]:
 
 # --- suggested answers (step 31) ----------------------------------------------------------------
 
-STRONG_MATCH = 0.60  # reranker score from which a suggestion is called a strong match
+STRONG_MATCH = 0.75  # reranker score from which a suggestion is called a strong match
 MAX_SUGGESTIONS = 8
+SEARCH_TOP_K = 100  # searched widely, then kept only within the thread's topic
+SEARCH_TOP_N = 40
 
 
 @dataclass
@@ -534,6 +536,8 @@ class Suggestion:
     applies_when: str
     score: float  # 0..1
     match: str  # "strong" or "possible"
+    topic: str = ""
+    subtopic: str = ""
     verified_id: uuid.UUID | None = None
     thread_id: uuid.UUID | None = None
     set_name: str = ""
@@ -551,18 +555,37 @@ def _origin(db: Session, va: VerifiedAnswer) -> FbThread | None:
     )
 
 
+def same_topic(thread: FbThread, topic: str, subtopic: str) -> bool:
+    """The main topic first: a suggestion must share the thread's topic and subtopic (just
+    the topic when the thread has no subtopic; anything when it has no topic)."""
+    if not thread.topic:
+        return True
+    if topic != thread.topic:
+        return False
+    return not thread.subtopic or subtopic == thread.subtopic
+
+
+def search_query(db: Session, thread: FbThread) -> str:
+    """The question, then the start of the post, so its details count too."""
+    post = " ".join(p.question.strip() for p in posts_of(db, thread))
+    return f"{thread.answer_title or thread.title}\n{_one_line(post, 500)}".strip()
+
+
 def suggest(db: Session, store: VectorStore | None, thread: FbThread) -> list[Suggestion]:
-    """Answers already given to questions that mean the same as this thread's: approved ones
-    found by meaning in the `verified` namespace (the Ask page's search), then drafts in
-    other threads by shared words. Never this thread's own answers. A search that fails
-    (or no Pinecone) falls back to words, approved answers included."""
+    """Answers already given within this thread's topic and subtopic, ranked by how closely
+    their question means the same: approved ones by meaning in the `verified` namespace (the
+    Ask page's search, with the post's start), then drafts in other threads by shared words.
+    Never this thread's own answers. A search that fails (or no Pinecone) falls back to
+    words, approved answers included."""
     question = thread.answer_title or thread.title
     found: list[Suggestion] = []
     by_meaning = False
     if store is not None:
         try:
             model = str(settings_store.get(db, "rerank_model"))
-            hits = store.search(VERIFIED, question, 20, model, MAX_SUGGESTIONS)
+            hits = store.search(
+                VERIFIED, search_query(db, thread), SEARCH_TOP_K, model, SEARCH_TOP_N
+            )
             by_meaning = True
         except Exception:  # Pinecone unreachable: words only
             hits = []
@@ -571,7 +594,12 @@ def suggest(db: Session, store: VectorStore | None, thread: FbThread) -> list[Su
         own = _group(thread)
         for hit in hits:
             va = live.get(hit.id)
-            if va is None or hit.score < minimum or va.answer_group == own:
+            if (
+                va is None
+                or hit.score < minimum
+                or va.answer_group == own
+                or not same_topic(thread, va.topic, va.subtopic)
+            ):
                 continue
             origin = _origin(db, va)
             found.append(
@@ -582,6 +610,8 @@ def suggest(db: Session, store: VectorStore | None, thread: FbThread) -> list[Su
                     applies_when=va.applies_when or "",
                     score=round(hit.score, 4),
                     match="strong" if hit.score >= STRONG_MATCH else "possible",
+                    topic=va.topic,
+                    subtopic=va.subtopic,
                     verified_id=va.id,
                     thread_id=origin.id if origin else None,
                     set_name=origin.question_set.name if origin else "",
@@ -589,9 +619,11 @@ def suggest(db: Session, store: VectorStore | None, thread: FbThread) -> list[Su
                 )
             )
     words = set(_words(question))
-    for other in answered_like(db, question, thread.id, limit=MAX_SUGGESTIONS):
+    for other in answered_like(db, question, thread.id, limit=50):
         if by_meaning and other.status == FbStatus.APPROVED:
             continue  # already searched by meaning
+        if not same_topic(thread, other.topic, other.subtopic):
+            continue
         shared = len(words & set(_words(other.answer_title or other.title)))
         for item in other.answers:
             text = str(item.get("text") or "").strip()
@@ -604,6 +636,8 @@ def suggest(db: Session, store: VectorStore | None, thread: FbThread) -> list[Su
                         applies_when=str(item.get("label") or ""),
                         score=round(shared / max(len(words), 1), 4),
                         match="possible",
+                        topic=other.topic,
+                        subtopic=other.subtopic,
                         thread_id=other.id,
                         set_name=other.question_set.name,
                         rows=other.rows,

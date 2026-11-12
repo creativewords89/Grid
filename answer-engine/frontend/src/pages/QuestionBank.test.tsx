@@ -170,6 +170,8 @@ test("a suggested answer from another thread can be used as a separate answer", 
           applies_when: "If you serve one area",
           score: 0.82,
           match: "strong",
+          topic: "Google Business Profile",
+          subtopic: "Profile Edits & Info",
           verified_id: "v9",
           thread_id: "t9",
           set_name: "Reddit r/localseo",
@@ -182,6 +184,7 @@ test("a suggested answer from another thread can be used as a separate answer", 
 
   const box = await screen.findByRole("region", { name: "Suggested answers" });
   expect(within(box).getByText("Strong match")).toBeVisible();
+  expect(within(box).getByText("Verified · score 0.82")).toBeVisible();
   expect(within(box).getByText("From Reddit r/localseo · Row 12")).toBeVisible();
   await userEvent.click(within(box).getByRole("button", { name: "Use this answer" }));
 
@@ -270,6 +273,13 @@ test("the approved answers download as Excel for the chosen topic", async () => 
     "href",
     "/api/qb/sets/s1/export?topic=Google+Business+Profile",
   );
+});
+
+test("with nothing close in its subtopic, the thread says so", async () => {
+  mockApi({ ...base, "GET /qb/threads/t1/suggestions": [200, []] });
+  render(<App />);
+
+  expect(await screen.findByText("💡 No close answers yet in Profile Edits & Info.")).toBeVisible();
 });
 
 test("the set picker switches sets and is remembered", async () => {

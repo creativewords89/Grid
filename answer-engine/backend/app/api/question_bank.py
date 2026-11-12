@@ -160,6 +160,8 @@ class SuggestionOut(BaseModel):
     applies_when: str
     score: float
     match: Literal["strong", "possible"]
+    topic: str
+    subtopic: str
     verified_id: uuid.UUID | None
     thread_id: uuid.UUID | None
     set_name: str

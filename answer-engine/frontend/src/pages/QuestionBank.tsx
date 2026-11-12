@@ -1052,6 +1052,7 @@ function Thread({
         />
         <Suggestions
           threadId={id}
+          scope={t.subtopic || t.topic}
           have={items}
           onUse={(x) => (
             setUndo(null),
@@ -1181,10 +1182,12 @@ const norm = (text: string) => text.replace(/\s+/g, " ").trim().toLowerCase();
  * every set. Use one and it becomes a separate answer here, to fit or edit like any other. */
 function Suggestions({
   threadId,
+  scope,
   have,
   onUse,
 }: {
   threadId: string;
+  scope: string;
   have: FbItem[];
   onUse: (s: QbSuggestion) => void;
 }) {
@@ -1200,7 +1203,13 @@ function Suggestions({
       live = false;
     };
   }, [threadId]);
-  if (!found?.length) return null;
+  if (found === null) return null;
+  if (!found.length)
+    return (
+      <p className="muted small qb-suggest-none">
+        💡 No close answers yet{scope ? ` in ${scope}` : ""}.
+      </p>
+    );
   const used = new Set(have.map((i) => norm(i.text)));
   return (
     <section className="qb-suggest" aria-label="Suggested answers">
@@ -1212,7 +1221,7 @@ function Suggestions({
       {open && (
         <>
           <p className="muted small">
-            Already given to questions that mean the same. Use one, then Fit to post.
+            Already given{scope ? ` in ${scope}` : ""}, closest first. Use one, then Fit to post.
           </p>
           {found.map((x, n) => (
             <SuggestionCard key={n} s={x} used={used.has(norm(x.answer))} onUse={() => onUse(x)} />
@@ -1235,7 +1244,9 @@ function SuggestionCard({ s, used, onUse }: { s: QbSuggestion; used: boolean; on
         <span className={`tag ${s.match === "strong" ? "tag-ok" : ""}`}>
           {s.match === "strong" ? "Strong match" : "Possible match"}
         </span>
-        <span className="muted small">{s.kind === "draft" ? "Draft" : "Verified"}</span>
+        <span className="muted small">
+          {s.kind === "draft" ? "Draft" : "Verified"} · score {s.score.toFixed(2)}
+        </span>
       </div>
       <strong className="qb-sug-q">{s.question}</strong>
       {from && <span className="muted small">From {from}</span>}
