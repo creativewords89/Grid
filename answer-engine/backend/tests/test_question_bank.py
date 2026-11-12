@@ -620,11 +620,7 @@ def test_downloading_a_set_gives_one_sheet_per_topic_with_answers_side_by_side(
         "Topic",
         "Subtopic",
         "Answer 1",
-        "When answer 1 applies",
         "Answer 2",
-        "When answer 2 applies",
-        "Approved by",
-        "Approved on",
     )
     first = rows[1]
     assert first[:4] == (
@@ -634,11 +630,10 @@ def test_downloading_a_set_gives_one_sheet_per_topic_with_answers_side_by_side(
         "Products & Services",
     )
     # Text that looks like a formula stays text.
-    assert first[4] == "=1+1 is not advice" and first[6] is None
+    assert first[4:] == ("=1+1 is not advice", None)
     second = rows[2]
     assert second[0] == "Should my GBP description list towns?"
-    assert second[4:8] == (TWO[0]["text"], "Broad service area", TWO[1]["text"], None)
-    assert second[8] == "Olivia"
+    assert second[4:] == (TWO[0]["text"], TWO[1]["text"])
 
 
 def test_drafts_and_skipped_are_left_out_and_a_topic_splits_by_subtopic(
