@@ -3573,3 +3573,10 @@ details.original summary {
   text-decoration: none;
   white-space: normal;
 }
+
+.qb-suggest-none {
+  margin: 0;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border-radius: 8px;
+}

@@ -572,6 +572,8 @@ export type QbSuggestion = {
   applies_when: string;
   score: number;
   match: "strong" | "possible";
+  topic: string;
+  subtopic: string;
   verified_id: string | null;
   thread_id: string | null;
   set_name: string;

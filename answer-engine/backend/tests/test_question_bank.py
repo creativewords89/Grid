@@ -26,6 +26,7 @@ from app.db.models import (
 )
 from app.kb.store import VERIFIED
 from app.question_bank.export import sheet_name
+from app.question_bank.service import same_topic
 from app.verified.service import search_text
 from tests.conftest import UserFactory, sign_in
 from tests.fakes import FakeAnswerer, FakeStore
@@ -546,7 +547,7 @@ def suggestions(client: TestClient, key: str, set_id: str | None = None) -> Any:
     return client.get(f"/api/qb/threads/{thread_id(client, key, set_id)}/suggestions").json()
 
 
-def test_approved_answers_are_suggested_by_meaning_from_any_set(
+def test_approved_answers_in_the_same_topic_are_suggested_by_meaning_from_any_set(
     loaded: TestClient, db: Session, store: FakeStore
 ) -> None:
     other = make_set(loaded, "Reddit")
@@ -561,34 +562,75 @@ def test_approved_answers_are_suggested_by_meaning_from_any_set(
         ("verified", TWO[1]["text"], ""),
     ]
     first = found[0]
-    assert first["match"] == "strong" and first["score"] == 1.0
+    assert (first["topic"], first["subtopic"]) == (
+        "Google Business Profile",
+        "Profile Edits & Info",
+    )
+    assert first["match"] in ("strong", "possible") and 0 < first["score"] <= 1
     assert (first["set_name"], first["rows"]) == ("Local SEO group", [315])
     assert first["thread_id"] == thread_id(loaded, "s315")
-    assert store.searched[-1] == THREADS[0]["title"]
+    # The question and the start of the post are searched.
+    assert store.searched[-1] == f"{THREADS[0]['title']}\n{POSTS[0]['question']}"
     # A thread never gets its own answers back.
     assert suggestions(loaded, "s315") == []
 
 
-def test_drafts_in_other_threads_are_suggested_by_words(loaded: TestClient) -> None:
-    save(loaded, "s316", "draft", [{"label": "", "picks": [], "text": "Only where you work."}])
+def test_answers_from_another_subtopic_are_never_suggested(
+    loaded: TestClient, db: Session, store: FakeStore
+) -> None:
+    # Same topic (Google Business Profile), other subtopic (Products & Services), same words.
+    save(
+        loaded,
+        "s316",
+        "approved",
+        [{"label": "", "picks": [], "text": "Should a roofer's GBP description list every town?"}],
+    )
+    index(db, store)
+
+    assert suggestions(loaded, "s315") == []
+
+
+def test_drafts_in_the_same_topic_are_suggested_by_words(loaded: TestClient) -> None:
+    other = make_set(loaded, "Reddit")
+    load(loaded, {"posts": POSTS, "threads": THREADS}, other)
+    loaded.put(
+        f"/api/qb/threads/{thread_id(loaded, 's315', other)}/answer",
+        json={"items": [{"text": "Only the main town."}], "status": "draft"},
+    )
+    save(loaded, "s316", "draft", [{"label": "", "picks": [], "text": "Other subtopic."}])
 
     found = suggestions(loaded, "s315")
 
     assert [(s["kind"], s["answer"], s["match"]) for s in found] == [
-        ("draft", "Only where you work.", "possible")
+        ("draft", "Only the main town.", "possible")
     ]
-    assert found[0]["verified_id"] is None and found[0]["set_name"] == "Local SEO group"
+    assert found[0]["verified_id"] is None and found[0]["set_name"] == "Reddit"
 
 
 def test_without_search_approved_answers_are_found_by_words(
     loaded: TestClient, db: Session, store: FakeStore
 ) -> None:
-    save(loaded, "s316", "approved", [{"label": "", "picks": [], "text": "Only where you work."}])
+    other = make_set(loaded, "Reddit")
+    load(loaded, {"posts": POSTS, "threads": THREADS}, other)
+    loaded.put(
+        f"/api/qb/threads/{thread_id(loaded, 's315', other)}/answer",
+        json={"items": [{"text": "Only the main town."}], "status": "approved"},
+    )
     store.fail = 1  # Pinecone is unreachable
 
     found = suggestions(loaded, "s315")
 
-    assert [(s["kind"], s["answer"]) for s in found] == [("verified", "Only where you work.")]
+    assert [(s["kind"], s["answer"]) for s in found] == [("verified", "Only the main town.")]
+
+
+def test_same_topic_rule() -> None:
+    thread = FbThread(topic="GBP", subtopic="Posts")
+
+    assert same_topic(thread, "GBP", "Posts")
+    assert not same_topic(thread, "GBP", "Reviews")
+    assert not same_topic(thread, "Citations", "Posts")
+    assert same_topic(FbThread(topic="GBP", subtopic=""), "GBP", "Reviews")
+    assert same_topic(FbThread(topic="", subtopic=""), "Citations", "Tools")
 
 
 # --- downloading approved answers (step 32) -----------------------------------------------------
