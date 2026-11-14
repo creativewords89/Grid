@@ -183,6 +183,9 @@ test("a suggested answer from another thread can be used as a separate answer", 
   render(<App />);
 
   const box = await screen.findByRole("region", { name: "Suggested answers" });
+  // Hidden until asked for.
+  expect(within(box).queryByText("Strong match")).toBeNull();
+  await userEvent.click(within(box).getByRole("button", { name: /Suggested answers/ }));
   expect(within(box).getByText("Strong match")).toBeVisible();
   expect(within(box).getByText("Verified · score 0.82")).toBeVisible();
   expect(within(box).getByText("From Reddit r/localseo · Row 12")).toBeVisible();
