@@ -1192,7 +1192,7 @@ function Suggestions({
   onUse: (s: QbSuggestion) => void;
 }) {
   const [found, setFound] = useState<QbSuggestion[] | null>(null);
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false); // hidden until asked for
   useEffect(() => {
     let live = true;
     api
