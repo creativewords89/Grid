@@ -296,6 +296,142 @@ class Test_GRP_Cycle_Setup extends GRP_REST_TestCase {
 		$this->assertSame( $due, $res->get_data()['project']['cycle_reviews'][ $key ][ $open['id'] ]['carry'] );
 	}
 
+	public function test_an_unfinished_task_can_be_left_in_last_cycle() {
+		list( $project, $task ) = $this->project_with_task();
+		$open                   = $this->meeting_task( $project, 'doing' );
+		$done                   = $this->meeting_task( $project, 'done' );
+		$path                   = "/projects/{$project['id']}/leave-unfinished";
+		$key                    = GRP_Cycles::cycle_range( $project, -1, GRP_Cycles::today() )['key'];
+		$left                   = static function ( $res ) use ( $key ) {
+			$reviews = $res->get_data()['cycle_reviews'][ $key ] ?? array();
+			return array_keys( (array) ( $reviews[ GRP_Cycle_Setup::LEFT ] ?? array() ) );
+		};
+
+		// Managers only; a task of this project; an open meeting task.
+		$body = array(
+			'task_id' => $task['id'],
+			'leave'   => true,
+		);
+		$this->assertStatus( 403, $this->api_as( 'member', 'POST', $path, $body ) );
+		$other = $this->project( 'Bright', 1 );
+		$this->assertStatus( 400, $this->api_as( 'lead', 'POST', "/projects/{$other['id']}/leave-unfinished", $body ) );
+		$this->assertStatus(
+			400,
+			$this->api_as(
+				'lead',
+				'POST',
+				$path,
+				array(
+					'task_id' => $done['id'],
+					'leave'   => true,
+				)
+			)
+		);
+
+		// Leave the monthly task and the meeting task; the decision is stored under last cycle.
+		$this->assertSame( array( (string) $task['id'] ), $left( $this->api_as( 'lead', 'POST', $path, $body ) ) );
+		$res = $this->api_as(
+			'admin',
+			'POST',
+			$path,
+			array(
+				'task_id' => $open['id'],
+				'leave'   => true,
+			)
+		);
+		$this->assertStatus( 200, $res );
+		$this->assertEqualsCanonicalizing( array( (string) $task['id'], (string) $open['id'] ), $left( $res ) );
+
+		// Change: undo it.
+		$res = $this->api_as(
+			'lead',
+			'POST',
+			$path,
+			array(
+				'task_id' => $task['id'],
+				'leave'   => false,
+			)
+		);
+		$this->assertSame( array( (string) $open['id'] ), $left( $res ) );
+
+		// Moving a left task clears "left"; a moved task can't be left.
+		$moved = $this->api_as(
+			'lead',
+			'POST',
+			"/projects/{$project['id']}/carry-over",
+			array(
+				'task_id' => $open['id'],
+				'due'     => GRP_Cycles::today(),
+			)
+		);
+		$this->assertSame( array(), array_keys( (array) ( $moved->get_data()['project']['cycle_reviews'][ $key ][ GRP_Cycle_Setup::LEFT ] ?? array() ) ) );
+		$this->assertSame(
+			'grp_already_moved',
+			$this->api_as(
+				'lead',
+				'POST',
+				$path,
+				array(
+					'task_id' => $open['id'],
+					'leave'   => true,
+				)
+			)->get_data()['code']
+		);
+		// The review of the meeting task is kept next to the decisions.
+		$this->assertTrue( $moved->get_data()['project']['cycle_reviews'][ $key ][ $open['id'] ]['ok'] );
+	}
+
+	public function test_a_moved_monthly_task_gets_a_new_due_date_on_change() {
+		list( $project, $task ) = $this->project_with_task();
+		$path                   = "/projects/{$project['id']}/carry-over";
+		$today                  = GRP_Cycles::today();
+		$body                   = array(
+			'task_id' => $task['id'],
+			'due'     => $today,
+			'left'    => 1,
+		);
+		$this->api_as(
+			'lead',
+			'POST',
+			"/projects/{$project['id']}/leave-unfinished",
+			array(
+				'task_id' => $task['id'],
+				'leave'   => true,
+			)
+		);
+		$res  = $this->api_as( 'lead', 'POST', $path, $body );
+		$made = $res->get_data()['task'];
+		$key  = GRP_Cycles::cycle_range( $project, -1, $today )['key'];
+		$this->assertSame( array(), array_keys( (array) ( $res->get_data()['project']['cycle_reviews'][ $key ][ GRP_Cycle_Setup::LEFT ] ?? array() ) ) );
+
+		$later = gmdate( 'Y-m-d', strtotime( $today . ' +9 days' ) );
+		$this->assertStatus(
+			403,
+			$this->api_as(
+				'member',
+				'POST',
+				$path,
+				array(
+					'due'    => $later,
+					'change' => true,
+				) + $body
+			)
+		);
+		$res = $this->api_as(
+			'lead',
+			'POST',
+			$path,
+			array(
+				'due'    => $later,
+				'change' => true,
+			) + $body
+		);
+		$this->assertStatus( 200, $res );
+		$this->assertSame( $made['id'], $res->get_data()['task']['id'] );
+		$this->assertSame( $later, $res->get_data()['task']['deadline']['date'] );
+		$this->assertCount( 1, array_filter( GRP_Store::find( 'grp_meeting_tasks', array( 'project_id' => $project['id'] ) ), static fn( $t ) => ! empty( $t['carried'] ) ) );
+	}
+
 	public function test_a_catch_up_task_survives_export_and_import() {
 		list( $project, $task ) = $this->project_with_task();
 		$made                   = $this->api_as(

@@ -33,13 +33,18 @@ describe('new cycle setup', () => {
 		expect(lastCycleCount(fixture(), fixture().monthly_tasks.t1, fixture().projects.p1, '2026-10-02')).toEqual({ got: 3, need: 4 });
 	});
 
-	it('is overdue after day 3, and done once everything is assigned and reviewed', () => {
+	it('is overdue after day 3, and done once everything is assigned, reviewed and every unfinished task decided', () => {
 		const d = fixture();
 		expect(cycleSetup(d, '2026-10-05')[0].late).toBe(2);
 
 		Object.values(d.monthly_tasks).forEach((t) => (t.assignees = [{ id: 'max', n: 1 }]));
 		d.projects.p1.cycle_reviews = { '2026-09': { t1: { ok: true }, t2: { ok: false, note: 'More pages' } } };
-		expect(cycleSetup(d, '2026-10-03')[0]).toMatchObject({ done: true, assigned: 3, reviewed: 2 });
+		// Blogs (3 of 4) and Pages (0 of 2) are unfinished: not done until each is left or moved.
+		expect(cycleSetup(d, '2026-10-03')[0]).toMatchObject({ done: false, unfinished: 2, unfinishedAll: 2 });
+		d.projects.p1.cycle_reviews['2026-09']._left = { t1: { by: 'lee' } };
+		expect(cycleSetup(d, '2026-10-03')[0]).toMatchObject({ done: false, unfinished: 1 });
+		d.projects.p1.cycle_reviews['2026-09']._left.t2 = { by: 'lee' };
+		expect(cycleSetup(d, '2026-10-03')[0]).toMatchObject({ done: true, assigned: 3, reviewed: 2, unfinished: 0, unfinishedAll: 2, unfinishedMoved: 0 });
 		// Done: gone after day 3.
 		expect(cycleSetup(d, '2026-10-04')).toEqual([]);
 	});
@@ -96,21 +101,22 @@ describe('new cycle setup', () => {
 		d.meeting_tasks.due.deadline = { type: 'date', date: '2026-10-10' };
 		expect(cycleSetup(d, '2026-10-02')[0].meeting.map((t) => t.id)).toEqual(['due', 'doneIn']);
 		d.projects.p1.cycle_reviews['2026-09'].doneIn = { ok: true };
+		d.projects.p1.cycle_reviews['2026-09']._left = { t1: {}, t2: {}, none: {} };
 		expect(cycleSetup(d, '2026-10-02')[0].done).toBe(true);
 	});
 
 	it('reminds Team Leaders and the Super Admin every day until it is done', () => {
 		const d = fixture();
 		const [day1] = setupReminders(d, LEAD, '2026-10-01');
-		expect(day1).toMatchObject({ key: 'setup:p1:2026-10-01', kind: 'setup', tone: 'amber', title: 'New cycle for Acme — 2 unassigned, 2 to review · 3 days left' });
+		expect(day1).toMatchObject({ key: 'setup:p1:2026-10-01', kind: 'setup', tone: 'amber', title: 'New cycle for Acme — 2 unassigned, 2 to review, 2 unfinished to decide · 3 days left' });
 		// A new one each day: the key carries the date.
-		expect(setupReminders(d, LEAD, '2026-10-03')[0]).toMatchObject({ key: 'setup:p1:2026-10-03', title: 'New cycle for Acme — 2 unassigned, 2 to review · 1 day left' });
-		expect(setupReminders(d, ADMIN, '2026-10-05')[0]).toMatchObject({ key: 'setup:p1:2026-10-05', tone: 'red', title: 'Acme: new cycle setup is 2 days overdue — 2 unassigned, 2 to review' });
+		expect(setupReminders(d, LEAD, '2026-10-03')[0]).toMatchObject({ key: 'setup:p1:2026-10-03', title: 'New cycle for Acme — 2 unassigned, 2 to review, 2 unfinished to decide · 1 day left' });
+		expect(setupReminders(d, ADMIN, '2026-10-05')[0]).toMatchObject({ key: 'setup:p1:2026-10-05', tone: 'red', title: 'Acme: new cycle setup is 2 days overdue — 2 unassigned, 2 to review, 2 unfinished to decide' });
 		expect(setupReminders(d, MAX, '2026-10-05')).toEqual([]);
 
 		// Done → gone, with nothing to dismiss.
 		Object.values(d.monthly_tasks).forEach((t) => (t.assignees = [{ id: 'max', n: 1 }]));
-		d.projects.p1.cycle_reviews = { '2026-09': { t1: { ok: true }, t2: { ok: true } } };
+		d.projects.p1.cycle_reviews = { '2026-09': { t1: { ok: true }, t2: { ok: true }, _left: { t1: {}, t2: {} } } };
 		expect(setupReminders(d, LEAD, '2026-10-05')).toEqual([]);
 	});
 
@@ -119,7 +125,7 @@ describe('new cycle setup', () => {
 		d.projects.p2 = { id: 'p2', name: 'Bright', state: 'active', cycle_day: 28, cycle_set: 1, created_at: '2026-08-01 09:00:00' };
 		d.monthly_tasks.b1 = { id: 'b1', project_id: 'p2', title: 'GBP', freq: 'monthly', assignees: [], created_at: '2026-08-02 10:00:00' };
 		const mid = setupReminders(d, LEAD, '2026-10-20');
-		expect(mid.map((r) => r.title)).toEqual(['Acme: new cycle setup is 17 days overdue — 2 unassigned, 2 to review', 'Bright: 1 monthly task has nobody assigned']);
+		expect(mid.map((r) => r.title)).toEqual(['Acme: new cycle setup is 17 days overdue — 2 unassigned, 2 to review, 2 unfinished to decide', 'Bright: 1 monthly task has nobody assigned']);
 		expect(mid[1]).toMatchObject({ key: 'unassigned:p2:2026-10-20', kind: 'unassigned', ok: 'Assign people' });
 
 		// Bright's cycle (Sep 28) counts once the rule started earlier: two late projects, and the
@@ -137,8 +143,9 @@ describe('new cycle setup', () => {
 		expect(bell[0]).toMatchObject({ key: 'setup:p1:2026-10-02', unread: true, sticky: true });
 		// Not twice: the message band's copy stays off the bell.
 		expect(bell.filter((i) => i.text.includes('New cycle for Acme'))).toHaveLength(1);
-		// And what wasn't finished last cycle (Blogs 3 of 4, Pages 0 of 2), to move or leave.
-		expect(bell.filter((i) => i.key.startsWith('unfinished:')).map((i) => i.text)).toEqual(['Acme: 2 tasks not finished in Sep — move to Oct or leave them']);
+		// What wasn't finished last cycle (Blogs 3 of 4, Pages 0 of 2) is part of the setup.
+		expect(bell[0].text).toContain('2 unfinished to decide');
+		expect(bell.some((i) => i.key.startsWith('unfinished:'))).toBe(false);
 		expect(bellItems(d, MAX, '2026-10-02').some((i) => i.sticky)).toBe(false);
 	});
 });
@@ -196,15 +203,19 @@ describe('unfinished reminders and every open meeting task', () => {
 		expect(c.unfinished).toBe(4);
 	});
 
-	it('reminds leaders on days 1–3, also after the setup is done, until everything is moved', () => {
+	it('reminds leaders every day, with Decide unfinished, until each is left or moved', () => {
 		const d = fixture();
 		Object.values(d.monthly_tasks).forEach((t) => (t.assignees = [{ id: 'max', n: 1 }]));
 		d.projects.p1.cycle_reviews = { '2026-09': { t1: { ok: true }, t2: { ok: true } } };
 		const keys = (day, who = LEAD) => setupReminders(d, who, day).map((r) => r.key);
-		expect(keys('2026-10-02')).toEqual(['unfinished:p1:2026-10-02']);
-		expect(keys('2026-10-04')).toEqual([]);
+		expect(setupReminders(d, LEAD, '2026-10-02')[0]).toMatchObject({ key: 'unfinished:p1:2026-10-02', kind: 'unfinished', tone: 'amber', ok: 'Decide unfinished', title: 'Acme: 2 tasks not finished in Sep — leave or move to Oct · 2 days left' });
+		// Still undecided after day 3: overdue.
+		expect(setupReminders(d, LEAD, '2026-10-04')[0]).toMatchObject({ key: 'unfinished:p1:2026-10-04', tone: 'red' });
 		expect(keys('2026-10-02', MAX)).toEqual([]);
-		// Both moved: the reminder goes.
+		// One left in Sep: one to go.
+		d.projects.p1.cycle_reviews['2026-09']._left = { t2: { by: 'lee' } };
+		expect(setupReminders(d, LEAD, '2026-10-02')[0].title).toContain('1 task not finished');
+		// Both decided (Blogs moved, Pages left): the reminder goes.
 		d.meeting_tasks = {
 			c1: { id: 'c1', project_id: 'p1', title: 'Blogs — 1 left from Sep', status: 'todo', carried: { from: 'monthly', task_id: 't1', cycle: '2026-09' }, created_at: '2026-10-02 09:00:00' },
 			c2: { id: 'c2', project_id: 'p1', title: 'Pages — 2 left from Sep', status: 'todo', carried: { from: 'monthly', task_id: 't2', cycle: '2026-09' }, created_at: '2026-10-02 09:00:00' },

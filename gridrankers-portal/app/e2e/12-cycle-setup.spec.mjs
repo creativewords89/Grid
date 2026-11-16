@@ -38,16 +38,10 @@ test('assign and review a new cycle', async ({ page }) => {
 
 	// Today's reminder in Notifications and on the bell: no dismiss, and the bell keeps it new.
 	const reminder = box('Notifications').locator('.nf-must-item', { hasText: /New cycle for Cycle Co|Cycle Co: new cycle setup/ });
-	await expect(reminder).toContainText(reminderText('\\d+ unassigned, 3 to review'));
-	// And what wasn't finished last cycle (days 1–3): Cycle blogs (1 of 2), Cycle pages and the open meeting task.
-	const leftover = box('Notifications').locator('.nf-must-item', { hasText: /Cycle Co: \d+ tasks? not finished in/ });
-	if (left > 0) {
-		await expect(leftover).toContainText(/Cycle Co: 3 tasks not finished in \w{3} — move to \w{3} or leave them/);
-		await expect(leftover.getByRole('button')).toHaveText(['Move unfinished']);
-		await expect(setup).toContainText(/Unfinished from \w{3} · 3 to move or leave/);
-	} else {
-		await expect(leftover).toHaveCount(0);
-	}
+	await expect(reminder).toContainText(reminderText('\\d+ unassigned, 3 to review, 3 unfinished to decide'));
+	// What wasn't finished last cycle — Cycle blogs (1 of 2), Cycle pages and the open meeting
+	// task — needs a decision for each (design UF-1A).
+	await expect(setup).toContainText(/Unfinished from \w{3} · 0 of 3 decided/);
 	await expect(reminder.getByRole('button')).toHaveText(['Open setup']);
 	// Under the filter chips, not above them.
 	const [chips, rem] = [await box('Notifications').locator('.nf-chips').boundingBox(), await reminder.boundingBox()];
@@ -66,7 +60,7 @@ test('assign and review a new cycle', async ({ page }) => {
 
 	// Review last cycle: feedback on the short one, "Looks good" on the other.
 	await setup.getByRole('button', { name: 'Review last cycle' }).click();
-	const blogs = dlg.getByRole('list', { name: 'Monthly tasks' }).locator('.cs-row', { hasText: 'Cycle blogs' });
+	const blogs = dlg.getByRole('list', { name: 'Monthly tasks', exact: true }).locator('.cs-row', { hasText: 'Cycle blogs' });
 	await expect(blogs.locator('.cs-count')).toContainText('1 / 2');
 	// What was handed in last cycle is there to look at before reviewing.
 	await blogs.getByRole('button', { name: '1 file and links for Cycle blogs' }).click();
@@ -77,43 +71,74 @@ test('assign and review a new cycle', async ({ page }) => {
 	await page.keyboard.press('Escape');
 	await expect(work).toBeHidden();
 	await expect(dlg).toBeVisible();
-	await expect(dlg.getByRole('list', { name: 'Monthly tasks' }).locator('.cs-row', { hasText: 'Cycle pages' })).toContainText('Nothing handed in');
+	await expect(dlg.getByRole('list', { name: 'Monthly tasks', exact: true }).locator('.cs-row', { hasText: 'Cycle pages' })).toContainText('Nothing handed in');
 	await blogs.getByRole('button', { name: 'Send feedback' }).click();
 	await blogs.getByLabel('Feedback on Cycle blogs').fill('Only 1 of 2 blogs went out. Plan the second one early this cycle.');
 	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/cycle-review.png' });
 	await blogs.getByRole('button', { name: 'Send to Max Member' }).click();
 	await page.getByText('Feedback sent').first().waitFor();
 	await expect(blogs).toContainText('Feedback sent');
-	const pagesRow = dlg.getByRole('list', { name: 'Monthly tasks' }).locator('.cs-row', { hasText: 'Cycle pages' });
+	const pagesRow = dlg.getByRole('list', { name: 'Monthly tasks', exact: true }).locator('.cs-row', { hasText: 'Cycle pages' });
 	await pagesRow.getByRole('button', { name: 'Looks good' }).click();
 	await expect(pagesRow).toContainText('Looks good');
 	// Meeting minutes: the open one is reviewed like the rest.
-	const photos = dlg.getByRole('list', { name: 'Meeting minutes' }).locator('.cs-row', { hasText: 'Cycle photos' });
+	const photos = dlg.getByRole('list', { name: 'Meeting minutes', exact: true }).locator('.cs-row', { hasText: 'Cycle photos' });
 	await expect(photos).toContainText('Open');
 	await photos.getByRole('button', { name: 'Looks good' }).click();
 	await expect(photos).toContainText('Looks good');
 	await expect(dlg.locator('.cs-sum')).toContainText('3 of 3 reviewed');
 
-	// Unfinished (design CO-1A): everything stays in last cycle unless moved. Cycle blogs (1 of 2)
-	// moves as a catch-up task; the open meeting task moves with a new deadline.
-	const unfinished = dlg.getByRole('list', { name: 'Unfinished' });
-	const blogsLeft = unfinished.locator('.cs-row', { hasText: 'Cycle blogs' });
-	await expect(blogsLeft).toContainText('1 not done');
-	await expect(blogsLeft.getByRole('button', { name: /^Leave in / })).toHaveAttribute('aria-pressed', 'true');
-	await blogsLeft.getByRole('button', { name: /^Move to / }).click();
-	await expect(blogsLeft.locator('.cs-move-txt')).toContainText(/A catch-up task “Cycle blogs — 1 left from \w{3}” for Max/);
-	if (process.env.SHOTS) await dlg.screenshot({ path: process.env.SHOTS + '/cycle-unfinished.png' });
-	await blogsLeft.getByRole('button', { name: 'Move', exact: true }).click();
-	await page.getByText(/^Moved to \w{3}: “Cycle blogs — 1 left from/).first().waitFor();
-	await expect(blogsLeft).toContainText(/↪ Moved to \w{3}/);
-	const photosLeft = unfinished.locator('.cs-row', { hasText: 'Cycle photos' });
-	await photosLeft.getByRole('button', { name: /^Move to / }).click();
-	await photosLeft.getByRole('button', { name: 'Move', exact: true }).click();
-	await expect(photosLeft).toContainText(/↪ Moved to \w{3} · due/);
-	await expect(blogsLeft.getByRole('button', { name: /^Move to / })).toHaveCount(0);
 	await dlg.getByRole('button', { name: 'Close' }).last().click();
 	await expect(setup).toContainText('Review monthly tasks · 2 of 2 reviewed');
 	await expect(setup).toContainText('Review meeting minutes · 1 of 1 reviewed');
+
+	// Unfinished (design UF-1A): Decide unfinished opens that part; every task needs a choice,
+	// grouped by where it came from.
+	await setup.getByRole('button', { name: 'Decide unfinished' }).click();
+	await expect(dlg.getByRole('heading', { name: /^Unfinished from / })).toBeInViewport();
+	await expect(dlg.getByRole('heading', { name: /^Unfinished from / })).toContainText(/0 of 3 decided/);
+	const fromMonthly = dlg.getByRole('list', { name: 'Unfinished from monthly tasks' });
+	const fromMeeting = dlg.getByRole('list', { name: 'Unfinished from meeting minutes' });
+	await expect(fromMonthly.locator('.cs-row')).toHaveCount(2);
+	await expect(fromMeeting.locator('.cs-row')).toHaveCount(1);
+
+	// Cycle blogs (1 of 2) moves as a catch-up task, due at the end of the new cycle (the default).
+	const blogsLeft = fromMonthly.locator('.cs-row', { hasText: 'Cycle blogs' });
+	await expect(blogsLeft).toContainText('1 not done');
+	await blogsLeft.getByRole('button', { name: /^Move to / }).click();
+	await expect(blogsLeft.locator('.cs-move-txt')).toContainText(/A catch-up task “Cycle blogs — 1 left from \w{3}” for Max/);
+	await expect(blogsLeft.getByRole('radio', { name: /End of \w{3} cycle/ })).toHaveAttribute('aria-checked', 'true');
+	if (process.env.SHOTS) await dlg.screenshot({ path: process.env.SHOTS + '/cycle-unfinished.png' });
+	await blogsLeft.getByRole('button', { name: 'Move', exact: true }).click();
+	await expect(blogsLeft).toHaveClass(/\bok\b/);
+	await expect(blogsLeft).toContainText(/✓ Moved to \w{3} · cycle end/);
+
+	// The open meeting task moves with a date picked here.
+	const photosLeft = fromMeeting.locator('.cs-row', { hasText: 'Cycle photos' });
+	await expect(photosLeft).toContainText(/was due/);
+	await photosLeft.getByRole('button', { name: /^Move to / }).click();
+	await photosLeft.getByRole('radio', { name: /A specific date/ }).click();
+	const pick = new Date(todayMs + 2 * DAY).toISOString().slice(0, 10);
+	await photosLeft.getByLabel('New deadline for Cycle photos').fill(pick);
+	await photosLeft.getByRole('button', { name: 'Move', exact: true }).click();
+	await expect(photosLeft).toContainText(/✓ Moved to \w{3} · due \w+ \d+ \(specific date\)|✓ Moved to \w{3} · due \d+ \w+ \(specific date\)/);
+
+	// Cycle pages stays in last cycle; Change undoes it, then it is left again.
+	const pagesLeft = fromMonthly.locator('.cs-row', { hasText: 'Cycle pages' });
+	await pagesLeft.getByRole('button', { name: /^Leave in / }).click();
+	await expect(pagesLeft).toContainText(/✓ Left in \w{3}/);
+	await pagesLeft.getByRole('button', { name: 'Change Cycle pages' }).click();
+	await expect(pagesLeft.getByRole('button', { name: /^Leave in / })).toBeVisible();
+	await pagesLeft.getByRole('button', { name: /^Leave in / }).click();
+	await expect(pagesLeft).toContainText(/✓ Left in \w{3}/);
+	await expect(dlg.getByRole('heading', { name: /^Unfinished from / })).toContainText(/3 of 3 decided/);
+	if (process.env.SHOTS) await dlg.screenshot({ path: process.env.SHOTS + '/cycle-decided.png' });
+	await dlg.getByRole('button', { name: 'Close' }).last().click();
+	// My day: the step is ticked and green.
+	const unStep = setup.locator('.cs-step', { hasText: /Unfinished from/ });
+	await expect(unStep).toHaveClass(/\bok\b/);
+	await expect(unStep).toContainText(/3 of 3 decided — 1 left, 2 moved to \w{3}/);
+	await expect(setup.getByRole('button', { name: 'Decide unfinished' })).toHaveCount(0);
 	await expect(reminder).toContainText(reminderText('\\d+ unassigned'));
 
 	// The catch-up task is on Meeting Minutes with its tag.
@@ -136,15 +161,7 @@ test('assign and review a new cycle', async ({ page }) => {
 	await expect(page.locator('.md-strip', { hasText: 'Cycle Co' })).toHaveCount(0);
 	// Done: the reminder goes away by itself.
 	await expect(reminder).toHaveCount(0);
-	// Cycle pages is still unfinished (days 1–3): its reminder and the box's Move unfinished stay,
-	// even when the setup is done; Move unfinished opens the Unfinished part.
-	if (left > 0) {
-		await expect(leftover).toContainText(/Cycle Co: 1 task not finished in/);
-		await leftover.getByRole('button', { name: 'Move unfinished' }).click();
-		await expect(dlg.getByRole('heading', { name: /^Unfinished from / })).toBeInViewport();
-		await dlg.getByRole('button', { name: 'Close' }).last().click();
-		await expect(setup.getByRole('button', { name: 'Move unfinished' })).toBeVisible();
-	}
+	await expect(box('Notifications').locator('.nf-must-item', { hasText: /Cycle Co: \d+ tasks? not finished in/ })).toHaveCount(0);
 	await page.locator('.md-bell-btn').click();
 	await expect(page.locator('.md-pop li.must', { hasText: /New cycle for Cycle Co|Cycle Co: new cycle setup/ })).toHaveCount(0);
 	await page.locator('.md-bell-btn').click();

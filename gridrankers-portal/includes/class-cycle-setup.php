@@ -25,6 +25,9 @@ class GRP_Cycle_Setup {
 	/** Days a feedback notice stays in the Notices box. */
 	const FEEDBACK_DAYS = 14;
 
+	/** Key in a cycle's reviews for the unfinished tasks left in that cycle `{taskId: {by, at}}`. */
+	const LEFT = '_left';
+
 	/**
 	 * Records the review of one monthly or meeting task of the project's previous cycle.
 	 * Feedback (`$ok` false) goes to the task's responsible people as a private notice; a
@@ -101,6 +104,40 @@ class GRP_Cycle_Setup {
 		GRP_Activity::audit( 'project', 'client', $updated, $actor, ( $ok ? 'reviewed last cycle: ' : 'sent feedback on last cycle: ' ) . $task['title'] );
 
 		return $updated;
+	}
+
+	/**
+	 * Records (or clears) "Leave in {month}" for an unfinished task of the project's previous
+	 * cycle (SPEC.md 6.11, design UF-1A): the leader decided it stays where it is.
+	 *
+	 * @param array  $project Project row.
+	 * @param string $task_id Monthly or meeting task id.
+	 * @param bool   $leave   True to record the decision, false to clear it.
+	 * @param array  $actor   Acting member.
+	 * @param string $today   `Y-m-d`.
+	 * @return array Updated project.
+	 */
+	public static function leave( array $project, $task_id, $leave, array $actor, $today ) {
+		$cycle   = GRP_Cycles::cycle_range( $project, -1, $today );
+		$reviews = is_array( $project['cycle_reviews'] ?? null ) ? $project['cycle_reviews'] : array();
+		$done    = isset( $reviews[ $cycle['key'] ] ) && is_array( $reviews[ $cycle['key'] ] ) ? $reviews[ $cycle['key'] ] : array();
+		$left    = isset( $done[ self::LEFT ] ) && is_array( $done[ self::LEFT ] ) ? $done[ self::LEFT ] : array();
+		if ( $leave ) {
+			$left[ (string) $task_id ] = array(
+				'by' => $actor['id'],
+				'at' => GRP_Ids::now(),
+			);
+		} elseif ( isset( $left[ (string) $task_id ] ) ) {
+			unset( $left[ (string) $task_id ] );
+		} else {
+			return $project;
+		}
+		$done[ self::LEFT ]       = (object) $left;
+		$reviews[ $cycle['key'] ] = $done;
+		uksort( $reviews, 'strcmp' );
+		$reviews = array_slice( $reviews, -self::KEEP, null, true );
+
+		return GRP_Store::update( 'grp_projects', $project['id'], array( 'cycle_reviews' => $reviews ) );
 	}
 
 	/**
