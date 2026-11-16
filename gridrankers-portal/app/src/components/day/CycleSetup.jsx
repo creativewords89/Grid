@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { usePortal } from '../../context.js';
-import { allReminders, cycleLabel, cycleSetup, lastCycleCount, unfinishedOf } from '../../lib/cycleSetup.js';
+import { allReminders, cycleLabel, cycleSetup, lastCycleCount, lastCycleWork, unfinishedOf } from '../../lib/cycleSetup.js';
+import { FileRow } from '../review/Submission.jsx';
 import { isBiweekly, isSplit } from '../../lib/cycles.js';
 import { itemDeadline } from '../../lib/deadline.js';
 import { short } from '../../lib/format.js';
@@ -37,7 +38,11 @@ function ReviewRow({ c, task, meeting = false }) {
 	const [writing, setWriting] = useState(false);
 	const [note, setNote] = useState('');
 	const [busy, setBusy] = useState(false);
+	const [showWork, setShowWork] = useState(false);
 	const done = c.reviews[task.id];
+	// What was handed in last cycle, to look at before Looks good / Send feedback.
+	const work = lastCycleWork(data, task, c.project, today, meeting);
+	const workCount = work.files.length + work.links.length;
 	const people = [...new Set([...(task.assignees || []).map((a) => a.id), ...(task.parts || []).flatMap((p) => (p.people || []).map((x) => x.id))])].map((id) => data.members[id]).filter(Boolean);
 	const { got, need } = meeting ? { got: 0, need: 0 } : lastCycleCount(data, task, c.project, today);
 	const met = got >= need;
@@ -98,6 +103,28 @@ function ReviewRow({ c, task, meeting = false }) {
 					)}
 				</span>
 			</div>
+			{(workCount > 0 || work.notes.length > 0) && (
+				<button type="button" className="linkbtn cs-work-btn" aria-expanded={showWork} onClick={() => setShowWork(!showWork)}>
+					📎 {workCount > 0 ? [work.files.length && `${work.files.length} file${work.files.length === 1 ? '' : 's'}`, work.links.length && `${work.links.length} link${work.links.length === 1 ? '' : 's'}`].filter(Boolean).join(' · ') : 'What was done'} {showWork ? '▴' : '▾'}
+				</button>
+			)}
+			{showWork && (
+				<div className="cs-work" aria-label={`Work handed in for ${task.title}`}>
+					{work.notes.map((n, k) => (
+						<p key={k} className="cs-work-note">
+							{n}
+						</p>
+					))}
+					{work.links.map((l) => (
+						<a key={l.url} className="sb-link" href={l.url} target="_blank" rel="noopener noreferrer">
+							↗ {l.name}
+						</a>
+					))}
+					{work.files.map((f) => (
+						<FileRow key={f.id} file={f} />
+					))}
+				</div>
+			)}
 			{writing && (
 				<div className="cs-fbox">
 					<textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} aria-label={`Feedback on ${task.title}`} placeholder="What should change next cycle?" autoFocus />

@@ -352,6 +352,10 @@ dialog.cs-dlg{width:min(760px,96vw)}
 .cs-sum .pf-bar span{background:var(--accent)}
 .cs-list{list-style:none;margin:0;padding:0}
 .cs-h{margin:12px 0 2px;font-size:.92rem}
+.cs-work-btn{display:inline-block;margin:6px 0 0 34px;font-size:.8rem;font-weight:700}
+.cs-work{display:flex;flex-direction:column;gap:6px;margin:6px 0 0 34px;padding:8px 10px;border-radius:10px;background:var(--panel-2)}
+.cs-work-note{margin:0;font-size:.82rem;white-space:pre-wrap}
+.cs-work .sb-link{font-size:.8rem;overflow-wrap:anywhere}
 .cs-kind{font-size:.72rem;font-weight:700;color:var(--ink-2);background:var(--panel-2);border-radius:99px;padding:2px 8px;white-space:nowrap}
 .cs-un.on{background:color-mix(in srgb,var(--accent) 5%,var(--panel));border-radius:10px;padding:10px 8px}
 .cs-seg{display:inline-flex}

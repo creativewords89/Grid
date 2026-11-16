@@ -100,6 +100,20 @@ foreach ( array( array( 'Cycle blogs', 2, 'tm_max' ), array( 'Cycle pages', 1, n
 				'period_key' => $last,
 				'count'      => 1,
 				'status'     => 'doing',
+				// A link handed in last cycle, shown in Review last cycle.
+				'handins'    => array(
+					'write' => array(
+						'work' => array(
+							'files' => array(),
+							'links' => array(
+								array(
+									'url'  => 'https://docs.google.com/document/d/cycle-blogs',
+									'name' => 'Google Doc',
+								),
+							),
+						),
+					),
+				),
 			)
 		);
 	}
