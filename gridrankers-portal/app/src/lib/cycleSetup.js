@@ -71,16 +71,16 @@ export function unfinishedOf(data, c, today) {
 // The work handed in for a task last cycle, for Review last cycle: the submission's note, files and
 // links (meeting task, or each period's record of a monthly task) and the files and links handed in
 // on its steps. Files once each; links as {url, name}.
-// A short name for a link: "Google Sheet", "Google Doc", … or the site's name.
+// A short name for a link: "Sheet", "Doc", "Slides", "Form", "Drive" (Google), or the site's name.
 export function linkName(url) {
 	const m = String(url).match(/^https?:\/\/(?:www\.)?([^/?#]+)([^?#]*)/i);
 	if (!m) return String(url);
 	const [, host, path] = m;
 	if (host === 'docs.google.com') {
-		const kind = { spreadsheets: 'Google Sheet', document: 'Google Doc', presentation: 'Google Slides', forms: 'Google Form' }[path.split('/')[1]];
+		const kind = { spreadsheets: 'Sheet', document: 'Doc', presentation: 'Slides', forms: 'Form' }[path.split('/')[1]];
 		if (kind) return kind;
 	}
-	if (host === 'drive.google.com') return 'Google Drive';
+	if (host === 'drive.google.com') return 'Drive';
 	return host;
 }
 

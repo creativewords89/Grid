@@ -36,19 +36,19 @@ function Step({ ok, label, sub }) {
 // as chips (a file opens or downloads, a link opens in a new tab).
 function Work({ work, title }) {
 	const { api, data, toast } = usePortal();
-	const [open, setOpen] = useState(false);
+	const [open, setOpen] = useState('');
 	const box = useRef(null);
 	const said = work.notes.filter((n) => n.text).length;
 	const items = work.files.length + work.links.length;
 	useEffect(() => {
 		if (!open) return undefined;
-		const away = (e) => box.current && !box.current.contains(e.target) && setOpen(false);
+		const away = (e) => box.current && !box.current.contains(e.target) && setOpen('');
 		// Escape closes only the pop-over, not the Review last cycle dialog under it.
 		const esc = (e) => {
 			if (e.key !== 'Escape') return;
 			e.preventDefault();
 			e.stopPropagation();
-			setOpen(false);
+			setOpen('');
 		};
 		document.addEventListener('mousedown', away);
 		document.addEventListener('keydown', esc, true);
@@ -58,15 +58,15 @@ function Work({ work, title }) {
 		};
 	}, [open]);
 	if (!items && !work.notes.length) return <span className="cs-none">Nothing handed in</span>;
-	const pill = (label, text) => (
-		<button type="button" className={'cs-pill' + (open ? ' on' : '')} aria-expanded={open} aria-label={`${label} for ${title}`} onClick={() => setOpen(!open)}>
+	const pill = (key, label, text) => (
+		<button type="button" className={'cs-pill' + (open === key ? ' on' : '')} aria-expanded={open === key} aria-label={`${label} for ${title}`} onClick={() => setOpen(open === key ? '' : key)}>
 			{text}
 		</button>
 	);
 	return (
 		<span className="cs-work" ref={box}>
-			{(said > 0 || !items) && pill(said ? `${said} note${said === 1 ? '' : 's'}` : 'Who handed it in', `💬 ${said || work.notes.length}`)}
-			{items > 0 && pill(`${items} file${items === 1 ? '' : 's'} and links`, `📎 ${items}`)}
+			{(said > 0 || !items) && pill('notes', said ? `${said} note${said === 1 ? '' : 's'}` : 'Who handed it in', `💬 ${said || work.notes.length}`)}
+			{items > 0 && pill('files', `${items} file${items === 1 ? '' : 's'} and links`, `📎 ${items}`)}
 			{open && (
 				<div className="cs-pop" role="dialog" aria-label={`Work handed in for ${title}`}>
 					{work.notes.map((n, k) => (
@@ -135,9 +135,10 @@ function ReviewRow({ c, task, meeting = false }) {
 		<li className="cs-row">
 			<div className="cs-line">
 				{people[0] ? <Avatar person={people[0]} small /> : <Avatar person={null} small />}
-				<span className="cs-task">
+				<span className="cs-task cs-task-one">
 					<b>{task.title}</b>
 					<small>
+						{' · '}
 						{people.length ? people.map((p) => p.name).join(', ') : 'Nobody responsible'} · {meeting ? `Meeting${due ? ` · due ${short(due.end)}` : ''}` : TAG_LABEL[tagOf(task)]}
 					</small>
 				</span>
@@ -145,13 +146,10 @@ function ReviewRow({ c, task, meeting = false }) {
 				{meeting ? (
 					<span className={'mp-flag ' + (open ? 'f-amber' : 'f-green')}>{open ? 'Open' : 'Done'}</span>
 				) : (
-					<span className={'cs-count' + (met ? ' met' : ' short')} title={`${got} of ${need} done last cycle`}>
+					<span className={'cs-count cs-count-one' + (met ? ' met' : ' short')} title={`${got} of ${need} done last cycle`}>
 						<b>
 							{got} / {need}
 						</b>
-						<span className="cs-bar">
-							<span style={{ width: Math.round((100 * Math.min(got, need)) / need) + '%' }} />
-						</span>
 					</span>
 				)}
 				<span className="cs-acts">

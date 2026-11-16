@@ -261,15 +261,15 @@ describe('the work handed in last cycle', () => {
 	});
 
 	it('gives links a short name', () => {
-		expect(linkName('https://docs.google.com/spreadsheets/d/1TSOF/edit?usp=sharing')).toBe('Google Sheet');
-		expect(linkName('https://docs.google.com/document/d/x/edit')).toBe('Google Doc');
-		expect(linkName('https://docs.google.com/presentation/d/x')).toBe('Google Slides');
-		expect(linkName('https://drive.google.com/file/d/x')).toBe('Google Drive');
+		expect(linkName('https://docs.google.com/spreadsheets/d/1TSOF/edit?usp=sharing')).toBe('Sheet');
+		expect(linkName('https://docs.google.com/document/d/x/edit')).toBe('Doc');
+		expect(linkName('https://docs.google.com/presentation/d/x')).toBe('Slides');
+		expect(linkName('https://drive.google.com/file/d/x')).toBe('Drive');
 		expect(linkName('https://www.figma.com/file/abc')).toBe('figma.com');
 		// A name that is only the address again is replaced by the short name.
 		const d = fixture();
 		const url = 'https://docs.google.com/spreadsheets/d/1aS4/edit?usp=sharing';
 		const t = { id: 'm1', project_id: 'p1', status: 'done', completion: { links: [{ url, name: 'docs.google.com/spreadsheets/d/1aS4/edit?usp=sharing' }] } };
-		expect(lastCycleWork(d, t, d.projects.p1, '2026-10-02', true).links).toEqual([{ url, name: 'Google Sheet' }]);
+		expect(lastCycleWork(d, t, d.projects.p1, '2026-10-02', true).links).toEqual([{ url, name: 'Sheet' }]);
 	});
 });
