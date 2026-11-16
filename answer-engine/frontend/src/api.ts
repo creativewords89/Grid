@@ -1054,8 +1054,14 @@ export const api = {
     sendFile<QbLoaded>(`/qb/sets/${setId}/load`, "file", file, onProgress),
   fbThreads: (setId: string) => request<FbThreadList>("GET", `/qb/sets/${setId}/threads`),
   /** The set's approved questions and answers as Excel (step 32); "" topic = no topic. */
-  qbExportUrl: (setId: string, topic?: string, subtopic?: string) => {
+  qbExportUrl: (
+    setId: string,
+    topic?: string,
+    subtopic?: string,
+    status: FbStatus | "all" = "approved",
+  ) => {
     const query = new URLSearchParams();
+    if (status !== "approved") query.set("status", status);
     if (topic !== undefined) query.set("topic", topic);
     if (topic !== undefined && subtopic !== undefined) query.set("subtopic", subtopic);
     const q = query.toString();
