@@ -111,6 +111,8 @@ foreach ( array( array( 'Cycle blogs', 2, 'tm_max' ), array( 'Cycle pages', 1, n
 									'name' => 'Google Doc',
 								),
 							),
+							'by'    => 'tm_max',
+							'at'    => '2026-01-10T09:00:00Z',
 						),
 					),
 				),

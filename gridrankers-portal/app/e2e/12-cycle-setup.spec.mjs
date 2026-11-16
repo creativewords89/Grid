@@ -69,8 +69,9 @@ test('assign and review a new cycle', async ({ page }) => {
 	const blogs = dlg.getByRole('list', { name: 'Monthly tasks' }).locator('.cs-row', { hasText: 'Cycle blogs' });
 	await expect(blogs.locator('.cs-count')).toContainText('1 / 2');
 	// What was handed in last cycle is there to look at before reviewing.
-	await blogs.getByRole('button', { name: /📎 1 link/ }).click();
-	await expect(blogs.getByRole('link', { name: '↗ Google Doc' })).toHaveAttribute('href', 'https://docs.google.com/document/d/cycle-blogs');
+	await expect(blogs.locator('.cs-work-note')).toContainText(/\S+ · /);
+	await expect(blogs.getByRole('link', { name: /Google Doc/ })).toHaveAttribute('href', 'https://docs.google.com/document/d/cycle-blogs');
+	await expect(dlg.getByRole('list', { name: 'Monthly tasks' }).locator('.cs-row', { hasText: 'Cycle pages' })).toContainText('Nothing handed in');
 	await blogs.getByRole('button', { name: 'Send feedback' }).click();
 	await blogs.getByLabel('Feedback on Cycle blogs').fill('Only 1 of 2 blogs went out. Plan the second one early this cycle.');
 	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/cycle-review.png' });

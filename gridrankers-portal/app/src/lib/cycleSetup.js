@@ -78,6 +78,7 @@ export function lastCycleWork(data, task, project, today, meeting) {
 	const files = new Map();
 	const links = new Map();
 	const notes = [];
+	const handedBy = new Map();
 	const addLink = (l) => {
 		const url = typeof l === 'string' ? l : l && l.url;
 		if (url && /^https?:\/\//.test(url) && !links.has(url)) links.set(url, { url, name: (l && l.name) || url.replace(/^https?:\/\//, '') });
@@ -85,7 +86,8 @@ export function lastCycleWork(data, task, project, today, meeting) {
 	sources.forEach((src) => {
 		const done = src.completion;
 		if (done) {
-			if (done.note) notes.push(done.note);
+			// Who finished it and when, with what they wrote (design RV-1B2).
+			if (done.note || done.by) notes.push({ text: done.note || '', by: done.by || null, at: done.at || null });
 			(done.files || []).forEach((f) => files.set(f.id, f));
 			linksOf(done).forEach(addLink);
 		}
@@ -93,9 +95,13 @@ export function lastCycleWork(data, task, project, today, meeting) {
 			Object.values(items || {}).forEach((got) => {
 				(got.files || []).forEach((f) => files.set(f.id, f));
 				(got.links || []).forEach(addLink);
+				const was = got.by && handedBy.get(got.by);
+				if (got.by && (!was || String(got.at || '') > String(was.at || ''))) handedBy.set(got.by, { text: '', by: got.by, at: got.at || null });
 			}),
 		);
 	});
+	// No submission yet: who handed in the steps, and when.
+	if (!notes.length) notes.push(...handedBy.values());
 	return { notes, files: [...files.values()], links: [...links.values()] };
 }
 
