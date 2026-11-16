@@ -71,6 +71,19 @@ export function unfinishedOf(data, c, today) {
 // The work handed in for a task last cycle, for Review last cycle: the submission's note, files and
 // links (meeting task, or each period's record of a monthly task) and the files and links handed in
 // on its steps. Files once each; links as {url, name}.
+// A short name for a link: "Sheet", "Doc", "Slides", "Form", "Drive" (Google), or the site's name.
+export function linkName(url) {
+	const m = String(url).match(/^https?:\/\/(?:www\.)?([^/?#]+)([^?#]*)/i);
+	if (!m) return String(url);
+	const [, host, path] = m;
+	if (host === 'docs.google.com') {
+		const kind = { spreadsheets: 'Sheet', document: 'Doc', presentation: 'Slides', forms: 'Form' }[path.split('/')[1]];
+		if (kind) return kind;
+	}
+	if (host === 'drive.google.com') return 'Drive';
+	return host;
+}
+
 export function lastCycleWork(data, task, project, today, meeting) {
 	const sources = meeting
 		? [task]
@@ -81,7 +94,8 @@ export function lastCycleWork(data, task, project, today, meeting) {
 	const handedBy = new Map();
 	const addLink = (l) => {
 		const url = typeof l === 'string' ? l : l && l.url;
-		if (url && /^https?:\/\//.test(url) && !links.has(url)) links.set(url, { url, name: (l && l.name) || url.replace(/^https?:\/\//, '') });
+		const named = l && l.name && !/^(https?:\/\/|www\.)|\.[a-z]{2,}\//i.test(l.name) ? l.name : '';
+		if (url && /^https?:\/\//.test(url) && !links.has(url)) links.set(url, { url, name: named || linkName(url) });
 	};
 	sources.forEach((src) => {
 		const done = src.completion;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cycleLabel, cycleSetup, lastCycleCount, lastCycleWork, leftLastCycle, meetingOfCycle, setupReminders, unfinishedOf } from '../lib/cycleSetup.js';
+import { cycleLabel, cycleSetup, lastCycleCount, lastCycleWork, linkName, leftLastCycle, meetingOfCycle, setupReminders, unfinishedOf } from '../lib/cycleSetup.js';
 import { strips } from '../lib/day.js';
 import { bellItems } from '../lib/feed.js';
 import { emptyData } from '../lib/store.js';
@@ -229,7 +229,7 @@ describe('the work handed in last cycle', () => {
 		expect(work.notes).toEqual([{ text: '4 blogs live', by: 'max', at: '2026-09-29T10:00:00Z' }]);
 		expect(work.files.map((f) => f.id)).toEqual(['f1', 'f2']);
 		expect(work.links).toEqual([
-			{ url: 'https://acme.com/blog', name: 'acme.com/blog' },
+			{ url: 'https://acme.com/blog', name: 'acme.com' },
 			{ url: 'https://figma.com/file/a', name: 'Figma' },
 		]);
 		// This cycle's record is not last cycle's work.
@@ -258,5 +258,18 @@ describe('the work handed in last cycle', () => {
 			{ text: '', by: 'max', at: '2026-09-12T09:00:00Z' },
 			{ text: '', by: 'lee', at: '2026-09-11T09:00:00Z' },
 		]);
+	});
+
+	it('gives links a short name', () => {
+		expect(linkName('https://docs.google.com/spreadsheets/d/1TSOF/edit?usp=sharing')).toBe('Sheet');
+		expect(linkName('https://docs.google.com/document/d/x/edit')).toBe('Doc');
+		expect(linkName('https://docs.google.com/presentation/d/x')).toBe('Slides');
+		expect(linkName('https://drive.google.com/file/d/x')).toBe('Drive');
+		expect(linkName('https://www.figma.com/file/abc')).toBe('figma.com');
+		// A name that is only the address again is replaced by the short name.
+		const d = fixture();
+		const url = 'https://docs.google.com/spreadsheets/d/1aS4/edit?usp=sharing';
+		const t = { id: 'm1', project_id: 'p1', status: 'done', completion: { links: [{ url, name: 'docs.google.com/spreadsheets/d/1aS4/edit?usp=sharing' }] } };
+		expect(lastCycleWork(d, t, d.projects.p1, '2026-10-02', true).links).toEqual([{ url, name: 'Sheet' }]);
 	});
 });
