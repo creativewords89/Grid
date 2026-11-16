@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { usePortal } from '../../context.js';
-import { allReminders, cycleLabel, cycleSetup, lastCycleCount, unfinishedOf } from '../../lib/cycleSetup.js';
+import { allReminders, cycleLabel, cycleSetup, lastCycleCount, lastCycleWork, unfinishedOf } from '../../lib/cycleSetup.js';
+import { fileBadge, openFile } from '../../lib/files.js';
 import { isBiweekly, isSplit } from '../../lib/cycles.js';
 import { itemDeadline } from '../../lib/deadline.js';
 import { short } from '../../lib/format.js';
@@ -30,6 +31,56 @@ function Step({ ok, label, sub }) {
 	);
 }
 
+// What was handed in for a task last cycle (design RV-1B2): who and when, with what they wrote,
+// then the files and links as chips. A file opens (image, PDF) or downloads; a link opens.
+const CHIPS = 4;
+function Work({ work, title }) {
+	const { api, data, toast } = usePortal();
+	const [all, setAll] = useState(false);
+	const chips = [...work.files.map((f) => ({ file: f })), ...work.links.map((l) => ({ link: l }))];
+	const shown = all ? chips : chips.slice(0, CHIPS);
+	if (!chips.length && !work.notes.length) return <span className="cs-none">Nothing handed in</span>;
+	return (
+		<div className="cs-work" aria-label={`Work handed in for ${title}`}>
+			{work.notes.slice(0, 3).map((n, k) => (
+				<p key={k} className="cs-work-note">
+					<span>
+						{[(data.members[n.by] || {}).name, n.at && short(String(n.at).slice(0, 10))].filter(Boolean).join(' · ')}
+						{n.text && (n.by || n.at) ? ' · ' : ''}
+					</span>
+					{n.text && <q>{n.text}</q>}
+				</p>
+			))}
+			{chips.length > 0 && (
+				<div className="cs-chips">
+					{shown.map((c) => {
+						if (c.link) {
+							return (
+								<a key={c.link.url} className="cs-chip" href={c.link.url} target="_blank" rel="noopener noreferrer" title={c.link.url}>
+									<span className="sf-badge lnk">↗</span>
+									{c.link.name}
+								</a>
+							);
+						}
+						const badge = fileBadge(c.file);
+						return (
+							<button key={c.file.id} type="button" className="cs-chip" title={`Open ${c.file.name}`} onClick={() => openFile(api, c.file).catch((err) => toast(err.message))}>
+								<span className={'sf-badge ' + badge.tone}>{badge.label}</span>
+								{c.file.name}
+							</button>
+						);
+					})}
+					{chips.length > CHIPS && (
+						<button type="button" className="linkbtn cs-more" onClick={() => setAll(!all)}>
+							{all ? 'Show less' : `+${chips.length - CHIPS} more`}
+						</button>
+					)}
+				</div>
+			)}
+		</div>
+	);
+}
+
 // One task of last cycle: done vs target (monthly) or Done / Open (meeting), and Looks good /
 // Send feedback; an open meeting task can also be carried over with a new deadline.
 function ReviewRow({ c, task, meeting = false }) {
@@ -38,6 +89,8 @@ function ReviewRow({ c, task, meeting = false }) {
 	const [note, setNote] = useState('');
 	const [busy, setBusy] = useState(false);
 	const done = c.reviews[task.id];
+	// What was handed in last cycle, to look at before Looks good / Send feedback.
+	const work = lastCycleWork(data, task, c.project, today, meeting);
 	const people = [...new Set([...(task.assignees || []).map((a) => a.id), ...(task.parts || []).flatMap((p) => (p.people || []).map((x) => x.id))])].map((id) => data.members[id]).filter(Boolean);
 	const { got, need } = meeting ? { got: 0, need: 0 } : lastCycleCount(data, task, c.project, today);
 	const met = got >= need;
@@ -98,6 +151,7 @@ function ReviewRow({ c, task, meeting = false }) {
 					)}
 				</span>
 			</div>
+			<Work work={work} title={task.title} />
 			{writing && (
 				<div className="cs-fbox">
 					<textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} aria-label={`Feedback on ${task.title}`} placeholder="What should change next cycle?" autoFocus />

@@ -3,6 +3,7 @@
 // meeting task of the cycle that just ended. A reminder every day until done; nothing is blocked.
 import { addDays, cycleRange, daysBetween, isSplit, slotsOf } from './cycles.js';
 import { itemDeadline } from './deadline.js';
+import { linksOf } from './files.js';
 import { recordOf } from './monthly.js';
 import { rowsOf } from './store.js';
 import { billingReminders } from './billing.js';
@@ -65,6 +66,43 @@ export function unfinishedOf(data, c, today) {
 		.sort((a, b) => a.title.localeCompare(b.title))
 		.map((task) => ({ task, kind: 'meeting', moved: task.carried && task.carried.from === 'meeting' && task.carried.cycle === c.prev.key ? task : null }));
 	return [...monthly, ...meeting];
+}
+
+// The work handed in for a task last cycle, for Review last cycle: the submission's note, files and
+// links (meeting task, or each period's record of a monthly task) and the files and links handed in
+// on its steps. Files once each; links as {url, name}.
+export function lastCycleWork(data, task, project, today, meeting) {
+	const sources = meeting
+		? [task]
+		: (isSplit(task) ? slotsOf(task, project, -1, today) : [undefined]).map((_, w) => recordOf(data.records, task, project, isSplit(task) ? w : undefined, -1, today)).filter((r) => r && r.status !== 'skipped');
+	const files = new Map();
+	const links = new Map();
+	const notes = [];
+	const handedBy = new Map();
+	const addLink = (l) => {
+		const url = typeof l === 'string' ? l : l && l.url;
+		if (url && /^https?:\/\//.test(url) && !links.has(url)) links.set(url, { url, name: (l && l.name) || url.replace(/^https?:\/\//, '') });
+	};
+	sources.forEach((src) => {
+		const done = src.completion;
+		if (done) {
+			// Who finished it and when, with what they wrote (design RV-1B2).
+			if (done.note || done.by) notes.push({ text: done.note || '', by: done.by || null, at: done.at || null });
+			(done.files || []).forEach((f) => files.set(f.id, f));
+			linksOf(done).forEach(addLink);
+		}
+		Object.values(src.handins || {}).forEach((items) =>
+			Object.values(items || {}).forEach((got) => {
+				(got.files || []).forEach((f) => files.set(f.id, f));
+				(got.links || []).forEach(addLink);
+				const was = got.by && handedBy.get(got.by);
+				if (got.by && (!was || String(got.at || '') > String(was.at || ''))) handedBy.set(got.by, { text: '', by: got.by, at: got.at || null });
+			}),
+		);
+	});
+	// No submission yet: who handed in the steps, and when.
+	if (!notes.length) notes.push(...handedBy.values());
+	return { notes, files: [...files.values()], links: [...links.values()] };
 }
 
 // Meeting tasks of a cycle: due in it, or finished in it (and those already reviewed for it, such

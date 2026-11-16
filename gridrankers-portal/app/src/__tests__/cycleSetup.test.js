@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cycleLabel, cycleSetup, lastCycleCount, leftLastCycle, meetingOfCycle, setupReminders, unfinishedOf } from '../lib/cycleSetup.js';
+import { cycleLabel, cycleSetup, lastCycleCount, lastCycleWork, leftLastCycle, meetingOfCycle, setupReminders, unfinishedOf } from '../lib/cycleSetup.js';
 import { strips } from '../lib/day.js';
 import { bellItems } from '../lib/feed.js';
 import { emptyData } from '../lib/store.js';
@@ -210,5 +210,53 @@ describe('unfinished reminders and every open meeting task', () => {
 			c2: { id: 'c2', project_id: 'p1', title: 'Pages — 2 left from Sep', status: 'todo', carried: { from: 'monthly', task_id: 't2', cycle: '2026-09' }, created_at: '2026-10-02 09:00:00' },
 		};
 		expect(keys('2026-10-02')).toEqual([]);
+	});
+});
+
+// Review last cycle shows what was handed in (SPEC.md 6.11).
+describe('the work handed in last cycle', () => {
+	const FILE = { id: 'f1', mime: 'application/pdf', name: 'report.pdf', size: 10 };
+	const IMG = { id: 'f2', mime: 'image/png', name: 'hero.png', size: 10 };
+	it('gathers a monthly task’s submission and hand-ins, files once each', () => {
+		const d = fixture();
+		d.records['t1__2026-09'] = {
+			count: 4,
+			status: 'done',
+			completion: { note: '4 blogs live', links: ['https://acme.com/blog'], files: [FILE], by: 'max', at: '2026-09-29T10:00:00Z' },
+			handins: { w: { draft: { files: [FILE, IMG], links: [{ url: 'https://figma.com/file/a', name: 'Figma' }] } } },
+		};
+		const work = lastCycleWork(d, d.monthly_tasks.t1, d.projects.p1, '2026-10-02', false);
+		expect(work.notes).toEqual([{ text: '4 blogs live', by: 'max', at: '2026-09-29T10:00:00Z' }]);
+		expect(work.files.map((f) => f.id)).toEqual(['f1', 'f2']);
+		expect(work.links).toEqual([
+			{ url: 'https://acme.com/blog', name: 'acme.com/blog' },
+			{ url: 'https://figma.com/file/a', name: 'Figma' },
+		]);
+		// This cycle's record is not last cycle's work.
+		expect(lastCycleWork(d, d.monthly_tasks.t2, d.projects.p1, '2026-10-02', false)).toEqual({ notes: [], files: [], links: [] });
+	});
+
+	it('reads a meeting task’s own submission', () => {
+		const d = fixture();
+		const t = { id: 'm1', project_id: 'p1', status: 'done', completion: { note: 'Fixed', link: 'https://acme.com/contact', files: [IMG] } };
+		const work = lastCycleWork(d, t, d.projects.p1, '2026-10-02', true);
+		expect([work.notes, work.files.length, work.links[0].url]).toEqual([[{ text: 'Fixed', by: null, at: null }], 1, 'https://acme.com/contact']);
+	});
+
+	it('without a submission, says who handed in the steps and when (latest per person)', () => {
+		const d = fixture();
+		d.records['t1__2026-09'] = {
+			count: 1,
+			status: 'doing',
+			handins: {
+				write: { draft: { files: [FILE], by: 'max', at: '2026-09-10T09:00:00Z' } },
+				check: { ok: { links: ['https://acme.com/a'], by: 'max', at: '2026-09-12T09:00:00Z' }, seo: { links: [], by: 'lee', at: '2026-09-11T09:00:00Z' } },
+			},
+		};
+		const work = lastCycleWork(d, d.monthly_tasks.t1, d.projects.p1, '2026-10-02', false);
+		expect(work.notes).toEqual([
+			{ text: '', by: 'max', at: '2026-09-12T09:00:00Z' },
+			{ text: '', by: 'lee', at: '2026-09-11T09:00:00Z' },
+		]);
 	});
 });
