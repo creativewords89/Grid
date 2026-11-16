@@ -29,6 +29,7 @@ class GRP_REST_Projects extends GRP_REST_Controller {
 		self::route( '/projects/(?P<id>[\w-]+)/cycle', WP_REST_Server::CREATABLE, 'set_cycle' );
 		self::route( '/projects/(?P<id>[\w-]+)/cycle-review', WP_REST_Server::CREATABLE, 'review_cycle' );
 		self::route( '/projects/(?P<id>[\w-]+)/carry-over', WP_REST_Server::CREATABLE, 'carry_over' );
+		self::route( '/projects/(?P<id>[\w-]+)/leave-unfinished', WP_REST_Server::CREATABLE, 'leave_unfinished' );
 	}
 
 	/**
@@ -317,7 +318,8 @@ class GRP_REST_Projects extends GRP_REST_Controller {
 			}
 			GRP_Store::transaction(
 				static function () use ( $project, $task, $due, $today ) {
-					return GRP_Cycle_Setup::review( $project, $task, true, '', self::actor(), $today, $due );
+					$moved = GRP_Cycle_Setup::review( $project, $task, true, '', self::actor(), $today, $due );
+					return GRP_Cycle_Setup::leave( $moved, $task['id'], false, self::actor(), $today );
 				}
 			);
 
@@ -333,7 +335,29 @@ class GRP_REST_Projects extends GRP_REST_Controller {
 			return self::invalid( __( 'Say how many are left, 1 or more.', 'gridrankers-portal' ) );
 		}
 		$cycle = GRP_Cycles::cycle_range( $project, -1, $today );
-		if ( GRP_Cycle_Setup::catch_up_of( $task, $cycle['key'] ) ) {
+		$made  = GRP_Cycle_Setup::catch_up_of( $task, $cycle['key'] );
+		if ( $made && ! empty( $request['change'] ) ) {
+			// Change: a new deadline for the catch-up task already made.
+			$made = GRP_Store::update(
+				'grp_meeting_tasks',
+				$made['id'],
+				array(
+					'deadline' => array(
+						'type' => 'date',
+						'date' => $due,
+					),
+				)
+			);
+			GRP_Activity::audit( 'edit', 'items', $made, self::actor(), 'catch-up due ' . $due );
+
+			return rest_ensure_response(
+				array(
+					'project' => $project,
+					'task'    => $made,
+				)
+			);
+		}
+		if ( $made ) {
 			return self::conflict( __( 'This task is already moved to the new cycle.', 'gridrankers-portal' ), 'grp_already_moved' );
 		}
 		if ( ! GRP_Cycle_Setup::responsible( $task ) ) {
@@ -341,14 +365,61 @@ class GRP_REST_Projects extends GRP_REST_Controller {
 			return self::invalid( sprintf( __( 'Nobody is responsible for “%s” — assign someone first.', 'gridrankers-portal' ), $task['title'] ) );
 		}
 
+		$made = GRP_Store::transaction(
+			static function () use ( $project, $task, $left, $due, $today ) {
+				GRP_Cycle_Setup::leave( $project, $task['id'], false, self::actor(), $today );
+				return GRP_Cycle_Setup::catch_up( $project, $task, $left, $due, self::actor(), $today );
+			}
+		);
+
 		return rest_ensure_response(
 			array(
-				'project' => $project,
-				'task'    => GRP_Store::transaction(
-					static function () use ( $project, $task, $left, $due, $today ) {
-						return GRP_Cycle_Setup::catch_up( $project, $task, $left, $due, self::actor(), $today );
-					}
-				),
+				'project' => GRP_Store::get( 'grp_projects', $project['id'] ),
+				'task'    => $made,
+			)
+		);
+	}
+
+	/**
+	 * POST /projects/{id}/leave-unfinished `{task_id, leave}`: "Leave in {month}" for an
+	 * unfinished task of last cycle (`leave` true), or undo that choice (false). Team Leaders and
+	 * the Super Admin only; a task already moved to the new cycle can't be left.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function leave_unfinished( WP_REST_Request $request ) {
+		$project = GRP_Store::get( 'grp_projects', $request['id'] );
+		if ( ! $project ) {
+			return self::not_found();
+		}
+		if ( ! self::can( GRP_Permissions::REVIEW_CYCLE ) ) {
+			return self::forbidden( __( 'Only a Team Leader or the Super Admin can decide on unfinished work.', 'gridrankers-portal' ) );
+		}
+		$id      = (string) $request['task_id'];
+		$monthly = GRP_Store::get( 'grp_monthly_tasks', $id );
+		$task    = $monthly ? $monthly : GRP_Store::get( 'grp_meeting_tasks', $id );
+		if ( ! $task || (string) $task['project_id'] !== (string) $project['id'] || ! empty( $task['deleted_at'] ) ) {
+			return self::invalid( __( 'That task is not in this project.', 'gridrankers-portal' ) );
+		}
+		$today = GRP_Cycles::today();
+		$leave = ! empty( $request['leave'] );
+		if ( $leave ) {
+			$cycle   = GRP_Cycles::cycle_range( $project, -1, $today );
+			$carried = $monthly ? GRP_Cycle_Setup::catch_up_of( $task, $cycle['key'] ) : ( is_array( $task['carried'] ?? null ) && 'meeting' === ( $task['carried']['from'] ?? '' ) && ( $task['carried']['cycle'] ?? '' ) === $cycle['key'] );
+			if ( $carried ) {
+				return self::conflict( __( 'This task is already moved to the new cycle.', 'gridrankers-portal' ), 'grp_already_moved' );
+			}
+			if ( ! $monthly && 'done' === $task['status'] ) {
+				return self::invalid( __( 'Only an open meeting task is unfinished.', 'gridrankers-portal' ) );
+			}
+		}
+
+		return rest_ensure_response(
+			GRP_Store::transaction(
+				static function () use ( $project, $task, $leave, $today ) {
+					return GRP_Cycle_Setup::leave( $project, $task['id'], $leave, self::actor(), $today );
+				}
 			)
 		);
 	}

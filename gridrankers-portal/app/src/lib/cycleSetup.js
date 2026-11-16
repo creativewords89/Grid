@@ -44,6 +44,9 @@ export function leftLastCycle(data, task, project, today) {
 // Short name of a cycle for "1 left from Sep": the month it starts in (same as the server).
 export const cycleLabel = (range) => new Date(range.start + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
 
+// Key in a cycle's reviews for the unfinished tasks left in it (same as the server).
+export const LEFT_KEY = '_left';
+
 // Unfinished work of last cycle (SPEC.md 6.11, design CO-1A): monthly tasks with something left and
 // every open meeting task whose deadline passed before this cycle, or with none from before it. Nothing
 // moves unless a leader moves it: a monthly task becomes a catch-up task in the new cycle, a meeting
@@ -51,10 +54,12 @@ export const cycleLabel = (range) => new Date(range.start + 'T00:00:00Z').toLoca
 // moved.
 export function unfinishedOf(data, c, today) {
 	if (!c.prev) return [];
+	// "Leave in {month}" decisions (design UF-1A), kept with last cycle's reviews.
+	const kept = (c.reviews && c.reviews[LEFT_KEY]) || {};
 	const meetings = rowsOf(data, 'meeting_tasks').filter((t) => t.project_id === c.project.id && !t.deleted_at);
 	const catchUp = (task) => meetings.find((m) => m.carried && m.carried.from === 'monthly' && m.carried.task_id === task.id && m.carried.cycle === c.prev.key) || null;
 	const monthly = c.last
-		.map((task) => ({ task, kind: 'monthly', left: leftLastCycle(data, task, c.project, today), ...lastCycleCount(data, task, c.project, today), moved: catchUp(task) }))
+		.map((task) => ({ task, kind: 'monthly', left: leftLastCycle(data, task, c.project, today), ...lastCycleCount(data, task, c.project, today), moved: catchUp(task), kept: kept[task.id] || null }))
 		.filter((u) => u.left > 0 || u.moved);
 	// Its deadline passed before this cycle, or it has none and was added before this cycle.
 	const behind = (t) => {
@@ -64,7 +69,7 @@ export function unfinishedOf(data, c, today) {
 	const meeting = meetings
 		.filter((t) => (t.carried && t.carried.from === 'meeting' && t.carried.cycle === c.prev.key) || (t.status !== 'done' && !(t.carried && t.carried.from === 'monthly') && behind(t)))
 		.sort((a, b) => a.title.localeCompare(b.title))
-		.map((task) => ({ task, kind: 'meeting', moved: task.carried && task.carried.from === 'meeting' && task.carried.cycle === c.prev.key ? task : null }));
+		.map((task) => ({ task, kind: 'meeting', moved: task.carried && task.carried.from === 'meeting' && task.carried.cycle === c.prev.key ? task : null, kept: kept[task.id] || null }));
 	return [...monthly, ...meeting];
 }
 
@@ -158,11 +163,15 @@ export function cycleSetup(data, today) {
 			const meeting = hadPrev ? meetingOfCycle(data, project, prev, reviews) : [];
 			const reviewed = last.filter((t) => reviews[t.id]).length;
 			const meetingReviewed = meeting.filter((t) => reviews[t.id]).length;
-			const done = assigned === tasks.length && reviewed === last.length && meetingReviewed === meeting.length;
+			// Every unfinished task of last cycle needs a decision (design UF-1A): left or moved.
+			const open = hadPrev ? unfinishedOf(data, { project, cycle, prev, last, reviews }, today) : [];
+			const unfinished = open.filter((u) => !u.moved && !u.kept).length;
+			const done = assigned === tasks.length && reviewed === last.length && meetingReviewed === meeting.length && unfinished === 0;
 			if (done && today > due) return;
 			const entry = { project, cycle, prev: hadPrev ? prev : null, due, tasks, assigned, last, meeting, reviews, reviewed, meetingReviewed, done, left: done || today > due ? 0 : daysBetween(today, due) + 1, late: today > due ? daysBetween(due, today) : 0 };
-			// Unfinished last cycle and not moved yet (nothing is required: leaving it is the default).
-			entry.unfinished = hadPrev ? unfinishedOf(data, entry, today).filter((u) => !u.moved).length : 0;
+			entry.unfinished = unfinished;
+			entry.unfinishedAll = open.length;
+			entry.unfinishedMoved = open.filter((u) => u.moved).length;
 			out.push(entry);
 		});
 	return out.sort((a, b) => a.done - b.done || b.late - a.late || a.due.localeCompare(b.due) || a.project.name.localeCompare(b.project.name));
@@ -170,11 +179,11 @@ export function cycleSetup(data, today) {
 
 const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 
-// What a setup still needs: "2 unassigned, 4 to review".
+// What a setup still needs: "2 unassigned, 4 to review, 1 unfinished to decide".
 export function setupTodo(c) {
 	const unassigned = c.tasks.length - c.assigned;
 	const review = c.last.length - c.reviewed + c.meeting.length - c.meetingReviewed;
-	return [unassigned && `${unassigned} unassigned`, review && `${review} to review`].filter(Boolean).join(', ');
+	return [unassigned && `${unassigned} unassigned`, review && `${review} to review`, c.unfinished && `${c.unfinished} unfinished to decide`].filter(Boolean).join(', ');
 }
 
 // Reminders for Team Leaders and the Super Admin (SPEC.md 6.11), shown in the Notifications box
@@ -200,26 +209,18 @@ export function setupReminders(data, me, today) {
 	}
 	open.forEach((c) => {
 		const todo = setupTodo(c);
+		// Only the unfinished tasks are left (design UF-1A): the reminder opens them straight away.
+		const onlyUnfinished = c.unfinished > 0 && c.assigned === c.tasks.length && c.reviewed === c.last.length && c.meetingReviewed === c.meeting.length;
+		const base = onlyUnfinished
+			? { key: `unfinished:${c.project.id}:${today}`, kind: 'unfinished', ok: 'Decide unfinished', project: c.project }
+			: { key: `setup:${c.project.id}:${today}`, kind: 'setup', ok: 'Open setup', project: c.project };
+		const what = onlyUnfinished ? `${plural(c.unfinished, 'task')} not finished in ${cycleLabel(c.prev)} — leave or move to ${cycleLabel(c.cycle)}` : todo;
 		out.push(
 			c.late
-				? { key: `setup:${c.project.id}:${today}`, kind: 'setup', tone: 'red', title: `${c.project.name}: new cycle setup is ${plural(c.late, 'day')} overdue — ${todo}`, ok: 'Open setup', project: c.project }
-				: { key: `setup:${c.project.id}:${today}`, kind: 'setup', tone: 'amber', title: `New cycle for ${c.project.name} — ${todo} · ${plural(c.left, 'day')} left`, ok: 'Open setup', project: c.project },
+				? { ...base, tone: 'red', title: `${c.project.name}: new cycle setup is ${plural(c.late, 'day')} overdue — ${what}` }
+				: { ...base, tone: 'amber', title: onlyUnfinished ? `${c.project.name}: ${what} · ${plural(c.left, 'day')} left` : `New cycle for ${c.project.name} — ${todo} · ${plural(c.left, 'day')} left` },
 		);
 	});
-	// Days 1–3 of a new cycle: what wasn't finished last cycle, to move or leave (CO-1A). It goes
-	// away when everything is moved, or after day 3 (leaving it in the old cycle is the default).
-	cycleSetup(data, today)
-		.filter((c) => c.unfinished > 0 && today <= c.due)
-		.forEach((c) =>
-			out.push({
-				key: `unfinished:${c.project.id}:${today}`,
-				kind: 'unfinished',
-				tone: 'amber',
-				title: `${c.project.name}: ${plural(c.unfinished, 'task')} not finished in ${cycleLabel(c.prev)} — move to ${cycleLabel(c.cycle)} or leave them`,
-				ok: 'Move unfinished',
-				project: c.project,
-			}),
-		);
 	// Any day: a monthly task with nobody on it (projects in setup already say so).
 	const inSetup = new Set(open.map((c) => c.project.id));
 	rowsOf(data, 'projects')

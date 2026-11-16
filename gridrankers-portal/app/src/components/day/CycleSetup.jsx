@@ -186,25 +186,31 @@ function ReviewRow({ c, task, meeting = false }) {
 	);
 }
 
-// One unfinished task of last cycle (design CO-1A): Leave in Sep (the default, nothing to do) or
-// Move to Oct — a catch-up task for a monthly task (how many and by when), a new deadline for a
-// meeting task.
+// One unfinished task of last cycle (design UF-1A): a decision for each — Leave in {Oct} (saved),
+// or Move to {Nov}: a catch-up task for a monthly task, a new deadline for a meeting task, due at
+// the end of the new cycle or on a date picked here. A decided row turns green with ✓ and Change.
 function UnfinishedRow({ c, u, from, to }) {
 	const { api, data, dispatch, toast, today } = usePortal();
+	const cycleEnd = c.cycle.end;
 	const [moving, setMoving] = useState(false);
-	const [due, setDue] = useState(today);
+	const [mode, setMode] = useState('cycle');
+	const [date, setDate] = useState(today);
 	const [left, setLeft] = useState(u.left || 1);
 	const [busy, setBusy] = useState(false);
-	const { task } = u;
+	const { task, moved, kept } = u;
+	const movedDue = moved && moved.deadline && moved.deadline.date;
 	const people = [...new Set([...(task.assignees || []).map((a) => a.id), ...(task.parts || []).flatMap((p) => (p.people || []).map((x) => x.id))])].map((id) => data.members[id]).filter(Boolean);
 	const names = people.length ? people.map((p) => p.name.split(' ')[0]).join(', ') : 'nobody';
-	const move = async () => {
+	const wasDue = (itemDeadline(task) || {}).end;
+	// A moved meeting task's deadline is already the new one: show only its people.
+	const sub = u.kind === 'monthly' ? `${names} · ${u.left} not done` : moved ? names : `${names} · ${wasDue ? `was due ${short(wasDue)}` : 'no deadline'}`;
+	const due = mode === 'cycle' ? cycleEnd : date;
+
+	const decide = async (fn, msg) => {
 		setBusy(true);
 		try {
-			const res = await api.post(`projects/${c.project.id}/carry-over`, { task_id: task.id, due, ...(u.kind === 'monthly' ? { left: +left } : {}) });
-			dispatch({ type: 'upsert', table: 'projects', row: res.project });
-			dispatch({ type: 'upsert', table: 'meeting_tasks', row: res.task });
-			toast(u.kind === 'monthly' ? `Moved to ${to}: “${res.task.title}”` : `Moved to ${to} · due ${short(due)}`);
+			await fn();
+			if (msg) toast(msg);
 			setMoving(false);
 		} catch (err) {
 			toast(err.message);
@@ -212,66 +218,104 @@ function UnfinishedRow({ c, u, from, to }) {
 			setBusy(false);
 		}
 	};
-	const moved = u.moved;
-	const movedDue = moved && moved.deadline && moved.deadline.date;
+	const leave = (yes) =>
+		decide(async () => {
+			const row = await api.post(`projects/${c.project.id}/leave-unfinished`, { task_id: task.id, leave: yes });
+			dispatch({ type: 'upsert', table: 'projects', row });
+		}, yes ? `Left in ${from}: “${task.title}”` : '');
+	const move = () =>
+		decide(async () => {
+			const res = await api.post(`projects/${c.project.id}/carry-over`, { task_id: task.id, due, ...(u.kind === 'monthly' ? { left: +left } : {}), ...(moved ? { change: true } : {}) });
+			dispatch({ type: 'upsert', table: 'projects', row: res.project });
+			dispatch({ type: 'upsert', table: 'meeting_tasks', row: res.task });
+		}, `Moved to ${to} · due ${short(due)}`);
+	// Change on a moved task: pick its due date again.
+	const change = () => {
+		if (kept) return leave(false);
+		setMode(movedDue && movedDue !== cycleEnd ? 'date' : 'cycle');
+		if (movedDue && movedDue !== cycleEnd) setDate(movedDue);
+		setMoving(true);
+		return undefined;
+	};
+	const decided = (moved || kept) && !moving;
+
 	return (
-		<li className={'cs-row cs-un' + (moving ? ' on' : '')}>
+		<li className={'cs-row cs-un' + (decided ? ' ok' : '')}>
 			<div className="cs-line">
-				<span className="cs-kind">{u.kind === 'monthly' ? 'Monthly' : 'Meeting'}</span>
-				<span className="cs-task">
+				<span className="cs-task cs-task-one">
 					<b>{task.title}</b>
-					<small>
-						{names} · {u.kind === 'monthly' ? `${u.left} not done` : moved ? 'moved' : `was due ${short((itemDeadline(task) || {}).end || '') || '—'}`}
-					</small>
+					<small> · {sub}</small>
 				</span>
-				{u.kind === 'monthly' ? (
-					<span className="cs-count short">
-						<b>
-							{u.got} / {u.need}
-						</b>
+				{decided ? (
+					<span className="cs-acts">
+						<span className="cs-ok">
+							✓ {kept ? `Left in ${from}` : `Moved to ${to}${movedDue ? (movedDue === cycleEnd ? ` · cycle end ${short(movedDue)}` : ` · due ${short(movedDue)} (specific date)`) : ''}`}
+						</span>
+						<button type="button" className="linkbtn" disabled={busy} onClick={change} aria-label={`Change ${task.title}`}>
+							Change
+						</button>
 					</span>
 				) : (
-					<span className="mp-flag f-amber">Open</span>
-				)}
-				<span className="cs-acts">
-					{moved ? (
-						<span className="cs-ok">↪ Moved to {to}{movedDue ? ` · due ${short(movedDue)}` : ''}</span>
-					) : (
-						<span className="seg cs-seg" role="group" aria-label={`Move ${task.title}`}>
-							<button type="button" aria-pressed={!moving} onClick={() => setMoving(false)}>
-								Leave in {from}
-							</button>
-							<button type="button" aria-pressed={moving} onClick={() => setMoving(true)}>
-								Move to {to}
-							</button>
+					<>
+						{u.kind === 'monthly' ? (
+							<span className="cs-count cs-count-one short">
+								<b>
+									{u.got} / {u.need}
+								</b>
+							</span>
+						) : (
+							<span className="mp-flag f-amber">Open</span>
+						)}
+						<span className="cs-acts">
+							<span className="seg cs-seg" role="group" aria-label={`Leave or move ${task.title}`}>
+								<button type="button" aria-pressed={false} disabled={busy || !!moved} onClick={() => leave(true)}>
+									Leave in {from}
+								</button>
+								<button type="button" aria-pressed={moving} disabled={busy} onClick={() => setMoving(true)}>
+									Move to {to}
+								</button>
+							</span>
 						</span>
-					)}
-				</span>
+					</>
+				)}
 			</div>
-			{moving && !moved && (
+			{moving && (
 				<div className="cs-fbox cs-move">
 					<span className="cs-move-txt">
-						{u.kind === 'monthly' ? (
+						{moved ? (
+							<>New due date in {to}</>
+						) : u.kind === 'monthly' ? (
 							<>
 								A catch-up task <b>“{task.title} — {left} left from {from}”</b> for {names}
 							</>
 						) : (
-							<>Moves to {to} with the new deadline</>
+							<>Moves to {to} with a new deadline</>
 						)}
 					</span>
-					{u.kind === 'monthly' && (
+					{u.kind === 'monthly' && !moved && (
 						<label>
 							Left
 							<input type="number" min={1} max={999} value={left} onChange={(e) => setLeft(e.target.value)} aria-label={`How many left of ${task.title}`} />
 						</label>
 					)}
-					<label>
-						Due
-						<input type="date" value={due} min={today} onChange={(e) => setDue(e.target.value)} aria-label={`New deadline for ${task.title}`} />
-					</label>
-					<button type="button" className="btn small primary" disabled={busy || !due || due < today || (u.kind === 'monthly' && !(+left >= 1))} onClick={move}>
-						Move
-					</button>
+					<span className="cs-due" role="radiogroup" aria-label={`Due date for ${task.title}`}>
+						<span className="muted">Due</span>
+						<button type="button" role="radio" aria-checked={mode === 'cycle'} className={'cs-opt' + (mode === 'cycle' ? ' on' : '')} onClick={() => setMode('cycle')}>
+							<i className="cs-dot" aria-hidden="true" /> End of {to} cycle · {short(cycleEnd)}
+						</button>
+						<button type="button" role="radio" aria-checked={mode === 'date'} className={'cs-opt' + (mode === 'date' ? ' on' : '')} onClick={() => setMode('date')}>
+							<i className="cs-dot" aria-hidden="true" /> 📅 A specific date
+						</button>
+						{mode === 'date' && <input type="date" value={date} min={today} onChange={(e) => setDate(e.target.value)} aria-label={`New deadline for ${task.title}`} />}
+					</span>
+					<span className="cs-move-acts">
+						<button type="button" className="btn small" onClick={() => setMoving(false)}>
+							Cancel
+						</button>
+						<button type="button" className="btn small primary" disabled={busy || !due || due < today || (u.kind === 'monthly' && !moved && !(+left >= 1))} onClick={move}>
+							{moved ? 'Save' : 'Move'}
+						</button>
+					</span>
 				</div>
 			)}
 		</li>
@@ -281,7 +325,7 @@ function UnfinishedRow({ c, u, from, to }) {
 export function ReviewCycleDialog({ c, onClose, focus = false }) {
 	const { data, today } = usePortal();
 	const unfinished = unfinishedOf(data, c, today);
-	// Opened with "Move unfinished": straight to the Unfinished part.
+	// Opened with "Decide unfinished": straight to the Unfinished part.
 	useEffect(() => {
 		if (!focus) return undefined;
 		const t = window.setTimeout(() => {
@@ -330,18 +374,36 @@ export function ReviewCycleDialog({ c, onClose, focus = false }) {
 				{unfinished.length > 0 && (
 					<>
 						<h3 className="cs-h" id="csUnfinished">
-							Unfinished from {from} <span className="muted">· {unfinished.length} · they stay in {from} unless you move them</span>
+							Unfinished from {from}{' '}
+							<span className="muted">
+								· {unfinished.filter((u) => u.moved || u.kept).length} of {unfinished.length} decided · leave in {from} or move to {to}
+							</span>
 						</h3>
-						<ul className="cs-list" aria-label="Unfinished">
-							{unfinished.map((u) => (
-								<UnfinishedRow key={u.task.id} c={c} u={u} from={from} to={to} />
-							))}
-						</ul>
+						{[
+							['meeting', 'From meeting minutes'],
+							['monthly', 'From monthly tasks'],
+						].map(([kind, label]) => {
+							const rows = unfinished.filter((u) => u.kind === kind);
+							return (
+								rows.length > 0 && (
+									<div key={kind}>
+										<h4 className="cs-src">
+											{label} · {rows.length}
+										</h4>
+										<ul className="cs-list" aria-label={`Unfinished ${label.toLowerCase()}`}>
+											{rows.map((u) => (
+												<UnfinishedRow key={u.task.id} c={c} u={u} from={from} to={to} />
+											))}
+										</ul>
+									</div>
+								)
+							);
+						})}
 					</>
 				)}
 			</div>
 			<div className="ld-foot">
-				<span className="muted">Feedback goes to the people responsible (bell and Notifications box). Move to {to} makes a catch-up task for a monthly task, or a new deadline for a meeting task.</span>
+				<span className="muted">Feedback goes to the people responsible (bell and Notifications box). Every unfinished task needs a choice: Leave in {from}, or Move to {to} — due at the end of the {to} cycle or on a date you pick.</span>
 				<button type="button" className="btn" onClick={onClose}>
 					Close
 				</button>
@@ -352,7 +414,7 @@ export function ReviewCycleDialog({ c, onClose, focus = false }) {
 
 // What a setup reminder's button does: Open setup → the New cycle setup box; Assign people → the
 // project's Monthly Tasks.
-// "Move unfinished" (a reminder, or the setup box): the project whose Review last cycle opens at
+// "Decide unfinished" (a reminder, or the setup box): the project whose Review last cycle opens at
 // its Unfinished part once My day shows the setup box.
 let pendingUnfinished = '';
 
@@ -450,17 +512,14 @@ export default function CycleSetup() {
 							<Step ok={assignedOk} label="Assign monthly tasks" sub={`${c.assigned} of ${c.tasks.length} have people`} />
 							{c.prev && <Step ok={c.reviewed === c.last.length} label="Review monthly tasks" sub={`${c.reviewed} of ${c.last.length} reviewed`} />}
 							{c.prev && <Step ok={c.meetingReviewed === c.meeting.length} label="Review meeting minutes" sub={`${c.meetingReviewed} of ${c.meeting.length} reviewed`} />}
-							{c.prev && c.unfinished > 0 && (
-								<div className="cs-step cs-step-un">
-									<span className="cs-tick" aria-hidden="true">
-										↪
-									</span>
-									<span>
-										<b>Unfinished from {cycleLabel(c.prev)}</b> <span className="muted">· {c.unfinished} to move or leave (optional)</span>
-									</span>
-								</div>
+							{c.prev && c.unfinishedAll > 0 && (
+								<Step
+									ok={c.unfinished === 0}
+									label={`Unfinished from ${cycleLabel(c.prev)}`}
+									sub={`${c.unfinishedAll - c.unfinished} of ${c.unfinishedAll} decided${c.unfinished === 0 ? ` — ${c.unfinishedAll - c.unfinishedMoved} left, ${c.unfinishedMoved} moved to ${cycleLabel(c.cycle)}` : ''}`}
+								/>
 							)}
-							{(!c.done || c.unfinished > 0) && (
+							{!c.done && (
 								<div className="cs-btns">
 									{!assignedOk && (
 										<button type="button" className="btn small primary" onClick={() => (setProject(c.project.id), setView('monthly'))}>
@@ -473,8 +532,8 @@ export default function CycleSetup() {
 										</button>
 									)}
 									{c.prev && c.unfinished > 0 && (
-										<button type="button" className="btn small" onClick={() => (setOpen(c.project.id), setFocus(true))}>
-											Move unfinished
+										<button type="button" className={'btn small' + (assignedOk && reviewOk ? ' primary' : '')} onClick={() => (setOpen(c.project.id), setFocus(true))}>
+											Decide unfinished
 										</button>
 									)}
 								</div>
