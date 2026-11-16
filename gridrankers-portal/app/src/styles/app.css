@@ -352,16 +352,19 @@ dialog.cs-dlg{width:min(760px,96vw)}
 .cs-sum .pf-bar span{background:var(--accent)}
 .cs-list{list-style:none;margin:0;padding:0}
 .cs-h{margin:12px 0 2px;font-size:.92rem}
-.cs-work{display:flex;flex-direction:column;gap:6px;margin:6px 0 0 34px;min-width:0}
-.cs-work-note{margin:0;font-size:.82rem;white-space:pre-wrap;overflow-wrap:anywhere}
-.cs-work-note span{color:var(--ink-2)}
-.cs-work-note q::before{content:'“'}.cs-work-note q::after{content:'”'}
+.cs-work{position:relative;display:inline-flex;gap:4px;align-items:center;flex:0 0 auto}
+.cs-pill{border:0;border-radius:99px;padding:3px 9px;background:var(--panel-2);color:var(--ink-2);font:inherit;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap}
+.cs-pill:hover{color:var(--ink)} .cs-pill.on{background:var(--accent);color:#fff}
+.cs-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:20;width:min(360px,80vw);max-height:320px;overflow:auto;display:flex;flex-direction:column;gap:8px;padding:10px 12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 30px rgba(21,35,58,.18);text-align:left}
+.cs-pop-note{margin:0;display:flex;flex-direction:column;font-size:.8rem}
+.cs-pop-note>span:first-child{color:var(--ink-2);font-size:.74rem}
+.cs-pop-text{white-space:pre-wrap;overflow-wrap:anywhere}
 .cs-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.cs-chip{display:inline-flex;align-items:center;gap:6px;max-width:100%;border:1px solid var(--line);border-radius:9px;padding:3px 9px 3px 3px;background:var(--panel);color:var(--ink);font:inherit;font-size:.78rem;font-weight:600;text-decoration:none;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cs-chip{display:inline-flex;align-items:center;gap:6px;max-width:100%;min-width:0;border:1px solid var(--line);border-radius:9px;padding:2px 9px 2px 2px;background:var(--panel);color:var(--ink);font:inherit;font-size:.76rem;font-weight:600;text-decoration:none;cursor:pointer}
 .cs-chip:hover{border-color:var(--accent)}
-.cs-chip .sf-badge{width:24px;height:24px;font-size:.55rem}
-.cs-more{font-size:.78rem;font-weight:700}
-.cs-none{display:inline-block;margin:6px 0 0 34px;font-size:.78rem;color:var(--ink-2)}
+.cs-chip .sf-badge{width:22px;height:22px;font-size:.52rem}
+.cs-chip-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
+.cs-none{flex:0 0 auto;font-size:.76rem;color:var(--ink-2)}
 .cs-kind{font-size:.72rem;font-weight:700;color:var(--ink-2);background:var(--panel-2);border-radius:99px;padding:2px 8px;white-space:nowrap}
 .cs-un.on{background:color-mix(in srgb,var(--accent) 5%,var(--panel));border-radius:10px;padding:10px 8px}
 .cs-seg{display:inline-flex}

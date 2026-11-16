@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePortal } from '../../context.js';
 import { allReminders, cycleLabel, cycleSetup, lastCycleCount, lastCycleWork, unfinishedOf } from '../../lib/cycleSetup.js';
 import { fileBadge, openFile } from '../../lib/files.js';
@@ -31,53 +31,72 @@ function Step({ ok, label, sub }) {
 	);
 }
 
-// What was handed in for a task last cycle (design RV-1B2): who and when, with what they wrote,
-// then the files and links as chips. A file opens (image, PDF) or downloads; a link opens.
-const CHIPS = 4;
+// What was handed in for a task last cycle (design RV-3B): 💬 notes and 📎 files as counts in the
+// row; a click opens a small pop-over with who and when, what they wrote, and the files and links
+// as chips (a file opens or downloads, a link opens in a new tab).
 function Work({ work, title }) {
 	const { api, data, toast } = usePortal();
-	const [all, setAll] = useState(false);
-	const chips = [...work.files.map((f) => ({ file: f })), ...work.links.map((l) => ({ link: l }))];
-	const shown = all ? chips : chips.slice(0, CHIPS);
-	if (!chips.length && !work.notes.length) return <span className="cs-none">Nothing handed in</span>;
+	const [open, setOpen] = useState(false);
+	const box = useRef(null);
+	const said = work.notes.filter((n) => n.text).length;
+	const items = work.files.length + work.links.length;
+	useEffect(() => {
+		if (!open) return undefined;
+		const away = (e) => box.current && !box.current.contains(e.target) && setOpen(false);
+		// Escape closes only the pop-over, not the Review last cycle dialog under it.
+		const esc = (e) => {
+			if (e.key !== 'Escape') return;
+			e.preventDefault();
+			e.stopPropagation();
+			setOpen(false);
+		};
+		document.addEventListener('mousedown', away);
+		document.addEventListener('keydown', esc, true);
+		return () => {
+			document.removeEventListener('mousedown', away);
+			document.removeEventListener('keydown', esc, true);
+		};
+	}, [open]);
+	if (!items && !work.notes.length) return <span className="cs-none">Nothing handed in</span>;
+	const pill = (label, text) => (
+		<button type="button" className={'cs-pill' + (open ? ' on' : '')} aria-expanded={open} aria-label={`${label} for ${title}`} onClick={() => setOpen(!open)}>
+			{text}
+		</button>
+	);
 	return (
-		<div className="cs-work" aria-label={`Work handed in for ${title}`}>
-			{work.notes.slice(0, 3).map((n, k) => (
-				<p key={k} className="cs-work-note">
-					<span>
-						{[(data.members[n.by] || {}).name, n.at && short(String(n.at).slice(0, 10))].filter(Boolean).join(' · ')}
-						{n.text && (n.by || n.at) ? ' · ' : ''}
-					</span>
-					{n.text && <q>{n.text}</q>}
-				</p>
-			))}
-			{chips.length > 0 && (
-				<div className="cs-chips">
-					{shown.map((c) => {
-						if (c.link) {
-							return (
-								<a key={c.link.url} className="cs-chip" href={c.link.url} target="_blank" rel="noopener noreferrer" title={c.link.url}>
+		<span className="cs-work" ref={box}>
+			{(said > 0 || !items) && pill(said ? `${said} note${said === 1 ? '' : 's'}` : 'Who handed it in', `💬 ${said || work.notes.length}`)}
+			{items > 0 && pill(`${items} file${items === 1 ? '' : 's'} and links`, `📎 ${items}`)}
+			{open && (
+				<div className="cs-pop" role="dialog" aria-label={`Work handed in for ${title}`}>
+					{work.notes.map((n, k) => (
+						<p key={k} className="cs-pop-note">
+							<span>{[(data.members[n.by] || {}).name, n.at && short(String(n.at).slice(0, 10))].filter(Boolean).join(' · ') || 'Handed in'}</span>
+							{n.text && <span className="cs-pop-text">{n.text}</span>}
+						</p>
+					))}
+					{items > 0 && (
+						<div className="cs-chips">
+							{work.files.map((f) => {
+								const badge = fileBadge(f);
+								return (
+									<button key={f.id} type="button" className="cs-chip" title={`Open ${f.name}`} onClick={() => openFile(api, f).catch((err) => toast(err.message))}>
+										<span className={'sf-badge ' + badge.tone}>{badge.label}</span>
+										<span className="cs-chip-name">{f.name}</span>
+									</button>
+								);
+							})}
+							{work.links.map((l) => (
+								<a key={l.url} className="cs-chip" href={l.url} target="_blank" rel="noopener noreferrer" title={l.url}>
 									<span className="sf-badge lnk">↗</span>
-									{c.link.name}
+									<span className="cs-chip-name">{l.name}</span>
 								</a>
-							);
-						}
-						const badge = fileBadge(c.file);
-						return (
-							<button key={c.file.id} type="button" className="cs-chip" title={`Open ${c.file.name}`} onClick={() => openFile(api, c.file).catch((err) => toast(err.message))}>
-								<span className={'sf-badge ' + badge.tone}>{badge.label}</span>
-								{c.file.name}
-							</button>
-						);
-					})}
-					{chips.length > CHIPS && (
-						<button type="button" className="linkbtn cs-more" onClick={() => setAll(!all)}>
-							{all ? 'Show less' : `+${chips.length - CHIPS} more`}
-						</button>
+							))}
+						</div>
 					)}
 				</div>
 			)}
-		</div>
+		</span>
 	);
 }
 
@@ -122,6 +141,7 @@ function ReviewRow({ c, task, meeting = false }) {
 						{people.length ? people.map((p) => p.name).join(', ') : 'Nobody responsible'} · {meeting ? `Meeting${due ? ` · due ${short(due.end)}` : ''}` : TAG_LABEL[tagOf(task)]}
 					</small>
 				</span>
+				<Work work={work} title={task.title} />
 				{meeting ? (
 					<span className={'mp-flag ' + (open ? 'f-amber' : 'f-green')}>{open ? 'Open' : 'Done'}</span>
 				) : (
@@ -151,7 +171,6 @@ function ReviewRow({ c, task, meeting = false }) {
 					)}
 				</span>
 			</div>
-			<Work work={work} title={task.title} />
 			{writing && (
 				<div className="cs-fbox">
 					<textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} aria-label={`Feedback on ${task.title}`} placeholder="What should change next cycle?" autoFocus />
