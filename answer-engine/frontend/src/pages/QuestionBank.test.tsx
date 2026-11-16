@@ -269,6 +269,7 @@ test("the approved answers download as Excel for the chosen topic", async () => 
   });
   render(<App />);
 
+  await userEvent.click(await screen.findByRole("button", { name: /^Approved/ }));
   const link = await screen.findByRole("link", { name: /Download 1 approved question/ });
   expect(link).toHaveAttribute("href", "/api/qb/sets/s1/export");
   await userEvent.selectOptions(screen.getByLabelText("Topic"), "Google Business Profile");
@@ -276,6 +277,39 @@ test("the approved answers download as Excel for the chosen topic", async () => 
     "href",
     "/api/qb/sets/s1/export?topic=Google+Business+Profile",
   );
+});
+
+test("the download follows the status chosen: to do, drafts, all", async () => {
+  const done = {
+    ...row,
+    id: "t7",
+    key: "s7",
+    title: "Do reviews matter?",
+    status: "approved" as const,
+  };
+  mockApi({
+    ...base,
+    "GET /qb/sets/s1/threads": [
+      200,
+      { ...list, items: [row, done], counts: { ...list.counts, approved: 1 } },
+    ],
+  });
+  render(<App />);
+
+  // "To do" is chosen when the page opens.
+  const link = await screen.findByRole("link", { name: /Download 1 to-do question \(/ });
+  expect(link).toHaveAttribute("href", "/api/qb/sets/s1/export?status=todo");
+  expect(link).toHaveAttribute("title", "Excel: one sheet per topic, no answers yet");
+
+  await userEvent.click(screen.getByRole("button", { name: /^All/ }));
+  expect(screen.getByRole("link", { name: /Download 2 questions/ })).toHaveAttribute(
+    "href",
+    "/api/qb/sets/s1/export?status=all",
+  );
+
+  await userEvent.click(screen.getByRole("button", { name: /^Drafts/ }));
+  expect(screen.queryByRole("link", { name: /Download/ })).toBeNull();
+  expect(screen.getByText("No draft questions to download here yet.")).toBeVisible();
 });
 
 test("with nothing close in its subtopic, the thread says so", async () => {

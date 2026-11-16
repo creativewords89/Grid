@@ -1,5 +1,7 @@
-"""Download a set's approved questions and answers as Excel (SPEC section 6.9a, step 32).
+"""Download a set's questions and answers as Excel (SPEC section 6.9a, steps 32 and 33).
 
+The status chosen in the list decides which questions: approved (the default), to do, drafts,
+skipped or all.
 No summary sheet. One sheet per group: per topic, or per subtopic once a topic is chosen.
 One row per question, its answers side by side (Answer 1, Answer 2…, as many as needed), never
 merged. Text from Facebook is written as text, never as a formula.
@@ -8,7 +10,7 @@ merged. Text from Facebook is written as text, never as a formula.
 import io
 import re
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, Literal
 
 from openpyxl import Workbook
 from openpyxl.cell import WriteOnlyCell
@@ -25,6 +27,17 @@ _BAD_SHEET = re.compile(r"[\[\]:*?/\\]")
 _BOLD = Font(bold=True)
 _WRAP = Alignment(wrap_text=True, vertical="top")
 _TOP = Alignment(vertical="top")
+
+Which = Literal["todo", "draft", "approved", "skipped", "all"]
+# The sheet and the file are named after it: "… - to do.xlsx".
+NAMES: dict[str, tuple[str, str]] = {
+    "todo": ("To do", "to-do questions"),
+    "draft": ("Drafts", "draft questions"),
+    "approved": ("Approved", "approved questions"),
+    "skipped": ("Skipped", "skipped questions"),
+    "all": ("All", "questions"),
+}
+_STATUS = {"todo": "To do", "draft": "Draft", "approved": "Approved", "skipped": "Skipped"}
 
 
 def sheet_name(name: str, taken: set[str]) -> str:
@@ -58,10 +71,12 @@ def _header(ws: WriteOnlyWorksheet, names: Iterable[str]) -> list[Cell]:
     return cells
 
 
-def approved(
-    db: Session, qset: QuestionSet, topic: str | None, subtopic: str | None
+def chosen(
+    db: Session, qset: QuestionSet, topic: str | None, subtopic: str | None, which: Which
 ) -> list[FbThread]:
-    query = select(FbThread).where(FbThread.set_id == qset.id, FbThread.status == FbStatus.APPROVED)
+    query = select(FbThread).where(FbThread.set_id == qset.id)
+    if which != "all":
+        query = query.where(FbThread.status == FbStatus(which))
     if topic is not None:
         query = query.where(FbThread.topic == topic)
         if subtopic is not None:
@@ -84,9 +99,10 @@ def build(
     qset: QuestionSet,
     topic: str | None = None,
     subtopic: str | None = None,
+    which: Which = "approved",
 ) -> tuple[bytes, int]:
     """The workbook, and how many questions are in it."""
-    threads = approved(db, qset, topic, subtopic)
+    threads = chosen(db, qset, topic, subtopic, which)
     posts = {
         p.row: p
         for p in db.scalars(
@@ -108,12 +124,16 @@ def build(
     for name, rows in groups.items():
         label = name or ("Other" if by_subtopic else "No topic")
         ws = book.create_sheet(sheet_name(label, taken))
-        width = max(1, *(len(_answers(t)) for t in rows))
-        widths = [50, 60, 22, 22] + [60] * width
+        # Questions not answered yet (to do, skipped) have no answer columns.
+        width = max(len(_answers(t)) for t in rows)
+        if which in ("approved", "draft"):
+            width = max(width, 1)
+        status = which == "all"
+        widths = [50, 60, 22, 22] + [12] * status + [60] * width
         for i, w in enumerate(widths):
             ws.column_dimensions[_letter(i)].width = w
         ws.freeze_panes = "B2"
-        names = ["Question", "Description", "Topic", "Subtopic"]
+        names = ["Question", "Description", "Topic", "Subtopic"] + ["Status"] * status
         names += [f"Answer {n}" for n in range(1, width + 1)]
         ws.append(_header(ws, names))
         for t in rows:
@@ -125,11 +145,14 @@ def build(
                 _cell(ws, t.topic, _TOP),
                 _cell(ws, t.subtopic, _TOP),
             ]
+            if status:
+                row.append(_cell(ws, _STATUS[t.status.value], _TOP))
             row += [_cell(ws, items[n][0] if n < len(items) else "", _WRAP) for n in range(width)]
             ws.append(row)
     if not groups:  # a workbook needs a sheet
-        empty = book.create_sheet("Approved")
-        empty.append([_cell(empty, "No approved questions here yet.")])
+        sheet, words = NAMES[which]
+        empty = book.create_sheet(sheet)
+        empty.append([_cell(empty, f"No {words} here yet.")])
 
     out = io.BytesIO()
     book.save(out)

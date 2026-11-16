@@ -333,10 +333,11 @@ function SetView({
               setId={list.set.id}
               topic={topic}
               sub={sub}
-              approved={
+              filter={filter}
+              count={
                 list.items.filter(
                   (t) =>
-                    t.status === "approved" &&
+                    (filter === "all" || t.status === filter) &&
                     (!topic || t.topic === topic) &&
                     (!sub || t.subtopic === sub),
                 ).length
@@ -443,30 +444,44 @@ function SetView({
   );
 }
 
-/** Download the approved questions and answers as Excel, for the topic chosen (step 32). */
+// What the download is called for each status chip (step 33).
+const DOWNLOAD_WORD: Record<Filter, string> = {
+  todo: "to-do question",
+  draft: "draft question",
+  approved: "approved question",
+  skipped: "skipped question",
+  all: "question",
+};
+
+/** Download the questions shown by the status chip as Excel, for the topic chosen
+ * (steps 32 and 33). */
 function DownloadLink({
   setId,
   topic,
   sub,
-  approved,
+  filter,
+  count,
 }: {
   setId: string;
   topic: string;
   sub: string;
-  approved: number;
+  filter: Filter;
+  count: number;
 }) {
-  const url = api.qbExportUrl(setId, topic || undefined, topic && sub ? sub : undefined);
+  const url = api.qbExportUrl(setId, topic || undefined, topic && sub ? sub : undefined, filter);
   const sheets = !topic ? "one sheet per topic" : !sub ? "one sheet per subtopic" : "one sheet";
-  if (!approved)
-    return <span className="muted small">No approved answers to download here yet.</span>;
+  const answers =
+    filter === "todo" || filter === "skipped" ? "no answers yet" : "answers side by side";
+  if (!count)
+    return <span className="muted small">No {DOWNLOAD_WORD[filter]}s to download here yet.</span>;
   return (
     <a
       className="button button-small qb-download"
       href={url}
       download
-      title={`Excel: ${sheets}, answers side by side`}
+      title={`Excel: ${sheets}, ${answers}`}
     >
-      ⬇ Download {plural(approved, "approved question")}
+      ⬇ Download {plural(count, DOWNLOAD_WORD[filter])}
       {topic ? ` in ${sub || topic}` : ""} (.xlsx)
     </a>
   );
