@@ -21,9 +21,14 @@ test('invoices tracker', async ({ page }) => {
 	await signInOwner(page);
 	const reminder = nf.locator('.nf-must-item', { hasText: 'Cycle Co: send the invoice for' });
 	await expect(reminder).toBeVisible();
+	// Not on the bell (design IN-1C): Invoices in the sidebar counts it — amber, to send.
 	await page.locator('.md-bell-btn').click();
-	await expect(page.locator('.md-pop li.must.new', { hasText: 'Cycle Co: send the invoice for' })).toHaveCount(1);
+	await expect(page.locator('.md-pop li', { hasText: 'send the invoice for' })).toHaveCount(0);
 	await page.locator('.md-bell-btn').click();
+	await expect(side.locator('.side-pill.amber')).toHaveText('1');
+	await side.hover();
+	await expect(side.getByRole('tooltip')).toContainText('1 to send');
+	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/invoice-count.png' });
 	await reminder.getByRole('button', { name: 'Open invoices' }).click();
 	await expect(page.locator('.top h1')).toHaveText('Invoices');
 	await expect(side).toHaveAttribute('aria-current', 'page');
@@ -43,6 +48,7 @@ test('invoices tracker', async ({ page }) => {
 	await row.getByLabel('Invoice sent · Cycle Co').click();
 	await page.getByText('Cycle Co: invoice marked as sent').waitFor();
 	await expect(row.locator('.bl-tag')).toContainText('Waiting · sent');
+	await expect(side.locator('.side-pill')).toHaveCount(0);
 
 	// Payment received: a part payment by bKash.
 	await row.getByLabel('Payment received · Cycle Co').click();

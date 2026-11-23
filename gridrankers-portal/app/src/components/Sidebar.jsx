@@ -3,6 +3,7 @@ import { usePortal } from '../context.js';
 import { rowsOf } from '../lib/store.js';
 import { GENERAL, GENERAL_NAME } from '../lib/tasks.js';
 import { isAdmin } from '../lib/roles.js';
+import { invoiceCounts } from '../lib/billing.js';
 
 const GROUPS = [
 	{ state: 'active', title: 'Active projects' },
@@ -27,7 +28,9 @@ const initialsOf = (name) =>
 // Active projects always open; Paused and Inactive folded until opened. Counts show only when a
 // project has open work (red when something is urgent).
 export default function Sidebar({ syncStatus }) {
-	const { data, me, view, setView, setProject, project } = usePortal();
+	const { data, me, view, setView, setProject, project, today } = usePortal();
+	const inv = isAdmin(me) ? invoiceCounts(data, me, today) : { send: 0, paid: 0, oldest: 0 };
+	const invTip = [inv.send && `${inv.send} to send`, inv.paid && `${inv.paid} waiting for payment (oldest ${inv.oldest} day${inv.oldest === 1 ? '' : 's'})`].filter(Boolean);
 	const [open, setOpen] = useState({ paused: false, inactive: false });
 
 	const projects = rowsOf(data, 'projects').sort((a, b) => a.name.localeCompare(b.name));
@@ -91,6 +94,26 @@ export default function Sidebar({ syncStatus }) {
 						<path d="M9 8h6M9 12h6M9 16h3" />
 					</svg>
 					Invoices
+					{/* Design IN-1C: amber = invoices to send, red = payments waiting; hover says which. */}
+					{invTip.length > 0 && (
+						<span className="side-inv" aria-label={invTip.join(', ')}>
+							{inv.send > 0 && <span className="pill side-pill amber">{inv.send}</span>}
+							{inv.paid > 0 && <span className="pill side-pill red">{inv.paid}</span>}
+							<span className="side-tip" role="tooltip">
+								<b>Invoices</b>
+								{inv.send > 0 && (
+									<span>
+										<i className="t-amber">{inv.send}</i> to send
+									</span>
+								)}
+								{inv.paid > 0 && (
+									<span>
+										<i className="t-red">{inv.paid}</i> waiting for payment (oldest {inv.oldest} day{inv.oldest === 1 ? '' : 's'})
+									</span>
+								)}
+							</span>
+						</span>
+					)}
 				</button>
 			)}
 			{GROUPS.map((g) => {

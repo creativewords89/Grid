@@ -840,6 +840,12 @@ button.ap-title:hover,button.ap-title:focus-visible{text-decoration:underline}
 /* General tasks (SPEC.md 6.13, design GT-A) */
 .side-link .side-pill{margin-left:auto;min-width:20px;text-align:center;font-weight:700;font-size:.7rem;padding:2px 6px}
 .side-link .side-pill.red{background:var(--urgent-bg);color:var(--urgent)}
+.side-link .side-pill.amber{background:var(--doing-bg);color:var(--doing)}
+.side-inv{position:relative;margin-left:auto;display:inline-flex;gap:3px}
+.side-inv .side-pill{margin-left:0}
+.side-tip{display:none;position:absolute;left:0;top:calc(100% + 8px);z-index:30;width:max-content;max-width:240px;flex-direction:column;gap:2px;background:var(--ink);color:#fff;border-radius:10px;padding:8px 10px;font-size:.76rem;font-weight:500;line-height:1.45;box-shadow:0 8px 24px rgba(0,0,0,.2)}
+.side-tip i{font-style:normal;font-weight:800} .side-tip .t-amber{color:#FCD34D} .side-tip .t-red{color:#FCA5A5}
+.side-link:hover .side-tip,.side-link:focus-visible .side-tip{display:flex}
 .gt{display:flex;flex-direction:column;gap:14px}
 .gt-head{display:flex;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 20px}
 .gt-head h2{margin:0;font-family:var(--display);font-size:1.35rem}

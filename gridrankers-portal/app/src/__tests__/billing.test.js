@@ -1,6 +1,6 @@
 // The Super Admin's invoice tracker (SPEC.md 6.14, designs TR-A and TR-B).
 import { describe, expect, it } from 'vitest';
-import { billingCsv, billingReminders, billingRows, latestByProject, money, owedOf, statusOf, sums, tagText, totals, yearMonths } from '../lib/billing.js';
+import { billingCsv, billingReminders, billingRows, invoiceCounts, latestByProject, money, owedOf, statusOf, sums, tagText, totals, yearMonths } from '../lib/billing.js';
 import { bellItems } from '../lib/feed.js';
 import { emptyData } from '../lib/store.js';
 
@@ -121,10 +121,11 @@ describe('daily reminders', () => {
 		]);
 		expect(billingReminders(d, LEAD, TODAY)).toEqual([]);
 
-		// On the bell too, and opening it doesn't clear them.
-		const bell = bellItems(d, ADMIN, TODAY, Date.parse('2026-10-10T12:00:00Z')).filter((i) => i.key.startsWith('invoice:'));
-		expect(bell).toHaveLength(3);
-		expect(bell.every((i) => i.sticky && i.unread)).toBe(true);
+		// Not on the bell (design IN-1C): Invoices in the sidebar counts them instead —
+		// amber to send, red waiting for payment, and the oldest wait.
+		expect(bellItems(d, ADMIN, TODAY, Date.parse('2026-10-10T12:00:00Z')).some((i) => i.key.startsWith('invoice:'))).toBe(false);
+		expect(invoiceCounts(d, ADMIN, TODAY)).toEqual({ send: 1, paid: 2, oldest: 39 });
+		expect(invoiceCounts(d, LEAD, TODAY)).toEqual({ send: 0, paid: 0, oldest: 0 });
 
 		// Ticking "Invoice sent" ends the first one.
 		d.billing.a2.sent_at = TODAY;
