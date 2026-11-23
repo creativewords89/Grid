@@ -525,6 +525,8 @@ Real questions with the answers we liked, **per platform**, teach marketing draf
 
 A clean, simple layout. Left sidebar: **Ask**, **Documents**, **Marketing**, **Verified Answers**, then **Review Queue** (Reviewers and Owners, with a count badge), **Answer Log** (Reviewers and Owners), **Users** and **Settings** (Owner). Top bar: the 🔔 bell, and the name chip with Profile and Sign out. The layout works at phone width.
 
+**Copy buttons** (fixed after step 33; every Copy in the app): they use the browser's clipboard, and when the browser refuses (a blocked clipboard setting, a policy, the page not focused) they copy from a hidden text box instead. The button says **Copied ✓** for a moment, or **Couldn't copy** with "Your browser blocked copying. Select the text and press Ctrl+C.", and never claims a copy that didn't happen. In the Question Bank the whole question then shows, to copy by hand.
+
 ### 7.1 Ask (chat)
 - **Layout:** a conversation list on the left (search, **+ New chat**, a dot on conversations with updated answers) and the chat in the middle.
 - **Messages:** answers stream in, with source chips under each answer, 👍/👎, **Copy**, and the confidence badge only when it is low or no-answer. Labels follow section 6.8.

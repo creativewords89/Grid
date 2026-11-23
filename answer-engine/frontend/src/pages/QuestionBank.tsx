@@ -16,6 +16,7 @@ import {
   type QuestionSetList,
 } from "../api";
 import { Alert } from "../components/ui";
+import { COPY_FAILED, copyLabel, useCopy } from "../clipboard";
 
 // Question Bank (SPEC section 6.9a, steps 27 and 29): real questions in sets (a Facebook group,
 // Reddit, client emails…), answered one thread at a time. Each selected comment is its own
@@ -1293,7 +1294,7 @@ function RowLink({ post }: { post: FbPost }) {
 
 function PostCard({ post }: { post: FbPost }) {
   const [more, setMore] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copied, copy] = useCopy();
   const long = post.question.length > 320 || post.question.split("\n").length > 6;
   return (
     <article className="card fb-post">
@@ -1302,17 +1303,17 @@ function PostCard({ post }: { post: FbPost }) {
         {post.author && <span>asked by {post.author}</span>}
         <button
           className="button button-small fb-copy"
-          onClick={() =>
-            void navigator.clipboard
-              .writeText(post.question)
-              .then(() => (setCopied(true), setTimeout(() => setCopied(false), 1500)))
-              .catch(() => setMore(true))
-          }
+          title={copied === "failed" ? COPY_FAILED : undefined}
+          onClick={() => copy(post.question)}
         >
-          {copied ? "Copied ✓" : "Copy"}
+          {copyLabel(copied)}
         </button>
       </div>
-      <p className={`fb-q${long && !more ? " fb-clamp" : ""}`}>{post.question}</p>
+      {copied === "failed" && <p className="muted small">{COPY_FAILED}</p>}
+      {/* When copying is blocked, the whole question shows, to copy by hand. */}
+      <p className={`fb-q${long && !more && copied !== "failed" ? " fb-clamp" : ""}`}>
+        {post.question}
+      </p>
       {long && (
         <button className="link-button" onClick={() => setMore(!more)}>
           {more ? "Show less" : "Show more"}

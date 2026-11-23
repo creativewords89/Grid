@@ -20,6 +20,7 @@ import { Markdown } from "../components/Markdown";
 import { ANSWERS_CHANGED, reviewsChanged, type AnswersChanged } from "../events";
 import { formatDate } from "../format";
 import { Alert, Confirm } from "../components/ui";
+import { COPY_FAILED, copyLabel, useCopy } from "../clipboard";
 
 // Ask (SPEC section 7.1). Labels for reviewed answers follow SPEC section 6.8.
 
@@ -359,7 +360,7 @@ function AnswerBubble({
   onRetry: () => void;
   onReplied: () => void;
 }) {
-  const [copied, setCopied] = useState(false);
+  const [copied, copy] = useCopy();
   if (message.error) {
     return (
       <div className="bubble bubble-answer">
@@ -410,13 +411,10 @@ function AnswerBubble({
         <div className="answer-actions">
           <button
             className="button button-small"
-            onClick={() => {
-              void navigator.clipboard?.writeText(message.body);
-              setCopied(true);
-              window.setTimeout(() => setCopied(false), 1500);
-            }}
+            title={copied === "failed" ? COPY_FAILED : undefined}
+            onClick={() => copy(message.body)}
           >
-            {copied ? "Copied" : "Copy"}
+            {copyLabel(copied)}
           </button>
           {message.answer?.id && (
             <FeedbackButtons answerId={message.answer.id} initial={message.answer.feedback} />
