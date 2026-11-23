@@ -148,7 +148,7 @@ export function billingReminders(data, me, today) {
 	if (!me || me.role !== 'admin') return [];
 	const out = [];
 	billingRows(data, today).forEach((r) => {
-		const base = { kind: 'invoice', ok: 'Open invoices', row: r.id };
+		const base = { kind: 'invoice', ok: 'Open invoices', row: r.id, days: r.days || 0 };
 		if (r.status === 'to_send') {
 			out.push({ ...base, key: `invoice:send:${r.id}:${today}`, tone: 'amber', title: `${r.name}: send the invoice for ${cycleLabel(r)}` });
 		} else if (r.status === 'overdue') {
@@ -158,6 +158,15 @@ export function billingReminders(data, me, today) {
 		}
 	});
 	return out;
+}
+
+// The count on Invoices in the sidebar (design IN-1C): invoices to send and payments waiting, and
+// how long the oldest has waited. Invoice reminders are not on the bell.
+export function invoiceCounts(data, me, today) {
+	const all = billingReminders(data, me, today);
+	const send = all.filter((r) => r.key.startsWith('invoice:send:')).length;
+	const waiting = all.filter((r) => r.key.startsWith('invoice:paid:'));
+	return { send, paid: waiting.length, oldest: waiting.reduce((m, r) => Math.max(m, r.days), 0) };
 }
 
 // CSV of every row, for the Super Admin's own records. Cells that a spreadsheet would run as a

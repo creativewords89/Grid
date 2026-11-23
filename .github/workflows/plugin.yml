@@ -23,7 +23,7 @@ defaults:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # Playwright has no Chromium build for ubuntu-latest (26.04) yet
     timeout-minutes: 30
     services:
       mysql:
@@ -99,7 +99,7 @@ jobs:
   release:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # Playwright has no Chromium build for ubuntu-latest (26.04) yet
     permissions:
       contents: write
     concurrency:
