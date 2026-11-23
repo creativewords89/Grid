@@ -220,10 +220,7 @@ export function bellItems(data, me, today, now = Date.now()) {
 		keys.add(i.key);
 		out.push({ ...i, unread: i.sticky || i.waiting || !seen.has('seen:' + i.key) });
 	};
-	// Invoice reminders stay off the bell (design IN-1C): Invoices in the sidebar counts them.
-	allReminders(data, me, today)
-		.filter((r) => r.kind !== 'invoice')
-		.forEach((r) => add({ key: r.key, text: r.title, sub: r.tone === 'red' ? 'Overdue · until it’s done' : 'Every day until it’s done', sticky: true, tone: r.tone, reminder: r }));
+	allReminders(data, me, today).forEach((r) => add({ key: r.key, text: r.title, sub: r.tone === 'red' ? 'Overdue · until it’s done' : 'Every day until it’s done', sticky: true, tone: r.tone, reminder: r }));
 	strips(data, me, today, { now, all: true })
 		.filter((s) => s.kind !== 'cycle')
 		.forEach((s) => add({ key: s.key, text: s.title, sub: s.text }));

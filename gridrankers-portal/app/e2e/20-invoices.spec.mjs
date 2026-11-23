@@ -17,19 +17,18 @@ test('invoices tracker', async ({ page }) => {
 	await expect(side).toHaveCount(0);
 	await signOut(page);
 
-	// Super Admin: the daily reminder in Notifications opens Invoices.
+	// Super Admin: no invoice reminder in Notifications or on the bell (design IN-1C); Invoices in
+	// the sidebar counts it — amber, to send — and opens the page.
 	await signInOwner(page);
-	const reminder = nf.locator('.nf-must-item', { hasText: 'Cycle Co: send the invoice for' });
-	await expect(reminder).toBeVisible();
-	// Not on the bell (design IN-1C): Invoices in the sidebar counts it — amber, to send.
+	await expect(side.locator('.side-pill.amber')).toHaveText('1');
+	await expect(nf.locator('.nf-must-item', { hasText: 'send the invoice for' })).toHaveCount(0);
 	await page.locator('.md-bell-btn').click();
 	await expect(page.locator('.md-pop li', { hasText: 'send the invoice for' })).toHaveCount(0);
 	await page.locator('.md-bell-btn').click();
-	await expect(side.locator('.side-pill.amber')).toHaveText('1');
 	await side.hover();
 	await expect(side.getByRole('tooltip')).toContainText('1 to send');
 	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/invoice-count.png' });
-	await reminder.getByRole('button', { name: 'Open invoices' }).click();
+	await side.click();
 	await expect(page.locator('.top h1')).toHaveText('Invoices');
 	await expect(side).toHaveAttribute('aria-current', 'page');
 
@@ -89,9 +88,6 @@ test('invoices tracker', async ({ page }) => {
 	await expect(year.locator('.bl-owed')).toHaveText('—');
 	if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/invoices-year.png' });
 
-	// The reminder is gone from My day.
-	await page.locator('aside .side-link', { hasText: 'My day' }).click();
-	await expect(nf.locator('.nf-must-item', { hasText: 'Cycle Co: send the invoice' })).toHaveCount(0);
 	await signOutOwner(page);
 	noErrors();
 });

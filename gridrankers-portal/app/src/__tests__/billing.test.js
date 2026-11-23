@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { billingCsv, billingReminders, billingRows, invoiceCounts, latestByProject, money, owedOf, statusOf, sums, tagText, totals, yearMonths } from '../lib/billing.js';
 import { bellItems } from '../lib/feed.js';
+import { allReminders } from '../lib/cycleSetup.js';
 import { emptyData } from '../lib/store.js';
 
 const TODAY = '2026-10-10';
@@ -121,9 +122,11 @@ describe('daily reminders', () => {
 		]);
 		expect(billingReminders(d, LEAD, TODAY)).toEqual([]);
 
-		// Not on the bell (design IN-1C): Invoices in the sidebar counts them instead —
+		// Not on the bell or in Notifications (design IN-1C): Invoices in the sidebar counts them instead —
 		// amber to send, red waiting for payment, and the oldest wait.
 		expect(bellItems(d, ADMIN, TODAY, Date.parse('2026-10-10T12:00:00Z')).some((i) => i.key.startsWith('invoice:'))).toBe(false);
+		// Nor in the Notifications box.
+		expect(allReminders(d, ADMIN, TODAY).some((r) => r.kind === 'invoice')).toBe(false);
 		expect(invoiceCounts(d, ADMIN, TODAY)).toEqual({ send: 1, paid: 2, oldest: 39 });
 		expect(invoiceCounts(d, LEAD, TODAY)).toEqual({ send: 0, paid: 0, oldest: 0 });
 

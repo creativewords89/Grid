@@ -422,10 +422,6 @@ export function useReminderAction() {
 	const { setProject, setView } = usePortal();
 	return (r) => {
 		if (r.kind === 'unfinished') pendingUnfinished = r.project.id;
-		if (r.kind === 'invoice') {
-			setView('invoices');
-			return;
-		}
 		if (r.kind === 'chase') {
 			setProject(r.project.id);
 			setView('details');
@@ -453,7 +449,7 @@ export function SetupReminders() {
 			{list.map((r) => (
 				<div key={r.key} className={'nf-must-item t-' + r.tone}>
 					<span className="nf-ic" aria-hidden="true">
-						{r.kind === 'unassigned' ? '👤' : r.kind === 'invoice' ? '🧾' : r.kind === 'chase' ? '✉' : r.kind === 'unfinished' ? '↪' : '!'}
+						{r.kind === 'unassigned' ? '👤' : r.kind === 'chase' ? '✉' : r.kind === 'unfinished' ? '↪' : '!'}
 					</span>
 					<span className="nf-body">
 						<span className="nf-top">
