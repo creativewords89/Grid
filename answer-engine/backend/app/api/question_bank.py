@@ -387,17 +387,25 @@ def export(
     db: Db,
     topic: Annotated[str | None, Query(max_length=200)] = None,  # "" = no topic
     subtopic: Annotated[str | None, Query(max_length=200)] = None,
+    status: export_xlsx.Which = "approved",
 ) -> Response:
-    """The set's approved questions and answers as Excel: one sheet per topic, or per
-    subtopic when a topic is given; answers side by side (step 32)."""
+    """The set's questions and answers as Excel, for the status chosen in the list (approved
+    by default): one sheet per topic, or per subtopic when a topic is given; answers side by
+    side (steps 32 and 33)."""
     ensure(me, Action.WORK_QUESTION_BANK)
     qset = _set(db, set_id)
-    content, count = export_xlsx.build(db, qset, topic, subtopic)
+    content, count = export_xlsx.build(db, qset, topic, subtopic, status)
     audit.record(
-        db, me, "export", "question_set", qset.id, qset.name, [{"field": "questions", "to": count}]
+        db,
+        me,
+        "export",
+        "question_set",
+        qset.id,
+        qset.name,
+        [{"field": "questions", "to": count}, {"field": "status", "to": status}],
     )
     db.commit()
-    parts = [qset.name, *(x for x in (topic, subtopic) if x), "approved"]
+    parts = [qset.name, *(x for x in (topic, subtopic) if x), export_xlsx.NAMES[status][0].lower()]
     name = re.sub(r'[\\/:*?"<>|]+', " ", " - ".join(parts)).strip()[:150] + ".xlsx"
     return Response(
         content,

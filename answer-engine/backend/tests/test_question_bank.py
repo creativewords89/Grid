@@ -696,6 +696,112 @@ def test_drafts_and_skipped_are_left_out_and_a_topic_splits_by_subtopic(
     assert empty["Approved"]["A1"].value == "No approved questions here yet."
 
 
+# --- downloading by the status chosen (step 33) -------------------------------------------------
+
+
+def statuses(client: TestClient, sid: str) -> dict[str, str]:
+    items = client.get(f"/api/qb/sets/{sid}/threads").json()["items"]
+    return {t["key"]: t["status"] for t in items}
+
+
+def test_the_to_do_questions_download_without_answer_columns(
+    loaded: TestClient, db: Session
+) -> None:
+    save(loaded, "s315", "approved")
+    sid = first_set(loaded)
+    todo = sorted(k for k, v in statuses(loaded, sid).items() if v == "todo")
+    assert "s316" in todo
+
+    response = loaded.get(f"/api/qb/sets/{sid}/export", params={"status": "todo"})
+
+    assert "Local%20SEO%20group%20-%20to%20do.xlsx" in response.headers["content-disposition"]
+    book = workbook(response)
+    rows = list(book["Google Business Profile"].iter_rows(values_only=True))
+    assert rows[0] == ("Question", "Description", "Topic", "Subtopic")
+    assert [r[0] for r in rows[1:]] == ["Can a plumber add city names to GBP services?"]
+    assert rows[1][1] == POSTS[1]["question"]
+    total = sum(len(list(ws.iter_rows())) - 1 for ws in book.worksheets)
+    assert total == len(todo)
+    entry = db.scalars(
+        select(AuditEntry).where(AuditEntry.action == "export").order_by(AuditEntry.at.desc())
+    ).first()
+    assert entry is not None
+    assert entry.changes == [
+        {"field": "questions", "to": len(todo)},
+        {"field": "status", "to": "todo"},
+    ]
+
+
+def test_drafts_download_with_their_answers(loaded: TestClient) -> None:
+    save(loaded, "s315", "approved")
+    save(loaded, "s316", "draft", [{"label": "", "picks": [], "text": "A draft answer."}])
+    sid = first_set(loaded)
+
+    response = loaded.get(f"/api/qb/sets/{sid}/export", params={"status": "draft"})
+
+    assert "group%20-%20drafts.xlsx" in response.headers["content-disposition"]
+    rows = list(workbook(response)["Google Business Profile"].iter_rows(values_only=True))
+    assert rows == [
+        ("Question", "Description", "Topic", "Subtopic", "Answer 1"),
+        (
+            "Can a plumber add city names to GBP services?",
+            POSTS[1]["question"],
+            "Google Business Profile",
+            "Products & Services",
+            "A draft answer.",
+        ),
+    ]
+
+
+def test_all_questions_download_with_a_status_column(loaded: TestClient) -> None:
+    save(loaded, "s315", "approved")
+    sid = first_set(loaded)
+
+    book = workbook(
+        loaded.get(
+            f"/api/qb/sets/{sid}/export",
+            params={"status": "all", "topic": "Google Business Profile"},
+        )
+    )
+
+    found = {
+        row[0]: row[4:]
+        for ws in book.worksheets
+        for row in list(ws.iter_rows(values_only=True))[1:]
+    }
+    assert found == {
+        "Should a roofer's GBP description list every town it serves?": (
+            "Approved",
+            TWO[0]["text"],
+            TWO[1]["text"],
+        ),
+        # Its sheet (another subtopic) has nothing answered, so no answer columns.
+        "Can a plumber add city names to GBP services?": ("To do",),
+    }
+    assert book.worksheets[0]["E1"].value == "Status"
+
+
+@pytest.mark.parametrize(
+    ("status", "sheet", "text"),
+    [
+        ("skipped", "Skipped", "No skipped questions here yet."),
+        ("todo", "To do", "No to-do questions here yet."),
+    ],
+)
+def test_an_empty_download_says_so(loaded: TestClient, status: str, sheet: str, text: str) -> None:
+    sid = first_set(loaded)
+    book = workbook(
+        loaded.get(f"/api/qb/sets/{sid}/export", params={"status": status, "topic": "Reviews"})
+    )
+    assert book.sheetnames == [sheet]
+    assert book[sheet]["A1"].value == text
+
+
+def test_an_unknown_status_is_refused(loaded: TestClient) -> None:
+    sid = first_set(loaded)
+    assert loaded.get(f"/api/qb/sets/{sid}/export", params={"status": "nope"}).status_code == 422
+
+
 def test_sheet_names_are_valid_and_unique() -> None:
     taken: set[str] = set()
 
@@ -741,6 +847,7 @@ def test_who_can_work_and_manage_sets(
     assert client.get(f"/api/qb/threads/{tid}").status_code == ok
     assert client.get(f"/api/qb/threads/{tid}/suggestions").status_code == ok
     assert client.get(f"/api/qb/sets/{sid}/export").status_code == ok
+    assert client.get(f"/api/qb/sets/{sid}/export?status=todo").status_code == ok
     assert (
         client.put(f"/api/qb/threads/{tid}/answer", json={"items": TWO, "status": "draft"})
     ).status_code == ok
