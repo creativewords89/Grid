@@ -14,6 +14,7 @@ import { Alert, Confirm } from "../components/ui";
 import { ago, formatDate } from "../format";
 import { THREAD_STATUSES } from "../labels";
 import { navigate, useSearch } from "../router";
+import { copyLabel, useCopy } from "../clipboard";
 
 // Marketing (SPEC sections 6.10 and 7.3), laid out like Chat: conversations on the left;
 // on the right, a new conversation (pick the platform, paste the post's code) or one
@@ -964,16 +965,10 @@ function OurReply({
   const [postUrl, setPostUrl] = useState("");
   const [redraft, setRedraft] = useState(false);
   const [instruction, setInstruction] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [copied, copy] = useCopy();
   const [reply, setReply] = useState("");
   const draft = message.draft;
   const inReview = message.state === "in_review";
-
-  function copy(value: string) {
-    void navigator.clipboard?.writeText(value);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1500);
-  }
 
   if (message.state === "posted") {
     return (
@@ -1000,7 +995,7 @@ function OurReply({
               className="button button-small"
               onClick={() => copy(draft.corrected_after_post!)}
             >
-              {copied ? "Copied" : "Copy the corrected reply"}
+              {copyLabel(copied, "Copy the corrected reply")}
             </button>
           </Alert>
         )}
@@ -1102,7 +1097,7 @@ function OurReply({
             title={inReview ? "Waiting for review – don't post yet" : undefined}
             onClick={() => copy(message.body)}
           >
-            {inReview ? "Waiting for review – don't post yet" : copied ? "Copied" : "Copy"}
+            {inReview ? "Waiting for review – don't post yet" : copyLabel(copied)}
           </button>
           {!inReview && (
             <button className="button button-small" onClick={() => setPosting(!posting)}>

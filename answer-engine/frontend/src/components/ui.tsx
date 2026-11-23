@@ -1,4 +1,5 @@
 import { useId, type InputHTMLAttributes, type ReactNode } from "react";
+import { COPY_FAILED, copyLabel, useCopy } from "../clipboard";
 
 export function Field({
   label,
@@ -74,15 +75,17 @@ export function Modal({
 }
 
 export function CopyLink({ link }: { link: string }) {
+  const [copied, copy] = useCopy();
   return (
     <div className="copy-link">
       <input readOnly value={link} aria-label="Link" onFocus={(e) => e.currentTarget.select()} />
       <button
         type="button"
         className="button"
-        onClick={() => void navigator.clipboard?.writeText(link)}
+        title={copied === "failed" ? COPY_FAILED : undefined}
+        onClick={() => copy(link)}
       >
-        Copy
+        {copyLabel(copied)}
       </button>
     </div>
   );

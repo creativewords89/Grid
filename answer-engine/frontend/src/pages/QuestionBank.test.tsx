@@ -412,3 +412,22 @@ test("Users don't see the page", async () => {
   expect(await screen.findByRole("link", { name: "Ask" })).toBeVisible();
   expect(screen.queryByRole("link", { name: "Question Bank" })).toBeNull();
 });
+
+test("Copy on the question copies it, and says how to copy by hand when blocked", async () => {
+  mockApi({ ...base, "GET /qb/threads/t1/suggestions": [200, []] });
+  const writeText = vi.fn(() => Promise.resolve());
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+  render(<App />);
+
+  await userEvent.click(await screen.findByRole("button", { name: "Copy" }));
+  expect(await screen.findByRole("button", { name: "Copied ✓" })).toBeVisible();
+  expect(writeText).toHaveBeenCalledTimes(1);
+
+  // The browser refuses and the older way fails too.
+  writeText.mockImplementation(() => Promise.reject(new Error("blocked")));
+  Object.defineProperty(document, "execCommand", { configurable: true, value: () => false });
+  await userEvent.click(screen.getByRole("button", { name: /Cop/ }));
+  expect(await screen.findByRole("button", { name: "Couldn't copy" })).toBeVisible();
+  expect(screen.getByText(/Select the text and press Ctrl\+C/)).toBeVisible();
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+});

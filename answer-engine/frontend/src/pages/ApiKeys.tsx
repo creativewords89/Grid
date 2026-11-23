@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api, ApiError, type ApiKeyRow } from "../api";
 import { Alert, Confirm } from "../components/ui";
 import { formatDate } from "../format";
+import { COPY_FAILED, copyLabel, useCopy } from "../clipboard";
 
 // Settings → API keys (SPEC sections 4 and 7.8, step 28): keys for scripts and assistants.
 // A key is shown once; it acts as the Owner who made it, only within its scopes.
@@ -20,7 +21,7 @@ export function ApiKeys() {
   const [chosen, setChosen] = useState<string[]>(["question_bank"]);
   const [expiry, setExpiry] = useState("90");
   const [token, setToken] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [copied, copy] = useCopy();
   const [revoking, setRevoking] = useState<ApiKeyRow | null>(null);
   const [notice, setNotice] = useState<{ kind: "error" | "success"; text: string } | null>(null);
 
@@ -37,7 +38,6 @@ export function ApiKeys() {
   async function create(event: FormEvent) {
     event.preventDefault();
     setNotice(null);
-    setCopied(false);
     try {
       const made = await api.createApiKey({
         name,
@@ -77,14 +77,10 @@ export function ApiKeys() {
           <code className="api-key">{token}</code>
           <button
             className="button button-small"
-            onClick={() =>
-              void navigator.clipboard
-                .writeText(token)
-                .then(() => setCopied(true))
-                .catch(() => setCopied(false))
-            }
+            title={copied === "failed" ? COPY_FAILED : undefined}
+            onClick={() => copy(token)}
           >
-            {copied ? "Copied ✓" : "Copy"}
+            {copyLabel(copied)}
           </button>{" "}
           <button className="link-button" onClick={() => setToken("")}>
             I&apos;ve saved it
